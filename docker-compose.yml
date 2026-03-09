@@ -1,0 +1,11 @@
+# Omni-Vibe OS 本地基础设施
+# 一键启动：docker-compose up -d
+# 预留：ComfyUI、Ollama、PostgreSQL、Vector 等
+version: "3.8"
+services:
+  # 待补充：comfyui, ollama, postgres, etc.
+  placeholder:
+    image: alpine:latest
+    command: ["sleep", "infinity"]
+    profiles:
+      - dev
