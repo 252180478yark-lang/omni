@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import { 
   Activity, 
   Cpu, 
@@ -10,7 +11,8 @@ import {
   TrendingUp, 
   Users, 
   ShoppingCart,
-  Settings
+  Settings,
+  MessageSquare
 } from 'lucide-react';
 
 export default function Home() {
@@ -27,6 +29,12 @@ export default function Home() {
               <span className="font-semibold text-lg tracking-tight">Omni-Vibe OS <span className="text-gray-400">Ultra</span></span>
             </div>
             <div className="flex items-center gap-4">
+              <Link href="/tri-mind">
+                <Button variant="default" className="rounded-full bg-gradient-to-r from-blue-600 to-purple-500 hover:from-blue-700 hover:to-purple-600 text-white shadow-md">
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Tri-Mind 辩论
+                </Button>
+              </Link>
               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 shadow-sm rounded-full px-3">
                 <div className="w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse"></div>
                 运行中
@@ -48,6 +56,10 @@ export default function Home() {
           <p className="text-gray-500 text-lg">
             欢迎回来。您的混合架构智能系统运行状况良好。
           </p>
+          <Link href="/tri-mind" className="inline-flex items-center gap-2 mt-4 text-blue-600 hover:text-blue-700 font-medium">
+            <MessageSquare className="w-4 h-4" />
+            进入 Tri-Mind 多模型辩论 →
+          </Link>
         </div>
 
         {/* Stats Grid */}
