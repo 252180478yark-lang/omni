@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
+import httpx
+
 from app.config import settings
 from app.providers.base import BaseProvider, ProviderCapability
 from app.schemas.ai import ChatResponse, Message, TokenUsage
@@ -32,6 +34,51 @@ class OpenAIProvider(BaseProvider):
         vectors = [[0.01] * 1536 for _ in texts]
         usage = TokenUsage(prompt_tokens=len(texts), completion_tokens=0, total_tokens=len(texts))
         return vectors, usage
+
+    async def list_models(self, api_key: str | None = None) -> list[str]:
+        key = (api_key or settings.openai_api_key or "").strip()
+        if not key:
+            return [self.default_chat_model, self.default_embedding_model]
+        try:
+            async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+                resp = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+                resp.raise_for_status()
+                data = resp.json().get("data", [])
+                ids = [item.get("id", "") for item in data if item.get("id")]
+                # Prioritize common chat/embedding families and limit noise.
+                ranked = [
+                    mid
+                    for mid in ids
+                    if mid.startswith("gpt-") or "embedding" in mid or mid.startswith("o")
+                ]
+                models = ranked[:80] if ranked else ids[:80]
+                if self.default_chat_model not in models:
+                    models.insert(0, self.default_chat_model)
+                if self.default_embedding_model not in models:
+                    models.append(self.default_embedding_model)
+                return list(dict.fromkeys([m for m in models if m]))
+        except Exception:
+            return [self.default_chat_model, self.default_embedding_model]
+
+    async def test_connection(self, api_key: str | None = None) -> tuple[bool, str, list[str]]:
+        key = (api_key or settings.openai_api_key or "").strip()
+        if not key:
+            return False, "未提供 OpenAI API Key", []
+        try:
+            async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+                resp = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+                resp.raise_for_status()
+                data = resp.json().get("data", [])
+                models = [item.get("id", "") for item in data if item.get("id")]
+            return True, f"连接成功，获取到 {len(models)} 个模型", models
+        except Exception as exc:
+            return False, f"连接失败: {exc}", []
 
 
 def _last_prompt(messages: list[Message]) -> str:

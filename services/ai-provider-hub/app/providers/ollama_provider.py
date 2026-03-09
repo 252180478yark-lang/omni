@@ -39,7 +39,7 @@ class OllamaProvider(BaseProvider):
         usage = TokenUsage(prompt_tokens=len(texts), completion_tokens=0, total_tokens=len(texts))
         return vectors, usage
 
-    async def list_models(self) -> list[str]:
+    async def list_models(self, api_key: str | None = None) -> list[str]:
         try:
             async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
                 resp = await client.get(f"{settings.ollama_base_url}/api/tags")
@@ -48,6 +48,15 @@ class OllamaProvider(BaseProvider):
                 return [item.get("name", "") for item in data if item.get("name")]
         except Exception:
             return [self.default_chat_model]
+
+    async def test_connection(self, api_key: str | None = None) -> tuple[bool, str, list[str]]:
+        try:
+            models = await self.list_models()
+            if len(models) == 0:
+                return False, "Ollama 可达，但未发现模型", []
+            return True, f"Ollama 连接成功，发现 {len(models)} 个模型", models
+        except Exception as exc:
+            return False, f"Ollama 连接失败: {exc}", []
 
 
 def _last_prompt(messages: list[Message]) -> str:

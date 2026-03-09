@@ -15,26 +15,72 @@ interface ProviderItem {
   defaultChatModel: string | null
   defaultEmbeddingModel: string | null
   models: string[]
+  apiKeySet?: boolean
 }
 
 export default function ModelsConfig() {
+  const draftKey = 'omni-model-config-drafts'
   const [activeProvider, setActiveProvider] = useState('')
   const [providers, setProviders] = useState<ProviderItem[]>([])
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [selectedChatModel, setSelectedChatModel] = useState('')
+  const [selectedEmbeddingModel, setSelectedEmbeddingModel] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [connectionNotice, setConnectionNotice] = useState('')
+  const [connectionOk, setConnectionOk] = useState<boolean | null>(null)
+
+  const readDrafts = (): Record<string, { chatModel?: string; embeddingModel?: string }> => {
+    if (typeof window === 'undefined') return {}
+    try {
+      const raw = window.localStorage.getItem(draftKey)
+      if (!raw) return {}
+      return JSON.parse(raw) as Record<string, { chatModel?: string; embeddingModel?: string }>
+    } catch {
+      return {}
+    }
+  }
+
+  const writeDrafts = (drafts: Record<string, { chatModel?: string; embeddingModel?: string }>) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(draftKey, JSON.stringify(drafts))
+  }
+
+  const loadProviders = async (method: 'GET' | 'POST' = 'GET') => {
+    const res = await fetch('/api/omni/models', {
+      method,
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: method === 'POST' ? JSON.stringify({ action: 'refresh' }) : undefined,
+    })
+    const json = (await res.json()) as { success: boolean; data?: { providers: ProviderItem[] }; error?: string }
+    if (!json.success || !json.data) {
+      throw new Error(json.error || '加载模型配置失败')
+    }
+    const drafts = readDrafts()
+    const merged = json.data.providers.map((p) => {
+      const d = drafts[p.id]
+      if (!d) return p
+      return {
+        ...p,
+        defaultChatModel: d.chatModel || p.defaultChatModel,
+        defaultEmbeddingModel: d.embeddingModel || p.defaultEmbeddingModel,
+      }
+    })
+    setProviders(merged)
+    if (!activeProvider && json.data.providers.length > 0) {
+      setActiveProvider(json.data.providers[0].id)
+    }
+  }
 
   useEffect(() => {
     const run = async () => {
       setError('')
       try {
-        const res = await fetch('/api/omni/models', { cache: 'no-store' })
-        const json = (await res.json()) as { success: boolean; data?: { providers: ProviderItem[] }; error?: string }
-        if (!json.success || !json.data) {
-          throw new Error(json.error || '加载模型配置失败')
-        }
-        setProviders(json.data.providers)
-        if (json.data.providers.length > 0) {
-          setActiveProvider(json.data.providers[0].id)
-        }
+        await loadProviders('GET')
       } catch (err) {
         setError(String(err))
       }
@@ -43,6 +89,150 @@ export default function ModelsConfig() {
   }, [])
 
   const active = useMemo(() => providers.find((p) => p.id === activeProvider), [providers, activeProvider])
+
+  useEffect(() => {
+    if (!active) return
+    setApiKeyInput('')
+    setSelectedChatModel(active.defaultChatModel || active.models[0] || '')
+    setSelectedEmbeddingModel(active.defaultEmbeddingModel || active.models[0] || '')
+  }, [active?.id, active?.defaultChatModel, active?.defaultEmbeddingModel, active?.models])
+
+  const handleRefreshModels = async () => {
+    setRefreshing(true)
+    setError('')
+    setNotice('')
+    try {
+      const res = await fetch('/api/omni/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          action: 'refresh',
+          providerId: active?.id,
+          apiKey: active?.id === 'ollama' ? undefined : apiKeyInput,
+        }),
+      })
+      const json = (await res.json()) as {
+        success: boolean
+        data?: {
+          providers: ProviderItem[]
+          connectionTest?: { success: boolean; message: string; models?: string[] }
+        }
+        error?: string
+      }
+      if (!json.success || !json.data) {
+        throw new Error(json.error || '同步模型失败')
+      }
+      setProviders(json.data.providers)
+      if (json.data.connectionTest?.message) {
+        setConnectionNotice(json.data.connectionTest.message)
+        setConnectionOk(Boolean(json.data.connectionTest.success))
+      }
+      setNotice('模型列表已刷新')
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const updateActiveProviderDraft = (next: { chatModel?: string; embeddingModel?: string }) => {
+    if (!active) return
+    const drafts = readDrafts()
+    drafts[active.id] = {
+      chatModel: next.chatModel ?? drafts[active.id]?.chatModel ?? active.defaultChatModel ?? undefined,
+      embeddingModel: next.embeddingModel ?? drafts[active.id]?.embeddingModel ?? active.defaultEmbeddingModel ?? undefined,
+    }
+    writeDrafts(drafts)
+
+    setProviders((prev) =>
+      prev.map((p) => {
+        if (p.id !== active.id) return p
+        return {
+          ...p,
+          defaultChatModel: next.chatModel ?? p.defaultChatModel,
+          defaultEmbeddingModel: next.embeddingModel ?? p.defaultEmbeddingModel,
+        }
+      }),
+    )
+  }
+
+  const handleTestConnection = async () => {
+    if (!active) return
+    setTesting(true)
+    setError('')
+    setConnectionNotice('')
+    setConnectionOk(null)
+    try {
+      const res = await fetch('/api/omni/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          action: 'test-connection',
+          providerId: active.id,
+          apiKey: active.id === 'ollama' ? undefined : apiKeyInput,
+        }),
+      })
+      const json = (await res.json()) as {
+        success: boolean
+        data?: {
+          providers: ProviderItem[]
+          connectionTest?: { success: boolean; message: string; models?: string[] }
+        }
+        error?: string
+      }
+      if (!json.success || !json.data) {
+        throw new Error(json.error || '连接测试失败')
+      }
+      setProviders(json.data.providers)
+      const test = json.data.connectionTest
+      if (test) {
+        setConnectionNotice(test.message || (test.success ? '连接成功' : '连接失败'))
+        setConnectionOk(Boolean(test.success))
+      }
+    } catch (err) {
+      setError(String(err))
+      setConnectionOk(false)
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const handleSaveProviderConfig = async () => {
+    if (!active) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const res = await fetch('/api/omni/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          action: 'update-provider',
+          providerId: active.id,
+          apiKey: active.id === 'ollama' ? undefined : apiKeyInput,
+          defaultChatModel: selectedChatModel,
+          defaultEmbeddingModel: selectedEmbeddingModel,
+        }),
+      })
+      const json = (await res.json()) as { success: boolean; data?: { providers: ProviderItem[] }; error?: string }
+      if (!json.success || !json.data) {
+        throw new Error(json.error || '保存配置失败')
+      }
+      setProviders(json.data.providers)
+      const drafts = readDrafts()
+      delete drafts[active.id]
+      writeDrafts(drafts)
+      setNotice('配置已保存')
+      setApiKeyInput('')
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#F5F5F7] pb-20">
@@ -68,9 +258,9 @@ export default function ModelsConfig() {
             <h1 className="text-3xl font-bold tracking-tight text-gray-900 mb-2">模型配置中心</h1>
             <p className="text-gray-500">管理多个 AI Provider 以及底层模型调用策略与降级顺序。</p>
           </div>
-          <Button className="bg-purple-600 hover:bg-purple-700" disabled>
+          <Button className="bg-purple-600 hover:bg-purple-700" onClick={handleSaveProviderConfig} disabled={!active || saving}>
             <Save className="w-4 h-4 mr-2" />
-            配置由环境变量管理
+            {saving ? '保存中...' : '保存当前供应商配置'}
           </Button>
         </div>
 
@@ -123,6 +313,7 @@ export default function ModelsConfig() {
           </CardContent>
         </Card>
 
+        {notice ? <div className="mb-4 rounded-xl border border-green-200 bg-green-50 text-green-700 px-4 py-3 text-sm">{notice}</div> : null}
         {error ? (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">{error}</div>
         ) : null}
@@ -164,9 +355,17 @@ export default function ModelsConfig() {
                       <CardTitle className="text-xl">{active.name} 配置</CardTitle>
                       <CardDescription>配置 API 密钥和可用模型列表</CardDescription>
                     </div>
-                    {active.status === 'connected' ? (
+                    {connectionOk === true ? (
                       <Badge variant="outline" className="text-green-600 bg-green-50 border-green-200">
-                        连通测试通过
+                        连接测试通过
+                      </Badge>
+                    ) : connectionOk === false ? (
+                      <Badge variant="outline" className="text-red-600 bg-red-50 border-red-200">
+                        连接测试失败
+                      </Badge>
+                    ) : active.status === 'connected' ? (
+                      <Badge variant="outline" className="text-green-600 bg-green-50 border-green-200">
+                        服务在线
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="text-gray-500 bg-gray-100 border-gray-200">
@@ -179,18 +378,68 @@ export default function ModelsConfig() {
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
                       <Key className="w-4 h-4 text-gray-400" />
-                      API Key (环境变量)
+                      API Key
                     </label>
                     <input
                       type="password"
-                      value={active.id === 'ollama' ? '无需密钥' : '••••••••••••••••••••••••••••'}
-                      disabled
-                      className="w-full h-10 px-3 rounded-md border border-gray-200 bg-gray-50 text-sm text-gray-500 font-mono cursor-not-allowed"
+                      value={active.id === 'ollama' ? '无需密钥' : apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder={active.id === 'ollama' ? 'Ollama 不需要 API Key' : active.apiKeySet ? '已配置，输入新值可覆盖' : '输入新的 API Key'}
+                      disabled={active.id === 'ollama'}
+                      className={`w-full h-10 px-3 rounded-md border text-sm font-mono ${
+                        active.id === 'ollama'
+                          ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                          : 'border-gray-300 bg-white text-gray-900'
+                      }`}
                     />
                     <p className="text-xs text-gray-400 mt-1">
-                      请在 <code className="bg-gray-100 px-1 py-0.5 rounded">.env</code> 文件中修改
-                      <code className="bg-gray-100 px-1 py-0.5 rounded ml-1">{active.id.toUpperCase()}_API_KEY</code>
+                      保存后会实时更新 AI Hub 运行配置（容器重启后需要重新配置或写入环境变量）。
                     </p>
+                    <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testing} className="mt-2">
+                      {testing ? '测试中...' : '测试连接'}
+                    </Button>
+                    {connectionNotice ? (
+                      <p className={`text-xs mt-1 ${connectionOk ? 'text-green-600' : 'text-red-600'}`}>{connectionNotice}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">默认对话模型</label>
+                      <select
+                        value={selectedChatModel}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setSelectedChatModel(value)
+                          updateActiveProviderDraft({ chatModel: value })
+                        }}
+                        className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      >
+                        {(active.models.length > 0 ? active.models : [active.defaultChatModel || '']).filter(Boolean).map((m) => (
+                          <option key={`chat-${m}`} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-gray-700">默认向量模型</label>
+                      <select
+                        value={selectedEmbeddingModel}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setSelectedEmbeddingModel(value)
+                          updateActiveProviderDraft({ embeddingModel: value })
+                        }}
+                        className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      >
+                        {(active.models.length > 0 ? active.models : [active.defaultEmbeddingModel || '']).filter(Boolean).map((m) => (
+                          <option key={`embedding-${m}`} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   <div className="space-y-3">
@@ -211,8 +460,8 @@ export default function ModelsConfig() {
                         <p className="text-sm text-gray-500 text-center py-2">无可用模型</p>
                       )}
                     </div>
-                    <Button variant="outline" size="sm" className="w-full mt-2" disabled>
-                      同步模型列表 (Refresh Models)
+                    <Button variant="outline" size="sm" className="w-full mt-2" onClick={handleRefreshModels} disabled={refreshing}>
+                      {refreshing ? '同步中...' : '同步模型列表 (Refresh Models)'}
                     </Button>
                   </div>
                 </CardContent>

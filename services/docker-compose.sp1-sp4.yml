@@ -7,7 +7,9 @@ services:
     environment:
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
-      AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001/v1"
+      IDENTITY_SERVICE_URL: "http://identity-service:8000"
+      AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
+      KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
     command: ["npm", "run", "start"]
     networks:
       - omni-network
@@ -21,6 +23,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://omni_user:changeme_in_production@omni-postgres:5432/omni_vibe_db
       REDIS_URL: redis://:changeme_redis@omni-redis:6379/0
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
     networks:
       - omni-network
 
@@ -30,6 +34,8 @@ services:
     env_file:
       - ./ai-provider-hub/.env.example
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "8001:8001"
     networks:
       - omni-network
 
@@ -39,6 +45,8 @@ services:
     env_file:
       - ./knowledge-engine/.env.example
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    ports:
+      - "8002:8002"
     volumes:
       - knowledge_data:/app/data
     depends_on:
