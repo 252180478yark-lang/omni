@@ -181,6 +181,23 @@ export default function Home() {
             <TabsContent value="learning" className="p-8 text-center text-gray-500">主动学习模块 (开发中)</TabsContent>
           </Tabs>
         </div>
+
+        {/* Tri-Mind 入口 */}
+        <Link href="/tri-mind">
+          <Card className="apple-card border-none hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] transition-all duration-300 cursor-pointer group">
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-2xl bg-gradient-to-tr from-blue-500 to-purple-500 group-hover:scale-105 transition-transform">
+                  <MessageSquare className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">Tri-Mind 多模型辩论</h3>
+                  <p className="text-sm text-gray-500 mt-1">让多个 AI 模型针对同一问题进行并发对比、交叉质疑与综合裁决</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       </main>
     </div>
   );
