@@ -1,0 +1,28 @@
+appId: com.trimind.synthesizer
+productName: Tri-Mind Synthesizer
+directories:
+  output: release
+files:
+  - dist
+  - dist-electron
+  - package.json
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: public/icon.ico
+mac:
+  target:
+    - dmg
+  icon: public/icon.icns
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Tri-Mind Synthesizer
+asar: true
+asarUnpack:
+  - "node_modules/better-sqlite3/**"
+  - "node_modules/keytar/**"

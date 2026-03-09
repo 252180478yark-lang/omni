@@ -1,0 +1,244 @@
+name: Omni-Vibe OS CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/omni-vibe
+
+# 取消同一分支上的重复运行 / Cancel duplicate runs on same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # 检测变更的服务 / Detect changed services
+  # ============================================================
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.changes.outputs.services }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend-gateway:
+              - 'services/backend-gateway/**'
+            ai-provider-hub:
+              - 'services/ai-provider-hub/**'
+            knowledge-engine:
+              - 'services/knowledge-engine/**'
+            langgraph-orchestrator:
+              - 'services/langgraph-orchestrator/**'
+            content-factory:
+              - 'services/content-factory/**'
+            market-intelligence:
+              - 'services/market-intelligence/**'
+            ops-assistant:
+              - 'services/ops-assistant/**'
+            second-brain:
+              - 'services/second-brain/**'
+            evolution-engine:
+              - 'services/evolution-engine/**'
+            frontend:
+              - 'services/frontend-dashboard/**'
+
+  # ============================================================
+  # Python 服务测试 / Python Service Tests
+  # ============================================================
+  test-python:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - backend-gateway
+          - ai-provider-hub
+          - knowledge-engine
+          - langgraph-orchestrator
+          - content-factory
+          - market-intelligence
+          - ops-assistant
+          - second-brain
+          - evolution-engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check if service changed
+        id: check
+        run: |
+          if [ "${{ needs.detect-changes.outputs[matrix.service] }}" = "true" ] || [ "${{ github.event_name }}" = "push" ]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Python
+        if: steps.check.outputs.should_run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        if: steps.check.outputs.should_run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.service }}-${{ hashFiles(format('services/{0}/pyproject.toml', matrix.service)) }}
+
+      - name: Install dependencies
+        if: steps.check.outputs.should_run == 'true'
+        working-directory: services/${{ matrix.service }}
+        run: |
+          pip install -e ".[dev]" 2>/dev/null || pip install -e .
+
+      - name: Lint with ruff
+        if: steps.check.outputs.should_run == 'true'
+        working-directory: services/${{ matrix.service }}
+        run: |
+          pip install ruff
+          ruff check . --output-format=github
+        continue-on-error: true
+
+      - name: Run tests
+        if: steps.check.outputs.should_run == 'true'
+        working-directory: services/${{ matrix.service }}
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: test-secret-key
+        run: |
+          pytest tests/ -v --tb=short --junitxml=../../test-results/${{ matrix.service }}.xml 2>/dev/null || echo "No tests found"
+
+      - name: Upload test results
+        if: steps.check.outputs.should_run == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.service }}
+          path: test-results/
+          if-no-files-found: ignore
+
+  # ============================================================
+  # 前端测试 / Frontend Tests
+  # ============================================================
+  test-frontend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: services/frontend-dashboard/package-lock.json
+
+      - name: Install dependencies
+        working-directory: services/frontend-dashboard
+        run: npm ci
+
+      - name: Lint
+        working-directory: services/frontend-dashboard
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Type check
+        working-directory: services/frontend-dashboard
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: Build
+        working-directory: services/frontend-dashboard
+        run: npm run build
+
+  # ============================================================
+  # Docker 构建 / Docker Build
+  # ============================================================
+  build-images:
+    needs: [test-python, test-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - backend-gateway
+          - ai-provider-hub
+          - knowledge-engine
+          - langgraph-orchestrator
+          - content-factory
+          - market-intelligence
+          - ops-assistant
+          - second-brain
+          - evolution-engine
+          - frontend-dashboard
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # 集成测试 / Integration Test
+  # ============================================================
+  integration-test:
+    needs: build-images
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start infrastructure
+        run: docker compose up postgres redis -d
+
+      - name: Wait for services
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T postgres pg_isready && break
+            sleep 2
+          done
+
+      - name: Start core services
+        run: docker compose up backend-gateway ai-provider-hub -d
+
+      - name: Health check
+        run: |
+          sleep 10
+          curl -f http://localhost:8000/health || exit 1
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v

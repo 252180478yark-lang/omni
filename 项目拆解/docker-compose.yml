@@ -1,0 +1,439 @@
+# Omni-Vibe OS Ultra — Docker Compose 总编排文件
+# 一键启动所有服务：docker compose up -d
+# 仅启动基础设施：docker compose up postgres redis nginx -d
+
+services:
+  # ============================================================
+  # 基础设施层 / Infrastructure Layer
+  # ============================================================
+
+  postgres:
+    build:
+      context: ./services/infra-core/postgres
+      dockerfile: Dockerfile
+    container_name: omni-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-omni_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-omni_vibe_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/infra-core/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-omni_user} -d ${POSTGRES_DB:-omni_vibe_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: omni-redis
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-changeme_redis}
+      --appendonly yes
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme_redis}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: omni-nginx
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
+    volumes:
+      - ./services/infra-core/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/infra-core/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      - backend-gateway
+      - frontend-dashboard
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  # ============================================================
+  # 核心服务层 / Core Services Layer
+  # ============================================================
+
+  backend-gateway:
+    build:
+      context: ./services/backend-gateway
+      dockerfile: Dockerfile
+    container_name: omni-backend-gateway
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-in-production}
+      SERVICE_NAME: backend-gateway
+      SERVICE_PORT: "8000"
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  ai-provider-hub:
+    build:
+      context: ./services/ai-provider-hub
+      dockerfile: Dockerfile
+    container_name: omni-ai-provider-hub
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+      DEFAULT_CHAT_PROVIDER: ${DEFAULT_CHAT_PROVIDER:-gemini}
+      SERVICE_NAME: ai-provider-hub
+      SERVICE_PORT: "8001"
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  knowledge-engine:
+    build:
+      context: ./services/knowledge-engine
+      dockerfile: Dockerfile
+    container_name: omni-knowledge-engine
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      SERVICE_NAME: knowledge-engine
+      SERVICE_PORT: "8002"
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-provider-hub:
+        condition: service_started
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  langgraph-orchestrator:
+    build:
+      context: ./services/langgraph-orchestrator
+      dockerfile: Dockerfile
+    container_name: omni-langgraph-orchestrator
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+      KNOWLEDGE_ENGINE_URL: http://knowledge-engine:8002
+      SERVICE_NAME: langgraph-orchestrator
+      SERVICE_PORT: "8003"
+    ports:
+      - "8003:8003"
+    depends_on:
+      - ai-provider-hub
+      - knowledge-engine
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  # ============================================================
+  # 业务模块层 / Business Modules Layer
+  # ============================================================
+
+  content-factory:
+    build:
+      context: ./services/content-factory
+      dockerfile: Dockerfile
+    container_name: omni-content-factory
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+      COMFYUI_URL: http://comfyui:8188
+      SERVICE_NAME: content-factory
+      SERVICE_PORT: "8004"
+    ports:
+      - "8004:8004"
+    volumes:
+      - content_outputs:/app/outputs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  content-factory-worker:
+    build:
+      context: ./services/content-factory
+      dockerfile: Dockerfile
+    container_name: omni-content-worker
+    command: celery -A app.celery_tasks.celery_app worker --loglevel=info -Q content -c 2
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+      COMFYUI_URL: http://comfyui:8188
+    volumes:
+      - content_outputs:/app/outputs
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  market-intelligence:
+    build:
+      context: ./services/market-intelligence
+      dockerfile: Dockerfile
+    container_name: omni-market-intelligence
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+      KNOWLEDGE_ENGINE_URL: http://knowledge-engine:8002
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+      SERVICE_NAME: market-intelligence
+      SERVICE_PORT: "8005"
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  market-intelligence-worker:
+    build:
+      context: ./services/market-intelligence
+      dockerfile: Dockerfile
+    container_name: omni-crawl-worker
+    command: celery -A app.celery_tasks.celery_app worker --loglevel=info -Q crawl -c 2
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  ops-assistant:
+    build:
+      context: ./services/ops-assistant
+      dockerfile: Dockerfile
+    container_name: omni-ops-assistant
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+      WECHATY_ENDPOINT: http://wechaty:8788
+      SERVICE_NAME: ops-assistant
+      SERVICE_PORT: "8006"
+    ports:
+      - "8006:8006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  second-brain:
+    build:
+      context: ./services/second-brain
+      dockerfile: Dockerfile
+    container_name: omni-second-brain
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+      KNOWLEDGE_ENGINE_URL: http://knowledge-engine:8002
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cuda}
+      SERVICE_NAME: second-brain
+      SERVICE_PORT: "8007"
+    ports:
+      - "8007:8007"
+    volumes:
+      - brain_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+    # 如果需要 GPU（Whisper + OCR 加速）:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  second-brain-worker:
+    build:
+      context: ./services/second-brain
+      dockerfile: Dockerfile
+    container_name: omni-brain-worker
+    command: celery -A app.celery_tasks.celery_app worker --loglevel=info -Q default -c 2
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+      KNOWLEDGE_ENGINE_URL: http://knowledge-engine:8002
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+    volumes:
+      - brain_uploads:/app/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  evolution-engine:
+    build:
+      context: ./services/evolution-engine
+      dockerfile: Dockerfile
+    container_name: omni-evolution-engine
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0
+      AI_PROVIDER_HUB_URL: http://ai-provider-hub:8001
+      SERVICE_NAME: evolution-engine
+      SERVICE_PORT: "8008"
+    ports:
+      - "8008:8008"
+    volumes:
+      - lora_adapters:/app/lora_adapters
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  # ============================================================
+  # 前端 / Frontend
+  # ============================================================
+
+  frontend-dashboard:
+    build:
+      context: ./services/frontend-dashboard
+      dockerfile: Dockerfile
+    container_name: omni-frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: /api/v1
+    ports:
+      - "3000:3000"
+    networks:
+      - omni-network
+    restart: unless-stopped
+
+  # ============================================================
+  # 本地 AI 服务 (可选) / Local AI Services (Optional)
+  # ============================================================
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: omni-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - omni-network
+    restart: unless-stopped
+    profiles:
+      - local-ai
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  comfyui:
+    image: comfyanonymous/comfyui:latest
+    container_name: omni-comfyui
+    ports:
+      - "8188:8188"
+    volumes:
+      - comfyui_data:/app/models
+      - content_outputs:/app/output
+    networks:
+      - omni-network
+    restart: unless-stopped
+    profiles:
+      - local-ai
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+# ============================================================
+# Volumes / 持久化卷
+# ============================================================
+volumes:
+  postgres_data:
+    name: omni-postgres-data
+  redis_data:
+    name: omni-redis-data
+  content_outputs:
+    name: omni-content-outputs
+  brain_uploads:
+    name: omni-brain-uploads
+  lora_adapters:
+    name: omni-lora-adapters
+  ollama_data:
+    name: omni-ollama-data
+  comfyui_data:
+    name: omni-comfyui-data
+
+# ============================================================
+# Networks / 网络
+# ============================================================
+networks:
+  omni-network:
+    name: omni-network
+    driver: bridge

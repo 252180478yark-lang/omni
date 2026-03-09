@@ -1,0 +1,14 @@
+{
+  "name": "omni",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Omni - 混合架构智能系统，集成 Tri-Mind Synthesizer 多模型辩论工具",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "dev:tri-mind": "cd apps/tri-mind-synthesizer && npm run electron:dev",
+    "build": "cd frontend && npm run build",
+    "build:tri-mind": "cd apps/tri-mind-synthesizer && npm run electron:build"
+  },
+  "keywords": ["omni", "ai", "tri-mind", "debate", "llm"],
+  "license": "MIT"
+}
