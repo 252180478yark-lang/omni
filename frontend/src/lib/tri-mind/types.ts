@@ -133,7 +133,10 @@ export function validateModelIdByProvider(
 }
 
 export const PROVIDER_INFO: Record<ModelProvider, { name: string; defaultBaseUrl: string }> = {
-  openai: { name: 'OpenAI', defaultBaseUrl: 'https://api.openai.com/v1' },
+  openai: {
+    name: 'OpenAI',
+    defaultBaseUrl: process.env.NEXT_PUBLIC_OPENAI_BASE_URL || 'http://localhost:8001/v1',
+  },
   anthropic: { name: 'Anthropic', defaultBaseUrl: 'https://api.anthropic.com' },
   google: { name: 'Google', defaultBaseUrl: 'https://generativelanguage.googleapis.com' },
   ollama: { name: 'Ollama (本地)', defaultBaseUrl: 'http://localhost:11434/v1' },

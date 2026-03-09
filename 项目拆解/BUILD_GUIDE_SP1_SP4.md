@@ -2,6 +2,74 @@
 
 ---
 
+## 0. Debug 调试优先（当前仓库版本）
+
+> 先说明：本文件后续章节包含的是「目标蓝图指引」，与当前仓库的最小可运行实现存在差异。  
+> **当前仓库实际服务名**：`identity-service`、`ai-provider-hub`、`knowledge-engine`（不是 `backend-gateway`）。
+
+### 0.1 一键排错顺序（PowerShell）
+
+```powershell
+# 1) 在仓库根目录
+cd E:\agent\omni
+
+# 2) 先创建外部网络（未创建会导致 compose 启动失败）
+docker network inspect omni-network > $null 2>&1
+if ($LASTEXITCODE -ne 0) { docker network create omni-network }
+
+# 3) 启动基础设施
+docker compose -f services/infra-core/docker-compose.infra.yml up -d
+
+# 4) 启动 SP1-SP4 服务组
+docker compose -f services/docker-compose.sp1-sp4.yml up -d --build
+
+# 5) 查看服务状态
+docker compose -f services/docker-compose.sp1-sp4.yml ps
+```
+
+### 0.2 健康检查与最小联调
+
+```powershell
+# 服务健康检查
+curl http://localhost:8000/health
+curl http://localhost:8001/health
+curl http://localhost:8002/health
+
+# 身份服务：注册 + 登录
+curl -Method POST http://localhost:8000/api/v1/auth/register `
+  -ContentType "application/json" `
+  -Body '{"email":"test@example.com","password":"Test1234!","display_name":"Test User"}'
+
+curl -Method POST http://localhost:8000/api/v1/auth/login `
+  -ContentType "application/json" `
+  -Body '{"email":"test@example.com","password":"Test1234!"}'
+
+# AI Provider Hub（OpenAI 兼容路由）
+curl -Method POST http://localhost:8001/v1/chat/completions `
+  -ContentType "application/json" `
+  -Body '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"hello"}]}'
+
+# Knowledge：建库 -> 入库 -> 查询
+curl -Method POST http://localhost:8002/api/v1/knowledge/bases `
+  -ContentType "application/json" `
+  -Body '{"name":"test-kb","description":"debug kb"}'
+```
+
+### 0.3 常见报错对照表
+
+- `network omni-network declared as external, but could not be found`  
+  先执行：`docker network create omni-network`
+- `Cannot connect to the Docker daemon`  
+  启动 Docker Desktop 后重试
+- `Port ... is already allocated`  
+  释放占用端口或改 `.env.example`/compose 端口映射
+- `404 on /api/v1/ai/*`  
+  当前 `ai-provider-hub` 使用 OpenAI 兼容前缀：`/v1/*`，不是 `/api/v1/ai/*`
+- 按蓝图调用 `backend-gateway` 失败  
+  当前仓库对应服务是 `identity-service`（端口 `8000`）
+
+---
+
 ## SP#1: infra-core — 基础设施层
 
 ### 2.1 项目初始化指令

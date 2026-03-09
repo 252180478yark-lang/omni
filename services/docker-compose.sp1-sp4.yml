@@ -1,0 +1,54 @@
+name: omni-sp1-sp4
+
+services:
+  frontend:
+    build:
+      context: ../frontend
+    environment:
+      NEXT_PUBLIC_USE_BACKEND_HUB: "true"
+      NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
+      AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001/v1"
+    command: ["npm", "run", "start"]
+    networks:
+      - omni-network
+
+  identity-service:
+    build:
+      context: ./identity-service
+    env_file:
+      - ./identity-service/.env.example
+    environment:
+      DATABASE_URL: postgresql+asyncpg://omni_user:changeme_in_production@omni-postgres:5432/omni_vibe_db
+      REDIS_URL: redis://:changeme_redis@omni-redis:6379/0
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - omni-network
+
+  ai-provider-hub:
+    build:
+      context: ./ai-provider-hub
+    env_file:
+      - ./ai-provider-hub/.env.example
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    networks:
+      - omni-network
+
+  knowledge-engine:
+    build:
+      context: ./knowledge-engine
+    env_file:
+      - ./knowledge-engine/.env.example
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    volumes:
+      - knowledge_data:/app/data
+    depends_on:
+      - ai-provider-hub
+    networks:
+      - omni-network
+
+volumes:
+  knowledge_data:
+
+networks:
+  omni-network:
+    external: true

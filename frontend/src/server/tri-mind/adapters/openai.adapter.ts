@@ -10,25 +10,42 @@ import {
 export class OpenAIAdapter extends LLMAdapter {
   readonly provider = 'openai' as const
   readonly name = 'OpenAI'
-  readonly defaultBaseUrl = 'https://api.openai.com/v1'
+  readonly defaultBaseUrl = process.env.AI_PROVIDER_HUB_URL || 'http://localhost:8001/v1'
+
+  private isLocalHub(baseUrl: string): boolean {
+    return (
+      baseUrl.includes('localhost:8001') ||
+      baseUrl.includes('127.0.0.1:8001') ||
+      baseUrl.includes('ai-provider-hub:8001') ||
+      baseUrl.endsWith('/v1')
+    )
+  }
 
   async testConnection(config: AdapterConfig): Promise<{ ok: boolean; error?: string }> {
+    const baseUrl = config.baseUrl || this.defaultBaseUrl
+    const apiKey = config.apiKey || 'local-dev-token'
     try {
       const client = new OpenAI({
-        apiKey: config.apiKey,
-        baseURL: config.baseUrl || this.defaultBaseUrl,
+        apiKey,
+        baseURL: baseUrl,
         dangerouslyAllowBrowser: false,
         timeout: 15000,
       })
-      const models = await client.models.list()
-      let modelFound = false
-      for await (const model of models) {
-        if (model.id === config.model) {
-          modelFound = true
-          break
-        }
+
+      // ai-provider-hub currently does not expose /v1/models, use lightweight chat probe.
+      if (this.isLocalHub(baseUrl)) {
+        await client.chat.completions.create({
+          model: config.model,
+          messages: [{ role: 'user', content: 'ping' }],
+          stream: false,
+        })
+        return { ok: true }
       }
-      if (!modelFound) return { ok: true }
+
+      const models = await client.models.list()
+      for await (const model of models) {
+        if (model.id === config.model) return { ok: true }
+      }
       return { ok: true }
     } catch (error) {
       if (error instanceof OpenAI.APIError) {
@@ -46,9 +63,11 @@ export class OpenAIAdapter extends LLMAdapter {
     messages: Message[],
     config: AdapterConfig
   ): AsyncGenerator<StreamChunkPayload> {
+    const baseUrl = config.baseUrl || this.defaultBaseUrl
+    const apiKey = config.apiKey || 'local-dev-token'
     const client = new OpenAI({
-      apiKey: config.apiKey,
-      baseURL: config.baseUrl || this.defaultBaseUrl,
+      apiKey,
+      baseURL: baseUrl,
       dangerouslyAllowBrowser: false,
     })
 

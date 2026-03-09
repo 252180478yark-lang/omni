@@ -1,0 +1,26 @@
+Metadata-Version: 2.4
+Name: identity-service
+Version: 0.1.0
+Requires-Python: >=3.11
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn[standard]>=0.30.0
+Requires-Dist: sqlalchemy[asyncio]>=2.0.30
+Requires-Dist: asyncpg>=0.30.0
+Requires-Dist: aiosqlite>=0.20.0
+Requires-Dist: alembic>=1.14.0
+Requires-Dist: pydantic>=2.10.0
+Requires-Dist: pydantic-settings>=2.6.0
+Requires-Dist: email-validator>=2.2.0
+Requires-Dist: python-jose[cryptography]>=3.3.0
+Requires-Dist: passlib[bcrypt]>=1.7.4
+Requires-Dist: bcrypt<4.1
+Requires-Dist: celery[redis]>=5.4.0
+Requires-Dist: redis>=5.0.0
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: structlog>=24.1.0
+Requires-Dist: httpx>=0.27.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.24.0; extra == "dev"
+Requires-Dist: httpx>=0.27.0; extra == "dev"
+Requires-Dist: ruff>=0.5.0; extra == "dev"

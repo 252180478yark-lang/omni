@@ -41,7 +41,7 @@ interface ConfigState {
 }
 
 function createDefaultProviders(): ProviderConfig[] {
-  return Object.entries(DEFAULT_MODELS).map(([provider, models]) => ({
+  const providers = Object.entries(DEFAULT_MODELS).map(([provider, models]) => ({
     provider: provider as ModelProvider,
     apiKey: '',
     baseUrl: PROVIDER_INFO[provider as ModelProvider].defaultBaseUrl,
@@ -49,9 +49,31 @@ function createDefaultProviders(): ProviderConfig[] {
     models: models.map((m) => ({ ...m })),
     hiddenDefaultModelIds: [],
   }))
+
+  // In integration test mode, route OpenAI calls to ai-provider-hub without requiring real API keys.
+  if (process.env.NEXT_PUBLIC_USE_BACKEND_HUB === 'true') {
+    return providers.map((p) => {
+      if (p.provider === 'openai') {
+        return {
+          ...p,
+          enabled: true,
+          apiKey: 'local-dev-token',
+        }
+      }
+      if (p.provider === 'ollama') {
+        return { ...p, enabled: false }
+      }
+      return p
+    })
+  }
+
+  return providers
 }
 
 function createDefaultApiKeyStatus(): Record<ModelProvider, boolean> {
+  if (process.env.NEXT_PUBLIC_USE_BACKEND_HUB === 'true') {
+    return { openai: true, anthropic: false, google: false, ollama: false }
+  }
   return { openai: false, anthropic: false, google: false, ollama: false }
 }
 

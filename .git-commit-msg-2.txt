@@ -1,0 +1,1 @@
+feat: 集成 Tri-Mind Synthesizer 到 Omni，统一前端风格

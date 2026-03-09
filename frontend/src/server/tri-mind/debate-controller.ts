@@ -26,6 +26,17 @@ import { storage } from './storage'
 export class DebateController {
   private abortControllers = new Map<string, AbortController>()
 
+  private allowEmptyApiKey(provider: string, baseUrl?: string): boolean {
+    if (provider !== 'openai') return false
+    if (!baseUrl) return false
+    return (
+      baseUrl.includes('localhost:8001') ||
+      baseUrl.includes('127.0.0.1:8001') ||
+      baseUrl.includes('ai-provider-hub:8001') ||
+      baseUrl.endsWith('/v1')
+    )
+  }
+
   /**
    * 运行辩论
    * @param params 辩论参数（apiKeys 必须从 params 传入，不再调用 getApiKey）
@@ -222,7 +233,7 @@ export class DebateController {
         `[辩论] ${model.name} API Key: ${apiKey ? apiKey.substring(0, 10) + '...' : '(空)'}`
       )
 
-      if (!apiKey && model.provider !== 'ollama') {
+      if (!apiKey && model.provider !== 'ollama' && !this.allowEmptyApiKey(model.provider, model.baseUrl)) {
         const err = `${model.name} 的 API Key 未设置，请在参数中传入 apiKeys`
         console.error(`[辩论] ${err}`)
         sendChunk({ modelId: model.id, content: '', done: true, error: err })
