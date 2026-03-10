@@ -24,9 +24,10 @@ docker compose -f docker-compose.infra.yml up -d
 ## Routes / 路由
 
 - `/` -> `frontend:3000`
-- `/api/v1/auth/*` -> `identity-service:8000`
 - `/api/v1/ai/*` -> `ai-provider-hub:8001`
 - `/api/v1/knowledge/*` -> `knowledge-engine:8002`
+- `/api/v1/news/*` -> `news-aggregator:8005`
+- `/api/v1/video-analysis/*` -> `video-analysis:8006`
 - `/v1/*` -> `ai-provider-hub:8001` (OpenAI compatible)
 
 ## Environment Variables / 环境变量

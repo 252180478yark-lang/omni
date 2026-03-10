@@ -10,25 +10,23 @@ import {
   Activity, 
   Cpu, 
   BrainCircuit, 
-  Users, 
   Settings,
   MessageSquare,
   Database,
   Network,
   ListTodo,
-  Newspaper
+  Newspaper,
+  Clapperboard
 } from 'lucide-react';
 
 type HealthState = 'healthy' | 'down'
 
 interface OverviewData {
   health: {
-    identity: HealthState
     aiHub: HealthState
     knowledge: HealthState
   }
   metrics: {
-    identityUsers: number
     aiTokenToday: number
     knowledgeDocuments: number
     infraUptime: number
@@ -65,10 +63,10 @@ export default function Home() {
   const statCards = useMemo(() => {
     const metrics = overview?.metrics
     return [
-      { title: "身份服务 (SP2)", value: metrics?.identityUsers ?? 0, subtitle: "已注册用户总数", icon: Users, color: "text-blue-500", bg: "bg-blue-50" },
       { title: "AI 网关 (SP3)", value: metrics?.aiTokenToday ?? 0, subtitle: "今日 Token 消耗", icon: BrainCircuit, color: "text-purple-500", bg: "bg-purple-50" },
       { title: "知识引擎 (SP4)", value: metrics?.knowledgeDocuments ?? 0, subtitle: "已入库文档总数", icon: Database, color: "text-green-500", bg: "bg-green-50" },
       { title: "基础设施 (SP1)", value: `${metrics?.infraUptime ?? 0}%`, subtitle: "数据库及 Redis 连通率", icon: Network, color: "text-orange-500", bg: "bg-orange-50" },
+      { title: "运行任务", value: metrics?.runningTasks ?? 0, subtitle: "知识引擎正在执行任务数", icon: Activity, color: "text-blue-500", bg: "bg-blue-50" },
     ]
   }, [overview])
 
@@ -100,9 +98,18 @@ export default function Home() {
                 <Link href="/tasks" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
                   <ListTodo className="w-4 h-4" /> 任务进度
                 </Link>
+                <Link href="/video-analysis" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
+                  <Clapperboard className="w-4 h-4" /> 短视频分析
+                </Link>
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <Link href="/video-analysis" className="md:hidden">
+                <Button variant="outline" className="rounded-full">
+                  <Clapperboard className="w-4 h-4 mr-2" />
+                  短视频Agent
+                </Button>
+              </Link>
               <Link href="/tri-mind">
                 <Button variant="default" className="rounded-full bg-gradient-to-r from-blue-600 to-purple-500 hover:from-blue-700 hover:to-purple-600 text-white shadow-md">
                   <MessageSquare className="w-4 h-4 mr-2" />
@@ -163,7 +170,6 @@ export default function Home() {
             <div className="flex justify-center mb-8">
               <TabsList className="bg-gray-100/80 p-1 rounded-full border border-gray-200/50 shadow-inner">
                 <TabsTrigger value="overview" className="rounded-full px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all">架构监控</TabsTrigger>
-                <TabsTrigger value="sp2" className="rounded-full px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all">Identity (SP2)</TabsTrigger>
                 <TabsTrigger value="sp3" className="rounded-full px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all">AI Hub (SP3)</TabsTrigger>
                 <TabsTrigger value="sp4" className="rounded-full px-6 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all">Knowledge (SP4)</TabsTrigger>
               </TabsList>
@@ -184,14 +190,14 @@ export default function Home() {
                        <div className="relative z-10 flex flex-row items-center justify-between h-full gap-4 min-w-[700px] md:min-w-full">
                           <div className="glass p-4 rounded-2xl flex-1 text-center shadow-md">
                              <div className="mx-auto w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-3">
-                               <Users className="w-6 h-6" />
+                              <Newspaper className="w-6 h-6" />
                              </div>
-                             <h4 className="font-medium text-sm">Identity Service</h4>
-                             <p className="text-xs text-gray-500 mt-1">JWT Auth & RBAC</p>
+                             <h4 className="font-medium text-sm">News Aggregator</h4>
+                             <p className="text-xs text-gray-500 mt-1">采集、审核与归档</p>
                           </div>
                           <div className="flex flex-col items-center shrink-0">
                              <div className="h-0.5 w-12 lg:w-16 bg-gradient-to-r from-blue-200 to-purple-200"></div>
-                             <span className="text-[10px] text-gray-400 font-mono mt-1">/api/v1/auth</span>
+                             <span className="text-[10px] text-gray-400 font-mono mt-1">/api/v1/news</span>
                           </div>
                           <div className="glass border-purple-200 p-4 rounded-2xl flex-1 text-center shadow-md">
                              <div className="mx-auto w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mb-3">
@@ -225,7 +231,7 @@ export default function Home() {
                   <CardContent>
                     <div className="space-y-6">
                       {[
-                        { title: "新用户注册 (id: 4a2b)", time: "5 分钟前", icon: Users, bg: "bg-blue-100", color: "text-blue-600" },
+                        { title: "新闻抓取任务完成 (job_19a)", time: "5 分钟前", icon: Newspaper, bg: "bg-blue-100", color: "text-blue-600" },
                         { title: "模型配置切换为 gpt-4o", time: "15 分钟前", icon: Cpu, bg: "bg-purple-100", color: "text-purple-600" },
                         { title: "文档入库任务完成 (doc_041)", time: "1 小时前", icon: Database, bg: "bg-green-100", color: "text-green-600" },
                         { title: "Redis 缓存全量刷新", time: "2 小时前", icon: Network, bg: "bg-orange-100", color: "text-orange-600" },
@@ -246,30 +252,6 @@ export default function Home() {
               </div>
             </TabsContent>
             
-            <TabsContent value="sp2" className="p-8">
-              <div className="flex flex-col gap-4">
-                <h3 className="text-2xl font-semibold mb-2">身份鉴权服务 (Identity Service)</h3>
-                <p className="text-gray-500 mb-6">提供 JWT 无状态认证与基于角色的访问控制。全网关统一认证入口。</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl border border-gray-200 bg-white">
-                    <h4 className="font-semibold text-lg text-gray-800 mb-2">端点连通性测试</h4>
-                    <pre className="bg-gray-900 text-green-400 p-3 rounded-lg text-sm overflow-x-auto">
-                      GET /api/v1/auth/me HTTP/1.1{'\n'}
-                      Authorization: Bearer eyJhb...{'\n'}
-                      {'\n'}
-                      200 OK{'\n'}
-                      {'{"id": "usr_99x", "role": "admin"}'}
-                    </pre>
-                  </div>
-                  <div className="p-4 rounded-xl border border-gray-200 bg-white flex items-center justify-center flex-col">
-                    <Activity className="w-10 h-10 text-blue-500 mb-3" />
-                    <span className="text-xl font-bold">140 QPS</span>
-                    <span className="text-sm text-gray-500">当前并发鉴权请求</span>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
             <TabsContent value="sp3" className="p-8">
               <div className="flex flex-col gap-4">
                 <h3 className="text-2xl font-semibold mb-2">AI 模型网关 (Provider Hub)</h3>

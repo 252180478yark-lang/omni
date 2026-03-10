@@ -7,24 +7,11 @@ services:
     environment:
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
-      IDENTITY_SERVICE_URL: "http://identity-service:8000"
+      NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
       AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
+      VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
     command: ["npm", "run", "start"]
-    networks:
-      - omni-network
-
-  identity-service:
-    build:
-      context: ./identity-service
-    env_file:
-      - ./identity-service/.env.example
-    environment:
-      DATABASE_URL: postgresql+asyncpg://omni_user:changeme_in_production@omni-postgres:5432/omni_vibe_db
-      REDIS_URL: redis://:changeme_redis@omni-redis:6379/0
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-    ports:
-      - "8000:8000"
     networks:
       - omni-network
 
@@ -36,6 +23,8 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
     ports:
       - "8001:8001"
+    volumes:
+      - ai_hub_data:/app/data
     networks:
       - omni-network
 
@@ -54,8 +43,42 @@ services:
     networks:
       - omni-network
 
+  news-aggregator:
+    build:
+      context: ./news-aggregator
+    env_file:
+      - ./news-aggregator/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://omni_user:changeme_in_production@omni-postgres:5432/omni_vibe_db
+      REDIS_URL: redis://:changeme_redis@omni-redis:6379/2
+      SP3_BASE_URL: http://ai-provider-hub:8001
+      SP4_BASE_URL: http://knowledge-engine:8002
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    ports:
+      - "8005:8005"
+    depends_on:
+      - ai-provider-hub
+      - knowledge-engine
+    networks:
+      - omni-network
+
+  video-analysis:
+    build:
+      context: ./video-analysis
+    env_file:
+      - ./video-analysis/.env.example
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8006"]
+    ports:
+      - "8006:8006"
+    volumes:
+      - video_analysis_data:/app/data
+    networks:
+      - omni-network
+
 volumes:
+  ai_hub_data:
   knowledge_data:
+  video_analysis_data:
 
 networks:
   omni-network:

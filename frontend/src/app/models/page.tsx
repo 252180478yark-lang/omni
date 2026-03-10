@@ -102,6 +102,8 @@ export default function ModelsConfig() {
     setError('')
     setNotice('')
     try {
+      const normalizedApiKey = apiKeyInput.trim()
+      const outboundApiKey = normalizedApiKey.length > 0 ? normalizedApiKey : undefined
       const res = await fetch('/api/omni/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -109,7 +111,7 @@ export default function ModelsConfig() {
         body: JSON.stringify({
           action: 'refresh',
           providerId: active?.id,
-          apiKey: active?.id === 'ollama' ? undefined : apiKeyInput,
+          apiKey: active?.id === 'ollama' ? undefined : outboundApiKey,
         }),
       })
       const json = (await res.json()) as {
@@ -164,6 +166,8 @@ export default function ModelsConfig() {
     setConnectionNotice('')
     setConnectionOk(null)
     try {
+      const normalizedApiKey = apiKeyInput.trim()
+      const outboundApiKey = normalizedApiKey.length > 0 ? normalizedApiKey : undefined
       const res = await fetch('/api/omni/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -171,7 +175,7 @@ export default function ModelsConfig() {
         body: JSON.stringify({
           action: 'test-connection',
           providerId: active.id,
-          apiKey: active.id === 'ollama' ? undefined : apiKeyInput,
+          apiKey: active.id === 'ollama' ? undefined : outboundApiKey,
         }),
       })
       const json = (await res.json()) as {
@@ -205,6 +209,8 @@ export default function ModelsConfig() {
     setError('')
     setNotice('')
     try {
+      const normalizedApiKey = apiKeyInput.trim()
+      const outboundApiKey = normalizedApiKey.length > 0 ? normalizedApiKey : undefined
       const res = await fetch('/api/omni/models', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -212,7 +218,7 @@ export default function ModelsConfig() {
         body: JSON.stringify({
           action: 'update-provider',
           providerId: active.id,
-          apiKey: active.id === 'ollama' ? undefined : apiKeyInput,
+          apiKey: active.id === 'ollama' ? undefined : outboundApiKey,
           defaultChatModel: selectedChatModel,
           defaultEmbeddingModel: selectedEmbeddingModel,
         }),
@@ -393,7 +399,7 @@ export default function ModelsConfig() {
                       }`}
                     />
                     <p className="text-xs text-gray-400 mt-1">
-                      保存后会实时更新 AI Hub 运行配置（容器重启后需要重新配置或写入环境变量）。
+                      保存后会实时更新 AI Hub 运行配置，并持久化到服务端配置文件（重启后自动恢复）。
                     </p>
                     <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testing} className="mt-2">
                       {testing ? '测试中...' : '测试连接'}

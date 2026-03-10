@@ -13,7 +13,7 @@ interface ArticleCardProps {
 }
 
 export function ArticleCard({ article, readonly = false }: ArticleCardProps) {
-  const { selectedIds, toggleSelect, updateArticle } = useNewsStore();
+  const { selectedIds, toggleSelect, updateArticle, retryKbPush } = useNewsStore();
   const isSelected = selectedIds.has(article.id);
 
   const sourceColors = {
@@ -61,6 +61,11 @@ export function ArticleCard({ article, readonly = false }: ArticleCardProps) {
                       <CheckCircle className="w-3 h-3" /> 已入库
                     </Badge>
                   )}
+                  {article.status === 'archived' && !article.kb_doc_id && (
+                    <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                      待向量化
+                    </Badge>
+                  )}
                 </div>
                 <a 
                   href={article.url} 
@@ -93,8 +98,15 @@ export function ArticleCard({ article, readonly = false }: ArticleCardProps) {
                   </Button>
                 </div>
               )}
-              {readonly && article.is_starred && (
-                <Star className="w-5 h-5 text-yellow-500 shrink-0" fill="currentColor" />
+              {readonly && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {article.is_starred && <Star className="w-5 h-5 text-yellow-500" fill="currentColor" />}
+                  {article.status === 'archived' && !article.kb_doc_id && (
+                    <Button variant="outline" size="sm" onClick={() => retryKbPush([article.id])}>
+                      重试推送
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
 

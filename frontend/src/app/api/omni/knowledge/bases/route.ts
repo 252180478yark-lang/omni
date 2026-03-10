@@ -7,6 +7,7 @@ interface KnowledgeBaseItem {
   id: string
   name: string
   description: string
+  embedding_provider?: string
   embedding_model: string
   dimension: number
   created_at: string
@@ -27,6 +28,7 @@ interface KnowledgeBaseCreateResp {
 interface CreateKbBody {
   name: string
   description?: string
+  embedding_provider?: string
   embedding_model?: string
   dimension?: number
 }
@@ -50,8 +52,9 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         name: payload.name,
         description: payload.description || '',
-        embedding_model: payload.embedding_model || 'text-embedding-3-small',
-        dimension: payload.dimension || 1536,
+        embedding_provider: payload.embedding_provider,
+        embedding_model: payload.embedding_model,
+        dimension: payload.dimension,
       }),
     })
     return Response.json({ success: true, data: result.data })

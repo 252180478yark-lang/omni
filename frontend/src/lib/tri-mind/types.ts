@@ -1,4 +1,4 @@
-export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'ollama'
+export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama'
 
 export interface ModelConfig {
   id: string
@@ -95,10 +95,10 @@ export const DEFAULT_MODELS: Record<ModelProvider, ModelConfig[]> = {
     { id: 'claude-3-opus', provider: 'anthropic', modelId: 'claude-3-opus-20240229', name: 'Claude 3 Opus', enabled: false, contextWindow: 200000 },
     { id: 'claude-3-haiku', provider: 'anthropic', modelId: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku', enabled: false, contextWindow: 200000 },
   ],
-  google: [
-    { id: 'gemini-3.1-pro-preview', provider: 'google', modelId: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', enabled: false, contextWindow: 1000000 },
-    { id: 'gemini-3-pro-preview', provider: 'google', modelId: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', enabled: true, contextWindow: 1000000 },
-    { id: 'gemini-3-flash-preview', provider: 'google', modelId: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', enabled: false, contextWindow: 1000000 },
+  gemini: [
+    { id: 'gemini-3.1-pro-preview', provider: 'gemini', modelId: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro Preview', enabled: false, contextWindow: 1000000 },
+    { id: 'gemini-3-pro-preview', provider: 'gemini', modelId: 'gemini-3-pro-preview', name: 'Gemini 3 Pro Preview', enabled: true, contextWindow: 1000000 },
+    { id: 'gemini-3-flash-preview', provider: 'gemini', modelId: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', enabled: false, contextWindow: 1000000 },
   ],
   ollama: [
     { id: 'ollama-qwen3-14b', provider: 'ollama', modelId: 'qwen3:14b', name: 'Qwen3 14B', enabled: true, contextWindow: 32768 },
@@ -115,7 +115,7 @@ export interface ModelIdRule {
 export const DEFAULT_MODEL_ID_RULES: Record<ModelProvider, ModelIdRule> = {
   openai: { pattern: '^[a-zA-Z0-9._:-]+$', example: 'gpt-5.2', notes: '仅允许字母、数字、点、下划线、冒号、连字符' },
   anthropic: { pattern: '^claude-[a-zA-Z0-9._:-]+$', example: 'claude-3-5-sonnet-20241022', notes: '建议以 claude- 开头' },
-  google: { pattern: '^gemini-[a-zA-Z0-9._:-]+$', example: 'gemini-3.1-pro-preview', notes: '建议以 gemini- 开头' },
+  gemini: { pattern: '^gemini-[a-zA-Z0-9._:-]+$', example: 'gemini-3.1-pro-preview', notes: '建议以 gemini- 开头' },
   ollama: { pattern: '^[a-zA-Z0-9._/-]+(?::[a-zA-Z0-9._-]+)?$', example: 'qwen3:14b', notes: '支持 name 或 name:tag 格式' },
 }
 
@@ -135,9 +135,11 @@ export function validateModelIdByProvider(
 export const PROVIDER_INFO: Record<ModelProvider, { name: string; defaultBaseUrl: string }> = {
   openai: {
     name: 'OpenAI',
-    defaultBaseUrl: process.env.NEXT_PUBLIC_OPENAI_BASE_URL || 'http://localhost:8001/v1',
+    defaultBaseUrl:
+      process.env.NEXT_PUBLIC_OPENAI_BASE_URL ||
+      `${(process.env.NEXT_PUBLIC_OMNI_API_BASE_URL || 'http://localhost').replace(/\/$/, '')}/v1`,
   },
   anthropic: { name: 'Anthropic', defaultBaseUrl: 'https://api.anthropic.com' },
-  google: { name: 'Google', defaultBaseUrl: 'https://generativelanguage.googleapis.com' },
+  gemini: { name: 'Gemini', defaultBaseUrl: 'https://generativelanguage.googleapis.com' },
   ollama: { name: 'Ollama (本地)', defaultBaseUrl: 'http://localhost:11434/v1' },
 }

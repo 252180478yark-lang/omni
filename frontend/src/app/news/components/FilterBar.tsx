@@ -53,6 +53,16 @@ export function FilterBar() {
         </SelectContent>
       </Select>
 
+      <Select value={filters.sortOrder} onValueChange={(v) => setFilter('sortOrder', v)}>
+        <SelectTrigger className="w-[120px]">
+          <SelectValue placeholder="顺序" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="desc">降序</SelectItem>
+          <SelectItem value="asc">升序</SelectItem>
+        </SelectContent>
+      </Select>
+
       <Select value={filters.sortBy} onValueChange={(v) => setFilter('sortBy', v)}>
         <SelectTrigger className="w-[140px]">
           <SelectValue placeholder="排序" />

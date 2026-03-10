@@ -14,6 +14,13 @@ import {
   validateModelIdByProvider,
 } from '@/lib/tri-mind/types'
 
+interface OmniProviderItem {
+  id: string
+  defaultChatModel: string | null
+  models: string[]
+  apiKeySet?: boolean
+}
+
 interface ConfigState {
   providers: ProviderConfig[]
   apiKeyStatus: Record<ModelProvider, boolean>
@@ -72,9 +79,42 @@ function createDefaultProviders(): ProviderConfig[] {
 
 function createDefaultApiKeyStatus(): Record<ModelProvider, boolean> {
   if (process.env.NEXT_PUBLIC_USE_BACKEND_HUB === 'true') {
-    return { openai: true, anthropic: false, google: false, ollama: false }
+    return { openai: true, anthropic: false, gemini: false, ollama: false }
   }
-  return { openai: false, anthropic: false, google: false, ollama: false }
+  return { openai: false, anthropic: false, gemini: false, ollama: false }
+}
+
+function normalizeProviderId(value: string): ModelProvider | null {
+  if (value === 'openai' || value === 'anthropic' || value === 'ollama') return value
+  if (value === 'gemini' || value === 'google') return 'gemini'
+  return null
+}
+
+function normalizeLegacyProviders(providers: ProviderConfig[]): ProviderConfig[] {
+  return providers.map((p) => {
+    const normalized = normalizeProviderId(String(p.provider))
+    if (!normalized || normalized === p.provider) return p
+    return {
+      ...p,
+      provider: normalized,
+      models: p.models.map((m) => ({ ...m, provider: normalized })),
+    }
+  })
+}
+
+function modelIdToStableId(provider: ModelProvider, modelId: string): string {
+  const slug = modelId.toLowerCase().replace(/[^a-z0-9._:-]/g, '-')
+  return `${provider}-${slug || 'model'}`
+}
+
+function inferContextWindow(provider: ModelProvider, modelId: string): number {
+  const known = DEFAULT_MODELS[provider].find(
+    (item) => item.modelId.toLowerCase() === modelId.toLowerCase()
+  )
+  if (known) return known.contextWindow
+  if (provider === 'gemini') return 1000000
+  if (provider === 'ollama') return 32768
+  return 128000
 }
 
 export const useConfigStore = create<ConfigState>()(
@@ -87,7 +127,89 @@ export const useConfigStore = create<ConfigState>()(
       initialized: false,
       reportDetailLevel: 'standard',
 
-      initConfig: async () => { set({ initialized: true }) },
+      initConfig: async () => {
+        const rawProviders = get().providers
+        const providers = normalizeLegacyProviders(rawProviders)
+        if (providers !== rawProviders) {
+          set({ providers })
+        }
+
+        try {
+          const res = await fetch('/api/omni/models', { cache: 'no-store' })
+          const json = (await res.json()) as {
+            success: boolean
+            data?: { providers: OmniProviderItem[] }
+          }
+
+          if (!json.success || !json.data) {
+            set({ initialized: true })
+            return
+          }
+
+          const omniMap = new Map<ModelProvider, OmniProviderItem>()
+          json.data.providers.forEach((item) => {
+            const providerId = normalizeProviderId(item.id)
+            if (providerId) omniMap.set(providerId, item)
+          })
+
+          const nextProviders = providers.map((providerConfig) => {
+            const omni = omniMap.get(providerConfig.provider)
+            if (!omni) return providerConfig
+
+            const existingByModelId = new Map(
+              providerConfig.models.map((m) => [m.modelId.toLowerCase(), m])
+            )
+
+            const mergedModelIds = Array.from(
+              new Set([
+                ...omni.models.filter(Boolean),
+                ...(omni.defaultChatModel ? [omni.defaultChatModel] : []),
+              ])
+            )
+
+            if (mergedModelIds.length === 0) return providerConfig
+
+            const models: ModelConfig[] = mergedModelIds.map((modelId) => {
+              const existing = existingByModelId.get(modelId.toLowerCase())
+              return {
+                id:
+                  existing?.id ||
+                  modelIdToStableId(providerConfig.provider, modelId),
+                provider: providerConfig.provider,
+                modelId,
+                name: existing?.name || modelId,
+                enabled:
+                  existing?.enabled ??
+                  modelId.toLowerCase() === omni.defaultChatModel?.toLowerCase(),
+                baseUrl: existing?.baseUrl,
+                contextWindow:
+                  existing?.contextWindow ||
+                  inferContextWindow(providerConfig.provider, modelId),
+              }
+            })
+
+            return {
+              ...providerConfig,
+              models,
+            }
+          })
+
+          const nextApiKeyStatus = { ...get().apiKeyStatus }
+          omniMap.forEach((item, providerId) => {
+            if (typeof item.apiKeySet === 'boolean') {
+              nextApiKeyStatus[providerId] = item.apiKeySet
+            }
+          })
+
+          set({
+            providers: nextProviders,
+            apiKeyStatus: nextApiKeyStatus,
+            initialized: true,
+          })
+        } catch {
+          set({ initialized: true })
+        }
+      },
 
       setProviderEnabled: (provider, enabled) =>
         set((s) => ({

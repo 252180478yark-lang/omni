@@ -1,7 +1,8 @@
 const DEFAULTS = {
-  identity: 'http://localhost:8000',
+  gateway: '',
   aiHub: 'http://localhost:8001',
   knowledge: 'http://localhost:8002',
+  videoAnalysis: 'http://localhost:8006',
 }
 
 function trimSlash(value: string): string {
@@ -9,10 +10,13 @@ function trimSlash(value: string): string {
 }
 
 export function serviceBase() {
+  const gateway = trimSlash(process.env.OMNI_API_BASE_URL || DEFAULTS.gateway)
+  const fallback = gateway || ''
   return {
-    identity: trimSlash(process.env.IDENTITY_SERVICE_URL || DEFAULTS.identity),
-    aiHub: trimSlash(process.env.AI_PROVIDER_HUB_URL || DEFAULTS.aiHub),
-    knowledge: trimSlash(process.env.KNOWLEDGE_ENGINE_URL || DEFAULTS.knowledge),
+    // In local dev (without OMNI_API_BASE_URL), prefer direct service ports.
+    aiHub: trimSlash(process.env.AI_PROVIDER_HUB_URL || fallback || DEFAULTS.aiHub),
+    knowledge: trimSlash(process.env.KNOWLEDGE_ENGINE_URL || fallback || DEFAULTS.knowledge),
+    videoAnalysis: trimSlash(process.env.VIDEO_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.videoAnalysis),
   }
 }
 

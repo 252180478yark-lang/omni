@@ -1,4 +1,5 @@
 from app.providers import GeminiProvider, OllamaProvider, OpenAIProvider, ProviderRegistry
+from app.services.provider_config_store import apply_persisted_provider_config
 from app.services.chat_service import ChatService
 from app.services.embedding_service import EmbeddingService
 from app.utils.fallback import FallbackChain
@@ -13,3 +14,4 @@ def bootstrap_providers() -> None:
     registry.register("gemini", GeminiProvider())
     registry.register("openai", OpenAIProvider())
     registry.register("ollama", OllamaProvider())
+    apply_persisted_provider_config(registry)

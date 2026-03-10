@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import { Article, ArchiveStats, FetchParams, newsApi } from '@/lib/api/news';
 
+const ARCHIVE_STATS_CACHE_KEY = 'news:archive-stats:cache';
+const ARCHIVE_STATS_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_PAGE_SIZE = 20;
+
 interface ArchiveSearchFilters {
   tags: string[];
   source: string;
@@ -23,6 +27,7 @@ interface NewsState {
   articles: Article[];
   totalCount: number;
   currentPage: number;
+  pageSize: number;
 
   // Filters
   filters: {
@@ -31,7 +36,7 @@ interface NewsState {
     language: string;
     tag: string | null;
     search: string;
-    sortBy: 'fetched_at' | 'ai_relevance_score';
+    sortBy: 'fetched_at' | 'ai_relevance_score' | 'published_at';
     sortOrder: 'asc' | 'desc';
   };
 
@@ -43,6 +48,7 @@ interface NewsState {
   archiveResults: Article[];
   archiveTotalCount: number;
   archiveCurrentPage: number;
+  archivePageSize: number;
   availableTags: { tag: string; count: number }[];
   archiveStats: ArchiveStats | null;
 
@@ -56,6 +62,7 @@ interface NewsState {
   selectAll: () => void;
   clearSelection: () => void;
   setFilter: (key: string, value: string | number | boolean | null) => void;
+  setCurrentPage: (page: number) => void;
 
   // Archive Actions
   loadArchiveStats: () => Promise<void>;
@@ -66,6 +73,7 @@ interface NewsState {
   removeTagFilter: (tag: string) => void;
   resetArchiveFilters: () => void;
   retryKbPush: (articleIds: string[]) => Promise<void>;
+  setArchiveCurrentPage: (page: number) => void;
 }
 
 export const useNewsStore = create<NewsState>((set, get) => ({
@@ -76,6 +84,7 @@ export const useNewsStore = create<NewsState>((set, get) => ({
   articles: [],
   totalCount: 0,
   currentPage: 1,
+  pageSize: DEFAULT_PAGE_SIZE,
 
   filters: {
     status: 'pending',
@@ -103,6 +112,7 @@ export const useNewsStore = create<NewsState>((set, get) => ({
   archiveResults: [],
   archiveTotalCount: 0,
   archiveCurrentPage: 1,
+  archivePageSize: DEFAULT_PAGE_SIZE,
   availableTags: [],
   archiveStats: null,
 
@@ -111,7 +121,7 @@ export const useNewsStore = create<NewsState>((set, get) => ({
       set({ fetchStatus: 'fetching', fetchProgress: { total: 0, deduped: 0, enriched: 0 } });
       const res = await newsApi.triggerFetch(params);
       set({ fetchJobId: res.job_id });
-      // Start polling
+      // Start polling in background
       get().pollJobStatus(res.job_id);
     } catch (error) {
       console.error('Failed to trigger fetch:', error);
@@ -129,11 +139,16 @@ export const useNewsStore = create<NewsState>((set, get) => ({
             deduped: status.after_dedup,
             enriched: status.after_enrich,
           },
+          fetchStatus:
+            status.status === 'running'
+              ? status.after_dedup > 0 || status.after_enrich > 0
+                ? 'enriching'
+                : 'fetching'
+              : status.status,
         });
 
         if (status.status === 'completed' || status.status === 'failed') {
           clearInterval(interval);
-          set({ fetchStatus: status.status });
           if (status.status === 'completed') {
             await get().loadArticles();
           }
@@ -147,11 +162,12 @@ export const useNewsStore = create<NewsState>((set, get) => ({
   },
 
   loadArticles: async () => {
-    const { filters, currentPage } = get();
+    const { filters, currentPage, pageSize } = get();
     try {
       const res = await newsApi.getArticles({
         ...filters,
         page: currentPage,
+        pageSize,
       });
       set({ articles: res.items, totalCount: res.total });
     } catch (error) {
@@ -164,8 +180,18 @@ export const useNewsStore = create<NewsState>((set, get) => ({
       await newsApi.patchArticle(id, patch);
       // Optimistic update
       set((state) => ({
-        articles: state.articles.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+        articles:
+          state.filters.status === 'pending' && patch.status && patch.status !== 'pending'
+            ? state.articles.filter((a) => a.id !== id)
+            : state.articles.map((a) => (a.id === id ? { ...a, ...patch } : a)),
         archiveResults: state.archiveResults.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+        selectedIds: (() => {
+          const next = new Set(state.selectedIds);
+          if (patch.status && patch.status !== 'pending') {
+            next.delete(id);
+          }
+          return next;
+        })(),
       }));
     } catch (error) {
       console.error('Failed to update article:', error);
@@ -216,10 +242,32 @@ export const useNewsStore = create<NewsState>((set, get) => ({
     get().loadArticles();
   },
 
+  setCurrentPage: (page) => {
+    set({ currentPage: page });
+    get().loadArticles();
+  },
+
   loadArchiveStats: async () => {
     try {
+      if (typeof window !== 'undefined') {
+        const raw = window.localStorage.getItem(ARCHIVE_STATS_CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw) as { data: ArchiveStats; timestamp: number };
+          if (Date.now() - cached.timestamp < ARCHIVE_STATS_CACHE_TTL_MS) {
+            set({ archiveStats: cached.data });
+            return;
+          }
+        }
+      }
+
       const stats = await newsApi.getArchiveStats();
       set({ archiveStats: stats });
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          ARCHIVE_STATS_CACHE_KEY,
+          JSON.stringify({ data: stats, timestamp: Date.now() })
+        );
+      }
     } catch (error) {
       console.error('Failed to load archive stats:', error);
     }
@@ -235,11 +283,12 @@ export const useNewsStore = create<NewsState>((set, get) => ({
   },
 
   searchArchive: async () => {
-    const { archiveFilters, archiveCurrentPage } = get();
+    const { archiveFilters, archiveCurrentPage, archivePageSize } = get();
     try {
       const res = await newsApi.getArchive({
         ...archiveFilters,
         page: archiveCurrentPage,
+        pageSize: archivePageSize,
       });
       set({ archiveResults: res.items, archiveTotalCount: res.total });
     } catch (error) {
@@ -252,6 +301,11 @@ export const useNewsStore = create<NewsState>((set, get) => ({
       archiveFilters: { ...state.archiveFilters, [key]: value },
       archiveCurrentPage: 1,
     }));
+    get().searchArchive();
+  },
+
+  setArchiveCurrentPage: (page) => {
+    set({ archiveCurrentPage: page });
     get().searchArchive();
   },
 
@@ -302,6 +356,9 @@ export const useNewsStore = create<NewsState>((set, get) => ({
     try {
       await newsApi.retryKbPush(articleIds);
       await get().searchArchive();
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(ARCHIVE_STATS_CACHE_KEY);
+      }
       await get().loadArchiveStats();
     } catch (error) {
       console.error('Failed to retry KB push:', error);

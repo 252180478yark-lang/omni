@@ -8,6 +8,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.config import settings
 from app.runtime import chat_service, embedding_service, registry
 from app.schemas.ai import ChatRequest, EmbeddingRequest
+from app.services.provider_config_store import persist_provider_config, read_provider_config
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
 
@@ -87,8 +88,10 @@ async def update_provider_config(payload: ProviderConfigUpdateRequest) -> dict:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    normalized_api_key: str | None = None
     if payload.api_key is not None:
         value = payload.api_key.strip()
+        normalized_api_key = value
         if payload.provider == "openai":
             settings.openai_api_key = value
         elif payload.provider == "gemini":
@@ -98,6 +101,13 @@ async def update_provider_config(payload: ProviderConfigUpdateRequest) -> dict:
         provider.default_chat_model = payload.default_chat_model.strip()
     if payload.default_embedding_model is not None and payload.default_embedding_model.strip():
         provider.default_embedding_model = payload.default_embedding_model.strip()
+
+    persist_provider_config(
+        provider=payload.provider,
+        api_key=normalized_api_key,
+        default_chat_model=payload.default_chat_model,
+        default_embedding_model=payload.default_embedding_model,
+    )
 
     api_key_set = True
     if payload.provider == "openai":
@@ -127,4 +137,31 @@ async def test_provider_connection(payload: ProviderConnectionTestRequest) -> di
 
     ok, message, models = await tester(api_key=payload.api_key)
     return {"success": ok, "provider": payload.provider, "message": message, "models": models}
+
+
+@router.get("/provider-secrets/{provider}")
+async def provider_secrets(provider: str) -> dict:
+    try:
+        registry.get(provider)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    persisted = read_provider_config(provider)
+    api_key = ""
+    if provider == "openai":
+        api_key = settings.openai_api_key or ""
+    elif provider == "gemini":
+        api_key = settings.gemini_api_key or ""
+    elif isinstance(persisted.get("api_key"), str):
+        api_key = persisted["api_key"]
+
+    if isinstance(persisted.get("api_key"), str) and persisted["api_key"].strip():
+        api_key = persisted["api_key"].strip()
+
+    return {
+        "provider": provider,
+        "api_key": api_key.strip(),
+        "default_chat_model": persisted.get("default_chat_model"),
+        "default_embedding_model": persisted.get("default_embedding_model"),
+    }
 

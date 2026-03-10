@@ -10,7 +10,11 @@ import {
 export class OpenAIAdapter extends LLMAdapter {
   readonly provider = 'openai' as const
   readonly name = 'OpenAI'
-  readonly defaultBaseUrl = process.env.AI_PROVIDER_HUB_URL || 'http://localhost:8001/v1'
+  readonly defaultBaseUrl = (() => {
+    const hubUrl = process.env.AI_PROVIDER_HUB_URL?.replace(/\/$/, '')
+    if (hubUrl) return hubUrl.endsWith('/v1') ? hubUrl : `${hubUrl}/v1`
+    return `${(process.env.OMNI_API_BASE_URL || 'http://localhost').replace(/\/$/, '')}/v1`
+  })()
 
   private isLocalHub(baseUrl: string): boolean {
     return (

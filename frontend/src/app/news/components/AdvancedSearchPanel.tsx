@@ -9,7 +9,7 @@ import { TagSelector } from './TagSelector';
 import Link from 'next/link';
 
 export function AdvancedSearchPanel() {
-  const { archiveFilters, setArchiveFilter, resetArchiveFilters } = useNewsStore();
+  const { archiveFilters, setArchiveFilter, resetArchiveFilters, searchArchive } = useNewsStore();
   const [searchValue, setSearchValue] = useState(archiveFilters.search);
 
   // Debounce search
@@ -103,6 +103,21 @@ export function AdvancedSearchPanel() {
               <SelectItem value="ai_relevance_score">按相关度</SelectItem>
             </SelectContent>
           </Select>
+
+          <Select value={archiveFilters.sortOrder} onValueChange={(v) => setArchiveFilter('sortOrder', v)}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue placeholder="顺序" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="desc">降序</SelectItem>
+              <SelectItem value="asc">升序</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button onClick={() => searchArchive()}>
+            <Search className="w-4 h-4 mr-2" />
+            搜索
+          </Button>
 
           <Button variant="ghost" onClick={resetArchiveFilters} className="text-gray-500">
             <RotateCcw className="w-4 h-4 mr-2" />

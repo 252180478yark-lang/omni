@@ -36,8 +36,7 @@ async function readHealth(url: string): Promise<'healthy' | 'down'> {
 export async function GET() {
   try {
     const base = serviceBase()
-    const [identity, aiHub, knowledge, statsResp, kbResp] = await Promise.all([
-      readHealth(base.identity),
+    const [aiHub, knowledge, statsResp, kbResp] = await Promise.all([
       readHealth(base.aiHub),
       readHealth(base.knowledge),
       fetchJson<KnowledgeStatsResp>(`${base.knowledge}/api/v1/knowledge/stats`).catch(() => null),
@@ -45,7 +44,7 @@ export async function GET() {
     ])
 
     const stats = statsResp?.data
-    const health = { identity, aiHub, knowledge }
+    const health = { aiHub, knowledge }
 
     const totalServices = Object.keys(health).length
     const healthyServices = Object.values(health).filter((x) => x === 'healthy').length
@@ -63,7 +62,6 @@ export async function GET() {
       data: {
         health,
         metrics: {
-          identityUsers: 0,
           aiTokenToday: 0,
           knowledgeDocuments: docCount,
           infraUptime,

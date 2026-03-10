@@ -11,6 +11,7 @@ from app.services.chunking import split_text
 from app.services.embedding_client import embed_texts
 from app.services.graph_rag import extract_entities_and_relations
 from app.services.hybrid_search import hybrid_search
+from app.services.provider_profile import resolve_embedding_profile
 
 _LOCK = Lock()
 
@@ -33,6 +34,7 @@ def init_db() -> None:
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     description TEXT NOT NULL,
+                    embedding_provider TEXT NOT NULL,
                     embedding_model TEXT NOT NULL,
                     dimension INTEGER NOT NULL,
                     created_at TEXT NOT NULL
@@ -110,6 +112,7 @@ def init_db() -> None:
             _ensure_column(conn, "tasks", "title", "TEXT")
             _ensure_column(conn, "tasks", "source_url", "TEXT")
             _ensure_column(conn, "tasks", "raw_text", "TEXT")
+            _ensure_column(conn, "knowledge_bases", "embedding_provider", f"TEXT NOT NULL DEFAULT '{settings.embedding_provider}'")
             conn.commit()
         finally:
             conn.close()
@@ -122,7 +125,7 @@ def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, 
         conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
 
 
-def create_kb(name: str, description: str, embedding_model: str, dimension: int) -> dict:
+def create_kb(name: str, description: str, embedding_provider: str, embedding_model: str, dimension: int) -> dict:
     kb_id = str(uuid4())
     created_at = datetime.now(UTC).isoformat()
     with _LOCK:
@@ -130,23 +133,77 @@ def create_kb(name: str, description: str, embedding_model: str, dimension: int)
         try:
             conn.execute(
                 """
-                INSERT INTO knowledge_bases(id, name, description, embedding_model, dimension, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO knowledge_bases(id, name, description, embedding_provider, embedding_model, dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (kb_id, name, description, embedding_model, dimension, created_at),
+                (kb_id, name, description, embedding_provider, embedding_model, dimension, created_at),
             )
             conn.commit()
         finally:
             conn.close()
-    return {"id": kb_id, "name": name, "description": description, "embedding_model": embedding_model, "dimension": dimension, "created_at": created_at}
+    return {
+        "id": kb_id,
+        "name": name,
+        "description": description,
+        "embedding_provider": embedding_provider,
+        "embedding_model": embedding_model,
+        "dimension": dimension,
+        "created_at": created_at,
+    }
+
+
+async def create_kb_with_profile(
+    *,
+    name: str,
+    description: str,
+    embedding_provider: str | None = None,
+    embedding_model: str | None = None,
+    dimension: int | None = None,
+) -> dict:
+    resolved_provider, resolved_model = await resolve_embedding_profile(
+        preferred_provider=embedding_provider,
+        preferred_model=embedding_model,
+    )
+    return create_kb(
+        name=name,
+        description=description,
+        embedding_provider=resolved_provider,
+        embedding_model=resolved_model,
+        dimension=dimension or 1536,
+    )
 
 
 def list_kbs() -> list[dict]:
     with _LOCK:
         conn = _connect()
         try:
-            rows = conn.execute("SELECT id, name, description, embedding_model, dimension, created_at FROM knowledge_bases ORDER BY created_at DESC").fetchall()
+            rows = conn.execute(
+                "SELECT id, name, description, embedding_provider, embedding_model, dimension, created_at FROM knowledge_bases ORDER BY created_at DESC"
+            ).fetchall()
             return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+
+def delete_kb(kb_id: str) -> bool:
+    with _LOCK:
+        conn = _connect()
+        try:
+            exists = conn.execute("SELECT 1 FROM knowledge_bases WHERE id = ?", (kb_id,)).fetchone()
+            if not exists:
+                return False
+            doc_rows = conn.execute("SELECT id FROM documents WHERE kb_id = ?", (kb_id,)).fetchall()
+            document_ids = [row["id"] for row in doc_rows]
+            if document_ids:
+                placeholders = ",".join(["?"] * len(document_ids))
+                conn.execute(f"DELETE FROM chunks WHERE document_id IN ({placeholders})", document_ids)
+            conn.execute("DELETE FROM documents WHERE kb_id = ?", (kb_id,))
+            conn.execute("DELETE FROM entities WHERE kb_id = ?", (kb_id,))
+            conn.execute("DELETE FROM relations WHERE kb_id = ?", (kb_id,))
+            conn.execute("DELETE FROM tasks WHERE kb_id = ?", (kb_id,))
+            conn.execute("DELETE FROM knowledge_bases WHERE id = ?", (kb_id,))
+            conn.commit()
+            return True
         finally:
             conn.close()
 
@@ -156,7 +213,7 @@ def get_kb(kb_id: str) -> dict | None:
         conn = _connect()
         try:
             row = conn.execute(
-                "SELECT id, name, description, embedding_model, dimension, created_at FROM knowledge_bases WHERE id = ?",
+                "SELECT id, name, description, embedding_provider, embedding_model, dimension, created_at FROM knowledge_bases WHERE id = ?",
                 (kb_id,),
             ).fetchone()
             return dict(row) if row else None
@@ -248,11 +305,61 @@ def get_document(document_id: str) -> dict | None:
             conn.close()
 
 
+def list_documents(kb_id: str | None = None, search: str | None = None, limit: int = 50) -> list[dict]:
+    with _LOCK:
+        conn = _connect()
+        try:
+            clauses: list[str] = []
+            params: list[object] = []
+            if kb_id:
+                clauses.append("d.kb_id = ?")
+                params.append(kb_id)
+            if search:
+                clauses.append("d.title LIKE ?")
+                params.append(f"%{search}%")
+            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            params.append(limit)
+            rows = conn.execute(
+                f"""
+                SELECT d.id, d.kb_id, d.title, d.source_url, d.created_at, COUNT(c.id) AS chunk_count
+                FROM documents d
+                LEFT JOIN chunks c ON c.document_id = d.id
+                {where_sql}
+                GROUP BY d.id, d.kb_id, d.title, d.source_url, d.created_at
+                ORDER BY datetime(d.created_at) DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+
+def delete_document(document_id: str) -> bool:
+    with _LOCK:
+        conn = _connect()
+        try:
+            exists = conn.execute("SELECT 1 FROM documents WHERE id = ?", (document_id,)).fetchone()
+            if not exists:
+                return False
+            conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
+            conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+
 async def search_chunks(kb_id: str, query: str, top_k: int) -> list[dict]:
     kb = get_kb(kb_id)
     if not kb:
         return []
-    query_vecs = await embed_texts([query], model=kb["embedding_model"])
+    query_vecs = await embed_texts(
+        [query],
+        model=kb["embedding_model"],
+        provider=kb.get("embedding_provider") or settings.embedding_provider,
+    )
     with _LOCK:
         conn = _connect()
         try:
@@ -296,7 +403,11 @@ async def _run_pipeline(task_id: str, kb_id: str, title: str, text: str, source_
             raise ValueError("knowledge base not found")
 
         chunk_data = split_text(text, chunk_size=settings.chunk_size, overlap=settings.chunk_overlap)
-        embeddings = await embed_texts([c.content for c in chunk_data], model=kb["embedding_model"])
+        embeddings = await embed_texts(
+            [c.content for c in chunk_data],
+            model=kb["embedding_model"],
+            provider=kb.get("embedding_provider") or settings.embedding_provider,
+        )
         now = datetime.now(UTC).isoformat()
         document_id = str(uuid4())
         entities, relations = extract_entities_and_relations(text)

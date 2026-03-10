@@ -2,12 +2,15 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.schemas import IngestRequest, KnowledgeBaseCreateRequest, QueryRequest
 from app.services.ingestion import (
-    create_kb,
+    create_kb_with_profile,
+    delete_document,
+    delete_kb,
     get_document,
     get_stats,
     get_graph,
     get_kb,
     get_task,
+    list_documents,
     list_tasks,
     list_kbs,
     retry_task,
@@ -20,13 +23,27 @@ router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 
 @router.post("/bases")
 async def create_base(payload: KnowledgeBaseCreateRequest) -> dict:
-    kb = create_kb(payload.name, payload.description, payload.embedding_model, payload.dimension)
+    kb = await create_kb_with_profile(
+        name=payload.name,
+        description=payload.description,
+        embedding_provider=payload.embedding_provider,
+        embedding_model=payload.embedding_model,
+        dimension=payload.dimension,
+    )
     return {"code": 200, "message": "success", "data": kb}
 
 
 @router.get("/bases")
 async def list_bases() -> dict:
     return {"code": 200, "message": "success", "data": list_kbs()}
+
+
+@router.delete("/bases/{kb_id}")
+async def remove_base(kb_id: str) -> dict:
+    ok = delete_kb(kb_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
+    return {"code": 200, "message": "success", "data": {"deleted": True}}
 
 
 @router.post("/ingest", status_code=status.HTTP_202_ACCEPTED)
@@ -85,6 +102,21 @@ async def document_detail(document_id: str) -> dict:
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
     return {"code": 200, "message": "success", "data": doc}
+
+
+@router.get("/documents")
+async def documents(kb_id: str | None = None, search: str | None = None, limit: int = 50) -> dict:
+    safe_limit = max(1, min(limit, 200))
+    data = list_documents(kb_id=kb_id, search=search, limit=safe_limit)
+    return {"code": 200, "message": "success", "data": data}
+
+
+@router.delete("/documents/{document_id}")
+async def remove_document(document_id: str) -> dict:
+    ok = delete_document(document_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
+    return {"code": 200, "message": "success", "data": {"deleted": True}}
 
 
 @router.get("/stats")

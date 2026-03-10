@@ -29,11 +29,13 @@ export class DebateController {
   private allowEmptyApiKey(provider: string, baseUrl?: string): boolean {
     if (provider !== 'openai') return false
     if (!baseUrl) return false
+    const normalized = baseUrl.replace(/\/$/, '')
+    const omniBase = (process.env.OMNI_API_BASE_URL || '').replace(/\/$/, '')
     return (
-      baseUrl.includes('localhost:8001') ||
-      baseUrl.includes('127.0.0.1:8001') ||
-      baseUrl.includes('ai-provider-hub:8001') ||
-      baseUrl.endsWith('/v1')
+      normalized.includes('localhost:8001') ||
+      normalized.includes('127.0.0.1:8001') ||
+      normalized.includes('ai-provider-hub:8001') ||
+      (omniBase.length > 0 && normalized === `${omniBase}/v1`)
     )
   }
 

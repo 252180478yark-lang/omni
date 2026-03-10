@@ -14,9 +14,10 @@ Omni is a full-stack workspace for AI-native operations:
 
 - Frontend console (`frontend`) based on Next.js 14.
 - SP1 infrastructure core (`services/infra-core`): PostgreSQL, Redis, Nginx.
-- SP2 identity service (`services/identity-service`): auth and JWT verify.
 - SP3 AI provider hub (`services/ai-provider-hub`): provider abstraction + OpenAI compatible routes.
 - SP4 knowledge engine (`services/knowledge-engine`): ingestion, retrieval, graph extraction.
+- SP5 news aggregator (`services/news-aggregator`): multi-source AI news fetch/review/archive.
+- SP6 video analysis (`services/video-analysis`): internal short-video analysis and report assets.
 
 Omni 是一个 AI Native 全栈工作台，采用“前端控制台 + 后端服务化”组合架构。
 
@@ -27,9 +28,10 @@ omni/
 ├── frontend/
 ├── services/
 │   ├── infra-core/
-│   ├── identity-service/
 │   ├── ai-provider-hub/
-│   └── knowledge-engine/
+│   ├── knowledge-engine/
+│   ├── news-aggregator/
+│   └── video-analysis/
 ├── apps/
 ├── 项目拆解/
 ├── docker-compose.yml
@@ -56,7 +58,7 @@ cp .env.example .env
 docker compose -f docker-compose.infra.yml up -d
 ```
 
-### 3) SP2-SP4 Services / 后端服务
+### 3) SP3-SP6 Services / 后端服务
 
 ```bash
 cd services
@@ -67,10 +69,36 @@ docker compose -f docker-compose.sp1-sp4.yml up -d --build
 
 - Frontend: `http://localhost:3000`
 - Nginx health: `http://localhost/health`
-- Auth: `http://localhost/api/v1/auth/*`
 - AI Native API: `http://localhost/api/v1/ai/*`
 - AI OpenAI-compatible API: `http://localhost/v1/*`
 - Knowledge: `http://localhost/api/v1/knowledge/*`
+- News Aggregator: `http://localhost/api/v1/news/*`
+- Video Analysis: `http://localhost/api/v1/video-analysis/*`
+
+## Unified API Document / 统一 API 文档
+
+- See `docs/PROJECT_API.md`
+- 默认建议使用统一网关基地址：`http://localhost`
+
+## SP5 Quick Start
+
+```bash
+cd services/news-aggregator
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8005
+```
+
+Core endpoints:
+
+- `POST /api/v1/news/fetch`
+- `GET /api/v1/news/fetch/{job_id}`
+- `GET /api/v1/news/articles`
+- `PATCH /api/v1/news/articles/{id}`
+- `POST /api/v1/news/articles/batch`
+- `GET /api/v1/news/archive`
+- `GET /api/v1/news/archive/tags`
+- `GET /api/v1/news/archive/stats`
+- `POST /api/v1/news/archive/retry-kb`
 
 ## Environment Variables / 环境变量总表
 
@@ -84,13 +112,9 @@ docker compose -f docker-compose.sp1-sp4.yml up -d --build
 | `REDIS_PORT` | `6379` | infra-core | Redis host port |
 | `NGINX_PORT` | `80` | infra-core | Nginx HTTP port |
 | `NGINX_SSL_PORT` | `443` | infra-core | Nginx HTTPS port |
-| `JWT_SECRET_KEY` | `change_me` | identity-service | JWT secret |
-| `JWT_ALGORITHM` | `HS256` | identity-service | JWT algorithm |
-| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | identity-service | Access token lifetime |
-| `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | `7` | identity-service | Refresh token lifetime |
-| `DATABASE_PATH` | `/app/data/*.db` | identity/knowledge | sqlite path (temporary) |
+| `DATABASE_PATH` | `/app/data/*.db` | knowledge | sqlite path (temporary) |
 | `SERVICE_NAME` | service-specific | all backend services | logical service name |
-| `SERVICE_PORT` | `8000/8001/8002` | all backend services | service listen port |
+| `SERVICE_PORT` | `8001/8002/8005/8006` | all backend services | service listen port |
 | `LOG_LEVEL` | `INFO` | ai-provider-hub | logging level |
 | `GEMINI_API_KEY` | empty | ai-provider-hub | Gemini API key |
 | `OPENAI_API_KEY` | empty | ai-provider-hub | OpenAI API key |
@@ -98,7 +122,10 @@ docker compose -f docker-compose.sp1-sp4.yml up -d --build
 | `DEFAULT_CHAT_PROVIDER` | `gemini` | ai-provider-hub | default chat provider |
 | `DEFAULT_EMBEDDING_PROVIDER` | `openai` | ai-provider-hub | default embedding provider |
 | `REQUEST_TIMEOUT_SECONDS` | `30` | ai-provider-hub | upstream timeout |
+| `OMNI_API_BASE_URL` | `http://localhost` | frontend server | unified gateway base URL for server-side API calls |
 | `AI_PROVIDER_HUB_URL` | `http://ai-provider-hub:8001` | knowledge-engine | AI hub endpoint |
+| `VIDEO_ANALYSIS_SERVICE_URL` | `http://video-analysis:8006` | frontend server | video-analysis internal service URL (for BFF sync route) |
+| `NEXT_PUBLIC_OMNI_API_BASE_URL` | `http://localhost` | frontend client | unified gateway base URL for browser-side API calls |
 | `EMBEDDING_PROVIDER` | `openai` | knowledge-engine | embedding provider key |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | knowledge-engine | embedding model |
 | `CHUNK_SIZE` | `512` | knowledge-engine | chunk size |
@@ -111,9 +138,9 @@ docker compose -f docker-compose.sp1-sp4.yml up -d --build
 
 `/api/v1/ai/*` is native internal API; `/v1/*` is OpenAI-compatible for SDK clients.
 
-### 2) Why does identity-service still use sqlite?
+### 2) Why does knowledge-engine still use sqlite?
 
-Current branch keeps a minimal runnable baseline. PostgreSQL + SQLAlchemy async + Alembic migration is planned in subsequent iterations.
+Current branch keeps a minimal runnable baseline. PostgreSQL + migration upgrades are planned in subsequent iterations.
 
 ### 3) Why does knowledge-engine not use pgvector yet?
 
@@ -121,7 +148,14 @@ Current implementation prioritizes end-to-end flow validation. pgvector + HNSW m
 
 ### 4) What should I run first in local dev?
 
-Start infra (`infra-core`) first, then SP2-SP4 services, then frontend.
+Start infra (`infra-core`) first, then SP3-SP5 services, then frontend.
+
+### 5) How to use short video analysis integration?
+
+1. 启动 `infra-core` 与 `services/docker-compose.sp1-sp4.yml`，确保包含 `video-analysis` 服务。
+2. 在 Omni 打开 `/models` 先配置 provider API Key。
+3. 打开 `/video-analysis`，选择 provider/model，点击“同步系统 Key 到分析服务”。
+4. 上传视频并等待报告生成，再选择一个或多个知识库保存结果。
 
 ## License
 

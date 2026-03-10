@@ -276,7 +276,7 @@ function ProviderCard({
     if (!validateModelIdByProvider(provider, modelId, {
       openai: provider === 'openai' ? { pattern: rulePattern, example: ruleExample || modelRule.example, notes: ruleNotes || modelRule.notes } : DEFAULT_MODEL_ID_RULES.openai,
       anthropic: provider === 'anthropic' ? { pattern: rulePattern, example: ruleExample || modelRule.example, notes: ruleNotes || modelRule.notes } : DEFAULT_MODEL_ID_RULES.anthropic,
-      google: provider === 'google' ? { pattern: rulePattern, example: ruleExample || modelRule.example, notes: ruleNotes || modelRule.notes } : DEFAULT_MODEL_ID_RULES.google,
+      gemini: provider === 'gemini' ? { pattern: rulePattern, example: ruleExample || modelRule.example, notes: ruleNotes || modelRule.notes } : DEFAULT_MODEL_ID_RULES.gemini,
       ollama: provider === 'ollama' ? { pattern: rulePattern, example: ruleExample || modelRule.example, notes: ruleNotes || modelRule.notes } : DEFAULT_MODEL_ID_RULES.ollama,
     })) {
       setAddModelError(`modelId 不符合 ${info.name} 调用规范。示例: ${modelRule.example}`)

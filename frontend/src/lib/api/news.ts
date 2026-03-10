@@ -57,11 +57,35 @@ export interface ArchiveStats {
 
 const BASE_URL = '/api/v1/news';
 
-async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+export interface ArticleFilters {
+  status?: string;
+  source?: string;
+  language?: string;
+  tag?: string | null;
+  search?: string;
+  sortBy?: 'fetched_at' | 'ai_relevance_score' | 'published_at';
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ArchiveFilters {
+  source?: string;
+  language?: string;
+  tags?: string[];
+  search?: string;
+  isStarred?: boolean | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  sortBy?: 'archived_at' | 'published_at' | 'ai_relevance_score';
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}
+
+async function fetchJson(url: string, options: RequestInit = {}) {
   const headers = {
     'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   };
 
@@ -81,39 +105,65 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
 
 export const newsApi = {
   triggerFetch: (params?: FetchParams): Promise<FetchResponse> => 
-    fetchWithAuth(`${BASE_URL}/fetch`, {
+    fetchJson(`${BASE_URL}/fetch`, {
       method: 'POST',
       body: JSON.stringify(params || {}),
     }),
 
   getJobStatus: (jobId: string): Promise<JobStatusResponse> =>
-    fetchWithAuth(`${BASE_URL}/fetch/${jobId}`),
+    fetchJson(`${BASE_URL}/fetch/${jobId}`),
 
-  getArticles: (filters: Record<string, string | number | boolean | null | undefined>): Promise<ArticleListResponse> => {
+  getArticles: (filters: ArticleFilters): Promise<ArticleListResponse> => {
     const query = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
+    const normalized = {
+      status: filters.status,
+      source: filters.source,
+      language: filters.language,
+      tag: filters.tag,
+      search: filters.search,
+      sort_by: filters.sortBy,
+      sort_order: filters.sortOrder,
+      page: filters.page,
+      page_size: filters.pageSize,
+    };
+
+    Object.entries(normalized).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         query.append(key, String(value));
       }
     });
-    return fetchWithAuth(`${BASE_URL}/articles?${query.toString()}`);
+    return fetchJson(`${BASE_URL}/articles?${query.toString()}`);
   },
 
   patchArticle: (id: string, patch: Partial<Article>): Promise<void> =>
-    fetchWithAuth(`${BASE_URL}/articles/${id}`, {
+    fetchJson(`${BASE_URL}/articles/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
 
   batchArticles: (articleIds: string[], action: 'archive' | 'dismiss'): Promise<unknown> =>
-    fetchWithAuth(`${BASE_URL}/articles/batch`, {
+    fetchJson(`${BASE_URL}/articles/batch`, {
       method: 'POST',
       body: JSON.stringify({ article_ids: articleIds, action }),
     }),
 
-  getArchive: (filters: Record<string, string | number | boolean | string[] | null | undefined>): Promise<ArticleListResponse> => {
+  getArchive: (filters: ArchiveFilters): Promise<ArticleListResponse> => {
     const query = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
+    const normalized = {
+      source: filters.source,
+      language: filters.language,
+      tags: filters.tags,
+      search: filters.search,
+      is_starred: filters.isStarred,
+      date_from: filters.dateFrom,
+      date_to: filters.dateTo,
+      sort_by: filters.sortBy,
+      sort_order: filters.sortOrder,
+      page: filters.page,
+      page_size: filters.pageSize,
+    };
+
+    Object.entries(normalized).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '') {
         // Handle array of tags
         if (Array.isArray(value)) {
@@ -125,17 +175,17 @@ export const newsApi = {
         }
       }
     });
-    return fetchWithAuth(`${BASE_URL}/archive?${query.toString()}`);
+    return fetchJson(`${BASE_URL}/archive?${query.toString()}`);
   },
 
   getArchiveStats: (): Promise<ArchiveStats> =>
-    fetchWithAuth(`${BASE_URL}/archive/stats`),
+    fetchJson(`${BASE_URL}/archive/stats`),
 
   getAvailableTags: (): Promise<{ tags: { tag: string; count: number }[] }> =>
-    fetchWithAuth(`${BASE_URL}/archive/tags`),
+    fetchJson(`${BASE_URL}/archive/tags`),
 
   retryKbPush: (articleIds: string[]): Promise<unknown> =>
-    fetchWithAuth(`${BASE_URL}/archive/retry-kb`, {
+    fetchJson(`${BASE_URL}/archive/retry-kb`, {
       method: 'POST',
       body: JSON.stringify({ article_ids: articleIds }),
     }),

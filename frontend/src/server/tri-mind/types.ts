@@ -1,6 +1,6 @@
 // ==================== 模型相关类型 ====================
 
-export type ModelProvider = 'openai' | 'anthropic' | 'google' | 'ollama'
+export type ModelProvider = 'openai' | 'anthropic' | 'gemini' | 'ollama'
 
 export interface ModelConfig {
   id: string

@@ -81,7 +81,6 @@ function Ensure-Services {
 }
 
 $results = @()
-$accessToken = $null
 $kbId = $null
 
 Write-Host "SP1-SP4 verification started: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Yellow
@@ -95,14 +94,6 @@ try {
 }
 
 Write-Section "Health Checks"
-try {
-  $res = Invoke-Json -Method "Get" -Uri "http://localhost:8000/health"
-  if ($res.status -ne "healthy") { throw "status != healthy" }
-  $results += Record-Step -Name "identity-service /health (8000)" -Ok $true
-} catch {
-  $results += Record-Step -Name "identity-service /health (8000)" -Ok $false -ErrorMessage $_.Exception.Message
-}
-
 try {
   $res = Invoke-Json -Method "Get" -Uri "http://localhost:8001/health"
   if ($res.status -ne "healthy") { throw "status != healthy" }
@@ -119,36 +110,12 @@ try {
   $results += Record-Step -Name "knowledge-engine /health (8002)" -Ok $false -ErrorMessage $_.Exception.Message
 }
 
-Write-Section "SP2 Auth Flow"
-$email = "test+$(Get-Random)@example.com"
-$password = "Test1234!"
-$registerBody = @{ email = $email; password = $password; display_name = "Verifier User" } | ConvertTo-Json -Compress
-$loginBody = @{ email = $email; password = $password } | ConvertTo-Json -Compress
-
 try {
-  $registerRes = Invoke-Json -Method "Post" -Uri "http://localhost:8000/api/v1/auth/register" -Body $registerBody
-  if (-not $registerRes.data.email) { throw "missing user email in response" }
-  $results += Record-Step -Name "POST /api/v1/auth/register" -Ok $true
+  $res = Invoke-Json -Method "Get" -Uri "http://localhost:8006/health"
+  if ($res.status -ne "healthy") { throw "status != healthy" }
+  $results += Record-Step -Name "video-analysis /health (8006)" -Ok $true
 } catch {
-  $results += Record-Step -Name "POST /api/v1/auth/register" -Ok $false -ErrorMessage $_.Exception.Message
-}
-
-try {
-  $loginRes = Invoke-Json -Method "Post" -Uri "http://localhost:8000/api/v1/auth/login" -Body $loginBody
-  $accessToken = $loginRes.data.access_token
-  if (-not $accessToken) { throw "missing access_token" }
-  $results += Record-Step -Name "POST /api/v1/auth/login" -Ok $true
-} catch {
-  $results += Record-Step -Name "POST /api/v1/auth/login" -Ok $false -ErrorMessage $_.Exception.Message
-}
-
-try {
-  if (-not $accessToken) { throw "token not ready" }
-  $meRes = Invoke-Json -Method "Get" -Uri "http://localhost:8000/api/v1/auth/me" -Headers @{ Authorization = "Bearer $accessToken" }
-  if ($meRes.data.email -ne $email) { throw "returned email mismatch" }
-  $results += Record-Step -Name "GET /api/v1/auth/me" -Ok $true
-} catch {
-  $results += Record-Step -Name "GET /api/v1/auth/me" -Ok $false -ErrorMessage $_.Exception.Message
+  $results += Record-Step -Name "video-analysis /health (8006)" -Ok $false -ErrorMessage $_.Exception.Message
 }
 
 Write-Section "SP3 AI Flow"

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     default_chat_provider: str = "gemini"
     default_embedding_provider: str = "openai"
     request_timeout_seconds: float = 30.0
+    provider_config_path: str = "/app/data/provider-config.json"
 
 
 settings = Settings()

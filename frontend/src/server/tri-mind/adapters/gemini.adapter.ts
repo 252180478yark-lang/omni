@@ -14,8 +14,8 @@ import {
 } from './base.adapter'
 
 export class GeminiAdapter extends LLMAdapter {
-  readonly provider = 'google' as const
-  readonly name = 'Google'
+  readonly provider = 'gemini' as const
+  readonly name = 'Gemini'
   readonly defaultBaseUrl = 'https://generativelanguage.googleapis.com'
 
   async testConnection(config: AdapterConfig): Promise<{ ok: boolean; error?: string }> {

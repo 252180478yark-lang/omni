@@ -1,13 +1,12 @@
 from pydantic import BaseModel, Field
 
-from app.config import settings
-
 
 class KnowledgeBaseCreateRequest(BaseModel):
     name: str = Field(min_length=1)
     description: str = ""
-    embedding_model: str = settings.embedding_model
-    dimension: int = Field(default=1536, gt=0)
+    embedding_provider: str | None = None
+    embedding_model: str | None = None
+    dimension: int | None = Field(default=None, gt=0)
 
 
 class IngestRequest(BaseModel):

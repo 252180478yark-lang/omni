@@ -5,25 +5,39 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
-import { Database, Plus, Search, FileText, Upload, MoreHorizontal } from 'lucide-react'
+import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2 } from 'lucide-react'
 
 interface KnowledgeBaseItem {
   id: string
   name: string
   description: string
+  embedding_provider?: string
   embedding_model: string
   dimension: number
   created_at: string
 }
 
+interface DocumentItem {
+  id: string
+  kb_id: string
+  title: string
+  source_url: string | null
+  created_at: string
+  chunk_count: number
+}
+
 export default function KnowledgeBaseConfig() {
   const [bases, setBases] = useState<KnowledgeBaseItem[]>([])
+  const [documents, setDocuments] = useState<DocumentItem[]>([])
   const [search, setSearch] = useState('')
+  const [docSearch, setDocSearch] = useState('')
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
   const [selectedKb, setSelectedKb] = useState('')
   const [loading, setLoading] = useState(false)
+  const [docLoading, setDocLoading] = useState(false)
   const [error, setError] = useState('')
+  const [docError, setDocError] = useState('')
 
   const loadBases = useCallback(async () => {
     setLoading(true)
@@ -48,6 +62,35 @@ export default function KnowledgeBaseConfig() {
   useEffect(() => {
     void loadBases()
   }, [loadBases])
+
+  const loadDocuments = useCallback(async () => {
+    if (!selectedKb) {
+      setDocuments([])
+      return
+    }
+    setDocLoading(true)
+    setDocError('')
+    try {
+      const params = new URLSearchParams({ kb_id: selectedKb, limit: '100' })
+      if (docSearch.trim()) {
+        params.set('search', docSearch.trim())
+      }
+      const res = await fetch(`/api/omni/knowledge/documents?${params.toString()}`, { cache: 'no-store' })
+      const json = (await res.json()) as { success: boolean; data?: DocumentItem[]; error?: string }
+      if (!json.success || !json.data) {
+        throw new Error(json.error || '文档加载失败')
+      }
+      setDocuments(json.data)
+    } catch (err) {
+      setDocError(String(err))
+    } finally {
+      setDocLoading(false)
+    }
+  }, [docSearch, selectedKb])
+
+  useEffect(() => {
+    void loadDocuments()
+  }, [loadDocuments])
 
   const createBase = useCallback(async () => {
     const name = window.prompt('请输入知识库名称')
@@ -86,6 +129,33 @@ export default function KnowledgeBaseConfig() {
     setText('')
   }, [selectedKb, title, text])
 
+  const removeBase = useCallback(async (kbId: string) => {
+    const target = bases.find((item) => item.id === kbId)
+    const ok = window.confirm(`确认删除知识库「${target?.name || kbId}」？该库下文档与任务会一并清理。`)
+    if (!ok) return
+    const res = await fetch(`/api/omni/knowledge/bases/${kbId}`, { method: 'DELETE' })
+    const json = (await res.json()) as { success: boolean; error?: string }
+    if (!json.success) {
+      throw new Error(json.error || '删除知识库失败')
+    }
+    if (selectedKb === kbId) {
+      setSelectedKb('')
+      setDocuments([])
+    }
+    await loadBases()
+  }, [bases, loadBases, selectedKb])
+
+  const removeDocument = useCallback(async (docId: string) => {
+    const ok = window.confirm('确认删除该文档？删除后不可恢复。')
+    if (!ok) return
+    const res = await fetch(`/api/omni/knowledge/documents/${docId}`, { method: 'DELETE' })
+    const json = (await res.json()) as { success: boolean; error?: string }
+    if (!json.success) {
+      throw new Error(json.error || '删除文档失败')
+    }
+    await loadDocuments()
+  }, [loadDocuments])
+
   const filteredBases = useMemo(() => {
     const key = search.trim().toLowerCase()
     if (!key) return bases
@@ -121,7 +191,7 @@ export default function KnowledgeBaseConfig() {
         <div className="mb-8 flex justify-between items-end">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-gray-900 mb-2">知识库管理</h1>
-            <p className="text-gray-500">创建与管理向量检索空间、上传私有文档并构建知识图谱。</p>
+            <p className="text-gray-500">创建与管理向量检索空间、上传私有文档并构建知识图谱（默认复用已保存的模型 API 配置）。</p>
           </div>
           <Button className="bg-green-600 hover:bg-green-700 shadow-md" onClick={() => void createBase()} disabled={loading}>
             <Plus className="w-4 h-4 mr-2" />
@@ -154,6 +224,15 @@ export default function KnowledgeBaseConfig() {
           </Card>
         </div>
 
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 flex flex-wrap items-center gap-3">
+          <span className="text-gray-500">当前知识库</span>
+          <Badge variant="outline" className="font-mono">
+            {selectedKb || '未选择'}
+          </Badge>
+          <span className="text-gray-400">|</span>
+          <span>文档数：{documents.length}</span>
+        </div>
+
         <Card className="apple-card border-none shadow-sm">
           <CardHeader className="border-b border-gray-100 flex flex-row items-center justify-between">
             <div>
@@ -178,7 +257,7 @@ export default function KnowledgeBaseConfig() {
                   <tr>
                     <th className="px-6 py-4 font-medium">知识库名称 & ID</th>
                     <th className="px-6 py-4 font-medium">状态</th>
-                    <th className="px-6 py-4 font-medium">向量模型</th>
+                    <th className="px-6 py-4 font-medium">向量配置</th>
                     <th className="px-6 py-4 font-medium">维度</th>
                     <th className="px-6 py-4 font-medium">创建时间</th>
                     <th className="px-6 py-4 font-medium text-right">操作</th>
@@ -201,13 +280,23 @@ export default function KnowledgeBaseConfig() {
                       <td className="px-6 py-4">
                         <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50/50">已就绪</Badge>
                       </td>
-                      <td className="px-6 py-4 text-gray-600 font-medium">{kb.embedding_model}</td>
+                      <td className="px-6 py-4 text-gray-600 font-medium">
+                        {(kb.embedding_provider || 'auto') + ' / ' + kb.embedding_model}
+                      </td>
                       <td className="px-6 py-4 text-gray-500">{kb.dimension}</td>
                       <td className="px-6 py-4 text-gray-500 text-xs">{new Date(kb.created_at).toLocaleString('zh-CN')}</td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Button variant="ghost" size="sm" className="h-8 px-2 text-gray-500 hover:text-green-600" onClick={() => setSelectedKb(kb.id)}>
                             <Upload className="w-4 h-4 mr-1.5" /> 选择
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-gray-400 hover:text-red-600"
+                            onClick={() => void removeBase(kb.id)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1.5" /> 删除
                           </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400">
                             <MoreHorizontal className="w-4 h-4" />
@@ -229,7 +318,7 @@ export default function KnowledgeBaseConfig() {
                 <FileText className="w-5 h-5 text-green-600" />
                 快速测试入库 (Debug Ingestion)
               </CardTitle>
-              <CardDescription>直接粘贴文本内容验证 Embedding 与检索管道 (生成 202 异步任务)</CardDescription>
+              <CardDescription>直接粘贴文本内容验证 Embedding 与检索管道（自动使用当前知识库保存的向量配置）</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col gap-4">
@@ -271,6 +360,74 @@ export default function KnowledgeBaseConfig() {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-8">
+          <Card className="apple-card border-none shadow-sm">
+            <CardHeader className="border-b border-gray-100 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">文档管理</CardTitle>
+                <CardDescription>按知识库查看已入库文档，可执行删除清理。</CardDescription>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="搜索文档标题..."
+                  value={docSearch}
+                  onChange={(e) => setDocSearch(e.target.value)}
+                  className="h-9 pl-9 pr-4 text-sm rounded-full border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-green-500 w-[200px] md:w-[280px]"
+                />
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {docError ? <div className="p-4 text-sm text-red-600">{docError}</div> : null}
+              {!selectedKb ? (
+                <div className="p-6 text-sm text-gray-500">请先在上方列表选择一个知识库。</div>
+              ) : docLoading ? (
+                <div className="p-6 text-sm text-gray-500">正在加载文档...</div>
+              ) : documents.length === 0 ? (
+                <div className="p-6 text-sm text-gray-500">该知识库暂无文档。</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100 uppercase">
+                      <tr>
+                        <th className="px-6 py-4 font-medium">标题</th>
+                        <th className="px-6 py-4 font-medium">Chunk 数</th>
+                        <th className="px-6 py-4 font-medium">来源</th>
+                        <th className="px-6 py-4 font-medium">入库时间</th>
+                        <th className="px-6 py-4 font-medium text-right">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {documents.map((doc) => (
+                        <tr key={doc.id} className="bg-white border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="font-medium text-gray-900">{doc.title}</p>
+                            <p className="text-xs text-gray-400 font-mono mt-0.5">{doc.id}</p>
+                          </td>
+                          <td className="px-6 py-4 text-gray-600">{doc.chunk_count}</td>
+                          <td className="px-6 py-4 text-gray-500 truncate max-w-[240px]">{doc.source_url || '-'}</td>
+                          <td className="px-6 py-4 text-gray-500 text-xs">{new Date(doc.created_at).toLocaleString('zh-CN')}</td>
+                          <td className="px-6 py-4 text-right">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2 text-gray-400 hover:text-red-600"
+                              onClick={() => void removeDocument(doc.id)}
+                            >
+                              <Trash2 className="w-4 h-4 mr-1.5" /> 删除
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
