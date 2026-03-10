@@ -15,7 +15,8 @@ import {
   MessageSquare,
   Database,
   Network,
-  ListTodo
+  ListTodo,
+  Newspaper
 } from 'lucide-react';
 
 type HealthState = 'healthy' | 'down'
@@ -87,6 +88,9 @@ export default function Home() {
                 <span className="font-semibold text-lg tracking-tight">Omni-Vibe OS <span className="text-gray-400">Console</span></span>
               </Link>
               <div className="hidden md:flex items-center gap-4 ml-8">
+                <Link href="/news" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
+                  <Newspaper className="w-4 h-4" /> 资讯中心
+                </Link>
                 <Link href="/models" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
                   <Cpu className="w-4 h-4" /> 模型配置
                 </Link>
