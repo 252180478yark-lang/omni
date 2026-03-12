@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     service_port: int = 8005
     log_level: str = "INFO"
 
-    database_url: str = "postgresql+asyncpg://omni:password@postgres:5432/omni"
-    redis_url: str = "redis://redis:6379/2"
+    database_url: str = "postgresql+asyncpg://omni_user:changeme_in_production@omni-postgres:5432/omni_vibe_db"
+    redis_url: str = "redis://:changeme_redis@omni-redis:6379/2"
 
     serper_api_key: str = ""
     bocha_api_key: str = ""

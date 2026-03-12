@@ -11,6 +11,9 @@ class ProviderCapability(str, Enum):
     CHAT = "chat"
     EMBEDDING = "embedding"
     VISION = "vision"
+    IMAGE_GENERATION = "image_generation"
+    VIDEO_GENERATION = "video_generation"
+    ANALYSIS = "analysis"
     FUNCTION_CALLING = "function_calling"
 
 
@@ -27,7 +30,20 @@ class BaseProvider(ABC):
     @abstractmethod
     async def chat_stream(self, messages: list[Message], model: str, **kwargs: object) -> AsyncIterator[str]:
         raise NotImplementedError
+        yield  # noqa: unreachable — makes this a generator
 
     @abstractmethod
     async def embedding(self, texts: list[str], model: str, **kwargs: object) -> tuple[list[list[float]], TokenUsage]:
         raise NotImplementedError
+
+    async def generate_image(self, prompt: str, model: str, **kwargs: object) -> dict:
+        raise NotImplementedError(f"{self.name} does not support image generation")
+
+    async def generate_video(self, prompt: str, model: str, **kwargs: object) -> dict:
+        raise NotImplementedError(f"{self.name} does not support video generation")
+
+    async def analyze(self, content: str, prompt: str, model: str, **kwargs: object) -> dict:
+        raise NotImplementedError(f"{self.name} does not support multimodal analysis")
+
+    async def health_check(self) -> bool:
+        return True

@@ -1,155 +1,25 @@
+"""Knowledge ingestion service — PostgreSQL + pgvector backed."""
+
+from __future__ import annotations
+
 import asyncio
 import json
-import sqlite3
+import logging
 from datetime import UTC, datetime
-from pathlib import Path
-from threading import Lock
 from uuid import uuid4
 
+import numpy as np
+
 from app.config import settings
-from app.services.chunking import split_text
+from app.database import get_pool
+from app.services.chunking import ChunkStrategy, auto_detect_strategy, split_text
 from app.services.embedding_client import embed_texts
 from app.services.graph_rag import extract_entities_and_relations
-from app.services.hybrid_search import hybrid_search
 from app.services.provider_profile import resolve_embedding_profile
 
-_LOCK = Lock()
+logger = logging.getLogger(__name__)
 
-
-def _connect() -> sqlite3.Connection:
-    db_path = Path(settings.database_path)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db() -> None:
-    with _LOCK:
-        conn = _connect()
-        try:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS knowledge_bases (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT NOT NULL,
-                    embedding_provider TEXT NOT NULL,
-                    embedding_model TEXT NOT NULL,
-                    dimension INTEGER NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id TEXT PRIMARY KEY,
-                    kb_id TEXT NOT NULL,
-                    title TEXT,
-                    source_url TEXT,
-                    raw_text TEXT,
-                    status TEXT NOT NULL,
-                    error TEXT,
-                    document_id TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS documents (
-                    id TEXT PRIMARY KEY,
-                    kb_id TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    source_url TEXT,
-                    raw_text TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS chunks (
-                    id TEXT PRIMARY KEY,
-                    document_id TEXT NOT NULL,
-                    kb_id TEXT NOT NULL,
-                    chunk_index INTEGER NOT NULL,
-                    title TEXT NOT NULL,
-                    source_url TEXT,
-                    content TEXT NOT NULL,
-                    embedding_json TEXT NOT NULL,
-                    dimension INTEGER NOT NULL,
-                    metadata_json TEXT NOT NULL DEFAULT '{}',
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS entities (
-                    id TEXT PRIMARY KEY,
-                    kb_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    entity_type TEXT NOT NULL,
-                    description TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS relations (
-                    id TEXT PRIMARY KEY,
-                    kb_id TEXT NOT NULL,
-                    source_entity TEXT NOT NULL,
-                    target_entity TEXT NOT NULL,
-                    relation_type TEXT NOT NULL,
-                    weight REAL NOT NULL
-                )
-                """
-            )
-            _ensure_column(conn, "tasks", "title", "TEXT")
-            _ensure_column(conn, "tasks", "source_url", "TEXT")
-            _ensure_column(conn, "tasks", "raw_text", "TEXT")
-            _ensure_column(conn, "knowledge_bases", "embedding_provider", f"TEXT NOT NULL DEFAULT '{settings.embedding_provider}'")
-            conn.commit()
-        finally:
-            conn.close()
-
-
-def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, definition: str) -> None:
-    cols = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-    names = {row["name"] for row in cols}
-    if column_name not in names:
-        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
-
-
-def create_kb(name: str, description: str, embedding_provider: str, embedding_model: str, dimension: int) -> dict:
-    kb_id = str(uuid4())
-    created_at = datetime.now(UTC).isoformat()
-    with _LOCK:
-        conn = _connect()
-        try:
-            conn.execute(
-                """
-                INSERT INTO knowledge_bases(id, name, description, embedding_provider, embedding_model, dimension, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (kb_id, name, description, embedding_provider, embedding_model, dimension, created_at),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    return {
-        "id": kb_id,
-        "name": name,
-        "description": description,
-        "embedding_provider": embedding_provider,
-        "embedding_model": embedding_model,
-        "dimension": dimension,
-        "created_at": created_at,
-    }
+# ═══ Knowledge Base CRUD ═══
 
 
 async def create_kb_with_profile(
@@ -164,7 +34,7 @@ async def create_kb_with_profile(
         preferred_provider=embedding_provider,
         preferred_model=embedding_model,
     )
-    return create_kb(
+    return await create_kb(
         name=name,
         description=description,
         embedding_provider=resolved_provider,
@@ -173,186 +43,205 @@ async def create_kb_with_profile(
     )
 
 
-def list_kbs() -> list[dict]:
-    with _LOCK:
-        conn = _connect()
-        try:
-            rows = conn.execute(
-                "SELECT id, name, description, embedding_provider, embedding_model, dimension, created_at FROM knowledge_bases ORDER BY created_at DESC"
-            ).fetchall()
-            return [dict(row) for row in rows]
-        finally:
-            conn.close()
+async def create_kb(
+    name: str, description: str, embedding_provider: str, embedding_model: str, dimension: int,
+) -> dict:
+    pool = get_pool()
+    kb_id = str(uuid4())
+    row = await pool.fetchrow(
+        """
+        INSERT INTO knowledge_bases (id, name, description, embedding_provider, embedding_model, dimension)
+        VALUES ($1::uuid, $2, $3, $4, $5, $6)
+        RETURNING id, name, description, embedding_provider, embedding_model, dimension, created_at
+        """,
+        kb_id, name, description, embedding_provider, embedding_model, dimension,
+    )
+    return _kb_row(row)
 
 
-def delete_kb(kb_id: str) -> bool:
-    with _LOCK:
-        conn = _connect()
-        try:
-            exists = conn.execute("SELECT 1 FROM knowledge_bases WHERE id = ?", (kb_id,)).fetchone()
-            if not exists:
-                return False
-            doc_rows = conn.execute("SELECT id FROM documents WHERE kb_id = ?", (kb_id,)).fetchall()
-            document_ids = [row["id"] for row in doc_rows]
-            if document_ids:
-                placeholders = ",".join(["?"] * len(document_ids))
-                conn.execute(f"DELETE FROM chunks WHERE document_id IN ({placeholders})", document_ids)
-            conn.execute("DELETE FROM documents WHERE kb_id = ?", (kb_id,))
-            conn.execute("DELETE FROM entities WHERE kb_id = ?", (kb_id,))
-            conn.execute("DELETE FROM relations WHERE kb_id = ?", (kb_id,))
-            conn.execute("DELETE FROM tasks WHERE kb_id = ?", (kb_id,))
-            conn.execute("DELETE FROM knowledge_bases WHERE id = ?", (kb_id,))
-            conn.commit()
-            return True
-        finally:
-            conn.close()
+async def list_kbs() -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, name, description, embedding_provider, embedding_model, dimension, created_at "
+        "FROM knowledge_bases ORDER BY created_at DESC"
+    )
+    return [_kb_row(r) for r in rows]
 
 
-def get_kb(kb_id: str) -> dict | None:
-    with _LOCK:
-        conn = _connect()
-        try:
-            row = conn.execute(
-                "SELECT id, name, description, embedding_provider, embedding_model, dimension, created_at FROM knowledge_bases WHERE id = ?",
-                (kb_id,),
-            ).fetchone()
-            return dict(row) if row else None
-        finally:
-            conn.close()
+async def get_kb(kb_id: str) -> dict | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, name, description, embedding_provider, embedding_model, dimension, created_at "
+        "FROM knowledge_bases WHERE id = $1::uuid",
+        kb_id,
+    )
+    return _kb_row(row) if row else None
 
 
-def submit_ingestion_task(kb_id: str, title: str, text: str, source_url: str | None) -> str:
+async def delete_kb(kb_id: str) -> bool:
+    pool = get_pool()
+    result = await pool.execute("DELETE FROM knowledge_bases WHERE id = $1::uuid", kb_id)
+    return result.endswith("1")
+
+
+# ═══ Document CRUD ═══
+
+
+async def get_document(document_id: str) -> dict | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, kb_id, title, source_url, source_type, raw_text, chunk_count, created_at "
+        "FROM documents WHERE id = $1::uuid",
+        document_id,
+    )
+    return _doc_row(row) if row else None
+
+
+async def list_documents(kb_id: str | None = None, search: str | None = None, limit: int = 50) -> list[dict]:
+    pool = get_pool()
+    clauses = []
+    params: list[object] = []
+    idx = 1
+
+    if kb_id:
+        clauses.append(f"d.kb_id = ${idx}::uuid")
+        params.append(kb_id)
+        idx += 1
+    if search:
+        clauses.append(f"d.title ILIKE ${idx}")
+        params.append(f"%{search}%")
+        idx += 1
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+
+    rows = await pool.fetch(
+        f"""
+        SELECT d.id, d.kb_id, d.title, d.source_url, d.source_type, d.chunk_count, d.created_at,
+               COUNT(c.id) AS actual_chunk_count
+        FROM documents d
+        LEFT JOIN knowledge_chunks c ON c.document_id = d.id
+        {where}
+        GROUP BY d.id
+        ORDER BY d.created_at DESC
+        LIMIT ${idx}
+        """,
+        *params,
+    )
+    return [_doc_row(r) for r in rows]
+
+
+async def delete_document(document_id: str) -> bool:
+    pool = get_pool()
+    result = await pool.execute("DELETE FROM documents WHERE id = $1::uuid", document_id)
+    return result.endswith("1")
+
+
+# ═══ Task Management ═══
+
+
+async def submit_ingestion_task(
+    kb_id: str,
+    title: str,
+    text: str,
+    source_url: str | None,
+    source_type: str = "manual",
+    filename: str = "",
+) -> str:
+    pool = get_pool()
     task_id = str(uuid4())
-    now = datetime.now(UTC).isoformat()
-    with _LOCK:
-        conn = _connect()
-        try:
-            conn.execute("INSERT INTO tasks(id, kb_id, status, error, document_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)", (task_id, kb_id, "queued", None, None, now, now))
-            conn.execute(
-                "UPDATE tasks SET title = ?, source_url = ?, raw_text = ? WHERE id = ?",
-                (title, source_url, text, task_id),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-    asyncio.create_task(_run_pipeline(task_id, kb_id, title, text, source_url))
+    await pool.execute(
+        """
+        INSERT INTO tasks (id, kb_id, title, source_url, raw_text, source_type, status)
+        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'queued')
+        """,
+        task_id, kb_id, title, source_url, text, source_type,
+    )
+    asyncio.create_task(_run_pipeline(task_id, kb_id, title, text, source_url, source_type, filename))
     return task_id
 
 
-def get_task(task_id: str) -> dict | None:
-    with _LOCK:
-        conn = _connect()
-        try:
-            row = conn.execute(
-                """
-                SELECT id, kb_id, title, source_url, status, error, document_id, created_at, updated_at
-                FROM tasks
-                WHERE id = ?
-                """,
-                (task_id,),
-            ).fetchone()
-            if not row:
-                return None
-            task = dict(row)
-            task["progress"] = _status_to_progress(task["status"])
-            return task
-        finally:
-            conn.close()
+async def get_task(task_id: str) -> dict | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, kb_id, title, source_url, status, error, document_id, created_at, updated_at "
+        "FROM tasks WHERE id = $1::uuid",
+        task_id,
+    )
+    if not row:
+        return None
+    task = _task_row(row)
+    task["progress"] = _status_to_progress(task["status"])
+    return task
 
 
-def list_tasks(kb_id: str | None = None, status: str | None = None, limit: int = 50) -> list[dict]:
-    with _LOCK:
-        conn = _connect()
-        try:
-            clauses: list[str] = []
-            params: list[object] = []
-            if kb_id:
-                clauses.append("kb_id = ?")
-                params.append(kb_id)
-            if status:
-                clauses.append("status = ?")
-                params.append(status)
-            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-            params.append(limit)
-            rows = conn.execute(
-                f"""
-                SELECT id, kb_id, title, source_url, status, error, document_id, created_at, updated_at
-                FROM tasks
-                {where_sql}
-                ORDER BY datetime(updated_at) DESC
-                LIMIT ?
-                """,
-                params,
-            ).fetchall()
-            data = [dict(row) for row in rows]
-            for item in data:
-                item["progress"] = _status_to_progress(item["status"])
-            return data
-        finally:
-            conn.close()
+async def list_tasks(kb_id: str | None = None, status: str | None = None, limit: int = 50) -> list[dict]:
+    pool = get_pool()
+    clauses = []
+    params: list[object] = []
+    idx = 1
+
+    if kb_id:
+        clauses.append(f"kb_id = ${idx}::uuid")
+        params.append(kb_id)
+        idx += 1
+    if status:
+        clauses.append(f"status = ${idx}")
+        params.append(status)
+        idx += 1
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+
+    rows = await pool.fetch(
+        f"""
+        SELECT id, kb_id, title, source_url, status, error, document_id, created_at, updated_at
+        FROM tasks {where} ORDER BY updated_at DESC LIMIT ${idx}
+        """,
+        *params,
+    )
+    data = [_task_row(r) for r in rows]
+    for item in data:
+        item["progress"] = _status_to_progress(item["status"])
+    return data
 
 
-def get_document(document_id: str) -> dict | None:
-    with _LOCK:
-        conn = _connect()
-        try:
-            row = conn.execute(
-                "SELECT id, kb_id, title, source_url, raw_text, created_at FROM documents WHERE id = ?",
-                (document_id,),
-            ).fetchone()
-            return dict(row) if row else None
-        finally:
-            conn.close()
+async def retry_task(task_id: str) -> str:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT id, kb_id, title, source_url, raw_text, source_type, document_id FROM tasks WHERE id = $1::uuid",
+        task_id,
+    )
+    if not row:
+        raise ValueError("task not found")
+
+    raw_text = row["raw_text"]
+    title = row["title"]
+    source_url = row["source_url"]
+    source_type = row.get("source_type", "manual")
+    kb_id = str(row["kb_id"])
+
+    if (not raw_text or not title) and row["document_id"]:
+        doc = await get_document(str(row["document_id"]))
+        if doc:
+            raw_text = raw_text or doc.get("raw_text")
+            title = title or doc.get("title")
+            source_url = source_url or doc.get("source_url")
+            source_type = source_type or doc.get("source_type", "manual")
+
+    if not raw_text or not title:
+        raise ValueError("task payload unavailable for retry")
+
+    return await submit_ingestion_task(kb_id, title, raw_text, source_url, source_type)
 
 
-def list_documents(kb_id: str | None = None, search: str | None = None, limit: int = 50) -> list[dict]:
-    with _LOCK:
-        conn = _connect()
-        try:
-            clauses: list[str] = []
-            params: list[object] = []
-            if kb_id:
-                clauses.append("d.kb_id = ?")
-                params.append(kb_id)
-            if search:
-                clauses.append("d.title LIKE ?")
-                params.append(f"%{search}%")
-            where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-            params.append(limit)
-            rows = conn.execute(
-                f"""
-                SELECT d.id, d.kb_id, d.title, d.source_url, d.created_at, COUNT(c.id) AS chunk_count
-                FROM documents d
-                LEFT JOIN chunks c ON c.document_id = d.id
-                {where_sql}
-                GROUP BY d.id, d.kb_id, d.title, d.source_url, d.created_at
-                ORDER BY datetime(d.created_at) DESC
-                LIMIT ?
-                """,
-                params,
-            ).fetchall()
-            return [dict(row) for row in rows]
-        finally:
-            conn.close()
-
-
-def delete_document(document_id: str) -> bool:
-    with _LOCK:
-        conn = _connect()
-        try:
-            exists = conn.execute("SELECT 1 FROM documents WHERE id = ?", (document_id,)).fetchone()
-            if not exists:
-                return False
-            conn.execute("DELETE FROM chunks WHERE document_id = ?", (document_id,))
-            conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
-            conn.commit()
-            return True
-        finally:
-            conn.close()
+# ═══ Search ═══
 
 
 async def search_chunks(kb_id: str, query: str, top_k: int) -> list[dict]:
-    kb = get_kb(kb_id)
+    from app.services.hybrid_search import hybrid_search
+
+    kb = await get_kb(kb_id)
     if not kb:
         return []
     query_vecs = await embed_texts(
@@ -360,180 +249,193 @@ async def search_chunks(kb_id: str, query: str, top_k: int) -> list[dict]:
         model=kb["embedding_model"],
         provider=kb.get("embedding_provider") or settings.embedding_provider,
     )
-    with _LOCK:
-        conn = _connect()
-        try:
-            ranked = hybrid_search(conn, kb_id, query, query_vecs[0], top_k=top_k)
-            for item in ranked:
-                if "embedding_json" in item:
-                    item.pop("embedding_json")
-            return ranked
-        finally:
-            conn.close()
+    return await hybrid_search(kb_id, query, query_vecs[0], top_k=top_k)
 
 
-def get_graph(kb_id: str) -> dict:
-    with _LOCK:
-        conn = _connect()
-        try:
-            entities = [dict(row) for row in conn.execute("SELECT id, name, entity_type FROM entities WHERE kb_id = ?", (kb_id,)).fetchall()]
-            relations = [
-                {
-                    "id": row["id"],
-                    "source": row["source_entity"],
-                    "target": row["target_entity"],
-                    "type": row["relation_type"],
-                    "weight": row["weight"],
-                }
-                for row in conn.execute(
-                    "SELECT id, source_entity, target_entity, relation_type, weight FROM relations WHERE kb_id = ?",
-                    (kb_id,),
-                ).fetchall()
-            ]
-            return {"nodes": entities, "edges": relations}
-        finally:
-            conn.close()
+# ═══ Graph ═══
 
 
-async def _run_pipeline(task_id: str, kb_id: str, title: str, text: str, source_url: str | None) -> None:
+async def get_graph(kb_id: str) -> dict:
+    pool = get_pool()
+    entities = await pool.fetch(
+        "SELECT id, name, entity_type FROM entities WHERE kb_id = $1::uuid", kb_id
+    )
+    relations = await pool.fetch(
+        "SELECT id, source_entity, target_entity, relation_type, weight FROM relations WHERE kb_id = $1::uuid",
+        kb_id,
+    )
+    return {
+        "nodes": [{"id": str(e["id"]), "name": e["name"], "type": e["entity_type"]} for e in entities],
+        "edges": [
+            {
+                "id": str(r["id"]),
+                "source": r["source_entity"],
+                "target": r["target_entity"],
+                "type": r["relation_type"],
+                "weight": r["weight"],
+            }
+            for r in relations
+        ],
+    }
+
+
+# ═══ Stats ═══
+
+
+async def get_stats() -> dict:
+    pool = get_pool()
+    kb_total = await pool.fetchval("SELECT COUNT(*) FROM knowledge_bases")
+    doc_total = await pool.fetchval("SELECT COUNT(*) FROM documents")
+    chunk_total = await pool.fetchval("SELECT COUNT(*) FROM knowledge_chunks")
+    task_rows = await pool.fetch("SELECT status, COUNT(*) AS c FROM tasks GROUP BY status")
+    return {
+        "knowledge_bases": kb_total or 0,
+        "documents": doc_total or 0,
+        "chunks": chunk_total or 0,
+        "tasks_by_status": {row["status"]: row["c"] for row in task_rows},
+    }
+
+
+# ═══ Pipeline ═══
+
+
+async def _run_pipeline(
+    task_id: str,
+    kb_id: str,
+    title: str,
+    text: str,
+    source_url: str | None,
+    source_type: str = "manual",
+    filename: str = "",
+) -> None:
     try:
-        _update_task(task_id, "running")
-        kb = get_kb(kb_id)
+        await _update_task(task_id, "running")
+        kb = await get_kb(kb_id)
         if not kb:
             raise ValueError("knowledge base not found")
 
-        chunk_data = split_text(text, chunk_size=settings.chunk_size, overlap=settings.chunk_overlap)
+        strategy = auto_detect_strategy(text, filename)
+        chunk_data = split_text(text, strategy=strategy)
+
+        if not chunk_data:
+            raise ValueError("No chunks produced from input text")
+
         embeddings = await embed_texts(
             [c.content for c in chunk_data],
             model=kb["embedding_model"],
             provider=kb.get("embedding_provider") or settings.embedding_provider,
         )
-        now = datetime.now(UTC).isoformat()
+
         document_id = str(uuid4())
-        entities, relations = extract_entities_and_relations(text)
+        pool = get_pool()
 
-        with _LOCK:
-            conn = _connect()
-            try:
-                conn.execute(
-                    "INSERT INTO documents(id, kb_id, title, source_url, raw_text, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (document_id, kb_id, title, source_url, text, now),
-                )
-                for idx, chunk in enumerate(chunk_data):
-                    vector = embeddings[idx] if idx < len(embeddings) else [0.0] * kb["dimension"]
-                    conn.execute(
-                        """
-                        INSERT INTO chunks(id, document_id, kb_id, chunk_index, title, source_url, content, embedding_json, dimension, metadata_json, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            str(uuid4()),
-                            document_id,
-                            kb_id,
-                            chunk.chunk_index,
-                            title,
-                            source_url,
-                            chunk.content,
-                            json.dumps(vector, ensure_ascii=False),
-                            kb["dimension"],
-                            json.dumps(chunk.metadata, ensure_ascii=False),
-                            now,
-                        ),
-                    )
-                for entity in entities:
-                    conn.execute(
-                        "INSERT INTO entities(id, kb_id, name, entity_type, description) VALUES (?, ?, ?, ?, ?)",
-                        (str(uuid4()), kb_id, entity.name, entity.entity_type, entity.description),
-                    )
-                for relation in relations:
-                    conn.execute(
-                        "INSERT INTO relations(id, kb_id, source_entity, target_entity, relation_type, weight) VALUES (?, ?, ?, ?, ?, ?)",
-                        (str(uuid4()), kb_id, relation.source, relation.target, relation.relation_type, relation.weight),
-                    )
-                conn.commit()
-            finally:
-                conn.close()
-        _update_task(task_id, "succeeded", document_id=document_id)
-    except Exception as exc:  # pragma: no cover
-        _update_task(task_id, "failed", str(exc))
+        await pool.execute(
+            """
+            INSERT INTO documents (id, kb_id, title, source_url, source_type, raw_text, chunk_count)
+            VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
+            """,
+            document_id, kb_id, title, source_url, source_type, text, len(chunk_data),
+        )
 
-
-def _update_task(task_id: str, status: str, error: str | None = None, document_id: str | None = None) -> None:
-    with _LOCK:
-        conn = _connect()
-        try:
-            conn.execute(
-                "UPDATE tasks SET status = ?, error = ?, document_id = COALESCE(?, document_id), updated_at = ? WHERE id = ?",
-                (status, error, document_id, datetime.now(UTC).isoformat(), task_id),
+        for idx, chunk in enumerate(chunk_data):
+            vec = embeddings[idx] if idx < len(embeddings) else [0.0] * kb["dimension"]
+            np_vec = np.array(vec, dtype=np.float32)
+            await pool.execute(
+                """
+                INSERT INTO knowledge_chunks
+                    (id, document_id, kb_id, chunk_index, title, source_url, content, embedding, metadata, source_type)
+                VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::vector, $9::jsonb, $10)
+                """,
+                str(uuid4()), document_id, kb_id, chunk.chunk_index, title, source_url,
+                chunk.content, np_vec, json.dumps(chunk.metadata, ensure_ascii=False), source_type,
             )
-            conn.commit()
-        finally:
-            conn.close()
 
-
-def retry_task(task_id: str) -> str:
-    with _LOCK:
-        conn = _connect()
+        # Entity/relation extraction (heuristic, lightweight)
         try:
-            row = conn.execute(
-                "SELECT id, kb_id, title, source_url, raw_text, document_id FROM tasks WHERE id = ?",
-                (task_id,),
-            ).fetchone()
-            if not row:
-                raise ValueError("task not found")
-            payload = dict(row)
-        finally:
-            conn.close()
+            entities, relations = extract_entities_and_relations(text)
+            for entity in entities:
+                await pool.execute(
+                    "INSERT INTO entities (id, kb_id, name, entity_type, description) VALUES ($1::uuid, $2::uuid, $3, $4, $5)",
+                    str(uuid4()), kb_id, entity.name, entity.entity_type, entity.description,
+                )
+            for relation in relations:
+                await pool.execute(
+                    "INSERT INTO relations (id, kb_id, source_entity, target_entity, relation_type, weight) "
+                    "VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)",
+                    str(uuid4()), kb_id, relation.source, relation.target, relation.relation_type, relation.weight,
+                )
+        except Exception:
+            logger.warning("Entity extraction failed, skipping", exc_info=True)
 
-    title = payload.get("title")
-    source_url = payload.get("source_url")
-    raw_text = payload.get("raw_text")
-    kb_id = payload["kb_id"]
-    document_id = payload.get("document_id")
+        await _update_task(task_id, "succeeded", document_id=document_id)
+        logger.info("Ingestion completed: task=%s doc=%s chunks=%d", task_id, document_id, len(chunk_data))
 
-    if (not raw_text or not title) and document_id:
-        doc = get_document(document_id)
-        if doc:
-            raw_text = raw_text or doc.get("raw_text")
-            title = title or doc.get("title")
-            source_url = source_url or doc.get("source_url")
-
-    if not raw_text or not title:
-        raise ValueError("task payload unavailable for retry")
-
-    return submit_ingestion_task(kb_id, title, raw_text, source_url)
+    except Exception as exc:
+        logger.exception("Ingestion pipeline failed: task=%s", task_id)
+        await _update_task(task_id, "failed", error=str(exc))
 
 
-def get_stats() -> dict:
-    with _LOCK:
-        conn = _connect()
-        try:
-            kb_total = conn.execute("SELECT COUNT(*) AS c FROM knowledge_bases").fetchone()["c"]
-            doc_total = conn.execute("SELECT COUNT(*) AS c FROM documents").fetchone()["c"]
-            task_rows = conn.execute(
-                """
-                SELECT status, COUNT(*) AS c
-                FROM tasks
-                GROUP BY status
-                """
-            ).fetchall()
-            tasks_by_status = {row["status"]: row["c"] for row in task_rows}
-            return {
-                "knowledge_bases": kb_total,
-                "documents": doc_total,
-                "tasks_by_status": tasks_by_status,
-            }
-        finally:
-            conn.close()
+async def _update_task(task_id: str, status: str, error: str | None = None, document_id: str | None = None) -> None:
+    pool = get_pool()
+    if document_id:
+        await pool.execute(
+            "UPDATE tasks SET status = $1, error = $2, document_id = $3::uuid, updated_at = NOW() WHERE id = $4::uuid",
+            status, error, document_id, task_id,
+        )
+    else:
+        await pool.execute(
+            "UPDATE tasks SET status = $1, error = $2, updated_at = NOW() WHERE id = $3::uuid",
+            status, error, task_id,
+        )
+
+
+# ═══ Helpers ═══
+
+
+def _kb_row(row) -> dict:
+    return {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "description": row["description"],
+        "embedding_provider": row["embedding_provider"],
+        "embedding_model": row["embedding_model"],
+        "dimension": row["dimension"],
+        "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+    }
+
+
+def _doc_row(row) -> dict:
+    d: dict = {
+        "id": str(row["id"]),
+        "kb_id": str(row["kb_id"]),
+        "title": row["title"],
+        "source_url": row["source_url"],
+        "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+    }
+    if "source_type" in row.keys():
+        d["source_type"] = row["source_type"]
+    if "chunk_count" in row.keys():
+        d["chunk_count"] = row["chunk_count"]
+    if "actual_chunk_count" in row.keys():
+        d["chunk_count"] = row["actual_chunk_count"]
+    if "raw_text" in row.keys():
+        d["raw_text"] = row["raw_text"]
+    return d
+
+
+def _task_row(row) -> dict:
+    return {
+        "id": str(row["id"]),
+        "kb_id": str(row["kb_id"]),
+        "title": row["title"],
+        "source_url": row["source_url"],
+        "status": row["status"],
+        "error": row["error"],
+        "document_id": str(row["document_id"]) if row["document_id"] else None,
+        "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+        "updated_at": row["updated_at"].isoformat() if hasattr(row["updated_at"], "isoformat") else str(row["updated_at"]),
+    }
 
 
 def _status_to_progress(status: str) -> int:
-    if status in {"succeeded", "completed"}:
-        return 100
-    if status in {"running", "processing"}:
-        return 60
-    if status in {"queued", "pending"}:
-        return 10
-    if status == "failed":
-        return 0
-    return 0
+    return {"succeeded": 100, "completed": 100, "running": 60, "processing": 60, "queued": 10, "pending": 10}.get(status, 0)

@@ -198,8 +198,16 @@ def _process_job(job: dict[str, Any]) -> None:
             curve_path = Path("")
 
         set_video_status(video_id, "processing", progress=0.75, status_message="渲染报告")
-        md_text = render_markdown(report, curve)
-        txt_text = render_text(report)
+        try:
+            md_text = render_markdown(report, curve)
+        except Exception as render_exc:
+            report.setdefault("analysis_warnings", []).append(f"render_markdown_failed: {render_exc}")
+            md_text = f"# 报告渲染失败\n\n{render_exc}\n\n```json\n{json.dumps(report.get('summary', ''), ensure_ascii=False)}\n```"
+        try:
+            txt_text = render_text(report)
+        except Exception as render_exc:
+            report.setdefault("analysis_warnings", []).append(f"render_text_failed: {render_exc}")
+            txt_text = f"报告渲染失败：{render_exc}\n概览：{report.get('summary', '')}"
         md_path = REPORT_DIR / f"{video_id}.md"
         txt_path = REPORT_DIR / f"{video_id}.txt"
         json_path = REPORT_DIR / f"{video_id}.json"
@@ -227,6 +235,7 @@ def _process_job(job: dict[str, Any]) -> None:
                 report.setdefault("meta", {})["bundle_path"] = str(bundle_output_path)
         except Exception as pack_exc:
             report.setdefault("analysis_warnings", []).append(f"pack_bundle_failed: {pack_exc}")
+        set_video_status(video_id, "done", progress=1.0, status_message="完成")
     except Exception as exc:
         retries = increment_retry(video_id)
         error = str(exc)

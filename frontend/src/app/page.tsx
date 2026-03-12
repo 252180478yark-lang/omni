@@ -101,6 +101,9 @@ export default function Home() {
                 <Link href="/video-analysis" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
                   <Clapperboard className="w-4 h-4" /> 短视频分析
                 </Link>
+                <Link href="/chat" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
+                  <MessageSquare className="w-4 h-4" /> 智能问答
+                </Link>
               </div>
             </div>
             <div className="flex items-center gap-4">

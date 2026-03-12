@@ -147,7 +147,11 @@ class ReviewService:
             query = query.where(Article.ai_tags.contains([tag]))
         if search:
             pattern = f"%{search}%"
-            query = query.where(or_(Article.title.ilike(pattern), Article.ai_summary.ilike(pattern)))
+            query = query.where(or_(
+                Article.title.ilike(pattern),
+                Article.ai_summary.ilike(pattern),
+                Article.raw_snippet.ilike(pattern),
+            ))
         if is_starred is not None:
             query = query.where(Article.is_starred == is_starred)
 

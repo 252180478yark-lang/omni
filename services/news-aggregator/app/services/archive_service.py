@@ -130,28 +130,28 @@ class ArchiveService:
         text_parts.append(f"Source: {article.url}")
         text = "\n\n".join(part for part in text_parts if part)
 
-        response = await self.sp4_client.post(
-            "/api/v1/knowledge/ingest",
-            json={
-                "kb_id": self.target_kb_id,
-                "title": article.title,
-                "text": text,
-                "source_url": article.url,
-                "metadata": {
-                    "source": "news-aggregator",
-                    "article_id": str(article.id),
-                    "source_type": article.source,
-                    "tags": article.ai_tags,
-                    "published_at": article.published_at.isoformat() if article.published_at else None,
-                },
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-        document_id = payload.get("data", {}).get("document_id")
-        if not document_id:
-            raise ValueError("sp4 response missing data.document_id")
-        return str(document_id)
+        payload = {
+            "kb_id": self.target_kb_id,
+            "title": article.title,
+            "text": text,
+            "source_url": article.url,
+            "source_type": "news",
+        }
+
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = await self.sp4_client.post("/api/v1/knowledge/ingest", json=payload)
+                response.raise_for_status()
+                data = response.json().get("data", {})
+                return str(data.get("task_id") or data.get("document_id") or "")
+            except Exception as exc:
+                last_error = exc
+                if attempt < 2:
+                    import asyncio
+                    await asyncio.sleep(1.0 * (2 ** attempt))
+                    logger.warning("sp4 push retry %d/3 for article=%s: %s", attempt + 1, article.id, exc)
+        raise RuntimeError(f"sp4 push failed after 3 retries: {last_error}")
 
     async def _get_top_tags(self, limit: int) -> list[dict[str, int | str]]:
         rows = (

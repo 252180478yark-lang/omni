@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from collections.abc import AsyncIterator
 
 import httpx
@@ -8,28 +10,124 @@ from app.config import settings
 from app.providers.base import BaseProvider, ProviderCapability
 from app.schemas.ai import ChatResponse, Message, TokenUsage
 
+logger = logging.getLogger(__name__)
+
+_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+_EMBED_DIMENSION = 1536
+_EMBED_BATCH_LIMIT = 100
+
 
 class GeminiProvider(BaseProvider):
     name = "gemini"
     default_chat_model = "gemini-2.0-flash"
-    default_embedding_model = "text-embedding-004"
+    default_embedding_model = "gemini-embedding-2-preview"
     capabilities = {ProviderCapability.CHAT, ProviderCapability.EMBEDDING}
 
+    def _key(self, **kwargs: object) -> str:
+        return (str(kwargs.get("api_key", "")) or settings.gemini_api_key or "").strip()
+
+    # ─── Chat ───
+
     async def chat(self, messages: list[Message], model: str, **kwargs: object) -> ChatResponse:
-        content = _last_prompt(messages)
-        usage = _usage_estimate(content)
-        prefix = "[gemini-mock]" if not settings.gemini_api_key else "[gemini]"
-        return ChatResponse(content=f"{prefix} {content}", provider=self.name, model=model, usage=usage)
+        key = self._key(**kwargs)
+        if not key:
+            raise RuntimeError("Gemini API Key 未配置")
+
+        model_id = model or self.default_chat_model
+        url = f"{_API_BASE}/models/{model_id}:generateContent"
+        body = _build_chat_body(messages, **kwargs)
+
+        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+            resp = await client.post(url, params={"key": key}, json=body)
+            resp.raise_for_status()
+            data = resp.json()
+
+        text = _extract_text(data)
+        usage = _extract_usage(data)
+        return ChatResponse(content=text, provider=self.name, model=model_id, usage=usage)
 
     async def chat_stream(self, messages: list[Message], model: str, **kwargs: object) -> AsyncIterator[str]:
-        text = _last_prompt(messages)
-        for token in text.split():
-            yield f"{token} "
+        key = self._key(**kwargs)
+        if not key:
+            raise RuntimeError("Gemini API Key 未配置")
+
+        model_id = model or self.default_chat_model
+        url = f"{_API_BASE}/models/{model_id}:streamGenerateContent"
+        body = _build_chat_body(messages, **kwargs)
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream(
+                "POST", url, params={"key": key, "alt": "sse"}, json=body,
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    payload = line[6:]
+                    if payload.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(payload)
+                        parts = (
+                            chunk.get("candidates", [{}])[0]
+                            .get("content", {})
+                            .get("parts", [])
+                        )
+                        for part in parts:
+                            if text := part.get("text"):
+                                yield text
+                    except (json.JSONDecodeError, IndexError, KeyError):
+                        continue
+
+    # ─── Embedding ───
 
     async def embedding(self, texts: list[str], model: str, **kwargs: object) -> tuple[list[list[float]], TokenUsage]:
-        vectors = [[0.02] * 1536 for _ in texts]
-        usage = TokenUsage(prompt_tokens=len(texts), completion_tokens=0, total_tokens=len(texts))
-        return vectors, usage
+        key = self._key(**kwargs)
+        if not key:
+            raise RuntimeError("Gemini API Key 未配置")
+
+        model_id = model or self.default_embedding_model
+        model_ref = f"models/{model_id}"
+        total_tokens = 0
+        all_vectors: list[list[float]] = []
+
+        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+            for start in range(0, len(texts), _EMBED_BATCH_LIMIT):
+                batch = texts[start : start + _EMBED_BATCH_LIMIT]
+
+                if len(batch) == 1:
+                    url = f"{_API_BASE}/{model_ref}:embedContent"
+                    body = {
+                        "model": model_ref,
+                        "content": {"parts": [{"text": batch[0]}]},
+                        "outputDimensionality": _EMBED_DIMENSION,
+                    }
+                    resp = await client.post(url, params={"key": key}, json=body)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    all_vectors.append(data["embedding"]["values"])
+                    total_tokens += len(batch[0]) // 4
+                else:
+                    url = f"{_API_BASE}/{model_ref}:batchEmbedContents"
+                    requests = [
+                        {
+                            "model": model_ref,
+                            "content": {"parts": [{"text": t}]},
+                            "outputDimensionality": _EMBED_DIMENSION,
+                        }
+                        for t in batch
+                    ]
+                    resp = await client.post(url, params={"key": key}, json={"requests": requests})
+                    resp.raise_for_status()
+                    data = resp.json()
+                    for emb in data.get("embeddings", []):
+                        all_vectors.append(emb["values"])
+                    total_tokens += sum(len(t) // 4 for t in batch)
+
+        usage = TokenUsage(prompt_tokens=total_tokens, completion_tokens=0, total_tokens=total_tokens)
+        return all_vectors, usage
+
+    # ─── Model Discovery ───
 
     async def list_models(self, api_key: str | None = None) -> list[str]:
         key = (api_key or settings.gemini_api_key or "").strip()
@@ -37,10 +135,7 @@ class GeminiProvider(BaseProvider):
             return [self.default_chat_model, self.default_embedding_model]
         try:
             async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-                resp = await client.get(
-                    "https://generativelanguage.googleapis.com/v1beta/models",
-                    params={"key": key},
-                )
+                resp = await client.get(f"{_API_BASE}/models", params={"key": key})
                 resp.raise_for_status()
                 rows = resp.json().get("models", [])
                 names: list[str] = []
@@ -48,7 +143,6 @@ class GeminiProvider(BaseProvider):
                     name = row.get("name", "")
                     if not name:
                         continue
-                    # API returns "models/gemini-2.0-flash", normalize to bare id.
                     names.append(name.replace("models/", ""))
                 ranked = [m for m in names if "gemini" in m or "embedding" in m]
                 models = ranked[:80] if ranked else names[:80]
@@ -66,10 +160,7 @@ class GeminiProvider(BaseProvider):
             return False, "未提供 Gemini API Key", []
         try:
             async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-                resp = await client.get(
-                    "https://generativelanguage.googleapis.com/v1beta/models",
-                    params={"key": key},
-                )
+                resp = await client.get(f"{_API_BASE}/models", params={"key": key})
                 resp.raise_for_status()
                 rows = resp.json().get("models", [])
                 models = [row.get("name", "").replace("models/", "") for row in rows if row.get("name")]
@@ -78,18 +169,47 @@ class GeminiProvider(BaseProvider):
             return False, f"连接失败: {exc}", []
 
 
-def _last_prompt(messages: list[Message]) -> str:
-    if not messages:
+# ─── Helpers ───
+
+def _build_chat_body(messages: list[Message], **kwargs: object) -> dict:
+    contents: list[dict] = []
+    system_instruction: dict | None = None
+
+    for msg in messages:
+        text = msg.content if isinstance(msg.content, str) else str(msg.content)
+        if msg.role == "system":
+            system_instruction = {"parts": [{"text": text}]}
+            continue
+        role = "model" if msg.role == "assistant" else "user"
+        contents.append({"role": role, "parts": [{"text": text}]})
+
+    body: dict = {"contents": contents}
+    if system_instruction:
+        body["systemInstruction"] = system_instruction
+
+    gen_config: dict = {}
+    if (temp := kwargs.get("temperature")) is not None:
+        gen_config["temperature"] = float(str(temp))
+    if (max_tok := kwargs.get("max_tokens")) is not None:
+        gen_config["maxOutputTokens"] = int(str(max_tok))
+    if gen_config:
+        body["generationConfig"] = gen_config
+
+    return body
+
+
+def _extract_text(data: dict) -> str:
+    try:
+        parts = data["candidates"][0]["content"]["parts"]
+        return "".join(p.get("text", "") for p in parts)
+    except (KeyError, IndexError):
         return ""
-    content = messages[-1].content
-    return content if isinstance(content, str) else str(content)
 
 
-def _usage_estimate(text: str) -> TokenUsage:
-    prompt_tokens = max(1, len(text) // 4)
-    completion_tokens = max(1, prompt_tokens // 2)
+def _extract_usage(data: dict) -> TokenUsage:
+    meta = data.get("usageMetadata", {})
     return TokenUsage(
-        prompt_tokens=prompt_tokens,
-        completion_tokens=completion_tokens,
-        total_tokens=prompt_tokens + completion_tokens,
+        prompt_tokens=meta.get("promptTokenCount", 0),
+        completion_tokens=meta.get("candidatesTokenCount", 0),
+        total_tokens=meta.get("totalTokenCount", 0),
     )

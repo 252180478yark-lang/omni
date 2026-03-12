@@ -6,12 +6,32 @@ class Settings(BaseSettings):
 
     service_name: str = "knowledge-engine"
     service_port: int = 8002
+
+    # PostgreSQL (primary storage)
+    database_url: str = "postgresql://omni_user:changeme_in_production@omni-postgres:5432/omni_vibe_db"
+    db_pool_min: int = 2
+    db_pool_max: int = 10
+
+    # Redis (caching)
+    redis_url: str = "redis://:changeme_redis@omni-redis:6379/1"
+
+    # AI Provider Hub
     ai_provider_hub_url: str = "http://ai-provider-hub:8001"
-    embedding_provider: str = "openai"
-    embedding_model: str = "text-embedding-3-small"
-    chunk_size: int = 512
-    chunk_overlap: int = 50
+
+    # Embedding defaults
+    embedding_provider: str = "gemini"
+    embedding_model: str = "gemini-embedding-2-preview"
     embedding_batch_size: int = 100
+
+    # Chunking
+    chunk_size: int = 512
+    chunk_overlap: int = 64
+
+    # RAG
+    rag_top_k: int = 5
+    rag_score_threshold: float = 0.7
+
+    # Legacy SQLite fallback (kept for backward compat)
     database_path: str = "/app/data/knowledge.db"
 
 

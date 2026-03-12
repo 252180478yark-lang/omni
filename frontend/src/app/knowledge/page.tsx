@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
-import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2, File, X, CheckCircle, Loader2 } from 'lucide-react'
 
 interface KnowledgeBaseItem {
   id: string
@@ -38,6 +38,10 @@ export default function KnowledgeBaseConfig() {
   const [docLoading, setDocLoading] = useState(false)
   const [error, setError] = useState('')
   const [docError, setDocError] = useState('')
+  const [uploadFiles, setUploadFiles] = useState<File[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [uploadResults, setUploadResults] = useState<{ name: string; ok: boolean; msg: string }[]>([])
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const loadBases = useCallback(async () => {
     setLoading(true)
@@ -144,6 +148,59 @@ export default function KnowledgeBaseConfig() {
     }
     await loadBases()
   }, [bases, loadBases, selectedKb])
+
+  const ACCEPTED_TYPES = ['.pdf', '.txt', '.md', '.docx', '.html', '.htm', '.srt']
+
+  const handleFileDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    const files = Array.from(e.dataTransfer.files).filter((f) => {
+      const ext = '.' + f.name.split('.').pop()?.toLowerCase()
+      return ACCEPTED_TYPES.includes(ext)
+    })
+    setUploadFiles((prev) => [...prev, ...files])
+  }, [])
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    setUploadFiles((prev) => [...prev, ...files])
+    e.target.value = ''
+  }, [])
+
+  const removeUploadFile = useCallback((index: number) => {
+    setUploadFiles((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
+  const submitFileUpload = useCallback(async () => {
+    if (!selectedKb || uploadFiles.length === 0) return
+    setUploading(true)
+    setUploadResults([])
+    const results: { name: string; ok: boolean; msg: string }[] = []
+
+    for (const file of uploadFiles) {
+      try {
+        const form = new FormData()
+        form.append('file', file)
+        form.append('kb_id', selectedKb)
+        form.append('title', file.name.replace(/\.[^.]+$/, ''))
+        form.append('source_type', 'doc')
+
+        const res = await fetch('/api/omni/knowledge/upload', { method: 'POST', body: form })
+        const json = (await res.json()) as { success: boolean; data?: { task_id: string; text_length?: number }; error?: string }
+        if (json.success) {
+          results.push({ name: file.name, ok: true, msg: `任务 ${json.data?.task_id?.slice(0, 8)}...` })
+        } else {
+          results.push({ name: file.name, ok: false, msg: json.error || '上传失败' })
+        }
+      } catch (err) {
+        results.push({ name: file.name, ok: false, msg: String(err) })
+      }
+    }
+
+    setUploadResults(results)
+    setUploadFiles([])
+    setUploading(false)
+    setTimeout(() => void loadDocuments(), 2000)
+  }, [selectedKb, uploadFiles, loadDocuments])
 
   const removeDocument = useCallback(async (docId: string) => {
     const ok = window.confirm('确认删除该文档？删除后不可恢复。')
@@ -310,6 +367,89 @@ export default function KnowledgeBaseConfig() {
             </div>
           </CardContent>
         </Card>
+
+        {/* ═══ File Upload Section ═══ */}
+        <div className="mt-8">
+          <Card className="apple-card border-none shadow-sm bg-gradient-to-br from-white to-blue-50/30">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Upload className="w-5 h-5 text-blue-600" />
+                文档上传入库
+              </CardTitle>
+              <CardDescription>拖拽或选择文件上传到知识库，支持 PDF、TXT、MD、DOCX、HTML、SRT 格式</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!selectedKb ? (
+                <div className="text-sm text-gray-500">请先在上方列表选择一个知识库。</div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Drop Zone */}
+                  <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleFileDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-gray-200 hover:border-blue-400 rounded-xl p-8 text-center cursor-pointer transition-colors bg-gray-50/50 hover:bg-blue-50/30"
+                  >
+                    <Upload className="w-8 h-8 text-gray-400 mx-auto mb-3" />
+                    <p className="text-sm text-gray-600 font-medium">点击选择文件或拖拽到此处</p>
+                    <p className="text-xs text-gray-400 mt-1">支持 PDF、TXT、MD、DOCX、HTML、SRT（单文件最大 50MB）</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept=".pdf,.txt,.md,.docx,.html,.htm,.srt"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* File List */}
+                  {uploadFiles.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-gray-500">待上传文件 ({uploadFiles.length})</div>
+                      {uploadFiles.map((f, i) => (
+                        <div key={i} className="flex items-center justify-between bg-white rounded-lg border border-gray-100 px-3 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <File className="w-4 h-4 text-blue-500 shrink-0" />
+                            <span className="text-sm text-gray-700 truncate">{f.name}</span>
+                            <span className="text-xs text-gray-400 shrink-0">({(f.size / 1024).toFixed(0)} KB)</span>
+                          </div>
+                          <button onClick={() => removeUploadFile(i)} className="text-gray-400 hover:text-red-500 transition-colors shrink-0 ml-2">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <div className="flex justify-end">
+                        <Button
+                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md"
+                          onClick={() => void submitFileUpload()}
+                          disabled={uploading}
+                        >
+                          {uploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                          {uploading ? '上传中...' : `上传 ${uploadFiles.length} 个文件`}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Upload Results */}
+                  {uploadResults.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-gray-500">上传结果</div>
+                      {uploadResults.map((r, i) => (
+                        <div key={i} className={`flex items-center gap-2 text-sm px-3 py-2 rounded-lg ${r.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                          {r.ok ? <CheckCircle className="w-4 h-4 shrink-0" /> : <X className="w-4 h-4 shrink-0" />}
+                          <span className="font-medium truncate">{r.name}</span>
+                          <span className="text-xs opacity-70 shrink-0">{r.msg}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="mt-8">
           <Card className="apple-card border-none shadow-sm bg-gradient-to-br from-white to-green-50/30">

@@ -1,48 +1,128 @@
+"""Hybrid search: pgvector similarity + PostgreSQL fulltext, fused with RRF."""
+
 from __future__ import annotations
 
-import sqlite3
+import numpy as np
 
-from app.services.vector_search import search_by_vector
+from app.database import get_pool
 
 
-def keyword_search(conn: sqlite3.Connection, kb_id: str, query: str, top_k: int) -> list[dict[str, object]]:
-    rows = conn.execute(
+async def fulltext_search(
+    kb_id: str,
+    query: str,
+    top_k: int = 10,
+) -> list[dict]:
+    """Full-text search using tsvector + ts_rank."""
+    pool = get_pool()
+    rows = await pool.fetch(
         """
-        SELECT c.id, c.document_id, c.kb_id, c.chunk_index, c.title, c.source_url, c.content, c.embedding_json, c.dimension, c.created_at
-        FROM chunks c
-        WHERE c.kb_id = ? AND lower(c.content) LIKE ?
-        ORDER BY c.chunk_index ASC
-        LIMIT ?
+        SELECT id, document_id, kb_id, chunk_index, title, source_url, content,
+               metadata, source_type, created_at,
+               ts_rank(tsv, plainto_tsquery('simple', $1)) AS score
+        FROM knowledge_chunks
+        WHERE kb_id = $2::uuid
+          AND tsv @@ plainto_tsquery('simple', $1)
+        ORDER BY score DESC
+        LIMIT $3
         """,
-        (kb_id, f"%{query.lower()}%", top_k),
-    ).fetchall()
-    result: list[dict[str, object]] = []
-    for row in rows:
-        item = dict(row)
-        item["score"] = 1.0
-        item["source"] = "keyword"
-        result.append(item)
-    return result
+        query,
+        str(kb_id),
+        top_k,
+    )
+    return [_row_to_dict(row, "fulltext") for row in rows]
 
 
-def hybrid_search(conn: sqlite3.Connection, kb_id: str, query: str, query_embedding: list[float], top_k: int = 10) -> list[dict[str, object]]:
-    vec = search_by_vector(conn, kb_id, query_embedding, top_k=top_k * 2)
-    key = keyword_search(conn, kb_id, query, top_k=top_k * 2)
+async def hybrid_search(
+    kb_id: str,
+    query: str,
+    query_embedding: list[float],
+    top_k: int = 10,
+    rrf_k: int = 60,
+) -> list[dict]:
+    """RRF-fused hybrid search combining vector similarity and fulltext."""
+    pool = get_pool()
+    vec = np.array(query_embedding, dtype=np.float32)
+    fetch_n = top_k * 3
 
-    # Lightweight RRF fusion: score += 1 / (k + rank)
-    fused: dict[str, dict[str, object]] = {}
-    k = 60
-    for rank, item in enumerate(vec, start=1):
-        target = fused.setdefault(item["id"], dict(item))
-        target["rrf_score"] = target.get("rrf_score", 0.0) + (1.0 / (k + rank))
-        target["source"] = "vector"
-    for rank, item in enumerate(key, start=1):
-        target = fused.setdefault(item["id"], dict(item))
-        target["rrf_score"] = target.get("rrf_score", 0.0) + (1.0 / (k + rank))
-        if target.get("source") == "vector":
-            target["source"] = "hybrid"
+    vec_rows = await pool.fetch(
+        """
+        SELECT id, document_id, kb_id, chunk_index, title, source_url, content,
+               metadata, source_type, created_at,
+               1 - (embedding <=> $1::vector) AS score
+        FROM knowledge_chunks
+        WHERE kb_id = $2::uuid AND embedding IS NOT NULL
+        ORDER BY embedding <=> $1::vector
+        LIMIT $3
+        """,
+        vec,
+        str(kb_id),
+        fetch_n,
+    )
+
+    ft_rows = await pool.fetch(
+        """
+        SELECT id, document_id, kb_id, chunk_index, title, source_url, content,
+               metadata, source_type, created_at,
+               ts_rank(tsv, plainto_tsquery('simple', $1)) AS score
+        FROM knowledge_chunks
+        WHERE kb_id = $2::uuid
+          AND tsv @@ plainto_tsquery('simple', $1)
+        ORDER BY score DESC
+        LIMIT $3
+        """,
+        query,
+        str(kb_id),
+        fetch_n,
+    )
+
+    # Reciprocal Rank Fusion
+    fused: dict[str, dict] = {}
+
+    for rank, row in enumerate(vec_rows, start=1):
+        cid = str(row["id"])
+        if cid not in fused:
+            fused[cid] = _row_to_dict(row, "vector")
+            fused[cid]["rrf_score"] = 0.0
+        fused[cid]["rrf_score"] += 1.0 / (rrf_k + rank)
+
+    for rank, row in enumerate(ft_rows, start=1):
+        cid = str(row["id"])
+        if cid not in fused:
+            fused[cid] = _row_to_dict(row, "fulltext")
+            fused[cid]["rrf_score"] = 0.0
         else:
-            target["source"] = "keyword"
+            fused[cid]["search_source"] = "hybrid"
+        fused[cid]["rrf_score"] += 1.0 / (rrf_k + rank)
 
-    result = sorted(fused.values(), key=lambda x: x.get("rrf_score", 0.0), reverse=True)
-    return result[:top_k]
+    results = sorted(fused.values(), key=lambda x: x["rrf_score"], reverse=True)
+    for item in results:
+        item["score"] = item.pop("rrf_score")
+    return results[:top_k]
+
+
+def _row_to_dict(row, source: str) -> dict:
+    raw_meta = row["metadata"]
+    if isinstance(raw_meta, dict):
+        metadata = raw_meta
+    elif isinstance(raw_meta, str):
+        import json
+        try:
+            metadata = json.loads(raw_meta)
+        except (json.JSONDecodeError, TypeError):
+            metadata = {}
+    else:
+        metadata = {}
+
+    return {
+        "id": str(row["id"]),
+        "document_id": str(row["document_id"]),
+        "kb_id": str(row["kb_id"]),
+        "chunk_index": row["chunk_index"],
+        "title": row["title"],
+        "source_url": row["source_url"],
+        "content": row["content"],
+        "metadata": metadata,
+        "source_type": row["source_type"],
+        "score": float(row["score"]),
+        "search_source": source,
+    }

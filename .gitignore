@@ -17,6 +17,9 @@ logs
 *.log
 npm-debug.log*
 
+# Temp commit message
+.git-commit-msg.txt
+
 # Editor
 .vscode/*
 !.vscode/extensions.json
@@ -24,6 +27,7 @@ npm-debug.log*
 .DS_Store
 
 # Local env
+.env
 .env.local
 .env*.local
 

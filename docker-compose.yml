@@ -1,11 +1,194 @@
-# Omni-Vibe OS 本地基础设施
+# Omni-Vibe OS Ultra — 统一编排
 # 一键启动：docker-compose up -d
-# 预留：ComfyUI、Ollama、PostgreSQL、Vector 等
-version: "3.8"
+# 单独启动基础设施：docker-compose up -d postgres redis nginx
+# 查看日志：docker-compose logs -f <service>
+
 services:
-  # 待补充：comfyui, ollama, postgres, etc.
-  placeholder:
-    image: alpine:latest
-    command: ["sleep", "infinity"]
-    profiles:
-      - dev
+  # ═══ Infrastructure ═══
+
+  postgres:
+    build:
+      context: ./services/infra-core/postgres
+    container_name: omni-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-omni_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-omni_vibe_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/infra-core/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-omni_user} -d ${POSTGRES_DB:-omni_vibe_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - omni-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: omni-redis
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:-changeme_redis}"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./services/infra-core/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-changeme_redis} ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - omni-network
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: omni-nginx
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+      ai-provider-hub:
+        condition: service_started
+      knowledge-engine:
+        condition: service_started
+      news-aggregator:
+        condition: service_started
+      video-analysis:
+        condition: service_started
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
+    volumes:
+      - ./services/infra-core/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/infra-core/nginx/conf.d:/etc/nginx/conf.d:ro
+    networks:
+      - omni-network
+
+  # ═══ Application Services ═══
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: omni-frontend
+    environment:
+      NEXT_PUBLIC_USE_BACKEND_HUB: "true"
+      NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
+      NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
+      AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
+      KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
+      VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
+    command: ["npm", "run", "start"]
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ai-provider-hub
+      - knowledge-engine
+    networks:
+      - omni-network
+
+  ai-provider-hub:
+    build:
+      context: ./services/ai-provider-hub
+    container_name: omni-ai-provider-hub
+    env_file:
+      - ./services/ai-provider-hub/.env.example
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/0"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "8001:8001"
+    volumes:
+      - ai_hub_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+
+  knowledge-engine:
+    build:
+      context: ./services/knowledge-engine
+    container_name: omni-knowledge-engine
+    env_file:
+      - ./services/knowledge-engine/.env.example
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/1"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    ports:
+      - "8002:8002"
+    volumes:
+      - knowledge_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
+
+  news-aggregator:
+    build:
+      context: ./services/news-aggregator
+    container_name: omni-news-aggregator
+    env_file:
+      - ./services/news-aggregator/.env.example
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/2"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-provider-hub:
+        condition: service_started
+      knowledge-engine:
+        condition: service_started
+    networks:
+      - omni-network
+
+  video-analysis:
+    build:
+      context: ./services/video-analysis
+    container_name: omni-video-analysis
+    env_file:
+      - ./services/video-analysis/.env.example
+    environment:
+      AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
+      KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
+      KNOWLEDGE_TARGET_KB_ID: "default"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8006"]
+    ports:
+      - "8006:8006"
+    volumes:
+      - video_analysis_data:/app/data
+    depends_on:
+      ai-provider-hub:
+        condition: service_started
+    networks:
+      - omni-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  ai_hub_data:
+  knowledge_data:
+  video_analysis_data:
+
+networks:
+  omni-network:
+    name: omni-network
+    driver: bridge

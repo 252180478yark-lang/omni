@@ -1,9 +1,14 @@
+# Omni-Vibe OS — Application Services
+# 需要先启动 infra-core (omni-network 必须已存在)
+# 推荐使用根目录 docker-compose.yml 统一启动
+
 name: omni-sp1-sp4
 
 services:
   frontend:
     build:
       context: ../frontend
+    container_name: omni-frontend
     environment:
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
@@ -12,14 +17,22 @@ services:
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
     command: ["npm", "run", "start"]
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ai-provider-hub
+      - knowledge-engine
     networks:
       - omni-network
 
   ai-provider-hub:
     build:
       context: ./ai-provider-hub
+    container_name: omni-ai-provider-hub
     env_file:
       - ./ai-provider-hub/.env.example
+    environment:
+      REDIS_URL: "redis://:changeme_redis@omni-redis:6379/0"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
     ports:
       - "8001:8001"
@@ -31,8 +44,12 @@ services:
   knowledge-engine:
     build:
       context: ./knowledge-engine
+    container_name: omni-knowledge-engine
     env_file:
       - ./knowledge-engine/.env.example
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://omni_user:changeme_in_production@omni-postgres:5432/omni_vibe_db"
+      REDIS_URL: "redis://:changeme_redis@omni-redis:6379/1"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     ports:
       - "8002:8002"
@@ -46,13 +63,12 @@ services:
   news-aggregator:
     build:
       context: ./news-aggregator
+    container_name: omni-news-aggregator
     env_file:
-      - ./news-aggregator/.env
+      - ./news-aggregator/.env.example
     environment:
       DATABASE_URL: postgresql+asyncpg://omni_user:changeme_in_production@omni-postgres:5432/omni_vibe_db
       REDIS_URL: redis://:changeme_redis@omni-redis:6379/2
-      SP3_BASE_URL: http://ai-provider-hub:8001
-      SP4_BASE_URL: http://knowledge-engine:8002
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
     ports:
       - "8005:8005"
@@ -65,13 +81,20 @@ services:
   video-analysis:
     build:
       context: ./video-analysis
+    container_name: omni-video-analysis
     env_file:
       - ./video-analysis/.env.example
+    environment:
+      AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
+      KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
+      KNOWLEDGE_TARGET_KB_ID: "default"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8006"]
     ports:
       - "8006:8006"
     volumes:
       - video_analysis_data:/app/data
+    depends_on:
+      - ai-provider-hub
     networks:
       - omni-network
 

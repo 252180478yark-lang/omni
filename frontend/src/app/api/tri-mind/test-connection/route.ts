@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ success: false, error: 'Unknown provider' }, { status: 400 })
     }
     const result = await adapter.testConnection({
-      apiKey: provider === 'ollama' ? 'ollama' : apiKey,
+      apiKey,
       baseUrl,
       model,
     })

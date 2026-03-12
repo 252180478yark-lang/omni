@@ -371,6 +371,83 @@ def add_knowledge_entry(video_id: str, summary: str, tags: list[str]) -> None:
         )
         conn.commit()
 
+    push_to_knowledge_engine(video_id, summary, tags)
+
+
+def _resolve_kb_id(client: "httpx.Client", base_url: str, raw_id: str) -> str | None:
+    """Return a valid UUID kb_id. If *raw_id* is already a UUID, return it directly;
+    otherwise query knowledge-engine for a KB whose name matches *raw_id*."""
+    import logging
+    import uuid as _uuid
+
+    logger = logging.getLogger(__name__)
+    try:
+        _uuid.UUID(raw_id)
+        return raw_id
+    except ValueError:
+        pass
+
+    try:
+        resp = client.get(f"{base_url}/api/v1/knowledge/bases")
+        resp.raise_for_status()
+        bases = resp.json().get("data", [])
+        for kb in bases:
+            if kb.get("name") == raw_id:
+                logger.info("Resolved KB name '%s' → %s", raw_id, kb["id"])
+                return kb["id"]
+        if bases:
+            first = bases[0]
+            logger.info("KB name '%s' not found, falling back to first KB '%s' (%s)", raw_id, first.get("name"), first["id"])
+            return first["id"]
+    except Exception as exc:
+        logger.warning("Failed to resolve KB id '%s': %s", raw_id, exc)
+    return None
+
+
+def push_to_knowledge_engine(video_id: str, summary: str, tags: list[str]) -> None:
+    """Push analysis results to knowledge-engine with 3 retries + exponential backoff."""
+    import logging
+    import time
+    import httpx
+    from app.config import settings
+
+    logger = logging.getLogger(__name__)
+    base_url = settings.knowledge_engine_url
+
+    with httpx.Client(timeout=30.0) as client:
+        kb_id = _resolve_kb_id(client, base_url, settings.knowledge_target_kb_id)
+        if not kb_id:
+            logger.warning(
+                "Skipping knowledge-engine push for video=%s: could not resolve KB id '%s'",
+                video_id, settings.knowledge_target_kb_id,
+            )
+            return
+
+        url = f"{base_url}/api/v1/knowledge/ingest"
+        payload = {
+            "kb_id": kb_id,
+            "title": f"Video Analysis: {video_id}",
+            "text": summary,
+            "source_type": "video",
+        }
+
+        for attempt in range(3):
+            try:
+                resp = client.post(url, json=payload)
+                resp.raise_for_status()
+                logger.info("Pushed video %s analysis to knowledge-engine (kb=%s)", video_id, kb_id)
+                return
+            except Exception as exc:
+                if attempt < 2:
+                    delay = 1.0 * (2 ** attempt)
+                    logger.warning(
+                        "knowledge-engine push retry %d/3 for video=%s: %s (next in %.0fs)",
+                        attempt + 1, video_id, exc, delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error("knowledge-engine push failed after 3 retries for video=%s: %s", video_id, exc)
+
 
 def search_knowledge(query: str | None = None, day: str | None = None) -> list[dict[str, Any]]:
     with sqlite3.connect(DB_PATH) as conn:
