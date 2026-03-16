@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
-import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2, File, X, CheckCircle, Loader2 } from 'lucide-react'
+import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2, File, X, CheckCircle, Loader2, Globe, ChevronDown, ChevronRight, Eye } from 'lucide-react'
 
 interface KnowledgeBaseItem {
   id: string
@@ -26,6 +26,13 @@ interface DocumentItem {
   chunk_count: number
 }
 
+interface ChunkItem {
+  id: string
+  chunk_index: number
+  content: string
+  metadata: Record<string, unknown> | null
+}
+
 export default function KnowledgeBaseConfig() {
   const [bases, setBases] = useState<KnowledgeBaseItem[]>([])
   const [documents, setDocuments] = useState<DocumentItem[]>([])
@@ -42,6 +49,13 @@ export default function KnowledgeBaseConfig() {
   const [uploading, setUploading] = useState(false)
   const [uploadResults, setUploadResults] = useState<{ name: string; ok: boolean; msg: string }[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [newKbName, setNewKbName] = useState('')
+  const [newKbDesc, setNewKbDesc] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [expandedDocId, setExpandedDocId] = useState('')
+  const [docChunks, setDocChunks] = useState<ChunkItem[]>([])
+  const [chunksLoading, setChunksLoading] = useState(false)
 
   const loadBases = useCallback(async () => {
     setLoading(true)
@@ -97,19 +111,32 @@ export default function KnowledgeBaseConfig() {
   }, [loadDocuments])
 
   const createBase = useCallback(async () => {
-    const name = window.prompt('请输入知识库名称')
-    if (!name) return
-    const res = await fetch('/api/omni/knowledge/bases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, description: '' }),
-    })
-    const json = (await res.json()) as { success: boolean; error?: string }
-    if (!json.success) {
-      throw new Error(json.error || '创建失败')
+    if (!newKbName.trim()) return
+    setCreating(true)
+    setError('')
+    try {
+      const res = await fetch('/api/omni/knowledge/bases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newKbName.trim(),
+          description: newKbDesc.trim(),
+          dimension: 1536,
+        }),
+      })
+      const json = (await res.json()) as { success: boolean; data?: KnowledgeBaseItem; error?: string }
+      if (!json.success) throw new Error(json.error || '创建失败')
+      setShowCreateModal(false)
+      setNewKbName('')
+      setNewKbDesc('')
+      await loadBases()
+      if (json.data?.id) setSelectedKb(json.data.id)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setCreating(false)
     }
-    await loadBases()
-  }, [loadBases])
+  }, [newKbName, newKbDesc, loadBases])
 
   const submitIngest = useCallback(async () => {
     if (!selectedKb || !title.trim() || !text.trim()) {
@@ -213,6 +240,26 @@ export default function KnowledgeBaseConfig() {
     await loadDocuments()
   }, [loadDocuments])
 
+  const toggleDocChunks = useCallback(async (docId: string) => {
+    if (expandedDocId === docId) {
+      setExpandedDocId('')
+      setDocChunks([])
+      return
+    }
+    setExpandedDocId(docId)
+    setChunksLoading(true)
+    try {
+      const res = await fetch(`/api/omni/knowledge/documents/${docId}/chunks?limit=50`, { cache: 'no-store' })
+      const json = (await res.json()) as { success: boolean; data?: ChunkItem[] }
+      if (json.success && json.data) setDocChunks(json.data)
+      else setDocChunks([])
+    } catch {
+      setDocChunks([])
+    } finally {
+      setChunksLoading(false)
+    }
+  }, [expandedDocId])
+
   const filteredBases = useMemo(() => {
     const key = search.trim().toLowerCase()
     if (!key) return bases
@@ -234,6 +281,11 @@ export default function KnowledgeBaseConfig() {
               知识检索引擎 (Knowledge Engine)
             </div>
             <div className="flex items-center gap-3">
+              <Link href="/knowledge/harvester">
+                <Button variant="outline" size="sm" className="hidden md:flex rounded-full text-xs text-blue-600 border-blue-200 hover:bg-blue-50">
+                  <Globe className="w-3.5 h-3.5 mr-1" /> 知识采集
+                </Button>
+              </Link>
               <Link href="/tasks">
                 <Button variant="outline" size="sm" className="hidden md:flex rounded-full text-xs text-gray-600 border-gray-200 hover:bg-gray-50">
                   查看入库任务队列 →
@@ -250,7 +302,7 @@ export default function KnowledgeBaseConfig() {
             <h1 className="text-3xl font-bold tracking-tight text-gray-900 mb-2">知识库管理</h1>
             <p className="text-gray-500">创建与管理向量检索空间、上传私有文档并构建知识图谱（默认复用已保存的模型 API 配置）。</p>
           </div>
-          <Button className="bg-green-600 hover:bg-green-700 shadow-md" onClick={() => void createBase()} disabled={loading}>
+          <Button className="bg-green-600 hover:bg-green-700 shadow-md" onClick={() => setShowCreateModal(true)} disabled={loading}>
             <Plus className="w-4 h-4 mr-2" />
             新建知识库
           </Button>
@@ -544,25 +596,79 @@ export default function KnowledgeBaseConfig() {
                     </thead>
                     <tbody>
                       {documents.map((doc) => (
-                        <tr key={doc.id} className="bg-white border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                          <td className="px-6 py-4">
-                            <p className="font-medium text-gray-900">{doc.title}</p>
-                            <p className="text-xs text-gray-400 font-mono mt-0.5">{doc.id}</p>
-                          </td>
-                          <td className="px-6 py-4 text-gray-600">{doc.chunk_count}</td>
-                          <td className="px-6 py-4 text-gray-500 truncate max-w-[240px]">{doc.source_url || '-'}</td>
-                          <td className="px-6 py-4 text-gray-500 text-xs">{new Date(doc.created_at).toLocaleString('zh-CN')}</td>
-                          <td className="px-6 py-4 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 px-2 text-gray-400 hover:text-red-600"
-                              onClick={() => void removeDocument(doc.id)}
-                            >
-                              <Trash2 className="w-4 h-4 mr-1.5" /> 删除
-                            </Button>
-                          </td>
-                        </tr>
+                        <React.Fragment key={doc.id}>
+                          <tr className="bg-white border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => void toggleDocChunks(doc.id)}
+                                  className="text-gray-400 hover:text-blue-500 transition-colors shrink-0"
+                                  title="查看内容"
+                                >
+                                  {expandedDocId === doc.id ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                                </button>
+                                <div className="min-w-0">
+                                  <p className="font-medium text-gray-900">{doc.title}</p>
+                                  <p className="text-xs text-gray-400 font-mono mt-0.5">{doc.id}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-gray-600">{doc.chunk_count}</td>
+                            <td className="px-6 py-4 text-gray-500 truncate max-w-[240px]">{doc.source_url || '-'}</td>
+                            <td className="px-6 py-4 text-gray-500 text-xs">{new Date(doc.created_at).toLocaleString('zh-CN')}</td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-gray-400 hover:text-blue-600"
+                                  onClick={() => void toggleDocChunks(doc.id)}
+                                  title="查看内容"
+                                >
+                                  <Eye className="w-4 h-4 mr-1" /> 查看
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-2 text-gray-400 hover:text-red-600"
+                                  onClick={() => void removeDocument(doc.id)}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-1" /> 删除
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                          {expandedDocId === doc.id && (
+                            <tr className="bg-blue-50/30">
+                              <td colSpan={5} className="px-6 py-4">
+                                {chunksLoading ? (
+                                  <div className="flex items-center gap-2 text-sm text-gray-400 py-4 justify-center">
+                                    <Loader2 className="w-4 h-4 animate-spin" /> 加载文档内容...
+                                  </div>
+                                ) : docChunks.length === 0 ? (
+                                  <div className="text-sm text-gray-400 text-center py-4">暂无 chunk 数据</div>
+                                ) : (
+                                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
+                                    <div className="text-xs font-medium text-gray-500 mb-2">
+                                      共 {doc.chunk_count} 个文本块（显示前 {docChunks.length} 个）
+                                    </div>
+                                    {docChunks.map((chunk) => (
+                                      <div key={chunk.id} className="bg-white rounded-lg border border-gray-100 p-3 shadow-sm">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200">
+                                            #{chunk.chunk_index}
+                                          </Badge>
+                                          <span className="text-[10px] text-gray-400 font-mono">{chunk.id.slice(0, 8)}</span>
+                                        </div>
+                                        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{chunk.content}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -572,6 +678,62 @@ export default function KnowledgeBaseConfig() {
           </Card>
         </div>
       </main>
+
+      {/* ═══ Create KB Modal ═══ */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowCreateModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 pt-6 pb-4">
+              <h3 className="text-lg font-semibold text-gray-900">新建知识库</h3>
+              <p className="text-sm text-gray-500 mt-1">创建一个新的向量检索空间，默认使用系统配置的 Embedding 模型，1536 维度</p>
+            </div>
+            <div className="px-6 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">知识库名称 <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={newKbName}
+                  onChange={(e) => setNewKbName(e.target.value)}
+                  placeholder="例如：直播切片知识库"
+                  className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-300"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter' && newKbName.trim()) void createBase() }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">描述 <span className="text-gray-400">(可选)</span></label>
+                <textarea
+                  value={newKbDesc}
+                  onChange={(e) => setNewKbDesc(e.target.value)}
+                  placeholder="用于存储直播切片分析报告，包含逐字稿、背景元素、贴片元素等结构化数据"
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-300 resize-none"
+                />
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
+                <div className="text-xs font-medium text-gray-500">向量配置（自动）</div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-gray-600">Embedding 模型：<span className="font-medium text-gray-800">系统默认</span></span>
+                  <span className="text-gray-600">维度：<span className="font-medium text-gray-800">1536</span></span>
+                </div>
+                <p className="text-[11px] text-gray-400">自动使用模型配置中心已配置的 Embedding 模型（支持 OpenAI / Gemini）</p>
+              </div>
+            </div>
+            <div className="px-6 py-4 mt-2 flex justify-end gap-3 border-t border-gray-100">
+              <Button variant="outline" onClick={() => { setShowCreateModal(false); setNewKbName(''); setNewKbDesc('') }} className="rounded-lg">
+                取消
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700 rounded-lg"
+                onClick={() => void createBase()}
+                disabled={creating || !newKbName.trim()}
+              >
+                {creating ? '创建中...' : '创建知识库'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

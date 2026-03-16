@@ -28,8 +28,11 @@ class Settings(BaseSettings):
     chunk_overlap: int = 64
 
     # RAG
-    rag_top_k: int = 5
-    rag_score_threshold: float = 0.7
+    rag_top_k: int = 10
+    rag_score_threshold: float = 0.3
+
+    # Harvester
+    harvester_auth_state: str = "/app/data/harvester_auth.json"
 
     # Legacy SQLite fallback (kept for backward compat)
     database_path: str = "/app/data/knowledge.db"

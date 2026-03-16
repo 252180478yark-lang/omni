@@ -162,6 +162,7 @@ def init_db() -> None:
             )
             """
         )
+        _ensure_column(conn, "knowledge_base", "kb_pushed", "INTEGER DEFAULT 0")
         conn.commit()
 
 
@@ -364,14 +365,18 @@ def add_knowledge_entry(video_id: str, summary: str, tags: list[str]) -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             """
-            INSERT INTO knowledge_base (video_id, summary, tags, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO knowledge_base (video_id, summary, tags, created_at, kb_pushed)
+            VALUES (?, ?, ?, ?, 0)
             """,
             (video_id, summary, ",".join(tags), created_at),
         )
         conn.commit()
 
-    push_to_knowledge_engine(video_id, summary, tags)
+    ok = push_to_knowledge_engine(video_id, summary, tags)
+    if ok:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("UPDATE knowledge_base SET kb_pushed = 1 WHERE video_id = ?", (video_id,))
+            conn.commit()
 
 
 def _resolve_kb_id(client: "httpx.Client", base_url: str, raw_id: str) -> str | None:
@@ -404,8 +409,11 @@ def _resolve_kb_id(client: "httpx.Client", base_url: str, raw_id: str) -> str | 
     return None
 
 
-def push_to_knowledge_engine(video_id: str, summary: str, tags: list[str]) -> None:
-    """Push analysis results to knowledge-engine with 3 retries + exponential backoff."""
+def push_to_knowledge_engine(video_id: str, summary: str, tags: list[str]) -> bool:
+    """Push analysis results to knowledge-engine with 3 retries + exponential backoff.
+
+    Returns True on success, False if all retries exhausted.
+    """
     import logging
     import time
     import httpx
@@ -421,7 +429,7 @@ def push_to_knowledge_engine(video_id: str, summary: str, tags: list[str]) -> No
                 "Skipping knowledge-engine push for video=%s: could not resolve KB id '%s'",
                 video_id, settings.knowledge_target_kb_id,
             )
-            return
+            return False
 
         url = f"{base_url}/api/v1/knowledge/ingest"
         payload = {
@@ -436,7 +444,7 @@ def push_to_knowledge_engine(video_id: str, summary: str, tags: list[str]) -> No
                 resp = client.post(url, json=payload)
                 resp.raise_for_status()
                 logger.info("Pushed video %s analysis to knowledge-engine (kb=%s)", video_id, kb_id)
-                return
+                return True
             except Exception as exc:
                 if attempt < 2:
                     delay = 1.0 * (2 ** attempt)
@@ -447,6 +455,35 @@ def push_to_knowledge_engine(video_id: str, summary: str, tags: list[str]) -> No
                     time.sleep(delay)
                 else:
                     logger.error("knowledge-engine push failed after 3 retries for video=%s: %s", video_id, exc)
+    return False
+
+
+def retry_failed_kb_pushes() -> dict:
+    """Retry all knowledge_base entries that failed to push. Returns summary."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT video_id, summary, tags FROM knowledge_base WHERE kb_pushed = 0"
+        ).fetchall()
+
+    if not rows:
+        return {"pending": 0, "retried": 0, "success": 0}
+
+    logger.info("Retrying %d failed KB pushes...", len(rows))
+    success = 0
+    for video_id, summary, tags_str in rows:
+        tags = tags_str.split(",") if tags_str else []
+        ok = push_to_knowledge_engine(video_id, summary, tags)
+        if ok:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.execute("UPDATE knowledge_base SET kb_pushed = 1 WHERE video_id = ?", (video_id,))
+                conn.commit()
+            success += 1
+
+    logger.info("KB push retry complete: %d/%d succeeded", success, len(rows))
+    return {"pending": len(rows), "retried": len(rows), "success": success}
 
 
 def search_knowledge(query: str | None = None, day: str | None = None) -> list[dict[str, Any]]:

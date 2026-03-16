@@ -66,6 +66,7 @@ function sessionUid() {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const useChatStore = create<ChatState>((set, get) => ({
   kbId: '',
   sessionId: sessionUid(),

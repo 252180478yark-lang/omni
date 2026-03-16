@@ -40,6 +40,7 @@ from app.storage import (
     load_settings,
     log_cost,
     mark_video_failed,
+    retry_failed_kb_pushes,
     save_settings,
     search_knowledge,
     set_video_status,
@@ -133,6 +134,7 @@ def on_startup() -> None:
     init_db()
     _load_persisted_settings()
     _start_worker()
+    Thread(target=retry_failed_kb_pushes, daemon=True).start()
 
 
 def _start_worker() -> None:
@@ -509,3 +511,10 @@ def get_costs_daily() -> list[dict[str, Any]]:
 @app.get(f"{BASE_PREFIX}/knowledge-base")
 def knowledge_base(query: str | None = None, day: str | None = None) -> list[dict[str, Any]]:
     return search_knowledge(query, day)
+
+
+@app.post("/api/knowledge-base/retry")
+@app.post(f"{BASE_PREFIX}/knowledge-base/retry")
+def kb_retry_push() -> dict[str, Any]:
+    """Retry all previously failed knowledge-engine pushes."""
+    return retry_failed_kb_pushes()

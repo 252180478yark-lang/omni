@@ -4,7 +4,7 @@ import httpx
 
 from app.config import settings
 
-_PREFERRED_ORDER = ["openai", "gemini", "ollama"]
+_FALLBACK_ORDER = ["gemini", "openai", "ollama"]
 
 
 async def resolve_embedding_profile(
@@ -43,13 +43,28 @@ async def resolve_embedding_profile(
 
 
 def _pick_provider(providers: dict) -> str | None:
-    candidates = [name for name in _PREFERRED_ORDER if name in providers]
+    """Pick the best embedding provider.
+
+    Priority:
+    1. settings.embedding_provider (knowledge-engine config / env) if available
+    2. Fallback order with api_key_set
+    3. Fallback order without api_key_set
+    """
+    configured = settings.embedding_provider.strip()
+    if configured and configured in providers:
+        info = providers.get(configured, {})
+        if isinstance(info, dict):
+            caps = info.get("capabilities", [])
+            if isinstance(caps, list) and "embedding" in caps and bool(info.get("api_key_set")):
+                return configured
+
+    candidates = [name for name in _FALLBACK_ORDER if name in providers]
     for name in candidates:
         info = providers.get(name, {})
         if not isinstance(info, dict):
             continue
-        capabilities = info.get("capabilities", [])
-        if not isinstance(capabilities, list) or "embedding" not in capabilities:
+        caps = info.get("capabilities", [])
+        if not isinstance(caps, list) or "embedding" not in caps:
             continue
         if bool(info.get("api_key_set")):
             return name
@@ -57,7 +72,7 @@ def _pick_provider(providers: dict) -> str | None:
         info = providers.get(name, {})
         if not isinstance(info, dict):
             continue
-        capabilities = info.get("capabilities", [])
-        if isinstance(capabilities, list) and "embedding" in capabilities:
+        caps = info.get("capabilities", [])
+        if isinstance(caps, list) and "embedding" in caps:
             return name
     return None

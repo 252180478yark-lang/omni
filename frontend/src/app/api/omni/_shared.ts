@@ -3,6 +3,7 @@ const DEFAULTS = {
   aiHub: 'http://localhost:8001',
   knowledge: 'http://localhost:8002',
   videoAnalysis: 'http://localhost:8006',
+  livestreamAnalysis: 'http://localhost:8007',
 }
 
 function trimSlash(value: string): string {
@@ -17,6 +18,7 @@ export function serviceBase() {
     aiHub: trimSlash(process.env.AI_PROVIDER_HUB_URL || fallback || DEFAULTS.aiHub),
     knowledge: trimSlash(process.env.KNOWLEDGE_ENGINE_URL || fallback || DEFAULTS.knowledge),
     videoAnalysis: trimSlash(process.env.VIDEO_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.videoAnalysis),
+    livestreamAnalysis: trimSlash(process.env.LIVESTREAM_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.livestreamAnalysis),
   }
 }
 

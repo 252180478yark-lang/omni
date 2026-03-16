@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.config import settings
 from app.database import close_pool, init_pool
 from app.routers.knowledge import router as knowledge_router
+from app.routers.harvester import router as harvester_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.service_name, lifespan=lifespan)
 app.include_router(knowledge_router)
+app.include_router(harvester_router)
 
 
 @app.get("/health")

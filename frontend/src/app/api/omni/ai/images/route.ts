@@ -1,4 +1,4 @@
-import { serviceBase, fetchJson } from '../../../_shared'
+import { serviceBase, fetchJson } from '../../_shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'

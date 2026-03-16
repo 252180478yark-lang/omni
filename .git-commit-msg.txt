@@ -1,3 +1,5 @@
-feat: sync project updates and SP1-SP4 assets
+feat: 同步项目更新到 GitHub
 
-Update frontend Omni pages and tri-mind integration, add new app routes and service scaffolding, and refresh SP1-SP4 build and acceptance documentation.
+- 知识库、AI 服务、视频分析等模块更新
+- 新增 chat、qa 功能及 RAG 相关服务
+- 新增 Anthropic、DeepSeek 等 AI 提供商支持

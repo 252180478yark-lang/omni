@@ -20,6 +20,7 @@ from app.services.ingestion import (
     get_kb,
     get_stats,
     get_task,
+    list_document_chunks,
     list_documents,
     list_kbs,
     list_tasks,
@@ -234,6 +235,19 @@ async def documents(kb_id: str | None = None, search: str | None = None, limit: 
     safe_limit = max(1, min(limit, 200))
     data = await list_documents(kb_id=kb_id, search=search, limit=safe_limit)
     return {"code": 200, "message": "success", "data": data}
+
+
+@router.get("/documents/{document_id}/chunks")
+async def document_chunks(
+    document_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    doc = await get_document(document_id)
+    if not doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
+    chunks = await list_document_chunks(document_id, limit=limit, offset=offset)
+    return {"code": 200, "message": "success", "data": chunks}
 
 
 @router.delete("/documents/{document_id}")

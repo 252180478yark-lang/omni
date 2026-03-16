@@ -95,8 +95,11 @@ async def hybrid_search(
         fused[cid]["rrf_score"] += 1.0 / (rrf_k + rank)
 
     results = sorted(fused.values(), key=lambda x: x["rrf_score"], reverse=True)
-    for item in results:
-        item["score"] = item.pop("rrf_score")
+    if results:
+        max_rrf = results[0]["rrf_score"]
+        for item in results:
+            raw = item.pop("rrf_score")
+            item["score"] = round(raw / max_rrf, 4) if max_rrf > 0 else 0.0
     return results[:top_k]
 
 

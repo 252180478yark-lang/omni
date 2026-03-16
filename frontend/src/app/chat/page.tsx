@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import {
   BrainCircuit,
   Send,
@@ -16,7 +18,11 @@ import {
   Video,
   FileSearch,
   MessageSquare,
-  Upload,
+  Search,
+  Loader2,
+  Eye,
+  X,
+  Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -27,13 +33,29 @@ import {
   type SourceRef,
   type ImageResult,
   type VideoResult,
-  type ChatMessage,
 } from '@/stores/chatStore'
 
 interface KBItem {
   id: string
   name: string
   description: string
+  embedding_provider?: string
+  embedding_model?: string
+  dimension?: number
+}
+
+interface ProviderItem {
+  id: string
+  name: string
+  models: string[]
+  defaultChatModel: string | null
+  apiKeySet?: boolean
+}
+
+interface ChunkPreview {
+  id: string
+  chunk_index: number
+  content: string
 }
 
 const OUTPUT_MODES: { id: OutputMode; label: string; icon: React.ReactNode; desc: string }[] = [
@@ -54,12 +76,17 @@ async function streamRAG(
   finishAssistant: (id: string, sources: SourceRef[]) => void,
   failAssistant: (id: string, error: string) => void,
   signal: AbortSignal,
+  model?: string,
+  provider?: string,
 ) {
   try {
+    const payload: Record<string, unknown> = { kb_id: kbId, query, stream: true, top_k: 10, session_id: sessionId }
+    if (model) payload.model = model
+    if (provider) payload.provider = provider
     const res = await fetch('/api/omni/knowledge/rag', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ kb_id: kbId, query, stream: true, top_k: 5, session_id: sessionId }),
+      body: JSON.stringify(payload),
       signal,
     })
     if (!res.ok) {
@@ -195,32 +222,91 @@ export default function ChatPage() {
     failAssistant, setStreaming, setAbort, abortController, clearMessages,
   } = useChatStore()
 
-  const [bases, setBases] = useState<KBItem[]>([])
+  const [allBases, setAllBases] = useState<KBItem[]>([])
+  const [providers, setProviders] = useState<ProviderItem[]>([])
+  const [selectedProvider, setSelectedProvider] = useState('')
+  const [selectedModel, setSelectedModel] = useState('')
   const [input, setInput] = useState('')
   const [kbOpen, setKbOpen] = useState(false)
-  const [modeOpen, setModeOpen] = useState(false)
+  const [modelOpen, setModelOpen] = useState(false)
+  const [kbSearch, setKbSearch] = useState('')
+  const [loadingData, setLoadingData] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const kbSearchRef = useRef<HTMLInputElement>(null)
+
+  const [previewKbId, setPreviewKbId] = useState('')
+  const [previewChunks, setPreviewChunks] = useState<ChunkPreview[]>([])
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewDocCount, setPreviewDocCount] = useState(0)
 
   useEffect(() => {
+    let cancelled = false
     ;(async () => {
+      setLoadingData(true)
       try {
-        const res = await fetch('/api/omni/knowledge/bases', { cache: 'no-store' })
-        const json = await res.json()
-        if (json.success && json.data) {
-          setBases(json.data)
-          if (!kbId && json.data.length > 0) {
-            setKbId(json.data[0].id)
+        const [kbRes, pRes] = await Promise.all([
+          fetch('/api/omni/knowledge/bases', { cache: 'no-store' }),
+          fetch('/api/omni/models', { cache: 'no-store' }),
+        ])
+        const kbJson = await kbRes.json()
+        if (!cancelled && kbJson.success && kbJson.data) {
+          setAllBases(kbJson.data)
+          if (!kbId && kbJson.data.length > 0) setKbId(kbJson.data[0].id)
+        }
+        const pJson = await pRes.json()
+        if (!cancelled && pJson.success && pJson.data?.providers) {
+          const chatProviders = (pJson.data.providers as ProviderItem[]).filter(
+            (p) => p.apiKeySet && p.models.length > 0,
+          )
+          setProviders(chatProviders)
+          if (chatProviders.length > 0 && !selectedProvider) {
+            setSelectedProvider(chatProviders[0].id)
+            setSelectedModel(chatProviders[0].defaultChatModel || chatProviders[0].models[0] || '')
           }
         }
       } catch { /* ignore */ }
+      finally { if (!cancelled) setLoadingData(false) }
     })()
-  }, [kbId, setKbId])
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [messages])
+
+  useEffect(() => {
+    if (kbOpen) kbSearchRef.current?.focus()
+  }, [kbOpen])
+
+  const loadKbPreview = useCallback(async (id: string) => {
+    if (previewKbId === id) { setPreviewKbId(''); return }
+    setPreviewKbId(id)
+    setPreviewLoading(true)
+    setPreviewChunks([])
+    setPreviewDocCount(0)
+    try {
+      const docRes = await fetch(`/api/omni/knowledge/documents?kb_id=${id}&limit=5`, { cache: 'no-store' })
+      const docJson = await docRes.json()
+      const docs = (docJson.success && docJson.data) ? docJson.data : []
+      setPreviewDocCount(docs.length)
+      if (docs.length > 0) {
+        const firstDoc = docs[0]
+        const chunkRes = await fetch(`/api/omni/knowledge/documents/${firstDoc.id}/chunks?limit=3`, { cache: 'no-store' })
+        const chunkJson = await chunkRes.json()
+        if (chunkJson.success && chunkJson.data) setPreviewChunks(chunkJson.data)
+      }
+    } catch { /* ignore */ }
+    finally { setPreviewLoading(false) }
+  }, [previewKbId])
+
+  const filteredBases = allBases.filter((kb) => {
+    if (!kbSearch.trim()) return true
+    const q = kbSearch.toLowerCase()
+    return kb.name.toLowerCase().includes(q) || kb.id.toLowerCase().includes(q) || (kb.description || '').toLowerCase().includes(q)
+  })
 
   const handleSend = useCallback(async () => {
     const q = input.trim()
@@ -237,7 +323,7 @@ export default function ChatPage() {
     if (currentMode === 'text') {
       const ctrl = new AbortController()
       setAbort(ctrl)
-      await streamRAG(kbId, q, sessionId, aId, appendToken, finishAssistant, failAssistant, ctrl.signal)
+      await streamRAG(kbId, q, sessionId, aId, appendToken, finishAssistant, failAssistant, ctrl.signal, selectedModel || undefined, selectedProvider || undefined)
     } else if (currentMode === 'image') {
       await generateImage(q, aId, finishAssistantImage, failAssistant)
     } else if (currentMode === 'video') {
@@ -250,7 +336,7 @@ export default function ChatPage() {
     setAbort(null)
     inputRef.current?.focus()
   }, [
-    input, kbId, sessionId, outputMode, streaming,
+    input, kbId, sessionId, outputMode, streaming, selectedModel, selectedProvider,
     addUserMessage, startAssistant, appendToken,
     finishAssistant, finishAssistantImage, finishAssistantVideo,
     failAssistant, setStreaming, setAbort,
@@ -269,8 +355,9 @@ export default function ChatPage() {
     }
   }
 
-  const selectedKb = bases.find((b) => b.id === kbId)
-  const selectedMode = OUTPUT_MODES.find((m) => m.id === outputMode) || OUTPUT_MODES[0]
+  const selectedKb = allBases.find((b) => b.id === kbId)
+  const currentProv = providers.find((p) => p.id === selectedProvider)
+  const modelLabel = selectedModel || '选择模型'
 
   return (
     <div className="min-h-screen bg-[#F5F5F7] flex flex-col">
@@ -289,33 +376,154 @@ export default function ChatPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Model Selector */}
+            <div className="relative">
+              <button
+                onClick={() => { setModelOpen((v) => !v); setKbOpen(false) }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white/80 hover:bg-white transition-colors shadow-sm"
+              >
+                <BrainCircuit className="w-3.5 h-3.5 text-purple-500" />
+                <span className="max-w-[140px] truncate">{loadingData ? '加载中...' : modelLabel}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+              </button>
+              {modelOpen && (
+                <div className="absolute right-0 top-full mt-1 w-80 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50 max-h-96 overflow-auto">
+                  {loadingData && (
+                    <div className="px-3 py-6 text-sm text-gray-400 text-center flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> 正在加载模型列表...
+                    </div>
+                  )}
+                  {!loadingData && providers.length === 0 && (
+                    <div className="px-3 py-4 text-sm text-gray-400 text-center">
+                      暂无可用模型，请先在<Link href="/models" className="text-blue-500 underline ml-1">模型配置</Link>中设置 API Key
+                    </div>
+                  )}
+                  {providers.map((prov) => (
+                    <div key={prov.id}>
+                      <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-gray-400 font-semibold flex items-center gap-2">
+                        {prov.name}
+                        <Badge variant="outline" className="text-[9px] px-1 py-0">{prov.models.length} 个</Badge>
+                      </div>
+                      {prov.models.filter((m) => !m.includes('embedding')).map((m) => (
+                        <button
+                          key={`${prov.id}/${m}`}
+                          onClick={() => { setSelectedProvider(prov.id); setSelectedModel(m); setModelOpen(false) }}
+                          className={`w-full text-left px-3 py-1.5 text-sm hover:bg-purple-50 transition-colors flex items-center justify-between ${
+                            selectedProvider === prov.id && selectedModel === m
+                              ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-700'
+                          }`}
+                        >
+                          <span className="truncate">{m}</span>
+                          {selectedProvider === prov.id && selectedModel === m && <Check className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             {/* KB Selector */}
             <div className="relative">
               <button
-                onClick={() => setKbOpen((v) => !v)}
+                onClick={() => { setKbOpen((v) => !v); setModelOpen(false); setPreviewKbId('') }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white/80 hover:bg-white transition-colors shadow-sm"
               >
                 <Database className="w-3.5 h-3.5 text-gray-500" />
-                <span className="max-w-[120px] truncate">{selectedKb?.name || '选择知识库'}</span>
+                <span className="max-w-[120px] truncate">{loadingData ? '加载中...' : (selectedKb?.name || '选择知识库')}</span>
                 <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
               </button>
               {kbOpen && (
-                <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50 max-h-64 overflow-auto">
-                  {bases.map((kb) => (
-                    <button
-                      key={kb.id}
-                      onClick={() => { setKbId(kb.id); setKbOpen(false) }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 transition-colors ${
-                        kb.id === kbId ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                      }`}
-                    >
-                      <div className="font-medium truncate">{kb.name}</div>
-                      {kb.description && <div className="text-xs text-gray-400 truncate">{kb.description}</div>}
-                    </button>
-                  ))}
-                  {bases.length === 0 && (
-                    <div className="px-3 py-4 text-sm text-gray-400 text-center">暂无知识库</div>
-                  )}
+                <div className="absolute right-0 top-full mt-1 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+                  {/* Search */}
+                  <div className="p-2 border-b border-gray-100">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        ref={kbSearchRef}
+                        type="text"
+                        value={kbSearch}
+                        onChange={(e) => setKbSearch(e.target.value)}
+                        placeholder="搜索知识库名称..."
+                        className="w-full h-8 pl-8 pr-8 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      />
+                      {kbSearch && (
+                        <button onClick={() => setKbSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {/* KB List */}
+                  <div className="max-h-72 overflow-auto">
+                    {loadingData && (
+                      <div className="px-3 py-6 text-sm text-gray-400 text-center flex items-center justify-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" /> 加载知识库列表...
+                      </div>
+                    )}
+                    {!loadingData && filteredBases.length === 0 && (
+                      <div className="px-3 py-4 text-sm text-gray-400 text-center">
+                        {kbSearch ? '无匹配结果' : '暂无知识库'}
+                      </div>
+                    )}
+                    {filteredBases.map((kb) => (
+                      <div key={kb.id} className="border-b border-gray-50 last:border-0">
+                        <div className={`flex items-center gap-2 px-3 py-2 hover:bg-blue-50 transition-colors ${kb.id === kbId ? 'bg-blue-50' : ''}`}>
+                          <button
+                            onClick={() => { setKbId(kb.id); setKbOpen(false); setKbSearch('') }}
+                            className="flex-1 text-left min-w-0"
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="font-medium text-sm truncate text-gray-900">{kb.name}</div>
+                              {kb.id === kbId && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                            </div>
+                            {kb.description && <div className="text-xs text-gray-400 truncate mt-0.5">{kb.description}</div>}
+                            <div className="text-[10px] text-gray-400 mt-0.5">
+                              {kb.embedding_provider}/{kb.embedding_model} · {kb.dimension}维
+                            </div>
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); void loadKbPreview(kb.id) }}
+                            className={`shrink-0 p-1.5 rounded-md transition-colors ${previewKbId === kb.id ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                            title="预览知识库内容"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        {/* KB Preview */}
+                        {previewKbId === kb.id && (
+                          <div className="px-3 pb-3 bg-gray-50/80">
+                            {previewLoading ? (
+                              <div className="text-xs text-gray-400 py-3 text-center flex items-center justify-center gap-1">
+                                <Loader2 className="w-3 h-3 animate-spin" /> 加载预览...
+                              </div>
+                            ) : previewDocCount === 0 ? (
+                              <div className="text-xs text-gray-400 py-2 text-center">该知识库暂无文档</div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="text-[10px] text-gray-500 font-medium">文档数: {previewDocCount} · 内容预览:</div>
+                                {previewChunks.map((c) => (
+                                  <div key={c.id} className="bg-white rounded-md border border-gray-100 p-2 text-xs text-gray-600 line-clamp-3">
+                                    <Badge variant="outline" className="text-[9px] px-1 py-0 mb-1 bg-blue-50 text-blue-500 border-blue-200">#{c.chunk_index}</Badge>
+                                    <p className="leading-relaxed">{c.content.slice(0, 200)}{c.content.length > 200 ? '...' : ''}</p>
+                                  </div>
+                                ))}
+                                {previewChunks.length === 0 && previewDocCount > 0 && (
+                                  <div className="text-[10px] text-gray-400">文档处理中，暂无 chunk 数据</div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {/* Footer */}
+                  <div className="p-2 border-t border-gray-100 bg-gray-50/50">
+                    <Link href="/knowledge" className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1">
+                      <Database className="w-3 h-3" /> 管理知识库
+                      <ExternalLink className="w-3 h-3 ml-auto" />
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
@@ -348,6 +556,11 @@ export default function ChatPage() {
                   </div>
                 ))}
               </div>
+              {loadingData && (
+                <div className="flex items-center gap-2 mt-8 text-sm text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin" /> 正在加载模型与知识库...
+                </div>
+              )}
             </div>
           )}
 
@@ -360,7 +573,6 @@ export default function ChatPage() {
                     : 'bg-white shadow-sm border border-gray-100'
                 }`}
               >
-                {/* Mode badge */}
                 {msg.role === 'user' && msg.outputMode && msg.outputMode !== 'text' && (
                   <div className="mb-1.5">
                     <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0">
@@ -369,7 +581,6 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                {/* Loading indicator */}
                 {msg.role === 'assistant' && msg.loading && !msg.content && !msg.images && !msg.video && (
                   <div className="flex items-center gap-2 text-gray-400 text-sm">
                     <div className="flex gap-0.5">
@@ -383,15 +594,21 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                {/* Text content */}
-                <div className={`markdown-body text-sm whitespace-pre-wrap ${msg.role === 'user' ? '!text-white' : ''}`}>
-                  {msg.content}
-                  {msg.role === 'assistant' && msg.loading && msg.content && (
-                    <span className="cursor-blink">▊</span>
-                  )}
-                </div>
+                {msg.role === 'user' ? (
+                  <div className="markdown-body text-sm whitespace-pre-wrap !text-white">
+                    {msg.content}
+                  </div>
+                ) : (
+                  <div className="markdown-body text-sm prose prose-sm max-w-none prose-table:text-sm prose-th:bg-gray-100 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:border prose-th:border prose-td:border">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </ReactMarkdown>
+                    {msg.loading && msg.content && (
+                      <span className="cursor-blink">▊</span>
+                    )}
+                  </div>
+                )}
 
-                {/* Images */}
                 {msg.images && msg.images.length > 0 && (
                   <div className="mt-3 grid gap-2">
                     {msg.images.map((img, i) => (
@@ -408,7 +625,6 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                {/* Video */}
                 {msg.video && (
                   <div className="mt-3 rounded-lg border border-gray-100 p-3 bg-gray-50/50">
                     <div className="flex items-center gap-2 mb-2">
@@ -429,7 +645,6 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                {/* Sources */}
                 {msg.sources && msg.sources.length > 0 && (
                   <div className="mt-3 pt-2 border-t border-gray-100">
                     <div className="text-xs font-medium text-gray-400 mb-1.5">📚 引用来源</div>
@@ -449,7 +664,6 @@ export default function ChatPage() {
       {/* Input Area */}
       <div className="sticky bottom-0 glass border-t border-gray-200/50">
         <div className="max-w-3xl mx-auto px-4 py-3">
-          {/* Output Mode Selector */}
           <div className="flex items-center gap-1.5 mb-2">
             {OUTPUT_MODES.map((m) => (
               <button
@@ -525,7 +739,7 @@ function SourceCard({ source }: { source: SourceRef }) {
             {source.title && (
               <span className="text-xs font-medium text-gray-700 truncate">{source.title}</span>
             )}
-            <span className="text-[10px] text-gray-400">{(source.score * 100).toFixed(0)}%</span>
+            <span className="text-[10px] text-gray-400">相关度 {(source.score * 100).toFixed(0)}%</span>
           </div>
           <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{source.content}</p>
         </div>

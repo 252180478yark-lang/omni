@@ -16,7 +16,9 @@ import {
   Network,
   ListTodo,
   Newspaper,
-  Clapperboard
+  Clapperboard,
+  Download,
+  Radio,
 } from 'lucide-react';
 
 type HealthState = 'healthy' | 'down'
@@ -95,11 +97,17 @@ export default function Home() {
                 <Link href="/knowledge" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
                   <Database className="w-4 h-4" /> 知识库管理
                 </Link>
+                <Link href="/knowledge/harvester" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
+                  <Download className="w-4 h-4" /> 知识采集
+                </Link>
                 <Link href="/tasks" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
                   <ListTodo className="w-4 h-4" /> 任务进度
                 </Link>
                 <Link href="/video-analysis" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
                   <Clapperboard className="w-4 h-4" /> 短视频分析
+                </Link>
+                <Link href="/livestream-analysis" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
+                  <Radio className="w-4 h-4" /> 直播切片分析
                 </Link>
                 <Link href="/chat" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors flex items-center gap-1">
                   <MessageSquare className="w-4 h-4" /> 智能问答
@@ -111,6 +119,12 @@ export default function Home() {
                 <Button variant="outline" className="rounded-full">
                   <Clapperboard className="w-4 h-4 mr-2" />
                   短视频Agent
+                </Button>
+              </Link>
+              <Link href="/livestream-analysis" className="md:hidden">
+                <Button variant="outline" className="rounded-full">
+                  <Radio className="w-4 h-4 mr-2" />
+                  直播切片
                 </Button>
               </Link>
               <Link href="/tri-mind">

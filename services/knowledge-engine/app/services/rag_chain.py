@@ -4,6 +4,9 @@ Graph: parse_query → retrieve → rerank → assemble_context → generate →
 
 For streaming, the graph runs up to assemble_context, then the LLM is streamed
 token-by-token outside the graph to support SSE.
+
+Intent routing: browse-type queries skip vector search and return structured
+KB overview directly; generate-type queries go through the full RAG pipeline.
 """
 
 from __future__ import annotations
@@ -19,6 +22,8 @@ from langgraph.graph import END, StateGraph
 from app.config import settings
 from app.services.embedding_client import embed_texts
 from app.services.hybrid_search import hybrid_search
+from app.services.intent_router import classify_intent
+from app.services.ingestion import browse_kb
 from app.services.session_store import append_turn, get_history
 
 logger = logging.getLogger(__name__)
@@ -45,6 +50,7 @@ class RAGState(TypedDict, total=False):
     embedding_provider: str | None
     session_id: str | None
     # Pipeline
+    intent: str
     query_embedding: list[float]
     retrieved_chunks: list[dict]
     reranked_chunks: list[dict]
@@ -59,15 +65,22 @@ class RAGState(TypedDict, total=False):
 # ═══ Nodes ═══
 
 async def parse_query(state: RAGState) -> dict:
-    """Embed the user query via ai-provider-hub."""
+    """Classify intent and embed the user query (skip embedding for browse)."""
+    intent = classify_intent(state["query"])
+    if intent == "browse":
+        return {"intent": intent, "query_embedding": []}
+
     emb_model = state.get("embedding_model") or settings.embedding_model
     emb_provider = state.get("embedding_provider") or settings.embedding_provider
     vecs = await embed_texts([state["query"]], model=emb_model, provider=emb_provider)
-    return {"query_embedding": vecs[0]}
+    return {"intent": intent, "query_embedding": vecs[0]}
 
 
 async def retrieve(state: RAGState) -> dict:
-    """Hybrid search (vector + fulltext + RRF fusion)."""
+    """Hybrid search (vector + fulltext + RRF fusion). Skip for browse intent."""
+    if state.get("intent") == "browse":
+        return {"retrieved_chunks": []}
+
     top_k = state.get("top_k") or settings.rag_top_k
     chunks = await hybrid_search(
         state["kb_id"], state["query"], state["query_embedding"], top_k=top_k * 3,
@@ -77,6 +90,9 @@ async def retrieve(state: RAGState) -> dict:
 
 async def rerank(state: RAGState) -> dict:
     """Score-based reranking: filter by threshold, deduplicate, cap to top_k."""
+    if state.get("intent") == "browse":
+        return {"reranked_chunks": []}
+
     top_k = state.get("top_k") or settings.rag_top_k
     threshold = settings.rag_score_threshold
     chunks = state.get("retrieved_chunks", [])
@@ -150,6 +166,61 @@ def _build_rag_graph() -> StateGraph:
 _rag_app = _build_rag_graph().compile()
 
 
+# ═══ Browse Handler ═══
+
+def _format_browse_response(overview: dict) -> str:
+    """Format a browse_kb result into a human-readable Markdown answer."""
+    kb = overview.get("kb") or {}
+    docs = overview.get("documents", [])
+    stats = overview.get("stats", {})
+
+    lines: list[str] = []
+    kb_name = kb.get("name", "当前知识库")
+    lines.append(f"## 📚 {kb_name} 概览\n")
+
+    lines.append(f"| 指标 | 数值 |")
+    lines.append(f"|------|------|")
+    lines.append(f"| 文档数 | **{stats.get('document_count', 0)}** |")
+    lines.append(f"| 文本块 (Chunks) | **{stats.get('chunk_count', 0)}** |")
+    lines.append(f"| 向量模型 | {stats.get('embedding_provider', '')}/{stats.get('embedding_model', '')} |")
+    lines.append(f"| 向量维度 | {stats.get('dimension', 0)} |")
+    lines.append("")
+
+    if docs:
+        lines.append(f"### 文档列表 ({len(docs)} 个)\n")
+        for i, doc in enumerate(docs, 1):
+            title = doc.get("title", "未命名")
+            chunks = doc.get("chunk_count", 0)
+            src = doc.get("source_type", "")
+            created = doc.get("created_at", "")[:10]
+            lines.append(f"**{i}. {title}**")
+            lines.append(f"   - Chunks: {chunks} · 来源: {src or '手动'} · 入库: {created}")
+            preview = doc.get("preview", "")
+            if preview:
+                short = preview.replace("\n", " ")[:150]
+                lines.append(f"   - 内容预览: {short}...")
+            lines.append("")
+    else:
+        lines.append("该知识库暂无文档。\n")
+
+    return "\n".join(lines)
+
+
+def _build_browse_sources(docs: list[dict]) -> list[dict]:
+    """Build source references for browse results."""
+    return [
+        {
+            "index": i + 1,
+            "chunk_id": doc["id"],
+            "content": doc.get("preview", "")[:200],
+            "title": doc.get("title"),
+            "source_url": None,
+            "score": 1.0,
+        }
+        for i, doc in enumerate(docs[:10])
+    ]
+
+
 # ═══ Public API ═══
 
 async def rag_query(
@@ -163,9 +234,18 @@ async def rag_query(
     session_id: str | None = None,
 ) -> dict:
     """Full RAG pipeline via LangGraph (non-streaming)."""
+    intent = classify_intent(query)
     history = await get_history(session_id) if session_id else []
     if session_id:
         await append_turn(session_id, "user", query)
+
+    if intent == "browse":
+        overview = await browse_kb(kb_id)
+        answer = _format_browse_response(overview)
+        sources = _build_browse_sources(overview.get("documents", []))
+        if session_id:
+            await append_turn(session_id, "assistant", answer)
+        return {"answer": answer, "sources": sources, "model": "", "intent": "browse"}
 
     state: RAGState = {
         "query": query,
@@ -188,6 +268,7 @@ async def rag_query(
         "answer": answer,
         "sources": result.get("sources", []),
         "model": model or "",
+        "intent": "generate",
     }
 
 
@@ -202,9 +283,25 @@ async def rag_stream(
     session_id: str | None = None,
 ) -> AsyncIterator[dict]:
     """Streaming RAG: runs retrieval graph, then streams LLM token-by-token."""
-    history = await get_history(session_id) if session_id else []
+    intent = classify_intent(query)
+    logger.info("Query intent: %s — %s", intent, query[:60])
+
     if session_id:
         await append_turn(session_id, "user", query)
+
+    # ── Browse path: instant DB lookup, no vector search / LLM ──
+    if intent == "browse":
+        overview = await browse_kb(kb_id)
+        answer = _format_browse_response(overview)
+        sources = _build_browse_sources(overview.get("documents", []))
+        yield {"type": "text", "content": answer}
+        yield {"type": "done", "sources": sources}
+        if session_id:
+            await append_turn(session_id, "assistant", answer)
+        return
+
+    # ── Generate path: full RAG pipeline ──
+    history = await get_history(session_id) if session_id else []
 
     state: RAGState = {
         "query": query,
@@ -286,14 +383,14 @@ async def _call_llm(
     payload: dict = {
         "messages": messages,
         "temperature": 0.3,
-        "max_tokens": 2000,
+        "max_tokens": 8000,
     }
     if model:
         payload["model"] = model
     if provider:
         payload["provider"] = provider
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
@@ -316,14 +413,14 @@ async def _stream_llm(
     payload: dict = {
         "messages": messages,
         "temperature": 0.3,
-        "max_tokens": 2000,
+        "max_tokens": 8000,
     }
     if model:
         payload["model"] = model
     if provider:
         payload["provider"] = provider
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=180.0) as client:
         async with client.stream("POST", url, json=payload) as resp:
             resp.raise_for_status()
             async for line in resp.aiter_lines():

@@ -35,6 +35,17 @@ npm-debug.log*
 *.db
 *.sqlite
 
+# Service runtime data (auth state, caches)
+services/knowledge-engine/data/
+__pycache__/
+*.pyc
+
+# Downloads
+downloads/
+
+# Service runtime data (ai-provider-hub)
+services/ai-provider-hub/data/
+
 # Vercel
 .vercel
 

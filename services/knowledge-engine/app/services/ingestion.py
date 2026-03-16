@@ -1,4 +1,8 @@
-"""Knowledge ingestion service — PostgreSQL + pgvector backed."""
+"""Knowledge ingestion service — PostgreSQL + pgvector backed.
+
+Ingestion pipelines run behind an asyncio.Semaphore so that heavy embedding
++ DB-write work cannot starve the event loop that serves RAG queries.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +22,9 @@ from app.services.graph_rag import extract_entities_and_relations
 from app.services.provider_profile import resolve_embedding_profile
 
 logger = logging.getLogger(__name__)
+
+_INGESTION_SEMAPHORE = asyncio.Semaphore(2)
+_CHUNK_INSERT_BATCH = 10
 
 # ═══ Knowledge Base CRUD ═══
 
@@ -97,6 +104,25 @@ async def get_document(document_id: str) -> dict | None:
     return _doc_row(row) if row else None
 
 
+async def list_document_chunks(document_id: str, limit: int = 100, offset: int = 0) -> list[dict]:
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, chunk_index, content, metadata "
+        "FROM knowledge_chunks WHERE document_id = $1::uuid "
+        "ORDER BY chunk_index ASC LIMIT $2 OFFSET $3",
+        document_id, limit, offset,
+    )
+    return [
+        {
+            "id": str(r["id"]),
+            "chunk_index": r["chunk_index"],
+            "content": r["content"],
+            "metadata": r["metadata"],
+        }
+        for r in rows
+    ]
+
+
 async def list_documents(kb_id: str | None = None, search: str | None = None, limit: int = 50) -> list[dict]:
     pool = get_pool()
     clauses = []
@@ -157,8 +183,17 @@ async def submit_ingestion_task(
         """,
         task_id, kb_id, title, source_url, text, source_type,
     )
-    asyncio.create_task(_run_pipeline(task_id, kb_id, title, text, source_url, source_type, filename))
+    asyncio.create_task(_guarded_pipeline(task_id, kb_id, title, text, source_url, source_type, filename))
     return task_id
+
+
+async def _guarded_pipeline(
+    task_id: str, kb_id: str, title: str, text: str,
+    source_url: str | None, source_type: str, filename: str,
+) -> None:
+    """Acquire semaphore before running pipeline so queries aren't starved."""
+    async with _INGESTION_SEMAPHORE:
+        await _run_pipeline(task_id, kb_id, title, text, source_url, source_type, filename)
 
 
 async def get_task(task_id: str) -> dict | None:
@@ -279,6 +314,53 @@ async def get_graph(kb_id: str) -> dict:
     }
 
 
+# ═══ Browse Query ═══
+
+
+async def browse_kb(kb_id: str) -> dict:
+    """Return structured overview of a knowledge base for browse-type queries."""
+    pool = get_pool()
+    kb = await get_kb(kb_id)
+    if not kb:
+        return {"kb": None, "documents": [], "stats": {}}
+
+    docs = await list_documents(kb_id=kb_id, limit=100)
+    doc_count = len(docs)
+    chunk_total = await pool.fetchval(
+        "SELECT COUNT(*) FROM knowledge_chunks WHERE kb_id = $1::uuid", kb_id,
+    )
+
+    doc_summaries = []
+    for doc in docs:
+        first_chunk = await pool.fetchrow(
+            "SELECT content FROM knowledge_chunks WHERE document_id = $1::uuid ORDER BY chunk_index LIMIT 1",
+            doc["id"],
+        )
+        preview = ""
+        if first_chunk:
+            preview = first_chunk["content"][:300]
+        doc_summaries.append({
+            "id": doc["id"],
+            "title": doc["title"],
+            "chunk_count": doc["chunk_count"],
+            "source_type": doc.get("source_type", ""),
+            "created_at": doc["created_at"],
+            "preview": preview,
+        })
+
+    return {
+        "kb": {"id": kb["id"], "name": kb["name"], "description": kb.get("description", "")},
+        "documents": doc_summaries,
+        "stats": {
+            "document_count": doc_count,
+            "chunk_count": chunk_total or 0,
+            "embedding_provider": kb.get("embedding_provider", ""),
+            "embedding_model": kb.get("embedding_model", ""),
+            "dimension": kb.get("dimension", 0),
+        },
+    }
+
+
 # ═══ Stats ═══
 
 
@@ -349,6 +431,8 @@ async def _run_pipeline(
                 str(uuid4()), document_id, kb_id, chunk.chunk_index, title, source_url,
                 chunk.content, np_vec, json.dumps(chunk.metadata, ensure_ascii=False), source_type,
             )
+            if (idx + 1) % _CHUNK_INSERT_BATCH == 0:
+                await asyncio.sleep(0)
 
         # Entity/relation extraction (heuristic, lightweight)
         try:

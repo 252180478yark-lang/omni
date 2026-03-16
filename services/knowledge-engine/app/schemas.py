@@ -70,3 +70,16 @@ class DocumentDetail(BaseModel):
     source_type: str = "manual"
     raw_text: str = ""
     chunk_count: int = 0
+
+
+# ═══ Harvester ═══
+
+class HarvesterChapter(BaseModel):
+    index: int = 0
+    title: str = ""
+    graph_path: str = ""
+    markdown: str = ""
+    word_count: int = 0
+    block_count: int = 0
+    source_url: str | None = None
+    error: str | None = None

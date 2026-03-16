@@ -1,14 +1,18 @@
 from contextlib import asynccontextmanager
+import asyncio
 import logging
 
 from fastapi import FastAPI
+import httpx
 import structlog
 
 from app.api.router import api_router
 from app.config import get_settings
-from app.database import engine
+from app.database import engine, SessionLocal
 
 settings = get_settings()
+
+logger = logging.getLogger(__name__)
 
 
 def configure_logging() -> None:
@@ -28,8 +32,42 @@ def configure_logging() -> None:
     )
 
 
+async def _auto_retry_kb_pushes() -> None:
+    """On startup, retry archived articles that never made it to knowledge-engine."""
+    await asyncio.sleep(10)
+    from sqlalchemy import select, func
+    from app.models.article import Article
+    from app.services.archive_service import ArchiveService
+
+    async with SessionLocal() as db:
+        count = await db.scalar(
+            select(func.count()).select_from(Article).where(
+                Article.status == "archived", Article.kb_doc_id.is_(None),
+            )
+        )
+        if not count:
+            return
+        logger.info("Auto-retrying %d archived articles with pending KB push...", count)
+
+        rows = (await db.scalars(
+            select(Article).where(
+                Article.status == "archived", Article.kb_doc_id.is_(None),
+            ).limit(50)
+        )).all()
+
+        async with httpx.AsyncClient(base_url=settings.sp4_base_url, timeout=30.0) as sp4:
+            svc = ArchiveService(db=db, sp4_client=sp4, settings=settings)
+            ids = [a.id for a in rows]
+            result = await svc.retry_kb_push(ids)
+            logger.info(
+                "Auto KB push retry done: retried=%d success=%d failed=%d",
+                result.retried, result.success, len(result.failed_ids),
+            )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    asyncio.create_task(_auto_retry_kb_pushes())
     yield
     await engine.dispose()
 
