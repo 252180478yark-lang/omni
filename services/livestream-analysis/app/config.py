@@ -9,7 +9,7 @@ DATA_DIR = Path("/app/data/livestream-analysis")
 
 
 class Settings(BaseSettings):
-    gemini_api_key: str = Field(default="", description="Gemini API Key")
+    gemini_api_key: str = Field(default="AIzaSyCPmx2ZBtY-EkflTEIr4zWxggNX1nbDMLs", description="Gemini API Key")
     gemini_model: str = "gemini-2.5-pro-preview-06-05"
     gemini_temperature: float = 0.3
     gemini_max_output_tokens: int = 65536

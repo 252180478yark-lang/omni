@@ -30,6 +30,10 @@ npm-debug.log*
 .env
 .env.local
 .env*.local
+.env.dev
+
+# Dev mode PID tracking
+.dev-pids
 
 # Database
 *.db
@@ -37,8 +41,18 @@ npm-debug.log*
 
 # Service runtime data (auth state, caches)
 services/knowledge-engine/data/
+services/livestream-analysis/data/
+services/video-analysis/data/
 __pycache__/
 *.pyc
+
+# Dev logs
+.dev-logs/
+
+# Large binary files
+*.mp4
+*.db-shm
+*.db-wal
 
 # Downloads
 downloads/

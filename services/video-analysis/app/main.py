@@ -180,7 +180,15 @@ def _process_job(job: dict[str, Any]) -> None:
             analysis_inputs = {"input_error": str(exc)}
 
         set_video_status(video_id, "processing", progress=0.25, status_message="生成分析")
-        report, usage, used_gemini = analyze_video(video_id, original_name, upload_path, analysis_inputs)
+        video_record = get_video(video_id)
+        metrics_raw = (video_record or {}).get("metrics_json")
+        metrics_data = None
+        if metrics_raw:
+            try:
+                metrics_data = json.loads(metrics_raw)
+            except Exception:
+                pass
+        report, usage, used_gemini = analyze_video(video_id, original_name, upload_path, analysis_inputs, metrics=metrics_data)
         report["analysis_inputs"] = analysis_inputs
         report.setdefault("meta", {})["used_gemini"] = used_gemini
 
@@ -277,13 +285,20 @@ def gemini_test(config: GeminiConfig) -> dict[str, Any]:
 
 @app.post("/api/videos")
 @app.post(f"{BASE_PREFIX}/videos")
-async def upload_video(file: UploadFile = File(...)) -> dict[str, Any]:
+async def upload_video(file: UploadFile = File(...), metrics: str | None = None) -> dict[str, Any]:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
+    metrics_json = None
+    if metrics:
+        try:
+            json.loads(metrics)
+            metrics_json = metrics
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="metrics 必须是合法的 JSON 字符串")
     video_id = uuid4().hex
     upload_path = UPLOAD_DIR / f"{video_id}_{file.filename}"
     upload_path.parent.mkdir(parents=True, exist_ok=True)
-    create_video_record(video_id, file.filename, str(upload_path))
+    create_video_record(video_id, file.filename, str(upload_path), metrics_json=metrics_json)
     try:
         with upload_path.open("wb") as f:
             f.write(await file.read())
@@ -296,12 +311,12 @@ async def upload_video(file: UploadFile = File(...)) -> dict[str, Any]:
         "task_id": video_id,
         "original_name": file.filename,
         "status": "queued",
-        "report_markdown_url": f"/api/videos/{video_id}/report.md",
-        "report_json_url": f"/api/videos/{video_id}/report.json",
-        "report_txt_url": f"/api/videos/{video_id}/report.txt",
-        "emotion_png_url": f"/api/videos/{video_id}/emotion.png",
-        "bundle_url": f"/api/videos/{video_id}/bundle.zip",
-        "original_video_url": f"/api/videos/{video_id}/original",
+        "report_markdown_url": f"{BASE_PREFIX}/videos/{video_id}/report.md",
+        "report_json_url": f"{BASE_PREFIX}/videos/{video_id}/report.json",
+        "report_txt_url": f"{BASE_PREFIX}/videos/{video_id}/report.txt",
+        "emotion_png_url": f"{BASE_PREFIX}/videos/{video_id}/emotion.png",
+        "bundle_url": f"{BASE_PREFIX}/videos/{video_id}/bundle.zip",
+        "original_video_url": f"{BASE_PREFIX}/videos/{video_id}/original",
     }
 
 
@@ -385,17 +400,18 @@ def get_video_detail(video_id: str) -> JSONResponse:
         {
             "video": video,
             "report": report,
-            "report_markdown_url": f"/api/videos/{video_id}/report.md",
-            "report_json_url": f"/api/videos/{video_id}/report.json",
-            "report_txt_url": f"/api/videos/{video_id}/report.txt",
-            "emotion_png_url": f"/api/videos/{video_id}/emotion.png",
-            "bundle_url": f"/api/videos/{video_id}/bundle.zip",
-            "original_video_url": f"/api/videos/{video_id}/original",
+            "report_markdown_url": f"{BASE_PREFIX}/videos/{video_id}/report.md",
+            "report_json_url": f"{BASE_PREFIX}/videos/{video_id}/report.json",
+            "report_txt_url": f"{BASE_PREFIX}/videos/{video_id}/report.txt",
+            "emotion_png_url": f"{BASE_PREFIX}/videos/{video_id}/emotion.png",
+            "bundle_url": f"{BASE_PREFIX}/videos/{video_id}/bundle.zip",
+            "original_video_url": f"{BASE_PREFIX}/videos/{video_id}/original",
         }
     )
 
 
 @app.get("/api/videos/{video_id}/report.md")
+@app.get(f"{BASE_PREFIX}/videos/{{video_id}}/report.md")
 def download_markdown(video_id: str) -> FileResponse:
     video = get_video(video_id)
     if not video or not video.get("report_md_path"):
@@ -404,6 +420,7 @@ def download_markdown(video_id: str) -> FileResponse:
 
 
 @app.get("/api/videos/{video_id}/report.json")
+@app.get(f"{BASE_PREFIX}/videos/{{video_id}}/report.json")
 def download_json(video_id: str) -> FileResponse:
     video = get_video(video_id)
     if not video or not video.get("report_json_path"):
@@ -412,6 +429,7 @@ def download_json(video_id: str) -> FileResponse:
 
 
 @app.get("/api/videos/{video_id}/report.txt")
+@app.get(f"{BASE_PREFIX}/videos/{{video_id}}/report.txt")
 def download_text(video_id: str) -> FileResponse:
     video = get_video(video_id)
     if not video or not video.get("report_txt_path"):
@@ -420,6 +438,7 @@ def download_text(video_id: str) -> FileResponse:
 
 
 @app.get("/api/videos/{video_id}/emotion.png")
+@app.get(f"{BASE_PREFIX}/videos/{{video_id}}/emotion.png")
 def download_emotion_curve(video_id: str) -> FileResponse:
     video = get_video(video_id)
     if not video or not video.get("curve_path"):
@@ -428,6 +447,7 @@ def download_emotion_curve(video_id: str) -> FileResponse:
 
 
 @app.get("/api/videos/{video_id}/original")
+@app.get(f"{BASE_PREFIX}/videos/{{video_id}}/original")
 def download_original(video_id: str) -> FileResponse:
     video = get_video(video_id)
     if not video or not video.get("file_path"):
@@ -436,6 +456,7 @@ def download_original(video_id: str) -> FileResponse:
 
 
 @app.get("/api/videos/{video_id}/bundle.zip")
+@app.get(f"{BASE_PREFIX}/videos/{{video_id}}/bundle.zip")
 def download_bundle(video_id: str) -> FileResponse:
     video = get_video(video_id)
     if not video:

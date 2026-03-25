@@ -20,6 +20,21 @@ def _ffmpeg_path() -> str | None:
     return None
 
 
+def _ffprobe_path() -> str | None:
+    custom = os.getenv("FFPROBE_PATH")
+    if custom and Path(custom).exists():
+        return custom
+    found = shutil.which("ffprobe")
+    if found:
+        return found
+    ffmpeg = _ffmpeg_path()
+    if ffmpeg:
+        probe = Path(ffmpeg).parent / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
+        if probe.exists():
+            return str(probe)
+    return None
+
+
 def _run_ffmpeg(args: list[str]) -> bool:
     try:
         subprocess.run(args, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -50,6 +65,51 @@ def extract_audio(video_path: Path, work_dir: Path) -> Path | None:
     return output if ok and output.exists() else None
 
 
+def extract_video_metadata(video_path: Path) -> dict[str, object] | None:
+    ffprobe = _ffprobe_path()
+    if not ffprobe:
+        return None
+    try:
+        result = subprocess.run(
+            [
+                ffprobe, "-v", "quiet", "-print_format", "json",
+                "-show_format", "-show_streams", str(video_path),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            return None
+        import json as _json
+        info = _json.loads(result.stdout)
+        fmt = info.get("format", {})
+        video_stream = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), {})
+        audio_stream = next((s for s in info.get("streams", []) if s.get("codec_type") == "audio"), None)
+        duration = float(fmt.get("duration", 0))
+        width = int(video_stream.get("width", 0))
+        height = int(video_stream.get("height", 0))
+        fps_parts = video_stream.get("r_frame_rate", "0/1").split("/")
+        fps = round(float(fps_parts[0]) / max(float(fps_parts[1]), 1), 2) if len(fps_parts) == 2 else 0
+        bitrate = int(fmt.get("bit_rate", 0)) // 1000
+        file_size_mb = round(float(fmt.get("size", 0)) / 1048576, 2)
+        aspect = f"{width}:{height}"
+        if width and height:
+            from math import gcd
+            g = gcd(width, height)
+            aspect = f"{width // g}:{height // g}"
+        return {
+            "duration_sec": round(duration, 2),
+            "resolution": f"{width}x{height}",
+            "aspect_ratio": aspect,
+            "fps": fps,
+            "bitrate_kbps": bitrate,
+            "file_size_mb": file_size_mb,
+            "codec": video_stream.get("codec_name", ""),
+            "has_audio": audio_stream is not None,
+        }
+    except Exception:
+        return None
+
+
 def extract_frames(video_path: Path, work_dir: Path, max_frames: int = 5) -> list[Path]:
     ffmpeg = _ffmpeg_path()
     if not ffmpeg:
@@ -73,13 +133,58 @@ def extract_frames(video_path: Path, work_dir: Path, max_frames: int = 5) -> lis
     return sorted(work_dir.glob("frame_*.jpg"))
 
 
+def extract_frames_smart(video_path: Path, work_dir: Path, duration_sec: float | None = None) -> list[Path]:
+    """Adaptive frame extraction based on video duration."""
+    ffmpeg = _ffmpeg_path()
+    if not ffmpeg:
+        return []
+    if duration_sec is None or duration_sec <= 0:
+        return extract_frames(video_path, work_dir)
+
+    if duration_sec <= 15:
+        fps_setting, max_frames = "fps=1", 15
+    elif duration_sec <= 60:
+        fps_setting, max_frames = "fps=0.5", 30
+    else:
+        fps_setting, max_frames = "fps=0.33", 40
+
+    output_pattern = str(work_dir / "sframe_%04d.jpg")
+    ok = _run_ffmpeg([
+        ffmpeg, "-y", "-i", str(video_path),
+        "-vf", fps_setting, "-frames:v", str(max_frames), output_pattern,
+    ])
+    if not ok:
+        return extract_frames(video_path, work_dir)
+    frames = sorted(work_dir.glob("sframe_*.jpg"))
+    return frames if frames else extract_frames(video_path, work_dir)
+
+
 def transcribe_audio(audio_or_video: Path) -> str | None:
+    result = transcribe_audio_with_timestamps(audio_or_video)
+    if result:
+        return result.get("full_text")
+    return None
+
+
+def transcribe_audio_with_timestamps(audio_or_video: Path) -> dict[str, object] | None:
     try:
         from faster_whisper import WhisperModel
 
         model = WhisperModel(os.getenv("ASR_MODEL", "base"), device="cpu", compute_type="int8")
         segments, _ = model.transcribe(str(audio_or_video), language="zh")
-        return " ".join(segment.text.strip() for segment in segments if segment.text)
+        result_segments = []
+        for seg in segments:
+            if seg.text and seg.text.strip():
+                result_segments.append({
+                    "start": round(seg.start, 2),
+                    "end": round(seg.end, 2),
+                    "text": seg.text.strip(),
+                })
+        if result_segments:
+            return {
+                "full_text": " ".join(s["text"] for s in result_segments),
+                "segments": result_segments,
+            }
     except Exception:
         pass
 
@@ -88,7 +193,54 @@ def transcribe_audio(audio_or_video: Path) -> str | None:
 
         model = whisper.load_model(os.getenv("ASR_MODEL", "base"))
         result = model.transcribe(str(audio_or_video))
-        return result.get("text", "").strip()
+        text = result.get("text", "").strip()
+        w_segments = result.get("segments", [])
+        ts_segments = []
+        for ws in w_segments:
+            if isinstance(ws, dict) and ws.get("text", "").strip():
+                ts_segments.append({
+                    "start": round(ws.get("start", 0), 2),
+                    "end": round(ws.get("end", 0), 2),
+                    "text": ws["text"].strip(),
+                })
+        return {"full_text": text, "segments": ts_segments} if text else None
+    except Exception:
+        return None
+
+
+def detect_scene_changes(video_path: Path, work_dir: Path, threshold: float = 30.0) -> dict[str, object] | None:
+    ffmpeg = _ffmpeg_path()
+    if not ffmpeg:
+        return None
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg, "-i", str(video_path),
+                "-vf", f"select='gt(scene,0.3)',showinfo",
+                "-vsync", "vfr", "-f", "null", "-",
+            ],
+            capture_output=True, text=True, timeout=120,
+        )
+        import re
+        changes: list[dict[str, object]] = []
+        for match in re.finditer(r"pts_time:(\d+\.?\d*)", result.stderr):
+            t = float(match.group(1))
+            changes.append({"time_sec": round(t, 2), "type": "cut"})
+
+        if not changes:
+            return {"scene_changes": [], "total_cuts": 0, "avg_shot_duration": 0, "min_shot_duration": 0, "max_shot_duration": 0}
+
+        durations = []
+        for i in range(1, len(changes)):
+            durations.append(changes[i]["time_sec"] - changes[i - 1]["time_sec"])
+
+        return {
+            "scene_changes": changes[:50],
+            "total_cuts": len(changes),
+            "avg_shot_duration": round(sum(durations) / len(durations), 2) if durations else 0,
+            "min_shot_duration": round(min(durations), 2) if durations else 0,
+            "max_shot_duration": round(max(durations), 2) if durations else 0,
+        }
     except Exception:
         return None
 
@@ -515,12 +667,30 @@ def build_analysis_inputs(video_path: Path) -> dict[str, object]:
     inputs: dict[str, object] = {}
     with tempfile.TemporaryDirectory() as tmp_dir:
         work_dir = Path(tmp_dir)
-        audio_path = extract_audio(video_path, work_dir)
-        frames = extract_frames(video_path, work_dir)
 
-        asr_text = transcribe_audio(audio_path or video_path)
-        if asr_text:
-            inputs["asr_text"] = asr_text
+        video_meta = extract_video_metadata(video_path)
+        if video_meta:
+            inputs["video_metadata"] = video_meta
+
+        duration_sec = video_meta.get("duration_sec") if video_meta else None
+
+        audio_path = extract_audio(video_path, work_dir)
+
+        if duration_sec and isinstance(duration_sec, (int, float)):
+            frames = extract_frames_smart(video_path, work_dir, float(duration_sec))
+        else:
+            frames = extract_frames(video_path, work_dir)
+
+        asr_result = transcribe_audio_with_timestamps(audio_path or video_path)
+        if asr_result:
+            inputs["asr_text"] = asr_result.get("full_text", "")
+            segments = asr_result.get("segments", [])
+            if segments:
+                inputs["asr_segments"] = segments
+        else:
+            asr_text = transcribe_audio(audio_path or video_path)
+            if asr_text:
+                inputs["asr_text"] = asr_text
 
         ocr_text = extract_ocr(frames)
         if ocr_text:
@@ -536,6 +706,10 @@ def build_analysis_inputs(video_path: Path) -> dict[str, object]:
                 inputs["persona_detail"] = persona_detail
         except Exception:
             pass
+
+        scene_data = detect_scene_changes(video_path, work_dir)
+        if scene_data:
+            inputs["scene_changes"] = scene_data
 
         ffmpeg_path = _ffmpeg_path()
         inputs["ffmpeg_path"] = ffmpeg_path

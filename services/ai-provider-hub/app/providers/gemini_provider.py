@@ -16,12 +16,22 @@ _API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 _EMBED_DIMENSION = 1536
 _EMBED_BATCH_LIMIT = 100
 
+_THINKING_MODELS = frozenset({
+    "gemini-3-pro-preview",
+    "gemini-3.1-pro-preview",
+    "gemini-3.1-pro-preview-customtools",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+})
+_THINKING_MIN_OUTPUT_TOKENS = 16384
+
 
 class GeminiProvider(BaseProvider):
     name = "gemini"
-    default_chat_model = "gemini-2.0-flash"
+    default_chat_model = "gemini-3.1-pro-preview"
     default_embedding_model = "gemini-embedding-2-preview"
-    capabilities = {ProviderCapability.CHAT, ProviderCapability.EMBEDDING}
+    capabilities = {ProviderCapability.CHAT, ProviderCapability.EMBEDDING, ProviderCapability.VISION}
 
     def _key(self, **kwargs: object) -> str:
         return (str(kwargs.get("api_key", "")) or settings.gemini_api_key or "").strip()
@@ -35,7 +45,7 @@ class GeminiProvider(BaseProvider):
 
         model_id = model or self.default_chat_model
         url = f"{_API_BASE}/models/{model_id}:generateContent"
-        body = _build_chat_body(messages, **kwargs)
+        body = _build_chat_body(messages, model=model_id, **kwargs)
 
         async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
             resp = await client.post(url, params={"key": key}, json=body)
@@ -53,7 +63,7 @@ class GeminiProvider(BaseProvider):
 
         model_id = model or self.default_chat_model
         url = f"{_API_BASE}/models/{model_id}:streamGenerateContent"
-        body = _build_chat_body(messages, **kwargs)
+        body = _build_chat_body(messages, model=model_id, **kwargs)
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream(
@@ -171,27 +181,63 @@ class GeminiProvider(BaseProvider):
 
 # ─── Helpers ───
 
-def _build_chat_body(messages: list[Message], **kwargs: object) -> dict:
+def _convert_content_to_parts(content: str | list) -> list[dict]:
+    """Convert OpenAI-style message content to Gemini parts format.
+
+    Handles both plain text and multimodal content lists with text/image_url parts.
+    """
+    if isinstance(content, str):
+        return [{"text": content}]
+
+    parts: list[dict] = []
+    for item in content:
+        if not isinstance(item, dict):
+            parts.append({"text": str(item)})
+            continue
+        t = item.get("type", "text")
+        if t == "text":
+            parts.append({"text": item.get("text", "")})
+        elif t == "image_url":
+            url_info = item.get("image_url", {})
+            url = url_info.get("url", "") if isinstance(url_info, dict) else str(url_info)
+            if url.startswith("data:"):
+                # data:image/png;base64,XXXX...
+                header, _, b64data = url.partition(",")
+                mime = header.split(";")[0].replace("data:", "")
+                parts.append({"inline_data": {"mime_type": mime, "data": b64data}})
+            else:
+                parts.append({"text": f"[Image: {url}]"})
+        else:
+            parts.append({"text": str(item)})
+    return parts
+
+
+def _build_chat_body(messages: list[Message], model: str = "", **kwargs: object) -> dict:
     contents: list[dict] = []
     system_instruction: dict | None = None
 
     for msg in messages:
-        text = msg.content if isinstance(msg.content, str) else str(msg.content)
         if msg.role == "system":
+            text = msg.content if isinstance(msg.content, str) else str(msg.content)
             system_instruction = {"parts": [{"text": text}]}
             continue
         role = "model" if msg.role == "assistant" else "user"
-        contents.append({"role": role, "parts": [{"text": text}]})
+        parts = _convert_content_to_parts(msg.content)
+        contents.append({"role": role, "parts": parts})
 
     body: dict = {"contents": contents}
     if system_instruction:
         body["systemInstruction"] = system_instruction
 
+    is_thinking = any(t in model for t in ("3-pro", "3.1-", "2.5-pro", "2.5-flash"))
     gen_config: dict = {}
     if (temp := kwargs.get("temperature")) is not None:
         gen_config["temperature"] = float(str(temp))
     if (max_tok := kwargs.get("max_tokens")) is not None:
-        gen_config["maxOutputTokens"] = int(str(max_tok))
+        requested = int(str(max_tok))
+        gen_config["maxOutputTokens"] = max(requested, _THINKING_MIN_OUTPUT_TOKENS) if is_thinking else requested
+    elif is_thinking:
+        gen_config["maxOutputTokens"] = _THINKING_MIN_OUTPUT_TOKENS
     if gen_config:
         body["generationConfig"] = gen_config
 

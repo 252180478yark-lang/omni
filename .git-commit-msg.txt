@@ -1,5 +1,7 @@
-feat: 同步项目更新到 GitHub
+feat: 添加知识收割机、直播分析服务及多项功能更新
 
-- 知识库、AI 服务、视频分析等模块更新
-- 新增 chat、qa 功能及 RAG 相关服务
-- 新增 Anthropic、DeepSeek 等 AI 提供商支持
+- 新增 knowledge harvester (知识收割机) 前后端完整功能
+- 新增 livestream-analysis (直播分析) 独立服务及前端页面
+- 更新 knowledge-engine: intent router, hybrid search, RAG chain
+- 更新前端: chat, knowledge, 首页等多个页面
+- 清理 __pycache__ 并完善 .gitignore

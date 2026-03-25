@@ -1,0 +1,52 @@
+# Omni-Vibe OS Ultra — 开发模式（仅基础设施）
+# 启动：docker-compose -f docker-compose.dev.yml up -d
+# 停止：docker-compose -f docker-compose.dev.yml down
+# 配合 dev-start.ps1 / dev-stop.ps1 使用
+
+services:
+  postgres:
+    build:
+      context: ./services/infra-core/postgres
+    container_name: omni-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-omni_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
+      POSTGRES_DB: ${POSTGRES_DB:-omni_vibe_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/infra-core/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-omni_user} -d ${POSTGRES_DB:-omni_vibe_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - omni-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: omni-redis
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:-changeme_redis}"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+      - ./services/infra-core/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-changeme_redis} ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - omni-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  omni-network:
+    name: omni-network
+    driver: bridge

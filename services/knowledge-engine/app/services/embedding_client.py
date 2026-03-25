@@ -125,21 +125,32 @@ async def embed_texts(texts: list[str], model: str, provider: str | None = None)
     return [v for v in results if v is not None]
 
 
+_EMBED_SEMAPHORE = asyncio.Semaphore(3)
+
+
 async def _embed_batch_with_retry(
     client: httpx.AsyncClient, texts: list[str], model: str, provider: str,
 ) -> list[list[float]]:
-    delay = 0.4
+    delay = 2.0
     last_error: Exception | None = None
-    for _ in range(3):
-        try:
-            resp = await client.post(
-                f"{settings.ai_provider_hub_url}/api/v1/ai/embeddings",
-                json={"texts": texts, "model": model, "provider": provider},
-            )
-            resp.raise_for_status()
-            return resp.json()["embeddings"]
-        except Exception as exc:
-            last_error = exc
-            await asyncio.sleep(delay)
-            delay *= 2
-    raise RuntimeError(f"embedding request failed after retries: {last_error}")
+    for attempt in range(6):
+        async with _EMBED_SEMAPHORE:
+            try:
+                resp = await client.post(
+                    f"{settings.ai_provider_hub_url}/api/v1/ai/embeddings",
+                    json={"texts": texts, "model": model, "provider": provider},
+                )
+                if resp.status_code == 429:
+                    retry_after = float(resp.headers.get("retry-after", delay))
+                    logger.warning("Embedding 429, backing off %.1fs (attempt %d/6)", retry_after, attempt + 1)
+                    await asyncio.sleep(max(retry_after, delay))
+                    delay = min(delay * 2, 60)
+                    continue
+                resp.raise_for_status()
+                return resp.json()["embeddings"]
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Embedding attempt %d/6 failed: %s", attempt + 1, exc)
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 60)
+    raise RuntimeError(f"embedding request failed after 6 retries: {last_error}")

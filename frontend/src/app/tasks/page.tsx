@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { ListTodo, CheckCircle2, Clock, RotateCw, AlertCircle, PlayCircle, Loader2 } from 'lucide-react'
+import { ListTodo, CheckCircle2, Clock, RotateCw, AlertCircle, PlayCircle, Loader2, Trash2, X } from 'lucide-react'
 
 interface TaskItem {
   id: string
@@ -56,6 +56,26 @@ export default function TaskProgress() {
     }
     await loadTasks()
   }, [loadTasks])
+
+  const deleteTask = useCallback(async (taskId: string) => {
+    const res = await fetch(`/api/omni/knowledge/tasks/${taskId}`, { method: 'DELETE' })
+    const json = (await res.json()) as { success: boolean; error?: string }
+    if (!json.success) setError(json.error || '删除失败')
+    else setTasks(prev => prev.filter(t => t.id !== taskId))
+  }, [])
+
+  const batchDelete = useCallback(async (statusFilter: string) => {
+    const res = await fetch('/api/omni/knowledge/tasks/batch-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: statusFilter }),
+    })
+    const json = (await res.json()) as { success: boolean; data?: { deleted: number }; error?: string }
+    if (!json.success) setError(json.error || '批量删除失败')
+    else await loadTasks()
+  }, [loadTasks])
+
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState<string | null>(null)
 
   const counts = useMemo(() => {
     const by = { queued: 0, running: 0, succeeded: 0, failed: 0 }
@@ -125,6 +145,40 @@ export default function TaskProgress() {
               <div className="flex justify-between"><span>运行中</span><span>{counts.running}</span></div>
               <div className="flex justify-between"><span>已成功</span><span>{counts.succeeded}</span></div>
               <div className="flex justify-between"><span>失败</span><span>{counts.failed}</span></div>
+              <div className="border-t border-gray-100 pt-3 mt-3 space-y-2">
+                {counts.succeeded > 0 && (
+                  confirmBatchDelete === 'succeeded' ? (
+                    <div className="flex items-center gap-1">
+                      <Button variant="destructive" size="sm" className="h-7 text-xs flex-1" onClick={() => { void batchDelete('succeeded'); setConfirmBatchDelete(null) }}>
+                        确认删除 {counts.succeeded} 条
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setConfirmBatchDelete(null)}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="outline" size="sm" className="w-full h-7 text-xs text-gray-500" onClick={() => setConfirmBatchDelete('succeeded')}>
+                      <Trash2 className="w-3 h-3 mr-1" /> 清除已完成
+                    </Button>
+                  )
+                )}
+                {counts.failed > 0 && (
+                  confirmBatchDelete === 'failed' ? (
+                    <div className="flex items-center gap-1">
+                      <Button variant="destructive" size="sm" className="h-7 text-xs flex-1" onClick={() => { void batchDelete('failed'); setConfirmBatchDelete(null) }}>
+                        确认删除 {counts.failed} 条
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setConfirmBatchDelete(null)}>
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="outline" size="sm" className="w-full h-7 text-xs text-red-500" onClick={() => setConfirmBatchDelete('failed')}>
+                      <Trash2 className="w-3 h-3 mr-1" /> 清除失败任务
+                    </Button>
+                  )
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -173,16 +227,24 @@ export default function TaskProgress() {
                             style={{ width: `${task.progress}%` }}
                           />
                         </div>
-                        {task.status === 'failed' ? (
-                          <div className="flex justify-end mt-1">
+                        <div className="flex justify-end mt-1 gap-3">
+                          {task.status === 'failed' && (
                             <button
                               className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
                               onClick={() => void retryTask(task.id)}
                             >
-                              <RotateCw className="w-3 h-3" /> 重试任务
+                              <RotateCw className="w-3 h-3" /> 重试
                             </button>
-                          </div>
-                        ) : null}
+                          )}
+                          {task.status !== 'running' && (
+                            <button
+                              className="text-xs text-gray-400 hover:text-red-600 font-medium flex items-center gap-1 transition-colors"
+                              onClick={() => void deleteTask(task.id)}
+                            >
+                              <Trash2 className="w-3 h-3" /> 删除
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

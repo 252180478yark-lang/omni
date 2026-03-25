@@ -69,6 +69,39 @@ def _build_placeholder_report(
             "cognitive_load": no_llm,
             "audience_persona": no_llm,
         },
+        "douyin_specific": {
+            "content_type": no_llm,
+            "video_format": no_llm,
+            "duration_strategy": {"actual_duration_assessment": no_llm, "optimal_duration_suggestion": no_llm},
+            "hashtag_strategy": {"detected_topics": [], "recommended_topics": [], "topic_heat_assessment": no_llm},
+            "douyin_native_elements": {
+                "sticker_effects": no_llm, "duet_potential": no_llm,
+                "challenge_relevance": no_llm, "poi_usage": no_llm, "shopping_cart": no_llm,
+            },
+            "traffic_pool_prediction": {"estimated_level": no_llm, "breakthrough_factors": [], "risk_factors": []},
+        },
+        "scores": {
+            "overall": 0.0,
+            "dimensions": {
+                "hook_power": {"score": 0.0, "weight": 0.20, "brief": no_llm},
+                "content_value": {"score": 0.0, "weight": 0.15, "brief": no_llm},
+                "visual_quality": {"score": 0.0, "weight": 0.10, "brief": no_llm},
+                "editing_rhythm": {"score": 0.0, "weight": 0.10, "brief": no_llm},
+                "audio_bgm": {"score": 0.0, "weight": 0.10, "brief": no_llm},
+                "copy_script": {"score": 0.0, "weight": 0.10, "brief": no_llm},
+                "interaction_design": {"score": 0.0, "weight": 0.10, "brief": no_llm},
+                "algorithm_friendliness": {"score": 0.0, "weight": 0.10, "brief": no_llm},
+                "commercial_potential": {"score": 0.0, "weight": 0.05, "brief": no_llm},
+            },
+            "replicability": {"score": 0.0, "difficulty": no_llm, "key_barriers": []},
+        },
+        "improvement_suggestions": {
+            "priority_actions": [],
+            "copy_rewrite": {"original_title": "", "suggested_titles": [], "title_optimization_notes": ""},
+            "editing_suggestions": [],
+            "algorithm_optimization": [],
+            "a_b_test_suggestions": [],
+        },
         "ai_insights": {
             "semantic_tags": [],
             "replicability_score": 0.0,
@@ -94,9 +127,17 @@ def _set_llm_notice(
     return report
 
 
-def _build_prompt(context: dict[str, Any] | None = None) -> str:
+def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any] | None = None) -> str:
     prompt = (
-        "你是短视频分析助手。请根据给定视频内容输出严格 JSON，不要额外文字。\n"
+        "你是专业的抖音短视频分析师，精通抖音推荐算法和内容生态。\n"
+        "分析时请基于以下抖音算法核心逻辑：\n"
+        "1. 流量池机制：200→3000→1万→10万→100万，逐级突破\n"
+        "2. 核心指标权重：完播率 > 互动率 > 关注率 > 分享率\n"
+        "3. 前3秒决定70%的完播率\n"
+        "4. 评论区活跃度对流量池升级影响最大\n"
+        "5. 内容与账号标签的一致性影响推荐精准度\n"
+        "\n"
+        "请根据给定视频内容输出严格 JSON，不要额外文字。\n"
         "字段结构如下（所有字段必填，字符串请用中文）：\n"
         "\n"
         "## 情绪曲线 emotion_curve 生成规则\n"
@@ -112,6 +153,20 @@ def _build_prompt(context: dict[str, Any] | None = None) -> str:
         "- 列出视频画面中出现的所有主要视觉元素。\n"
         "- 包括但不限于：人物（数量/角色）、物体、场景背景、文字/花字、品牌/Logo、特效/滤镜、字幕。\n"
         "- 每个元素用简短中文描述，输出为字符串数组。\n"
+        "\n"
+        "## 多维评分 scores 生成规则\n"
+        "- 9 个维度各独立给分（1-10），附带一句话说明 brief。\n"
+        "- overall = 各维度 score × weight 求和（保留 1 位小数）。\n"
+        "- 权重已在 schema 中给出默认值，请直接使用。\n"
+        "- replicability 保留 0-1 分值，附带难度等级和关键壁垒。\n"
+        "\n"
+        "## 改进建议 improvement_suggestions 生成规则\n"
+        "- priority_actions: 列出 3-5 个按紧急度排序的改进项。\n"
+        "- 每个建议必须包含：当前问题 current_issue、具体改法 suggestion、预期效果 expected_impact。\n"
+        "- copy_rewrite: 必须给出 3 个优化版标题 suggested_titles。\n"
+        "- editing_suggestions: 按时间轴标注需要改进的具体秒数。\n"
+        "- algorithm_optimization: 针对抖音算法给出 3-5 条具体操作建议。\n"
+        "- a_b_test_suggestions: 给出 1-2 个 A/B 测试方案。\n"
         "\n"
         "{\n"
         '  "summary": "简要结论（2-3句话概括视频特征与传播潜力）",\n'
@@ -136,11 +191,113 @@ def _build_prompt(context: dict[str, Any] | None = None) -> str:
         "  },\n"
         '  "interaction_algo": {\n'
         '    "bait_points": "", "controversy": "", "cta": "",\n'
-        '    "completion_rate_logic": "", "follow_like_ratio": ""\n'
+        '    "completion_rate_logic": "", "follow_like_ratio": "",\n'
+        '    "completion_rate_design": {\n'
+        '      "hook_strength": "前3秒拦截强度评分(1-10)",\n'
+        '      "loop_design": "是否有循环播放设计（首尾衔接）",\n'
+        '      "progress_bar_suspense": "是否利用进度条制造悬念",\n'
+        '      "duration_content_match": "时长与信息密度匹配度"\n'
+        "    },\n"
+        '    "comment_inducement": {\n'
+        '      "question_type": "提问型/纠错型/投票型/共鸣型/无",\n'
+        '      "controversy_level": "争议度(0-10)",\n'
+        '      "comment_template_prediction": "预测高频评论内容"\n'
+        "    },\n"
+        '    "share_motivation": {\n'
+        '      "utility_value": "实用收藏价值(1-10)",\n'
+        '      "social_currency": "社交货币价值(1-10)",\n'
+        '      "emotional_contagion": "情绪感染力(1-10)"\n'
+        "    },\n"
+        '    "negative_signal_risk": {\n'
+        '      "skip_risk_points": ["可能引发滑走的时间点(秒)"],\n'
+        '      "dislike_risk": "不感兴趣风险因素",\n'
+        '      "report_risk": "举报风险因素（低质/搬运/违规）"\n'
+        "    }\n"
         "  },\n"
         '  "business_strategy": {\n'
         '    "monetization_path": "", "trend_stage": "",\n'
-        '    "cognitive_load": "", "audience_persona": ""\n'
+        '    "cognitive_load": "", "audience_persona": "",\n'
+        '    "dou_plus_assessment": {\n'
+        '      "worth_investing": true,\n'
+        '      "recommended_budget_tier": "低(100-300)/中(500-1000)/高(2000+)",\n'
+        '      "target_audience_suggestion": "投放人群建议",\n'
+        '      "expected_roi_range": "预期 ROI 范围"\n'
+        "    },\n"
+        '    "content_lifecycle_prediction": "内容衰减预期（3天热度/7天长尾/持续常青）",\n'
+        '    "audience_detail": {\n'
+        '      "age_range": "18-24/25-30/31-40/40+",\n'
+        '      "gender_skew": "偏女性/偏男性/均衡",\n'
+        '      "city_tier": "一线/新一线/二三线/下沉市场",\n'
+        '      "interest_tags": ["兴趣标签"],\n'
+        '      "consumption_power": "高/中/低"\n'
+        "    }\n"
+        "  },\n"
+        '  "douyin_specific": {\n'
+        '    "content_type": "知识口播/剧情演绎/好物种草/颜值展示/搞笑段子/技术流/vlog/直播切片/图文轮播",\n'
+        '    "video_format": "竖屏原生/横屏裁切/绿幕合成/分屏对比/图文滑动",\n'
+        '    "duration_strategy": {\n'
+        '      "actual_duration_assessment": "时长与内容量是否匹配",\n'
+        '      "optimal_duration_suggestion": "建议最佳时长"\n'
+        "    },\n"
+        '    "hashtag_strategy": {\n'
+        '      "detected_topics": ["#话题1"],\n'
+        '      "recommended_topics": ["建议增加的话题"],\n'
+        '      "topic_heat_assessment": "话题热度评估"\n'
+        "    },\n"
+        '    "douyin_native_elements": {\n'
+        '      "sticker_effects": "是否使用抖音原生贴纸/特效",\n'
+        '      "duet_potential": "合拍/二创潜力",\n'
+        '      "challenge_relevance": "与热门挑战赛的相关性",\n'
+        '      "poi_usage": "是否使用定位（本地生活相关）",\n'
+        '      "shopping_cart": "是否挂小黄车/商品链接"\n'
+        "    },\n"
+        '    "traffic_pool_prediction": {\n'
+        '      "estimated_level": "初级(200-500)/中级(3k-5k)/高级(1w-10w)/爆款(10w+)",\n'
+        '      "breakthrough_factors": ["有利因素"],\n'
+        '      "risk_factors": ["不利因素"]\n'
+        "    }\n"
+        "  },\n"
+        '  "scores": {\n'
+        '    "overall": 7.0,\n'
+        '    "dimensions": {\n'
+        '      "hook_power":            {"score": 7.0, "weight": 0.20, "brief": ""},\n'
+        '      "content_value":         {"score": 7.0, "weight": 0.15, "brief": ""},\n'
+        '      "visual_quality":        {"score": 7.0, "weight": 0.10, "brief": ""},\n'
+        '      "editing_rhythm":        {"score": 7.0, "weight": 0.10, "brief": ""},\n'
+        '      "audio_bgm":             {"score": 7.0, "weight": 0.10, "brief": ""},\n'
+        '      "copy_script":           {"score": 7.0, "weight": 0.10, "brief": ""},\n'
+        '      "interaction_design":    {"score": 7.0, "weight": 0.10, "brief": ""},\n'
+        '      "algorithm_friendliness":{"score": 7.0, "weight": 0.10, "brief": ""},\n'
+        '      "commercial_potential":  {"score": 7.0, "weight": 0.05, "brief": ""}\n'
+        "    },\n"
+        '    "replicability": {\n'
+        '      "score": 0.5,\n'
+        '      "difficulty": "中等",\n'
+        '      "key_barriers": ["壁垒1"]\n'
+        "    }\n"
+        "  },\n"
+        '  "improvement_suggestions": {\n'
+        '    "priority_actions": [\n'
+        "      {\n"
+        '        "category": "hook_optimization/interaction_boost/bgm_upgrade/copy_improvement/editing_fix/other",\n'
+        '        "urgency": "high/medium/low",\n'
+        '        "current_issue": "当前问题描述",\n'
+        '        "suggestion": "具体改进方法",\n'
+        '        "expected_impact": "预期效果"\n'
+        "      }\n"
+        "    ],\n"
+        '    "copy_rewrite": {\n'
+        '      "original_title": "原标题或推测标题",\n'
+        '      "suggested_titles": ["优化标题1", "优化标题2", "优化标题3"],\n'
+        '      "title_optimization_notes": "标题优化思路"\n'
+        "    },\n"
+        '    "editing_suggestions": [\n'
+        '      {"timestamp_sec": 0, "suggestion": "具体秒数的剪辑改进建议"}\n'
+        "    ],\n"
+        '    "algorithm_optimization": ["针对抖音算法的具体操作建议"],\n'
+        '    "a_b_test_suggestions": [\n'
+        '      {"variable": "测试变量", "version_a": "当前方案", "version_b": "建议测试方案"}\n'
+        "    ]\n"
         "  },\n"
         '  "ai_insights": {\n'
         '    "semantic_tags": [], "replicability_score": 0.0,\n'
@@ -151,6 +308,25 @@ def _build_prompt(context: dict[str, Any] | None = None) -> str:
     if context:
         prompt += "\n以下是从视频中提取的辅助信息（可作为参考）：\n"
         prompt += json.dumps(context, ensure_ascii=False, indent=2)
+    if metrics:
+        prompt += (
+            "\n\n以下是该视频在抖音的实际表现数据：\n"
+            + json.dumps(metrics, ensure_ascii=False, indent=2)
+            + "\n\n请基于内容分析结果和实际数据进行归因分析：\n"
+            "1. 数据表现与内容质量是否匹配？\n"
+            "2. 如果数据好，归因到具体哪些内容因素\n"
+            "3. 如果数据差，找出内容层面的具体瓶颈\n"
+            "4. 对比同类型视频的典型数据，给出相对评价\n"
+            "\n请将归因分析结果放入 performance_attribution 字段：\n"
+            '{\n'
+            '  "performance_attribution": {\n'
+            '    "data_vs_content_alignment": "高度匹配/内容优于数据/数据优于内容",\n'
+            '    "positive_factors": [{"factor": "", "estimated_contribution": ""}],\n'
+            '    "negative_factors": [{"factor": "", "estimated_contribution": ""}],\n'
+            '    "benchmark": {"category_avg_completion_rate": 0.35, "actual_vs_benchmark": ""}\n'
+            "  }\n"
+            "}\n"
+        )
     return prompt
 
 
@@ -281,6 +457,77 @@ def _coerce_report(report: dict[str, Any], fallback: dict[str, Any]) -> dict[str
     bs["cognitive_load"] = _ensure_str(bs.get("cognitive_load"), fallback["business_strategy"]["cognitive_load"])
     bs["audience_persona"] = _ensure_str(bs.get("audience_persona"), fallback["business_strategy"]["audience_persona"])
 
+    # --- douyin_specific ---
+    report["douyin_specific"] = _ensure_dict(report.get("douyin_specific"), fallback.get("douyin_specific", {}))
+    dy = report["douyin_specific"]
+    dy["content_type"] = _ensure_str(dy.get("content_type"), fallback.get("douyin_specific", {}).get("content_type", ""))
+    dy["video_format"] = _ensure_str(dy.get("video_format"), fallback.get("douyin_specific", {}).get("video_format", ""))
+    dy["duration_strategy"] = _ensure_dict(dy.get("duration_strategy"), fallback.get("douyin_specific", {}).get("duration_strategy", {}))
+    dy["hashtag_strategy"] = _ensure_dict(dy.get("hashtag_strategy"), fallback.get("douyin_specific", {}).get("hashtag_strategy", {}))
+    hs = dy["hashtag_strategy"]
+    hs["detected_topics"] = _ensure_list(hs.get("detected_topics"), [])
+    hs["recommended_topics"] = _ensure_list(hs.get("recommended_topics"), [])
+    dy["douyin_native_elements"] = _ensure_dict(dy.get("douyin_native_elements"), fallback.get("douyin_specific", {}).get("douyin_native_elements", {}))
+    dy["traffic_pool_prediction"] = _ensure_dict(dy.get("traffic_pool_prediction"), fallback.get("douyin_specific", {}).get("traffic_pool_prediction", {}))
+    tp = dy["traffic_pool_prediction"]
+    tp["breakthrough_factors"] = _ensure_list(tp.get("breakthrough_factors"), [])
+    tp["risk_factors"] = _ensure_list(tp.get("risk_factors"), [])
+
+    # --- scores ---
+    report["scores"] = _ensure_dict(report.get("scores"), fallback.get("scores", {}))
+    sc = report["scores"]
+    sc["overall"] = _ensure_float(sc.get("overall"), 0.0)
+    sc["dimensions"] = _ensure_dict(sc.get("dimensions"), fallback.get("scores", {}).get("dimensions", {}))
+    for dim_key in ("hook_power", "content_value", "visual_quality", "editing_rhythm",
+                     "audio_bgm", "copy_script", "interaction_design", "algorithm_friendliness", "commercial_potential"):
+        dim = sc["dimensions"].get(dim_key)
+        if not isinstance(dim, dict):
+            dim = fallback.get("scores", {}).get("dimensions", {}).get(dim_key, {"score": 0.0, "weight": 0.1, "brief": ""})
+        dim["score"] = _ensure_float(dim.get("score"), 0.0)
+        dim["weight"] = _ensure_float(dim.get("weight"), 0.1)
+        dim["brief"] = _ensure_str(dim.get("brief"), "")
+        sc["dimensions"][dim_key] = dim
+    sc["replicability"] = _ensure_dict(sc.get("replicability"), fallback.get("scores", {}).get("replicability", {}))
+    rep = sc["replicability"]
+    rep["score"] = _ensure_float(rep.get("score"), 0.0)
+    rep["difficulty"] = _ensure_str(rep.get("difficulty"), "")
+    rep["key_barriers"] = _ensure_list(rep.get("key_barriers"), [])
+
+    # --- improvement_suggestions ---
+    report["improvement_suggestions"] = _ensure_dict(report.get("improvement_suggestions"), fallback.get("improvement_suggestions", {}))
+    imp = report["improvement_suggestions"]
+    if not isinstance(imp.get("priority_actions"), list):
+        imp["priority_actions"] = []
+    for action in imp["priority_actions"]:
+        if isinstance(action, dict):
+            action["category"] = _ensure_str(action.get("category"), "other")
+            action["urgency"] = _ensure_str(action.get("urgency"), "medium")
+            action["current_issue"] = _ensure_str(action.get("current_issue"), "")
+            action["suggestion"] = _ensure_str(action.get("suggestion"), "")
+            action["expected_impact"] = _ensure_str(action.get("expected_impact"), "")
+    imp["copy_rewrite"] = _ensure_dict(imp.get("copy_rewrite"), {"original_title": "", "suggested_titles": [], "title_optimization_notes": ""})
+    cr = imp["copy_rewrite"]
+    cr["original_title"] = _ensure_str(cr.get("original_title"), "")
+    cr["suggested_titles"] = _ensure_list(cr.get("suggested_titles"), [])
+    cr["title_optimization_notes"] = _ensure_str(cr.get("title_optimization_notes"), "")
+    if not isinstance(imp.get("editing_suggestions"), list):
+        imp["editing_suggestions"] = []
+    imp["algorithm_optimization"] = _ensure_list(imp.get("algorithm_optimization"), [])
+    if not isinstance(imp.get("a_b_test_suggestions"), list):
+        imp["a_b_test_suggestions"] = []
+
+    # --- performance_attribution (optional, only when metrics provided) ---
+    if "performance_attribution" in report:
+        pa = report["performance_attribution"]
+        if isinstance(pa, dict):
+            pa["data_vs_content_alignment"] = _ensure_str(pa.get("data_vs_content_alignment"), "")
+            if not isinstance(pa.get("positive_factors"), list):
+                pa["positive_factors"] = []
+            if not isinstance(pa.get("negative_factors"), list):
+                pa["negative_factors"] = []
+            pa["benchmark"] = _ensure_dict(pa.get("benchmark"), {})
+
+    # --- ai_insights ---
     report["ai_insights"] = _ensure_dict(report.get("ai_insights"), fallback["ai_insights"])
     ai = report["ai_insights"]
     ai["semantic_tags"] = _ensure_list(ai.get("semantic_tags"), fallback["ai_insights"]["semantic_tags"])
@@ -323,6 +570,7 @@ def analyze_video(
     original_name: str,
     video_path: Path,
     context: dict[str, Any] | None = None,
+    metrics: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any] | None, bool]:
     fallback = _build_placeholder_report(video_id, original_name, context)
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -417,7 +665,7 @@ def analyze_video(
         last_err = None
         for attempt in range(3):
             try:
-                response = model.generate_content([video_file, _build_prompt(context)])
+                response = model.generate_content([video_file, _build_prompt(context, metrics)])
                 break
             except Exception as e:
                 last_err = e
@@ -469,6 +717,9 @@ def render_markdown(report: dict[str, Any], emotion_curve: list[dict[str, float]
     interaction_algo = report.get("interaction_algo", {}) if isinstance(report.get("interaction_algo"), dict) else {}
     business_strategy = report.get("business_strategy", {}) if isinstance(report.get("business_strategy"), dict) else {}
     ai_insights = report.get("ai_insights", {}) if isinstance(report.get("ai_insights"), dict) else {}
+    douyin_specific = report.get("douyin_specific", {}) if isinstance(report.get("douyin_specific"), dict) else {}
+    scores = report.get("scores", {}) if isinstance(report.get("scores"), dict) else {}
+    improvement = report.get("improvement_suggestions", {}) if isinstance(report.get("improvement_suggestions"), dict) else {}
 
     seo_keywords = copy_logic.get("seo_keywords", [])
     if not isinstance(seo_keywords, list):
@@ -483,12 +734,173 @@ def render_markdown(report: dict[str, Any], emotion_curve: list[dict[str, float]
     curve_tip = "已生成情绪曲线图与结构化数据。" if emotion_curve else "未生成情绪曲线（需启用多模态 LLM）。"
     curve_preview = emotion_curve[:10] if emotion_curve else []
 
+    # scores rendering
+    dims = scores.get("dimensions", {})
+    score_lines: list[str] = []
+    if dims and isinstance(dims, dict):
+        score_lines.append(f"- **综合评分**：{scores.get('overall', 0)}/10")
+        dim_labels = {
+            "hook_power": "钩子力", "content_value": "内容价值", "visual_quality": "画面质量",
+            "editing_rhythm": "剪辑节奏", "audio_bgm": "音频/BGM", "copy_script": "文案脚本",
+            "interaction_design": "互动设计", "algorithm_friendliness": "算法友好度", "commercial_potential": "商业潜力",
+        }
+        for key, label in dim_labels.items():
+            d = dims.get(key, {})
+            if isinstance(d, dict):
+                score_lines.append(f"- **{label}**：{d.get('score', 0)}/10（权重 {d.get('weight', 0)}）— {d.get('brief', '')}")
+        rep = scores.get("replicability", {})
+        if isinstance(rep, dict):
+            barriers = rep.get("key_barriers", [])
+            barrier_text = "、".join(barriers) if isinstance(barriers, list) else str(barriers)
+            score_lines.append(f"- **复刻可行性**：{rep.get('score', 0)}，难度 {rep.get('difficulty', '')}，壁垒：{barrier_text}")
+
+    # improvement rendering
+    imp_lines: list[str] = []
+    actions = improvement.get("priority_actions", [])
+    if isinstance(actions, list):
+        for i, act in enumerate(actions, 1):
+            if isinstance(act, dict):
+                urgency = act.get("urgency", "")
+                imp_lines.append(f"### 优先改进 {i}（{urgency}）")
+                imp_lines.append(f"- **问题**：{act.get('current_issue', '')}")
+                imp_lines.append(f"- **建议**：{act.get('suggestion', '')}")
+                imp_lines.append(f"- **预期效果**：{act.get('expected_impact', '')}")
+                imp_lines.append("")
+    cr = improvement.get("copy_rewrite", {})
+    if isinstance(cr, dict) and cr.get("suggested_titles"):
+        imp_lines.append("### 标题优化建议")
+        imp_lines.append(f"- **原标题**：{cr.get('original_title', '')}")
+        for j, title in enumerate(cr.get("suggested_titles", []), 1):
+            imp_lines.append(f"- **方案 {j}**：{title}")
+        imp_lines.append(f"- **优化思路**：{cr.get('title_optimization_notes', '')}")
+        imp_lines.append("")
+    algo_opt = improvement.get("algorithm_optimization", [])
+    if isinstance(algo_opt, list) and algo_opt:
+        imp_lines.append("### 算法优化建议")
+        for tip in algo_opt:
+            imp_lines.append(f"- {tip}")
+        imp_lines.append("")
+    edit_sug = improvement.get("editing_suggestions", [])
+    if isinstance(edit_sug, list) and edit_sug:
+        imp_lines.append("### 剪辑改进建议")
+        for es in edit_sug:
+            if isinstance(es, dict):
+                imp_lines.append(f"- **{es.get('timestamp_sec', '?')}s**：{es.get('suggestion', '')}")
+        imp_lines.append("")
+    ab = improvement.get("a_b_test_suggestions", [])
+    if isinstance(ab, list) and ab:
+        imp_lines.append("### A/B 测试方案")
+        for t in ab:
+            if isinstance(t, dict):
+                imp_lines.append(f"- **{t.get('variable', '')}**：A={t.get('version_a', '')} vs B={t.get('version_b', '')}")
+        imp_lines.append("")
+
+    # douyin specific rendering
+    dy_lines: list[str] = []
+    if douyin_specific:
+        dy_lines.append(line("内容类型", str(douyin_specific.get("content_type", ""))))
+        dy_lines.append(line("视频格式", str(douyin_specific.get("video_format", ""))))
+        ds = douyin_specific.get("duration_strategy", {})
+        if isinstance(ds, dict):
+            dy_lines.append(line("时长评估", str(ds.get("actual_duration_assessment", ""))))
+            dy_lines.append(line("建议时长", str(ds.get("optimal_duration_suggestion", ""))))
+        hs = douyin_specific.get("hashtag_strategy", {})
+        if isinstance(hs, dict):
+            detected = hs.get("detected_topics", [])
+            recommended = hs.get("recommended_topics", [])
+            dy_lines.append(line("检测到的话题", "、".join(detected) if isinstance(detected, list) else str(detected)))
+            dy_lines.append(line("推荐话题", "、".join(recommended) if isinstance(recommended, list) else str(recommended)))
+            dy_lines.append(line("话题热度", str(hs.get("topic_heat_assessment", ""))))
+        dne = douyin_specific.get("douyin_native_elements", {})
+        if isinstance(dne, dict):
+            dy_lines.append(line("贴纸/特效", str(dne.get("sticker_effects", ""))))
+            dy_lines.append(line("合拍潜力", str(dne.get("duet_potential", ""))))
+            dy_lines.append(line("挑战赛关联", str(dne.get("challenge_relevance", ""))))
+            dy_lines.append(line("定位/POI", str(dne.get("poi_usage", ""))))
+            dy_lines.append(line("小黄车/商品", str(dne.get("shopping_cart", ""))))
+        tp = douyin_specific.get("traffic_pool_prediction", {})
+        if isinstance(tp, dict):
+            dy_lines.append(line("流量池预测", str(tp.get("estimated_level", ""))))
+            bf = tp.get("breakthrough_factors", [])
+            rf = tp.get("risk_factors", [])
+            dy_lines.append(line("有利因素", "、".join(bf) if isinstance(bf, list) else str(bf)))
+            dy_lines.append(line("风险因素", "、".join(rf) if isinstance(rf, list) else str(rf)))
+
+    # interaction_algo enhanced sub-fields
+    ia_extra_lines: list[str] = []
+    crd = interaction_algo.get("completion_rate_design", {})
+    if isinstance(crd, dict) and any(crd.values()):
+        ia_extra_lines.append(line("前3秒拦截强度", str(crd.get("hook_strength", ""))))
+        ia_extra_lines.append(line("循环播放设计", str(crd.get("loop_design", ""))))
+        ia_extra_lines.append(line("进度条悬念", str(crd.get("progress_bar_suspense", ""))))
+        ia_extra_lines.append(line("时长-密度匹配", str(crd.get("duration_content_match", ""))))
+    ci = interaction_algo.get("comment_inducement", {})
+    if isinstance(ci, dict) and any(ci.values()):
+        ia_extra_lines.append(line("评论引导类型", str(ci.get("question_type", ""))))
+        ia_extra_lines.append(line("争议度", str(ci.get("controversy_level", ""))))
+        ia_extra_lines.append(line("预测高频评论", str(ci.get("comment_template_prediction", ""))))
+    sm = interaction_algo.get("share_motivation", {})
+    if isinstance(sm, dict) and any(sm.values()):
+        ia_extra_lines.append(line("实用价值", str(sm.get("utility_value", ""))))
+        ia_extra_lines.append(line("社交货币", str(sm.get("social_currency", ""))))
+        ia_extra_lines.append(line("情绪感染力", str(sm.get("emotional_contagion", ""))))
+    nsr = interaction_algo.get("negative_signal_risk", {})
+    if isinstance(nsr, dict) and any(nsr.values()):
+        skip_pts = nsr.get("skip_risk_points", [])
+        ia_extra_lines.append(line("滑走风险点", "、".join(str(p) for p in skip_pts) if isinstance(skip_pts, list) else str(skip_pts)))
+        ia_extra_lines.append(line("不感兴趣风险", str(nsr.get("dislike_risk", ""))))
+        ia_extra_lines.append(line("举报风险", str(nsr.get("report_risk", ""))))
+
+    # business_strategy enhanced sub-fields
+    bs_extra_lines: list[str] = []
+    dp = business_strategy.get("dou_plus_assessment", {})
+    if isinstance(dp, dict) and any(dp.values()):
+        bs_extra_lines.append(line("DOU+投放建议", f"{'值得投放' if dp.get('worth_investing') else '不建议投放'}"))
+        bs_extra_lines.append(line("建议预算", str(dp.get("recommended_budget_tier", ""))))
+        bs_extra_lines.append(line("投放人群", str(dp.get("target_audience_suggestion", ""))))
+        bs_extra_lines.append(line("预期ROI", str(dp.get("expected_roi_range", ""))))
+    if business_strategy.get("content_lifecycle_prediction"):
+        bs_extra_lines.append(line("内容生命周期", str(business_strategy["content_lifecycle_prediction"])))
+    ad = business_strategy.get("audience_detail", {})
+    if isinstance(ad, dict) and any(ad.values()):
+        bs_extra_lines.append(line("年龄段", str(ad.get("age_range", ""))))
+        bs_extra_lines.append(line("性别偏向", str(ad.get("gender_skew", ""))))
+        bs_extra_lines.append(line("城市线级", str(ad.get("city_tier", ""))))
+        tags = ad.get("interest_tags", [])
+        bs_extra_lines.append(line("兴趣标签", "、".join(tags) if isinstance(tags, list) else str(tags)))
+        bs_extra_lines.append(line("消费力", str(ad.get("consumption_power", ""))))
+
+    # performance_attribution (when metrics were provided)
+    pa_lines: list[str] = []
+    pa = report.get("performance_attribution")
+    if isinstance(pa, dict):
+        pa_lines.append(line("数据与内容匹配度", str(pa.get("data_vs_content_alignment", ""))))
+        for pf in pa.get("positive_factors", []):
+            if isinstance(pf, dict):
+                pa_lines.append(f"  - ✅ {pf.get('factor', '')}（{pf.get('estimated_contribution', '')}）")
+        for nf in pa.get("negative_factors", []):
+            if isinstance(nf, dict):
+                pa_lines.append(f"  - ❌ {nf.get('factor', '')}（{nf.get('estimated_contribution', '')}）")
+        bm = pa.get("benchmark", {})
+        if isinstance(bm, dict):
+            pa_lines.append(line("同类均值完播率", str(bm.get("category_avg_completion_rate", ""))))
+            pa_lines.append(line("对比基准", str(bm.get("actual_vs_benchmark", ""))))
+
     md = [
-        "# 短视频多维度分析报告",
+        "# 短视频多维度分析报告（抖音特化）",
         "",
         "## 概览",
         str(report.get("summary", "")),
         "",
+    ]
+
+    # Scores section
+    if score_lines:
+        md.append("## 多维评分")
+        md.extend(score_lines)
+        md.append("")
+
+    md.extend([
         "## 画面视觉",
         line("构图与景别", f"{visual.get('composition', '')} / {visual.get('shot_type', '')}"),
         line("光影色调", str(visual.get("lighting_tone", ""))),
@@ -524,17 +936,47 @@ def render_markdown(report: dict[str, Any], emotion_curve: list[dict[str, float]
         line("CTA", str(interaction_algo.get("cta", ""))),
         line("完播率逻辑", str(interaction_algo.get("completion_rate_logic", ""))),
         line("粉赞比预测", str(interaction_algo.get("follow_like_ratio", ""))),
-        "",
+    ])
+    if ia_extra_lines:
+        md.extend(ia_extra_lines)
+    md.append("")
+
+    md.extend([
         "## 商业与战略",
         line("变现路径", str(business_strategy.get("monetization_path", ""))),
         line("趋势定位", str(business_strategy.get("trend_stage", ""))),
         line("认知负荷", str(business_strategy.get("cognitive_load", ""))),
         line("受众画像", str(business_strategy.get("audience_persona", ""))),
-        "",
+    ])
+    if bs_extra_lines:
+        md.extend(bs_extra_lines)
+    md.append("")
+
+    # Douyin specific
+    if dy_lines:
+        md.append("## 抖音特化分析")
+        md.extend(dy_lines)
+        md.append("")
+
+    # Performance attribution
+    if pa_lines:
+        md.append("## 数据归因分析")
+        md.extend(pa_lines)
+        md.append("")
+
+    md.extend([
         "## AI 深度洞察",
         line("语义标签", "、".join(semantic_tags)),
         line("复刻可行性评分", str(ai_insights.get("replicability_score", ""))),
         "",
+    ])
+
+    # Improvement suggestions
+    if imp_lines:
+        md.append("## 改进建议")
+        md.extend(imp_lines)
+
+    md.extend([
         "## 情绪曲线（示意）",
         curve_tip,
         "",
@@ -547,24 +989,57 @@ def render_markdown(report: dict[str, Any], emotion_curve: list[dict[str, float]
         "```json",
         json.dumps(report.get("analysis_inputs", {}), ensure_ascii=False, indent=2, default=str)[:2000],
         "```",
-    ]
+    ])
     return "\n".join(md)
 
 
 def render_text(report: dict[str, Any]) -> str:
+    scores = report.get("scores", {})
+    dims = scores.get("dimensions", {}) if isinstance(scores, dict) else {}
+    dim_labels = {
+        "hook_power": "钩子力", "content_value": "内容价值", "visual_quality": "画面质量",
+        "editing_rhythm": "剪辑节奏", "audio_bgm": "音频/BGM", "copy_script": "文案脚本",
+        "interaction_design": "互动设计", "algorithm_friendliness": "算法友好度", "commercial_potential": "商业潜力",
+    }
+    score_text = ""
+    if isinstance(dims, dict) and dims:
+        score_text = f"综合评分：{scores.get('overall', 0)}/10\n"
+        for key, label in dim_labels.items():
+            d = dims.get(key, {})
+            if isinstance(d, dict):
+                score_text += f"  {label}：{d.get('score', 0)}/10 — {d.get('brief', '')}\n"
+
+    imp = report.get("improvement_suggestions", {})
+    imp_text = ""
+    if isinstance(imp, dict):
+        actions = imp.get("priority_actions", [])
+        if isinstance(actions, list) and actions:
+            imp_text = "改进建议：\n"
+            for i, act in enumerate(actions, 1):
+                if isinstance(act, dict):
+                    imp_text += f"  {i}. [{act.get('urgency', '')}] {act.get('current_issue', '')} → {act.get('suggestion', '')}（{act.get('expected_impact', '')}）\n"
+
     parts = [
-        "短视频多维度分析报告",
+        "短视频多维度分析报告（抖音特化）",
         "",
         f"概览：{report.get('summary', '')}",
         "",
-        f"画面视觉：{report.get('visual', {})}",
-        f"BGM 与音效：{report.get('bgm_audio', {})}",
-        f"剪辑节奏：{report.get('editing_rhythm', {})}",
-        f"文案与逻辑：{report.get('copy_logic', {})}",
-        f"互动与算法：{report.get('interaction_algo', {})}",
-        f"商业与战略：{report.get('business_strategy', {})}",
-        f"AI 洞察：{report.get('ai_insights', {})}",
     ]
+    if score_text:
+        parts.append(score_text)
+    parts.extend([
+        f"画面视觉：{json.dumps(report.get('visual', {}), ensure_ascii=False, default=str)}",
+        f"BGM 与音效：{json.dumps(report.get('bgm_audio', {}), ensure_ascii=False, default=str)}",
+        f"剪辑节奏：{json.dumps(report.get('editing_rhythm', {}), ensure_ascii=False, default=str)}",
+        f"文案与逻辑：{json.dumps(report.get('copy_logic', {}), ensure_ascii=False, default=str)}",
+        f"互动与算法：{json.dumps(report.get('interaction_algo', {}), ensure_ascii=False, default=str)}",
+        f"商业与战略：{json.dumps(report.get('business_strategy', {}), ensure_ascii=False, default=str)}",
+        f"抖音特化：{json.dumps(report.get('douyin_specific', {}), ensure_ascii=False, default=str)}",
+        f"AI 洞察：{json.dumps(report.get('ai_insights', {}), ensure_ascii=False, default=str)}",
+        "",
+    ])
+    if imp_text:
+        parts.append(imp_text)
     return "\n".join(parts)
 
 

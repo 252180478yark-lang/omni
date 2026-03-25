@@ -31,8 +31,33 @@ class Settings(BaseSettings):
     rag_top_k: int = 10
     rag_score_threshold: float = 0.3
 
+    # RAG Advanced — query enhancement
+    rag_query_rewrite: bool = True
+    rag_hyde: bool = True
+    rag_subquery: bool = True
+    rag_subquery_max: int = 3
+
+    # RAG Advanced — reranking
+    rag_cross_encoder_rerank: bool = True
+    rag_rerank_top_n: int = 5
+
+    # RAG Advanced — context
+    rag_context_window: int = 1
+    rag_contextual_compression: bool = True
+
+    # RAG Advanced — CRAG
+    rag_crag_enabled: bool = True
+
+    # Indexing — chunk headers
+    chunk_contextual_headers: bool = True
+
+    # Indexing — HyPE (hypothetical prompt embeddings)
+    hype_enabled: bool = True
+    hype_questions_per_chunk: int = 3
+
     # Harvester
     harvester_auth_state: str = "/app/data/harvester_auth.json"
+    feishu_auth_state: str = "/app/data/feishu_auth.json"
 
     # Legacy SQLite fallback (kept for backward compat)
     database_path: str = "/app/data/knowledge.db"

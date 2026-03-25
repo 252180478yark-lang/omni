@@ -4,7 +4,8 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 interface RAGBody {
-  kb_id: string
+  kb_id?: string
+  kb_ids?: string[]
   query: string
   top_k?: number
   model?: string
@@ -53,3 +54,8 @@ export async function POST(request: Request) {
     return Response.json({ success: false, error: String(error) }, { status: 500 })
   }
 }
+
+/**
+ * POST /api/omni/knowledge/rag/evaluate — proxy to evaluate endpoint
+ * (handled by Next.js catch-all via evaluate/route.ts)
+ */

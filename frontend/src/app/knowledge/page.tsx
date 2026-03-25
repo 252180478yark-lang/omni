@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
-import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2, File, X, CheckCircle, Loader2, Globe, ChevronDown, ChevronRight, Eye } from 'lucide-react'
+import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2, File, X, CheckCircle, Loader2, Globe, ChevronDown, ChevronRight, Eye, BarChart3 } from 'lucide-react'
 
 interface KnowledgeBaseItem {
   id: string
@@ -284,6 +284,11 @@ export default function KnowledgeBaseConfig() {
               <Link href="/knowledge/harvester">
                 <Button variant="outline" size="sm" className="hidden md:flex rounded-full text-xs text-blue-600 border-blue-200 hover:bg-blue-50">
                   <Globe className="w-3.5 h-3.5 mr-1" /> 知识采集
+                </Button>
+              </Link>
+              <Link href="/knowledge/evaluate">
+                <Button variant="outline" size="sm" className="hidden md:flex rounded-full text-xs text-orange-600 border-orange-200 hover:bg-orange-50">
+                  <BarChart3 className="w-3.5 h-3.5 mr-1" /> RAG 评估
                 </Button>
               </Link>
               <Link href="/tasks">

@@ -23,6 +23,13 @@ export interface VideoResult {
   estimated_seconds?: number
 }
 
+export interface RetrievalMeta {
+  graph_rag_used: boolean
+  graph_context_preview: string
+  kb_count?: number
+  crag_verdict?: string
+}
+
 export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
@@ -31,12 +38,14 @@ export interface ChatMessage {
   sources?: SourceRef[]
   images?: ImageResult[]
   video?: VideoResult
+  retrieval?: RetrievalMeta
   timestamp: number
   loading?: boolean
 }
 
 interface ChatState {
   kbId: string
+  kbIds: string[]
   sessionId: string
   outputMode: OutputMode
   messages: ChatMessage[]
@@ -44,11 +53,13 @@ interface ChatState {
   abortController: AbortController | null
 
   setKbId: (id: string) => void
+  setKbIds: (ids: string[]) => void
+  toggleKbId: (id: string) => void
   setOutputMode: (mode: OutputMode) => void
   addUserMessage: (content: string, mode: OutputMode) => string
   startAssistant: (id: string, mode: OutputMode) => void
   appendToken: (id: string, token: string) => void
-  finishAssistant: (id: string, sources: SourceRef[]) => void
+  finishAssistant: (id: string, sources: SourceRef[], retrieval?: RetrievalMeta) => void
   finishAssistantImage: (id: string, images: ImageResult[]) => void
   finishAssistantVideo: (id: string, video: VideoResult) => void
   failAssistant: (id: string, error: string) => void
@@ -69,13 +80,22 @@ function sessionUid() {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const useChatStore = create<ChatState>((set, get) => ({
   kbId: '',
+  kbIds: [],
   sessionId: sessionUid(),
   outputMode: 'text',
   messages: [],
   streaming: false,
   abortController: null,
 
-  setKbId: (id) => set({ kbId: id }),
+  setKbId: (id) => set({ kbId: id, kbIds: [id] }),
+  setKbIds: (ids) => set({ kbIds: ids, kbId: ids[0] || '' }),
+  toggleKbId: (id) =>
+    set((s) => {
+      const next = s.kbIds.includes(id)
+        ? s.kbIds.filter((k) => k !== id)
+        : [...s.kbIds, id]
+      return { kbIds: next, kbId: next[0] || '' }
+    }),
   setOutputMode: (mode) => set({ outputMode: mode }),
 
   addUserMessage: (content, mode) => {
@@ -104,10 +124,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ),
     })),
 
-  finishAssistant: (id, sources) =>
+  finishAssistant: (id, sources, retrieval) =>
     set((s) => ({
       messages: s.messages.map((m) =>
-        m.id === id ? { ...m, loading: false, sources } : m,
+        m.id === id ? { ...m, loading: false, sources, retrieval } : m,
       ),
     })),
 

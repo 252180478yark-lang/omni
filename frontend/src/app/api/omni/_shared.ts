@@ -32,7 +32,14 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     cache: 'no-store',
   })
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`)
+    let detail = ''
+    try {
+      const body = await response.json()
+      detail = body?.detail || body?.error || body?.message || ''
+    } catch {
+      try { detail = await response.text() } catch { /* noop */ }
+    }
+    throw new Error(detail || `${response.status} ${response.statusText}`)
   }
   return (await response.json()) as T
 }

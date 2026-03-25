@@ -12,9 +12,12 @@ from app.schemas import (
     SearchRequest,
 )
 from app.services.ingestion import (
+    batch_delete_tasks,
+    batch_retry_failed,
     create_kb_with_profile,
     delete_document,
     delete_kb,
+    delete_task,
     get_document,
     get_graph,
     get_kb,
@@ -24,6 +27,7 @@ from app.services.ingestion import (
     list_documents,
     list_kbs,
     list_tasks,
+    rebuild_kb,
     retry_task,
     search_chunks,
     submit_ingestion_task,
@@ -136,6 +140,33 @@ async def retry(task_id: str) -> dict:
     return {"code": 202, "message": "accepted", "data": {"task_id": new_task_id}}
 
 
+@router.post("/tasks/batch-retry", status_code=status.HTTP_202_ACCEPTED)
+async def batch_retry(payload: dict = {}) -> dict:
+    """Retry all failed tasks, optionally filtered by kb_id."""
+    kb_id = payload.get("kb_id")
+    result = await batch_retry_failed(kb_id=kb_id)
+    return {"code": 202, "message": "accepted", "data": result}
+
+
+@router.delete("/tasks/{task_id}")
+async def remove_task(task_id: str) -> dict:
+    ok = await delete_task(task_id)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="task not found")
+    return {"code": 200, "message": "success", "data": {"deleted": True}}
+
+
+@router.post("/tasks/batch-delete")
+async def batch_delete(payload: dict = {}) -> dict:
+    """Delete tasks by status filter, kb_id, or explicit task_ids list."""
+    result = await batch_delete_tasks(
+        status_filter=payload.get("status"),
+        kb_id=payload.get("kb_id"),
+        task_ids=payload.get("task_ids"),
+    )
+    return {"code": 200, "message": "success", "data": result}
+
+
 # ═══ Search ═══
 
 @router.post("/query")
@@ -183,24 +214,37 @@ async def search(payload: SearchRequest) -> dict:
 
 @router.post("/rag")
 async def rag(payload: RAGRequest) -> dict:
-    """RAG query: retrieves context from knowledge base and generates an answer via LLM."""
+    """RAG query: retrieves context from one or more knowledge bases and generates an answer via LLM."""
     from app.services.rag_chain import rag_query, rag_stream
 
-    if not await get_kb(payload.kb_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
+    kb_ids = payload.resolved_kb_ids()
+    if not kb_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="at least one kb_id is required")
 
-    kb = await get_kb(payload.kb_id)
+    kbs: list[dict] = []
+    for kid in kb_ids:
+        kb = await get_kb(kid)
+        if not kb:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"knowledge base {kid} not found")
+        kbs.append(kb)
+
+    kb_embedding_map = {
+        kb["id"]: {
+            "embedding_model": kb.get("embedding_model"),
+            "embedding_provider": kb.get("embedding_provider"),
+        }
+        for kb in kbs
+    }
 
     if payload.stream:
         async def event_gen() -> AsyncGenerator[dict[str, str], None]:
             async for chunk in rag_stream(
-                kb_id=payload.kb_id,
+                kb_ids=kb_ids,
                 query=payload.query,
                 top_k=payload.top_k,
                 model=payload.model,
                 provider=payload.provider,
-                embedding_model=kb["embedding_model"] if kb else None,
-                embedding_provider=kb.get("embedding_provider") if kb else None,
+                kb_embedding_map=kb_embedding_map,
                 session_id=payload.session_id,
             ):
                 yield {"event": "message", "data": json.dumps(chunk, ensure_ascii=False)}
@@ -208,15 +252,58 @@ async def rag(payload: RAGRequest) -> dict:
         return EventSourceResponse(event_gen())
 
     result = await rag_query(
-        kb_id=payload.kb_id,
+        kb_ids=kb_ids,
         query=payload.query,
         top_k=payload.top_k,
         model=payload.model,
         provider=payload.provider,
-        embedding_model=kb["embedding_model"] if kb else None,
-        embedding_provider=kb.get("embedding_provider") if kb else None,
+        kb_embedding_map=kb_embedding_map,
         session_id=payload.session_id,
     )
+    return {"code": 200, "message": "success", "data": result}
+
+
+# ═══ RAG Evaluation ═══
+
+@router.post("/rag/evaluate")
+async def rag_evaluate(payload: dict) -> dict:
+    """A/B evaluation: compare RAG with all optimizations vs baseline."""
+    from app.services.rag_evaluator import evaluate_ab, evaluate_batch
+
+    query = payload.get("query", "")
+    queries = payload.get("queries", [])
+    kb_ids = payload.get("kb_ids", [])
+    if not kb_ids and payload.get("kb_id"):
+        kb_ids = [payload["kb_id"]]
+    if not kb_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="kb_ids required")
+
+    kbs: list[dict] = []
+    for kid in kb_ids:
+        kb = await get_kb(kid)
+        if not kb:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"KB {kid} not found")
+        kbs.append(kb)
+
+    kb_embedding_map = {
+        kb["id"]: {
+            "embedding_model": kb.get("embedding_model"),
+            "embedding_provider": kb.get("embedding_provider"),
+        }
+        for kb in kbs
+    }
+
+    top_k = payload.get("top_k", 5)
+    model = payload.get("model")
+    provider = payload.get("provider")
+
+    if queries:
+        result = await evaluate_batch(queries, kb_ids, kb_embedding_map, top_k, model, provider)
+    elif query:
+        result = await evaluate_ab(query, kb_ids, kb_embedding_map, top_k, model, provider)
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="query or queries required")
+
     return {"code": 200, "message": "success", "data": result}
 
 
@@ -256,6 +343,21 @@ async def remove_document(document_id: str) -> dict:
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
     return {"code": 200, "message": "success", "data": {"deleted": True}}
+
+
+# ═══ KB Rebuild ═══
+
+@router.post("/bases/{kb_id}/rebuild", status_code=status.HTTP_202_ACCEPTED)
+async def rebuild_base(kb_id: str) -> dict:
+    """Re-ingest all documents with the optimized pipeline (contextual headers + semantic chunking + HyPE + GraphRAG)."""
+    kb = await get_kb(kb_id)
+    if not kb:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
+    try:
+        result = await rebuild_kb(kb_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {"code": 202, "message": "accepted", "data": result}
 
 
 # ═══ Graph & Stats ═══

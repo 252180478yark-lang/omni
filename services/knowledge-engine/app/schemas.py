@@ -42,13 +42,22 @@ class SearchRequest(BaseModel):
 # ═══ RAG ═══
 
 class RAGRequest(BaseModel):
-    kb_id: str
+    kb_id: str = ""
+    kb_ids: list[str] | None = None
     query: str = Field(min_length=1)
     top_k: int = Field(default=5, ge=1, le=20)
     model: str | None = None
     provider: str | None = None
     stream: bool = False
     session_id: str | None = None
+
+    def resolved_kb_ids(self) -> list[str]:
+        """Return deduplicated list of KB IDs (kb_ids takes priority over kb_id)."""
+        if self.kb_ids:
+            return list(dict.fromkeys(self.kb_ids))
+        if self.kb_id:
+            return [self.kb_id]
+        return []
 
 
 # ═══ Response Models ═══

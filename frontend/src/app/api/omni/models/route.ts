@@ -46,7 +46,7 @@ function mergeProviderModels(
 async function readProvidersSnapshot(base: ReturnType<typeof serviceBase>): Promise<ProviderItem[]> {
   const [providersResp, modelsResp] = await Promise.all([
     fetchJson<ProvidersResp>(`${base.aiHub}/api/v1/ai/providers`),
-    fetchJson<ModelsResp>(`${base.aiHub}/api/v1/ai/models`),
+    fetchJson<ModelsResp>(`${base.aiHub}/api/v1/ai/models?quick=true`),
   ])
 
   const modelMap = new Map<string, string[]>()

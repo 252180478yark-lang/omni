@@ -1,7 +1,12 @@
+import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from app.config import settings
 from app.database import close_pool, init_pool
@@ -17,6 +22,15 @@ async def lifespan(app: FastAPI):
     logger.info("Starting %s — connecting to PostgreSQL...", settings.service_name)
     await init_pool()
     logger.info("PostgreSQL connection pool ready")
+
+    from app.services.ingestion import recover_stuck_tasks
+    try:
+        result = await recover_stuck_tasks()
+        if result["recovered"] > 0:
+            logger.info("Recovered %d stuck tasks from previous run", result["recovered"])
+    except Exception:
+        logger.warning("Task recovery failed, continuing startup", exc_info=True)
+
     yield
     logger.info("Shutting down — closing database pool...")
     await close_pool()

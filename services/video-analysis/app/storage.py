@@ -137,6 +137,7 @@ def init_db() -> None:
         _ensure_column(conn, "videos", "last_error", "TEXT")
         _ensure_column(conn, "videos", "progress", "REAL DEFAULT 0")
         _ensure_column(conn, "videos", "status_message", "TEXT")
+        _ensure_column(conn, "videos", "metrics_json", "TEXT")
 
         conn.execute(
             """
@@ -166,15 +167,15 @@ def init_db() -> None:
         conn.commit()
 
 
-def create_video_record(video_id: str, original_name: str, file_path: str) -> None:
+def create_video_record(video_id: str, original_name: str, file_path: str, metrics_json: str | None = None) -> None:
     created_at = datetime.now(timezone.utc).isoformat()
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute(
             """
-            INSERT INTO videos (id, original_name, file_path, created_at, status, retries, progress, status_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO videos (id, original_name, file_path, created_at, status, retries, progress, status_message, metrics_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (video_id, original_name, file_path, created_at, "queued", 0, 0.0, "排队中"),
+            (video_id, original_name, file_path, created_at, "queued", 0, 0.0, "排队中", metrics_json),
         )
         conn.commit()
 

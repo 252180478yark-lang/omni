@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
@@ -144,19 +145,38 @@ async def providers() -> dict:
 
 
 @router.get("/models")
-async def models() -> dict:
-    data = []
-    for name, item in registry.list_providers().items():
+async def models(quick: bool = False) -> dict:
+    providers_info = registry.list_providers()
+
+    if quick:
+        data = []
+        for name, item in providers_info.items():
+            model_list: list[str] = []
+            for m in [item["default_chat_model"], item["default_embedding_model"]]:
+                if isinstance(m, str) and m:
+                    model_list.append(m)
+            data.append({"provider": name, "models": list(dict.fromkeys(model_list))})
+        return {"models": data}
+
+    async def _fetch_models(name: str) -> list[str]:
         provider = registry.get(name)
-        model_list: list[str] = []
-        list_models = getattr(provider, "list_models", None)
-        if callable(list_models):
+        fn = getattr(provider, "list_models", None)
+        if callable(fn):
             try:
-                listed = await list_models()
+                listed = await asyncio.wait_for(fn(), timeout=5)
                 if isinstance(listed, list):
-                    model_list.extend(m for m in listed if isinstance(m, str) and m)
+                    return [m for m in listed if isinstance(m, str) and m]
             except Exception:
                 pass
+        return []
+
+    names = list(providers_info.keys())
+    results = await asyncio.gather(*[_fetch_models(n) for n in names], return_exceptions=True)
+
+    data = []
+    for name, result in zip(names, results):
+        item = providers_info[name]
+        model_list = result if isinstance(result, list) else []
         for fallback_model in [item["default_chat_model"], item["default_embedding_model"]]:
             if isinstance(fallback_model, str) and fallback_model:
                 model_list.append(fallback_model)

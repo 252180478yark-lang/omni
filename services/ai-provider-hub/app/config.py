@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Provider API keys
-    gemini_api_key: str = ""
+    gemini_api_key: str = "AIzaSyCPmx2ZBtY-EkflTEIr4zWxggNX1nbDMLs"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Defaults
     default_chat_provider: str = "gemini"
     default_embedding_provider: str = "gemini"
-    request_timeout_seconds: float = 30.0
+    request_timeout_seconds: float = 120.0
     provider_config_path: str = "/app/data/provider-config.json"
 
     # Redis (session / cost / rate / video-task)

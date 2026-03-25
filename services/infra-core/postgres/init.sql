@@ -90,18 +90,43 @@ CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON knowledge.knowledge_chunks USING gi
 CREATE TABLE IF NOT EXISTS knowledge.entities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     kb_id UUID NOT NULL,
+    document_id UUID REFERENCES knowledge.documents(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     entity_type VARCHAR(100) NOT NULL DEFAULT 'concept',
-    description TEXT NOT NULL DEFAULT ''
+    description TEXT NOT NULL DEFAULT '',
+    UNIQUE (kb_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_entities_kb_id ON knowledge.entities (kb_id);
+CREATE INDEX IF NOT EXISTS idx_entities_document_id ON knowledge.entities (document_id);
+CREATE INDEX IF NOT EXISTS idx_entities_name_trgm ON knowledge.entities USING gin (name gin_trgm_ops);
 
 CREATE TABLE IF NOT EXISTS knowledge.relations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     kb_id UUID NOT NULL,
+    document_id UUID REFERENCES knowledge.documents(id) ON DELETE CASCADE,
     source_entity VARCHAR(255) NOT NULL,
     target_entity VARCHAR(255) NOT NULL,
     relation_type VARCHAR(100) NOT NULL DEFAULT 'related_to',
-    weight REAL NOT NULL DEFAULT 1.0
+    weight REAL NOT NULL DEFAULT 1.0,
+    UNIQUE (kb_id, source_entity, target_entity, relation_type)
 );
 CREATE INDEX IF NOT EXISTS idx_relations_kb_id ON knowledge.relations (kb_id);
+CREATE INDEX IF NOT EXISTS idx_relations_document_id ON knowledge.relations (document_id);
+CREATE INDEX IF NOT EXISTS idx_relations_source ON knowledge.relations (kb_id, source_entity);
+CREATE INDEX IF NOT EXISTS idx_relations_target ON knowledge.relations (kb_id, target_entity);
+
+-- ═══ HyPE — Hypothetical Prompt Embeddings ═══
+CREATE TABLE IF NOT EXISTS knowledge.hype_embeddings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    chunk_id UUID NOT NULL REFERENCES knowledge.knowledge_chunks(id) ON DELETE CASCADE,
+    kb_id UUID NOT NULL,
+    question_index INTEGER NOT NULL DEFAULT 0,
+    embedding vector(1536),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_hype_kb_id ON knowledge.hype_embeddings (kb_id);
+CREATE INDEX IF NOT EXISTS idx_hype_chunk_id ON knowledge.hype_embeddings (chunk_id);
+CREATE INDEX IF NOT EXISTS idx_hype_embedding_hnsw
+    ON knowledge.hype_embeddings
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
