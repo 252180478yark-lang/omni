@@ -16,6 +16,7 @@ from app.services.harvester import (
     crawl_articles, crawl_feishu_doc, fetch_nav_tree, get_job, IMAGE_DIR,
     list_job_images, get_chapter_images, analyze_images, merge_image_descriptions,
     start_browser_login, get_login_session, _is_feishu_url,
+    ingest_extracted_page, get_last_upload_job_id,
 )
 from app.services.ingestion import submit_ingestion_task
 from app.config import settings
@@ -104,6 +105,29 @@ async def clear_auth():
     return {"success": True}
 
 
+class UploadLoginCookiesRequest(BaseModel):
+    login_type: str = Field(..., pattern="^(oceanengine|feishu)$")
+    cookies: list[dict]
+
+
+@router.post("/upload-login-cookies")
+async def upload_login_cookies(req: UploadLoginCookiesRequest):
+    """Accept cookies captured by the local browser_login.py script."""
+    auth_path = Path(
+        settings.feishu_auth_state
+        if req.login_type == "feishu"
+        else settings.harvester_auth_state
+    )
+    state = {"cookies": req.cookies, "origins": []}
+    auth_path.parent.mkdir(parents=True, exist_ok=True)
+    auth_path.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+    logger.info(
+        "upload-login-cookies [%s]: saved %d cookies to %s",
+        req.login_type, len(req.cookies), auth_path,
+    )
+    return {"success": True, "data": {"cookies_saved": len(req.cookies)}}
+
+
 class BrowserLoginRequest(BaseModel):
     url: str = Field(default="https://yuntu.oceanengine.com", min_length=5)
 
@@ -115,8 +139,42 @@ async def browser_login(req: BrowserLoginRequest):
     result = await start_browser_login(
         target_url=req.url,
         auth_state_path=auth_path,
+        login_type="oceanengine",
     )
     return {"success": True, "data": result}
+
+
+class FeishuBrowserLoginRequest(BaseModel):
+    url: str = Field(default="https://bytedance.larkoffice.com", min_length=5)
+
+
+@router.post("/feishu-browser-login")
+async def feishu_browser_login(req: FeishuBrowserLoginRequest):
+    """Launch a visible browser for Feishu/Lark login and auto-capture cookies."""
+    auth_path = str(Path(settings.feishu_auth_state))
+    result = await start_browser_login(
+        target_url=req.url,
+        auth_state_path=auth_path,
+        login_type="feishu",
+    )
+    return {"success": True, "data": result}
+
+
+@router.get("/feishu-auth-status")
+async def feishu_auth_status():
+    path = Path(settings.feishu_auth_state)
+    return {
+        "success": True,
+        "data": {"has_auth": path.exists(), "path": str(path)},
+    }
+
+
+@router.delete("/feishu-auth")
+async def clear_feishu_auth():
+    path = Path(settings.feishu_auth_state)
+    if path.exists():
+        path.unlink()
+    return {"success": True}
 
 
 @router.get("/browser-login/{session_id}")
@@ -172,6 +230,16 @@ async def start_crawl(req: CrawlRequest):
         )
     )
     return {"success": True, "data": {"job_id": job_id, "has_auth": auth_state is not None, "type": "yuntu"}}
+
+
+@router.get("/latest-upload")
+async def latest_upload():
+    """Return the job_id of the most recent upload from browser_extract.py."""
+    jid = get_last_upload_job_id()
+    if not jid:
+        return {"success": True, "data": None}
+    job = get_job(jid)
+    return {"success": True, "data": {"job_id": jid, "status": job["status"] if job else "unknown"}}
 
 
 @router.get("/jobs/{job_id}")
@@ -245,6 +313,31 @@ async def analyze_images_endpoint(req: AnalyzeImagesRequest):
             }
 
     return {"success": True, "data": {"results": results}}
+
+
+class UploadExtractedPageRequest(BaseModel):
+    url: str
+    title: str = ""
+    markdown: str = ""
+    images: list[dict] = Field(default_factory=list)
+    block_map: dict | None = None
+
+
+@router.post("/upload-extracted-page")
+async def upload_extracted_page(req: UploadExtractedPageRequest):
+    """Receive content extracted by the local browser_extract.py script."""
+    try:
+        result = await ingest_extracted_page(
+            url=req.url,
+            title=req.title,
+            markdown=req.markdown,
+            images=req.images,
+            block_map=req.block_map,
+        )
+        return {"success": True, "data": result}
+    except Exception as e:
+        logger.exception("upload-extracted-page failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/save")

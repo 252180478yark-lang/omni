@@ -10,14 +10,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml /app/pyproject.toml
 RUN pip install --no-cache-dir ".[dev,harvester]" 2>/dev/null || pip install --no-cache-dir ".[harvester]"
 
-# Install Playwright Chromium + system deps (with retry for flaky mirrors)
-RUN for i in 1 2 3; do \
-      apt-get update \
-      && playwright install-deps chromium \
-      && break || sleep 5; \
-    done \
-    && rm -rf /var/lib/apt/lists/*
-RUN playwright install chromium
+# Install Playwright Chromium + all system deps.
+# Retry loop with --fix-missing to handle flaky 502 mirrors.
+RUN apt-get update && \
+    for i in 1 2 3 4 5; do \
+      apt-get install -f -y --fix-missing 2>/dev/null; \
+      playwright install-deps chromium && break; \
+      echo ">>> Attempt $i failed, retrying in 10s..."; \
+      sleep 10; \
+      apt-get update --fix-missing; \
+    done && \
+    playwright install chromium && \
+    apt-get update && apt-get install -y --no-install-recommends libcups2 && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY app /app/app
 RUN mkdir -p /app/data

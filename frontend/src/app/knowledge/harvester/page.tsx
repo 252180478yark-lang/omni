@@ -114,16 +114,15 @@ export default function HarvesterPage() {
   const [showCookieModal, setShowCookieModal] = useState(false)
   const [cookieText, setCookieText] = useState('')
   const [cookieSaving, setCookieSaving] = useState(false)
-  const [browserLoginState, setBrowserLoginState] = useState<'idle' | 'launching' | 'waiting' | 'done' | 'failed'>('idle')
-  const [browserLoginError, setBrowserLoginError] = useState('')
   const [chapterImages, setChapterImages] = useState<Record<number, ImageInfo[]>>({})
   const [selectedImages, setSelectedImages] = useState<Record<number, Set<string>>>({}
   )
   const [analyzingChapter, setAnalyzingChapter] = useState<number | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [hasFeishuAuth, setHasFeishuAuth] = useState<boolean | null>(null)
-  const [feishuLoginState, setFeishuLoginState] = useState<'idle' | 'launching' | 'waiting' | 'done' | 'failed'>('idle')
-  const [feishuLoginError, setFeishuLoginError] = useState('')
+  const [loginCommandModal, setLoginCommandModal] = useState<'oceanengine' | 'feishu' | null>(null)
+  const [extractCommandModal, setExtractCommandModal] = useState<string | null>(null)
+  const [extractPolling, setExtractPolling] = useState(false)
   const [navTree, setNavTree] = useState<NavTree | null>(null)
   const [treeLoading, setTreeLoading] = useState(false)
   const [treeSelected, setTreeSelected] = useState<Set<string | number>>(new Set())
@@ -207,87 +206,63 @@ export default function HarvesterPage() {
     } catch { /* ignore */ }
   }, [])
 
-  const startFeishuBrowserLogin = useCallback(async () => {
-    setFeishuLoginState('launching')
-    setFeishuLoginError('')
-    try {
-      const res = await fetch('/api/omni/knowledge/harvester?action=feishu-browser-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: 'https://bytedance.larkoffice.com' }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.error || '启动失败')
-      const sessionId = json.data.session_id
-
-      setFeishuLoginState('waiting')
-
-      const poll = setInterval(async () => {
-        try {
-          const r = await fetch(`/api/omni/knowledge/harvester?login_session_id=${sessionId}`)
-          const j = await r.json()
-          if (!j.success) return
-          const s = j.data
-          if (s.status === 'done') {
-            clearInterval(poll)
-            setFeishuLoginState('done')
-            setHasFeishuAuth(true)
-            setTimeout(() => setFeishuLoginState('idle'), 3000)
-          } else if (s.status === 'failed' || s.status === 'timeout') {
-            clearInterval(poll)
-            setFeishuLoginState('failed')
-            setFeishuLoginError(s.error || '登录超时')
-          }
-        } catch { /* ignore */ }
-      }, 2000)
-
-      setTimeout(() => clearInterval(poll), 320000)
-    } catch (e) {
-      setFeishuLoginState('failed')
-      setFeishuLoginError(String(e))
-    }
+  const startFeishuBrowserLogin = useCallback(() => {
+    setLoginCommandModal('feishu')
   }, [])
 
-  const startBrowserLogin = useCallback(async () => {
-    setBrowserLoginState('launching')
-    setBrowserLoginError('')
-    try {
-      const res = await fetch('/api/omni/knowledge/harvester?action=browser-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: 'https://yuntu.oceanengine.com' }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.error || '启动失败')
-      const sessionId = json.data.session_id
-
-      setBrowserLoginState('waiting')
-
-      const poll = setInterval(async () => {
-        try {
-          const r = await fetch(`/api/omni/knowledge/harvester?login_session_id=${sessionId}`)
-          const j = await r.json()
-          if (!j.success) return
-          const s = j.data
-          if (s.status === 'done') {
-            clearInterval(poll)
-            setBrowserLoginState('done')
-            setHasAuth(true)
-            setTimeout(() => setBrowserLoginState('idle'), 3000)
-          } else if (s.status === 'failed' || s.status === 'timeout') {
-            clearInterval(poll)
-            setBrowserLoginState('failed')
-            setBrowserLoginError(s.error || '登录超时')
-          }
-        } catch { /* ignore poll errors */ }
-      }, 2000)
-
-      setTimeout(() => clearInterval(poll), 320000)
-    } catch (e) {
-      setBrowserLoginState('failed')
-      setBrowserLoginError(String(e))
-    }
+  const startBrowserLogin = useCallback(() => {
+    setLoginCommandModal('oceanengine')
   }, [])
+
+  // Poll auth status while the login command modal is open
+  useEffect(() => {
+    if (!loginCommandModal) return
+    const interval = setInterval(checkAuth, 2500)
+    return () => clearInterval(interval)
+  }, [loginCommandModal, checkAuth])
+
+  // Auto-close modal when auth is detected
+  useEffect(() => {
+    if (loginCommandModal === 'oceanengine' && hasAuth) {
+      const t = setTimeout(() => setLoginCommandModal(null), 2500)
+      return () => clearTimeout(t)
+    }
+    if (loginCommandModal === 'feishu' && hasFeishuAuth) {
+      const t = setTimeout(() => setLoginCommandModal(null), 2500)
+      return () => clearTimeout(t)
+    }
+  }, [loginCommandModal, hasAuth, hasFeishuAuth])
+
+  // Poll for extract upload completion
+  useEffect(() => {
+    if (!extractCommandModal) { setExtractPolling(false); return }
+    setExtractPolling(true)
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/omni/knowledge/harvester?latest_upload=1')
+        const json = await res.json()
+        if (json.success && json.data?.job_id && json.data.job_id !== jobId) {
+          const newJobId = json.data.job_id
+          setJobId(newJobId)
+          setExtractCommandModal(null)
+          setExtractPolling(false)
+          // Fetch the job data
+          const jRes = await fetch(`/api/omni/knowledge/harvester?job_id=${newJobId}`)
+          const jJson = await jRes.json()
+          if (jJson.success && jJson.data) {
+            const j = jJson.data as CrawlJob
+            setJob(j)
+            if (j.status === 'done') {
+              setStep('review')
+              setSelected(new Set(j.chapters.filter(c => c.word_count > 0).map(c => c.index)))
+              setError('')
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [extractCommandModal, jobId])
 
   const browseTree = useCallback(async () => {
     if (!url.trim()) return
@@ -573,12 +548,19 @@ export default function HarvesterPage() {
       </nav>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-        {(error || browserLoginError) && (
+        {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center justify-between">
-            <span>{error || browserLoginError}</span>
-            <Button variant="ghost" size="sm" className="h-6 text-red-400" onClick={() => { setError(''); setBrowserLoginError(''); setBrowserLoginState('idle') }}>
-              <X className="w-3 h-3" />
-            </Button>
+            <span>{error}</span>
+            <div className="flex items-center gap-2">
+              {url && (
+                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setExtractCommandModal(url)}>
+                  <Globe className="w-3 h-3 mr-1" /> 本机提取
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" className="h-6 text-red-400" onClick={() => setError('')}>
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
           </div>
         )}
 
@@ -621,6 +603,143 @@ export default function HarvesterPage() {
           </div>
         )}
 
+        {/* Login Command Modal */}
+        {loginCommandModal && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-lg apple-card">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-blue-500" />
+                    {loginCommandModal === 'feishu' ? '飞书浏览器登录' : '帮助中心浏览器登录'}
+                  </CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => setLoginCommandModal(null)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <CardDescription>
+                  在本机终端运行以下命令，将自动打开浏览器。完成登录后 Cookie 会自动保存。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="relative">
+                  <pre className="bg-gray-900 text-green-400 rounded-lg p-4 pr-20 text-sm font-mono overflow-x-auto whitespace-pre-wrap break-all">
+                    {`python scripts/browser_login.py ${loginCommandModal === 'feishu' ? 'feishu' : 'oceanengine'}`}
+                  </pre>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-2 right-2 text-gray-400 hover:text-white h-7 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `python scripts/browser_login.py ${loginCommandModal === 'feishu' ? 'feishu' : 'oceanengine'}`
+                      )
+                    }}
+                  >
+                    复制
+                  </Button>
+                </div>
+
+                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 space-y-1">
+                  <p className="font-medium text-gray-700">首次使用？</p>
+                  <p>需要安装 Playwright: <code className="bg-gray-200 px-1 rounded">pip install playwright</code></p>
+                  <p>然后安装浏览器: <code className="bg-gray-200 px-1 rounded">playwright install chromium</code></p>
+                </div>
+
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border">
+                  {(loginCommandModal === 'oceanengine' && hasAuth) || (loginCommandModal === 'feishu' && hasFeishuAuth) ? (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle className="w-4 h-4" />
+                      <span className="text-sm font-medium">登录成功！Cookie 已保存</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                      <span className="text-sm">等待登录完成...</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <Button variant="outline" onClick={() => setLoginCommandModal(null)}>关闭</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Extract Command Modal */}
+        {extractCommandModal && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-lg apple-card">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-green-500" />
+                    本机内容提取
+                  </CardTitle>
+                  <Button variant="ghost" size="sm" onClick={() => setExtractCommandModal(null)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+                <CardDescription>
+                  Docker 容器无法渲染此页面。在本机终端运行以下命令，将自动打开浏览器提取完整内容+图片。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="relative">
+                  <pre className="bg-gray-900 text-green-400 rounded-lg p-4 pr-20 text-sm font-mono overflow-x-auto whitespace-pre-wrap break-all">
+                    {`python scripts/browser_extract.py "${extractCommandModal}"`}
+                  </pre>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute top-2 right-2 text-gray-400 hover:text-white h-7 text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(
+                        `python scripts/browser_extract.py "${extractCommandModal}"`
+                      )
+                    }}
+                  >
+                    复制
+                  </Button>
+                </div>
+
+                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 space-y-1">
+                  <p className="font-medium text-gray-700">脚本功能：</p>
+                  <p>1. 在本机浏览器中打开页面，等待内容完全渲染</p>
+                  <p>2. 自动提取全部文本内容 + 下载所有图片</p>
+                  <p>3. 图片自动发送给 AI 解读并嵌入文档</p>
+                  <p>4. 完成后此页面自动刷新显示结果</p>
+                </div>
+
+                <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 space-y-1">
+                  <p className="font-medium text-gray-700">首次使用？</p>
+                  <p>需要安装: <code className="bg-gray-200 px-1 rounded">pip install playwright && playwright install chromium</code></p>
+                </div>
+
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border">
+                  {extractPolling ? (
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                      <span className="text-sm">等待提取完成... 完成后自动显示结果</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle className="w-4 h-4" />
+                      <span className="text-sm font-medium">提取完成！</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end">
+                  <Button variant="outline" onClick={() => setExtractCommandModal(null)}>关闭</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Step 1: Input */}
         {step === 'input' && (
           <>
@@ -638,35 +757,18 @@ export default function HarvesterPage() {
                   }
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {browserLoginState === 'waiting' ? (
-                    <Badge variant="outline" className="h-7 text-xs border-blue-300 text-blue-600 animate-pulse flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" /> 浏览器已打开，请登录...
-                    </Badge>
-                  ) : browserLoginState === 'launching' ? (
-                    <Badge variant="outline" className="h-7 text-xs border-gray-300 flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" /> 启动浏览器...
-                    </Badge>
-                  ) : browserLoginState === 'done' ? (
-                    <Badge variant="outline" className="h-7 text-xs border-green-300 text-green-600 flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" /> 登录成功
-                    </Badge>
-                  ) : (
-                    <>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={startBrowserLogin}
-                        disabled={browserLoginState === 'launching'}
-                      >
-                        <Globe className="w-3 h-3 mr-1" /> 浏览器登录
-                      </Button>
-                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowCookieModal(true)}>
-                        <KeyRound className="w-3 h-3 mr-1" /> 手动粘贴
-                      </Button>
-                    </>
-                  )}
-                  {hasAuth && browserLoginState === 'idle' && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={startBrowserLogin}
+                  >
+                    <Globe className="w-3 h-3 mr-1" /> 浏览器登录
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setShowCookieModal(true)}>
+                    <KeyRound className="w-3 h-3 mr-1" /> 手动粘贴
+                  </Button>
+                  {hasAuth && (
                     <Button variant="ghost" size="sm" className="h-7 text-xs text-red-500 hover:text-red-600" onClick={clearAuth}>
                       <Trash2 className="w-3 h-3" />
                     </Button>
@@ -689,37 +791,15 @@ export default function HarvesterPage() {
                   }
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {feishuLoginState === 'waiting' ? (
-                    <Badge variant="outline" className="h-7 text-xs border-blue-300 text-blue-600 animate-pulse flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" /> 浏览器已打开，请登录飞书...
-                    </Badge>
-                  ) : feishuLoginState === 'launching' ? (
-                    <Badge variant="outline" className="h-7 text-xs border-gray-300 flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" /> 启动浏览器...
-                    </Badge>
-                  ) : feishuLoginState === 'done' ? (
-                    <Badge variant="outline" className="h-7 text-xs border-green-300 text-green-600 flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" /> 飞书登录成功
-                    </Badge>
-                  ) : (
-                    <Button variant="default" size="sm" className="h-7 text-xs" onClick={startFeishuBrowserLogin}>
-                      <Globe className="w-3 h-3 mr-1" /> 飞书浏览器登录
-                    </Button>
-                  )}
-                  {hasFeishuAuth && feishuLoginState === 'idle' && (
+                  <Button variant="default" size="sm" className="h-7 text-xs" onClick={startFeishuBrowserLogin}>
+                    <Globe className="w-3 h-3 mr-1" /> 飞书浏览器登录
+                  </Button>
+                  {hasFeishuAuth && (
                     <Button variant="ghost" size="sm" className="h-7 text-xs text-red-500 hover:text-red-600" onClick={clearFeishuAuth}>
                       <Trash2 className="w-3 h-3" />
                     </Button>
                   )}
                 </div>
-              </div>
-            )}
-            {feishuLoginError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center justify-between">
-                <span>{feishuLoginError}</span>
-                <Button variant="ghost" size="sm" className="h-6 text-red-400" onClick={() => { setFeishuLoginError(''); setFeishuLoginState('idle') }}>
-                  <X className="w-3 h-3" />
-                </Button>
               </div>
             )}
 
@@ -789,7 +869,7 @@ export default function HarvesterPage() {
                   {navTree.graph_name && <Badge variant="outline" className="ml-2 font-normal">{navTree.graph_name}</Badge>}
                 </CardTitle>
                 <CardDescription>
-                  共 {navTree.total_articles} 篇文章，已选 {treeSelected.size} 篇。勾选需要的文章后点击"爬取选中"。
+                  共 {navTree.total_articles} 篇文章，已选 {treeSelected.size} 篇。勾选需要的文章后点击&ldquo;爬取选中&rdquo;。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -921,7 +1001,7 @@ export default function HarvesterPage() {
                 {job.chapters.slice().reverse().map(ch => (
                   <Card key={ch.index} className="apple-card">
                     <div className="flex items-center gap-3 px-5 py-3">
-                      {ch.error === 'needs_auth' ? (
+                      {ch.error === 'needs_auth' || ch.error === 'auth_expired' ? (
                         <ShieldAlert className="w-5 h-5 text-amber-400 flex-shrink-0" />
                       ) : ch.error ? (
                         <span className="w-5 h-5 rounded-full bg-red-100 text-red-500 flex items-center justify-center text-xs flex-shrink-0">✕</span>
@@ -933,8 +1013,8 @@ export default function HarvesterPage() {
                         <div className="text-xs text-gray-400 mt-0.5 truncate">{ch.graph_path}</div>
                       </div>
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        {ch.error === 'needs_auth' ? (
-                          <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">需认证</Badge>
+                        {ch.error === 'needs_auth' || ch.error === 'auth_expired' ? (
+                          <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">{ch.error === 'auth_expired' ? '认证过期' : '需认证'}</Badge>
                         ) : ch.error ? (
                           <Badge variant="destructive" className="text-xs">失败</Badge>
                         ) : (
@@ -960,6 +1040,29 @@ export default function HarvesterPage() {
         {/* Step 3: Review */}
         {step === 'review' && job && (
           <>
+            {/* Show extract command when chapters failed */}
+            {job.chapters.some(c => c.error === 'extraction_failed' || (c.word_count === 0 && !c.error?.includes('auth'))) && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-amber-700">
+                    <ShieldAlert className="w-4 h-4" />
+                    <span>部分文章提取失败（Docker 浏览器无法渲染此页面）。可使用本机浏览器提取完整内容+图片。</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-8"
+                    onClick={() => {
+                      const failedCh = job.chapters.find(c => c.error === 'extraction_failed' || (c.word_count === 0 && !c.error?.includes('auth')))
+                      const extractUrl = failedCh?.source_url || url
+                      setExtractCommandModal(extractUrl)
+                    }}
+                  >
+                    <Globe className="w-3 h-3 mr-1" /> 本机提取
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <Card className="apple-card mb-6">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Eye className="w-5 h-5 text-green-500" /> 审核采集结果</CardTitle>
@@ -1018,10 +1121,20 @@ export default function HarvesterPage() {
                       <div className="text-xs text-gray-500 mt-0.5">{ch.graph_path}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {ch.error === 'needs_auth' ? (
-                        <Badge variant="outline" className="text-amber-600 border-amber-300">需要认证</Badge>
+                      {ch.error === 'needs_auth' || ch.error === 'auth_expired' ? (
+                        <Badge variant="outline" className="text-amber-600 border-amber-300">{ch.error === 'auth_expired' ? '认证已过期，请重新登录' : '需要认证'}</Badge>
                       ) : ch.error ? (
-                        <Badge variant="destructive">失败</Badge>
+                        <>
+                          <Badge variant="destructive">提取失败</Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={e => { e.stopPropagation(); setExtractCommandModal(ch.source_url || url) }}
+                          >
+                            <Globe className="w-3 h-3 mr-1" /> 本机提取
+                          </Button>
+                        </>
                       ) : (
                         <>
                           <Badge variant="secondary">{ch.word_count.toLocaleString()}字</Badge>

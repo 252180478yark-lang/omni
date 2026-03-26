@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Provider API keys
-    gemini_api_key: str = "AIzaSyCPmx2ZBtY-EkflTEIr4zWxggNX1nbDMLs"
+    gemini_api_key: str = "AIzaSyByUe8Nxi6bWlsBqLAHFUG8ryGPe7chJws"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""

@@ -15,7 +15,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_MAX_TURNS = 10
+_MAX_TURNS = 20
 _SESSION_TTL = 24 * 3600  # 24h
 _redis_client = None
 

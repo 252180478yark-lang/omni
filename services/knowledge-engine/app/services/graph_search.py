@@ -66,10 +66,10 @@ async def graph_search(
     kb_id: str,
     query: str,
     *,
-    top_entities: int = 10,
+    top_entities: int = 15,
     max_hops: int = 2,
-    max_relations: int = 30,
-    max_chunks: int = 5,
+    max_relations: int = 50,
+    max_chunks: int = 8,
 ) -> dict:
     """Retrieve graph context for a user query.
 

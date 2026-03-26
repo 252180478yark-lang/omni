@@ -46,7 +46,7 @@ async def cross_encoder_rerank(
         return chunks
 
     top_n = top_n or settings.rag_rerank_top_n
-    batch_size = 15
+    batch_size = 20
 
     scored: list[tuple[dict, float]] = []
     for i in range(0, len(chunks), batch_size):
@@ -74,7 +74,7 @@ async def cross_encoder_rerank(
 async def _score_batch(query: str, chunks: list[dict]) -> list[float]:
     """Score a batch of chunks against the query using LLM."""
     chunk_texts = "\n\n".join(
-        f"[片段{i+1}] {c['content'][:500]}" for i, c in enumerate(chunks)
+        f"[片段{i+1}] {c['content'][:800]}" for i, c in enumerate(chunks)
     )
     prompt = _RERANK_PROMPT.format(query=query, chunks=chunk_texts)
 
@@ -85,7 +85,7 @@ async def _score_batch(query: str, chunks: list[dict]) -> list[float]:
                 json={
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.1,
-                    "max_tokens": 500,
+                    "max_tokens": 800,
                     "model": _RERANK_MODEL,
                 },
             )

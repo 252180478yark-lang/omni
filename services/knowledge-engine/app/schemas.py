@@ -45,7 +45,7 @@ class RAGRequest(BaseModel):
     kb_id: str = ""
     kb_ids: list[str] | None = None
     query: str = Field(min_length=1)
-    top_k: int = Field(default=5, ge=1, le=20)
+    top_k: int = Field(default=10, ge=1, le=50)
     model: str | None = None
     provider: str | None = None
     stream: bool = False

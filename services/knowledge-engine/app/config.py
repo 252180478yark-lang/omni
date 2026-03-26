@@ -24,25 +24,25 @@ class Settings(BaseSettings):
     embedding_batch_size: int = 100
 
     # Chunking
-    chunk_size: int = 512
-    chunk_overlap: int = 64
+    chunk_size: int = 768
+    chunk_overlap: int = 128
 
     # RAG
-    rag_top_k: int = 10
-    rag_score_threshold: float = 0.3
+    rag_top_k: int = 15
+    rag_score_threshold: float = 0.25
 
     # RAG Advanced — query enhancement
     rag_query_rewrite: bool = True
     rag_hyde: bool = True
     rag_subquery: bool = True
-    rag_subquery_max: int = 3
+    rag_subquery_max: int = 5
 
     # RAG Advanced — reranking
     rag_cross_encoder_rerank: bool = True
-    rag_rerank_top_n: int = 5
+    rag_rerank_top_n: int = 8
 
     # RAG Advanced — context
-    rag_context_window: int = 1
+    rag_context_window: int = 2
     rag_contextual_compression: bool = True
 
     # RAG Advanced — CRAG

@@ -116,17 +116,29 @@ def _load_persisted_settings() -> None:
 
 
 def _test_gemini_connection(api_key: str, model: str) -> dict[str, Any]:
-    try:
-        import google.generativeai as genai
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"未安装 google-generativeai：{exc}") from exc
-    genai.configure(api_key=api_key, transport="rest")
-    try:
-        models = list(genai.list_models())
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Gemini 连接失败：{exc}") from exc
-    available = any(model in getattr(item, "name", "") for item in models)
-    return {"available": available, "model": model}
+    import httpx
+    import time
+
+    api_base = "https://generativelanguage.googleapis.com/v1beta"
+    max_retries = 8
+    last_exc: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            resp = httpx.get(
+                f"{api_base}/models",
+                params={"key": api_key, "pageSize": 100},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            rows = resp.json().get("models", [])
+            names = [r.get("name", "") for r in rows]
+            available = any(model in n for n in names)
+            return {"available": available, "model": model}
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries - 1:
+                time.sleep(min(2 ** attempt, 8))
+    raise HTTPException(status_code=400, detail=f"Gemini 连接失败（重试{max_retries}次）：{last_exc}") from last_exc
 
 
 @app.on_event("startup")

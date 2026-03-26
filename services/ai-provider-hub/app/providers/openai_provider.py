@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 import httpx
 
 from app.config import settings
-from app.providers.base import BaseProvider, ProviderCapability
+from app.providers.base import BaseProvider, ProviderCapability, is_real_api_key
 from app.schemas.ai import ChatResponse, Message, TokenUsage
 
 _BASE_URL = "https://api.openai.com/v1"
@@ -29,7 +29,7 @@ class OpenAIProvider(BaseProvider):
         return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
     def _has_key(self) -> bool:
-        return bool((settings.openai_api_key or "").strip())
+        return is_real_api_key(settings.openai_api_key)
 
     # ── Chat ──
 

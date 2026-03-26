@@ -39,30 +39,33 @@ async def _auto_retry_kb_pushes() -> None:
     from app.models.article import Article
     from app.services.archive_service import ArchiveService
 
-    async with SessionLocal() as db:
-        count = await db.scalar(
-            select(func.count()).select_from(Article).where(
-                Article.status == "archived", Article.kb_doc_id.is_(None),
+    try:
+        async with SessionLocal() as db:
+            count = await db.scalar(
+                select(func.count()).select_from(Article).where(
+                    Article.status == "archived", Article.kb_doc_id.is_(None),
+                )
             )
-        )
-        if not count:
-            return
-        logger.info("Auto-retrying %d archived articles with pending KB push...", count)
+            if not count:
+                return
+            logger.info("Auto-retrying %d archived articles with pending KB push...", count)
 
-        rows = (await db.scalars(
-            select(Article).where(
-                Article.status == "archived", Article.kb_doc_id.is_(None),
-            ).limit(50)
-        )).all()
+            rows = (await db.scalars(
+                select(Article).where(
+                    Article.status == "archived", Article.kb_doc_id.is_(None),
+                ).limit(50)
+            )).all()
 
-        async with httpx.AsyncClient(base_url=settings.sp4_base_url, timeout=30.0) as sp4:
-            svc = ArchiveService(db=db, sp4_client=sp4, settings=settings)
-            ids = [a.id for a in rows]
-            result = await svc.retry_kb_push(ids)
-            logger.info(
-                "Auto KB push retry done: retried=%d success=%d failed=%d",
-                result.retried, result.success, len(result.failed_ids),
-            )
+            async with httpx.AsyncClient(base_url=settings.sp4_base_url, timeout=30.0) as sp4:
+                svc = ArchiveService(db=db, sp4_client=sp4, settings=settings)
+                ids = [a.id for a in rows]
+                result = await svc.retry_kb_push(ids)
+                logger.info(
+                    "Auto KB push retry done: retried=%d success=%d failed=%d",
+                    result.retried, result.success, len(result.failed_ids),
+                )
+    except Exception as exc:
+        logger.warning("Auto KB push retry skipped (tables may not exist yet): %s", exc)
 
 
 @asynccontextmanager

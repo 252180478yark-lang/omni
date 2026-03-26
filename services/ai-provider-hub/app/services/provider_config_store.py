@@ -50,10 +50,14 @@ def apply_persisted_provider_config(registry: ProviderRegistry) -> None:
 
         api_key = provider_data.get("api_key")
         if isinstance(api_key, str):
-            if provider_name == "openai":
-                settings.openai_api_key = api_key.strip()
-            elif provider_name == "gemini":
-                settings.gemini_api_key = api_key.strip()
+            key_attr = {
+                "openai": "openai_api_key",
+                "gemini": "gemini_api_key",
+                "anthropic": "anthropic_api_key",
+                "deepseek": "deepseek_api_key",
+            }.get(provider_name)
+            if key_attr:
+                setattr(settings, key_attr, api_key.strip())
 
         default_chat_model = provider_data.get("default_chat_model")
         if isinstance(default_chat_model, str) and default_chat_model.strip():

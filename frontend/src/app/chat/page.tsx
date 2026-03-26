@@ -80,7 +80,7 @@ async function streamRAG(
   provider?: string,
 ) {
   try {
-    const payload: Record<string, unknown> = { kb_id: kbId, query, stream: true, top_k: 10, session_id: sessionId }
+    const payload: Record<string, unknown> = { kb_id: kbId, query, stream: true, top_k: 15, session_id: sessionId }
     if (model) payload.model = model
     if (provider) payload.provider = provider
     const res = await fetch('/api/omni/knowledge/rag', {
@@ -356,7 +356,6 @@ export default function ChatPage() {
   }
 
   const selectedKb = allBases.find((b) => b.id === kbId)
-  const currentProv = providers.find((p) => p.id === selectedProvider)
   const modelLabel = selectedModel || '选择模型'
 
   return (

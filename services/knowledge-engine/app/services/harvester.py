@@ -34,10 +34,15 @@ HEADERS = {
 
 _jobs: dict[str, dict] = {}
 _login_sessions: dict[str, dict] = {}
+_last_upload_job_id: str | None = None
 
 
 def get_job(job_id: str) -> dict | None:
     return _jobs.get(job_id)
+
+
+def get_last_upload_job_id() -> str | None:
+    return _last_upload_job_id
 
 
 def get_login_session(session_id: str) -> dict | None:
@@ -46,18 +51,34 @@ def get_login_session(session_id: str) -> dict | None:
 
 # ═══ Browser Login ═══
 
+_LOGIN_PROFILES: dict[str, dict] = {
+    "oceanengine": {
+        "session_keys": ("session", "sid_tt", "sid_guard", "uid_tt"),
+        "cookie_domains": ("oceanengine", "bytedance", "toutiao"),
+    },
+    "feishu": {
+        "session_keys": ("session", "sid", "session_list", "lark_oapi"),
+        "cookie_domains": ("feishu", "larkoffice", "larksuite", "bytedance"),
+    },
+}
+
+
 async def start_browser_login(
     target_url: str,
     auth_state_path: str,
     session_id: str | None = None,
+    login_type: str = "oceanengine",
 ) -> dict:
     """Launch a visible browser for the user to log in, then capture cookies.
 
     The browser opens on the local desktop.  The function polls for session
     cookies and automatically saves them once the user has logged in.
+    ``login_type`` selects which cookie names / domains to look for.
     """
     if session_id is None:
         session_id = str(uuid4())
+
+    profile = _LOGIN_PROFILES.get(login_type, _LOGIN_PROFILES["oceanengine"])
 
     session: dict = {
         "status": "launching",
@@ -86,7 +107,6 @@ async def start_browser_login(
 
             session["status"] = "waiting_login"
 
-            # Poll until we detect authenticated session cookies or timeout (5 min)
             deadline = time.time() + 300
             while time.time() < deadline:
                 await asyncio.sleep(3)
@@ -98,19 +118,17 @@ async def start_browser_login(
                 cookies = await ctx.cookies()
                 session_cookies = [
                     c for c in cookies
-                    if any(k in c["name"].lower() for k in ("session", "sid_tt", "sid_guard", "uid_tt"))
+                    if any(k in c["name"].lower() for k in profile["session_keys"])
                 ]
                 if session_cookies and "login" not in current_url.lower():
                     session["status"] = "saving"
-                    # Filter to relevant domains
                     target_cookies = [
                         c for c in cookies
-                        if any(d in c.get("domain", "") for d in ("oceanengine", "bytedance", "toutiao"))
+                        if any(d in c.get("domain", "") for d in profile["cookie_domains"])
                     ]
                     if not target_cookies:
                         target_cookies = cookies
 
-                    # Save as Playwright storage state
                     pw_cookies = []
                     for c in target_cookies:
                         pw_cookies.append({
@@ -131,9 +149,8 @@ async def start_browser_login(
                         "status": "done",
                         "cookies_saved": len(pw_cookies),
                     })
-                    logger.info("Browser login: saved %d cookies to %s", len(pw_cookies), p)
+                    logger.info("Browser login [%s]: saved %d cookies to %s", login_type, len(pw_cookies), p)
 
-                    # Keep browser open briefly so user sees success
                     await asyncio.sleep(2)
                     break
             else:
@@ -611,7 +628,11 @@ async def _fetch_article_ssr(
     pid: str,
     sid: str,
 ) -> dict | None:
-    """Fetch article metadata via SSR API (works without auth)."""
+    """Fetch article metadata via SSR API (works without auth).
+
+    Returns the full contentData dict which may include feishuDocxToken
+    for feishu_docx_new_import articles.
+    """
     api_url = (
         f"https://yuntu.oceanengine.com/support/content/{mapping_id}"
         f"?__loader=%28prefix%29%2Fcontent%2F%28id%24%29%2Fpage"
@@ -636,21 +657,54 @@ async def _extract_feishu_via_browser(
 ) -> dict | None:
     """Navigate to article page and extract Feishu docx content.
 
+    Supports two embedding modes:
+      1. Feishu iframe (larkoffice/feishu/larksuite domain)
+      2. Feishu JSSDK inline rendering (feishu_docx_new_import) — no iframe,
+         content fetched via /docx/pages/client_vars API intercepted here.
+
     ``cdn_url_data`` is populated by a response handler in the caller that
     intercepts /space/api/box/file/cdn_url/ responses with encrypted CDN URLs.
     """
+    jssdk_blocks: dict = {}
+
+    async def _on_client_vars(response):
+        if "/docx/pages/client_vars" not in response.url or response.status != 200:
+            return
+        try:
+            body = await response.json()
+            bmap = (body.get("data") or {}).get("block_map") or {}
+            jssdk_blocks.update(bmap)
+            logger.debug("JSSDK client_vars captured: %d blocks (total %d)", len(bmap), len(jssdk_blocks))
+        except Exception:
+            pass
+
+    page.on("response", _on_client_vars)
+
     logger.info("Browser navigating to: %s", article_url)
     try:
         await page.goto(article_url, wait_until="domcontentloaded", timeout=20000)
     except Exception as e:
+        page.remove_listener("response", _on_client_vars)
         logger.warning("Navigation failed: %s", e)
         return None
 
+    await page.wait_for_timeout(2000)
     final_url = page.url
     logger.info("Page URL after navigation: %s", final_url)
-    if "login" in final_url.lower() or "passport" in final_url.lower():
-        logger.warning("Redirected to login page — auth cookies may be invalid")
-        return None
+
+    def _is_login_page() -> bool:
+        if "login" in final_url.lower() or "passport" in final_url.lower():
+            return True
+        for frame in page.frames:
+            if "login" in frame.url.lower() or "passport" in frame.url.lower():
+                return True
+        return False
+
+    if _is_login_page():
+        page.remove_listener("response", _on_client_vars)
+        logger.warning("Redirected to login page — auth cookies expired or invalid (frame URLs: %s)",
+                        [f.url[:100] for f in page.frames])
+        return {"_error": "auth_expired"}
 
     target_frame = None
     elapsed = 0
@@ -662,12 +716,106 @@ async def _extract_feishu_via_browser(
         if target_frame:
             logger.info("Found Feishu iframe: %s", target_frame.url[:150])
             break
+        if jssdk_blocks:
+            logger.info("JSSDK blocks detected (%d blocks), skipping iframe wait", len(jssdk_blocks))
+            break
         await page.wait_for_timeout(2000)
         elapsed += 2000
 
-    if not target_frame:
-        logger.warning("No Feishu iframe found after %dms", timeout_ms)
+    if not target_frame and not jssdk_blocks:
+        logger.warning("No Feishu iframe found after %dms, waiting for JSSDK...", timeout_ms)
+        for _ in range(5):
+            await page.wait_for_timeout(2000)
+            if jssdk_blocks:
+                logger.info("JSSDK blocks arrived late: %d blocks", len(jssdk_blocks))
+                break
+
+    if not target_frame and not jssdk_blocks:
+        # Debug: dump page state to understand what the JSSDK rendered
+        try:
+            page_debug = await page.evaluate("""() => {
+                const info = {};
+                info.frameCount = window.frames.length;
+                info.frameUrls = Array.from(document.querySelectorAll('iframe')).map(f => f.src || f.dataset.src || '(no src)').slice(0, 5);
+                info.bodyTextLen = document.body ? document.body.innerText.length : 0;
+                info.bodySnippet = document.body ? document.body.innerText.slice(0, 500) : '';
+                // Look for common Feishu/doc content containers
+                const selectors = [
+                    '[class*="lark"]', '[class*="feishu"]', '[class*="docx"]',
+                    '[class*="doc-content"]', '[class*="article"]', '[class*="rich-text"]',
+                    '[class*="ql-editor"]', '[class*="ProseMirror"]', '[class*="content-wrapper"]',
+                    '[data-zone]', '[data-block-id]',
+                ];
+                info.containers = {};
+                for (const sel of selectors) {
+                    const els = document.querySelectorAll(sel);
+                    if (els.length > 0) {
+                        info.containers[sel] = {
+                            count: els.length,
+                            textLen: Array.from(els).reduce((s, e) => s + e.innerText.length, 0),
+                            sample: els[0].innerText.slice(0, 200),
+                        };
+                    }
+                }
+                return JSON.stringify(info);
+            }""")
+            logger.info("JSSDK page debug: %s", page_debug)
+        except Exception as e:
+            logger.warning("JSSDK page debug failed: %s", e)
+
+        # Fallback: try to extract rendered content directly from DOM
+        try:
+            dom_content = await page.evaluate("""() => {
+                // Try common article/content containers
+                const candidates = [
+                    ...document.querySelectorAll('[class*="article-content"], [class*="doc-content"], [class*="rich-text"], [class*="content-wrapper"]'),
+                    ...document.querySelectorAll('[class*="lark-doc"], [class*="feishu"], [class*="docx-container"]'),
+                    ...document.querySelectorAll('[data-zone="content"], [data-zone="article"]'),
+                    ...document.querySelectorAll('article, .article, .content, main .content'),
+                ];
+                for (const el of candidates) {
+                    const text = el.innerText.trim();
+                    if (text.length > 100) return text;
+                }
+                // Last resort: get main content area
+                const main = document.querySelector('main') || document.querySelector('[role="main"]');
+                if (main && main.innerText.trim().length > 100) return main.innerText.trim();
+                return null;
+            }""")
+            if dom_content and len(dom_content) > 100:
+                logger.info("JSSDK DOM fallback: extracted %d chars from page DOM", len(dom_content))
+                page.remove_listener("response", _on_client_vars)
+                return {
+                    "markdown": dom_content,
+                    "text": dom_content,
+                    "blocks": [],
+                }
+        except Exception as e:
+            logger.warning("JSSDK DOM fallback failed: %s", e)
+
+        page.remove_listener("response", _on_client_vars)
+        logger.warning("No Feishu iframe or JSSDK content found")
         return None
+
+    # --- JSSDK path: content captured via intercepted client_vars responses ---
+    if not target_frame and jssdk_blocks:
+        for _ in range(8):
+            prev_count = len(jssdk_blocks)
+            await page.wait_for_timeout(2000)
+            if len(jssdk_blocks) == prev_count:
+                break
+            logger.debug("JSSDK blocks still arriving: %d → %d", prev_count, len(jssdk_blocks))
+
+        page.remove_listener("response", _on_client_vars)
+        doc = _parse_block_map(jssdk_blocks)
+        if doc and len(doc.get("text", "")) > 30:
+            logger.info("JSSDK extracted %d chars from %d blocks", len(doc["text"]), len(jssdk_blocks))
+            return doc
+        logger.warning("JSSDK content too short or empty (%d blocks)", len(jssdk_blocks))
+        return None
+
+    # --- iframe path (original logic) ---
+    page.remove_listener("response", _on_client_vars)
 
     for attempt in range(10):
         try:
@@ -677,7 +825,6 @@ async def _extract_feishu_via_browser(
                 if doc and len(doc.get("text", "")) > 30:
                     logger.info("Extracted %d chars from iframe (attempt %d)", len(doc["text"]), attempt + 1)
 
-                    # Collect image tokens from the document
                     img_tokens: set[str] = set()
                     for _, u in _IMG_RE.findall(doc.get("markdown", "")):
                         tm = re.search(r"/cover/([^/?]+)", u)
@@ -686,7 +833,6 @@ async def _extract_feishu_via_browser(
 
                     missing = img_tokens - set(cdn_url_data.keys())
                     if missing:
-                        # Step 1: Scroll iframe to trigger lazy-loaded CDN requests
                         try:
                             await target_frame.evaluate("""() => {
                                 return new Promise(resolve => {
@@ -711,7 +857,6 @@ async def _extract_feishu_via_browser(
                             pass
                         await page.wait_for_timeout(3000)
 
-                        # Step 2: Batch-fetch CDN keys for still-missing tokens
                         still_missing = list(img_tokens - set(cdn_url_data.keys()))
                         if still_missing:
                             logger.info("Batch-fetching CDN keys for %d missing image tokens", len(still_missing))
@@ -1099,6 +1244,8 @@ async def _extract_feishu_direct(
     """Navigate to a Feishu/Lark doc URL and extract content via client_vars API."""
     merged_blocks: dict = {}
 
+    api_urls_seen: list[str] = []
+
     async def _on_client_vars_response(response):
         if "/docx/pages/client_vars" not in response.url or response.status != 200:
             return
@@ -1109,19 +1256,28 @@ async def _extract_feishu_direct(
         except Exception:
             pass
 
+    async def _on_any_api_response(response):
+        u = response.url
+        if any(k in u for k in ("client_vars", "block", "docx", "document", "render", "content")):
+            api_urls_seen.append(f"[{response.status}] {u[:200]}")
+
     page.on("response", _on_client_vars_response)
+    page.on("response", _on_any_api_response)
 
     logger.info("Feishu direct: navigating to %s", url)
     try:
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
     except Exception as e:
         page.remove_listener("response", _on_client_vars_response)
+        page.remove_listener("response", _on_any_api_response)
         logger.warning("Feishu navigation failed: %s", e)
         return None
 
     final_url = page.url
+    logger.info("Feishu direct: final URL = %s", final_url)
     if "login" in final_url.lower() or "passport" in final_url.lower():
         page.remove_listener("response", _on_client_vars_response)
+        page.remove_listener("response", _on_any_api_response)
         logger.warning("Redirected to login — auth cookies may be invalid")
         return None
 
@@ -1138,6 +1294,21 @@ async def _extract_feishu_direct(
                     break
             except Exception:
                 pass
+        if attempt == 2:
+            # Debug: check what's available on the page
+            debug_info = await page.evaluate("""() => {
+                const info = {};
+                info.hasDATA = typeof window.DATA !== 'undefined';
+                info.dataKeys = info.hasDATA ? Object.keys(window.DATA).slice(0, 10) : [];
+                info.hasClientVars = info.hasDATA && !!window.DATA.clientVars;
+                info.hasSSRData = typeof window.__SSR_DATA__ !== 'undefined';
+                info.hasNextData = typeof window.__NEXT_DATA__ !== 'undefined';
+                info.docTitle = document.title || '';
+                info.bodyLen = document.body ? document.body.innerText.length : 0;
+                info.bodySnippet = document.body ? document.body.innerText.slice(0, 300) : '';
+                return JSON.stringify(info);
+            }""")
+            logger.info("Feishu direct debug (attempt %d): %s", attempt, debug_info)
 
     for _ in range(8):
         prev_count = len(merged_blocks)
@@ -1147,6 +1318,12 @@ async def _extract_feishu_direct(
         logger.debug("Feishu blocks still arriving: %d → %d", prev_count, len(merged_blocks))
 
     page.remove_listener("response", _on_client_vars_response)
+    page.remove_listener("response", _on_any_api_response)
+
+    if api_urls_seen:
+        logger.info("Feishu direct: intercepted %d API calls:", len(api_urls_seen))
+        for u in api_urls_seen[:15]:
+            logger.info("  → %s", u)
 
     if not merged_blocks:
         logger.warning("Feishu direct: no block data obtained")
@@ -1261,6 +1438,19 @@ async def crawl_feishu_doc(
 
         cdn_url_data: dict[str, dict] = {}
         page = await ctx.new_page()
+
+        # Block heavy non-essential resources to prevent renderer crashes
+        _heavy_re = re.compile(
+            r"\.(png|jpg|jpeg|gif|svg|woff2?|ttf|eot|mp4|webm)(\?|$)", re.IGNORECASE,
+        )
+
+        async def _block_heavy(route):
+            if _heavy_re.search(route.request.url):
+                await route.abort()
+            else:
+                await route.continue_()
+
+        await page.route("**/*", _block_heavy)
 
         async def _on_cdn_response(response):
             if "cdn_url" not in response.url or response.status != 200:
@@ -1442,6 +1632,7 @@ async def crawl_articles(
         # Phase 1: Try SSR API extraction (no browser needed, fast)
         job["status"] = "extracting_api"
         api_extracted: set[int] = set()
+        feishu_doc_tokens: dict[int, str] = {}
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
             for idx, article in enumerate(articles):
                 title = article["title"]
@@ -1473,7 +1664,15 @@ async def crawl_articles(
                             logger.info("Harvester API [%d/%d] %s — %d chars", idx + 1, len(articles), title, len(content))
                             continue
 
-                # Not extracted via API — mark as pending for browser or needs_auth
+                is_jssdk = ssr and ssr.get("contentType") == "feishu_docx_new_import"
+                needs_browser = has_auth or is_jssdk
+
+                if is_jssdk and ssr:
+                    docx_token = ssr.get("feishuDocxToken", "")
+                    if docx_token:
+                        feishu_doc_tokens[idx] = docx_token
+                        logger.info("Harvester [%d/%d] %s — feishuDocxToken=%s", idx + 1, len(articles), title, docx_token)
+
                 job["chapters"].append({
                     "index": idx,
                     "title": title,
@@ -1481,14 +1680,15 @@ async def crawl_articles(
                     "markdown": "",
                     "text": "",
                     "word_count": 0,
-                    "error": "needs_auth" if not has_auth else "pending_browser",
+                    "error": "pending_browser" if needs_browser else "needs_auth",
                 })
-                logger.info("Harvester [%d/%d] %s — %s", idx + 1, len(articles), title,
-                            "needs auth" if not has_auth else "queued for browser")
+                logger.info("Harvester [%d/%d] %s — %s%s", idx + 1, len(articles), title,
+                            "queued for browser" if needs_browser else "needs auth",
+                            " (JSSDK)" if is_jssdk else "")
 
-        # Phase 2: If auth is available and there are unextracted articles, use browser
+        # Phase 2: Browser extraction for pending articles (auth or JSSDK)
         browser_queue = [ch for ch in job["chapters"] if ch.get("error") == "pending_browser"]
-        if browser_queue and has_auth:
+        if browser_queue:
             try:
                 from playwright.async_api import async_playwright
             except ImportError:
@@ -1498,8 +1698,38 @@ async def crawl_articles(
             job["status"] = "extracting_browser"
             pw = await async_playwright().start()
             browser = await pw.chromium.launch(headless=True)
-            ctx = await browser.new_context(storage_state=auth_state_path)
+            ctx_kwargs: dict = {}
+            if has_auth:
+                ctx_kwargs["storage_state"] = auth_state_path
+            ctx = await browser.new_context(**ctx_kwargs)
+
+            # Inject feishu cookies so direct larkoffice.com extraction works
+            from app.config import settings as _cfg
+            _feishu_path = Path(_cfg.feishu_auth_state)
+            if _feishu_path.exists():
+                try:
+                    _feishu_state = json.loads(_feishu_path.read_text())
+                    _feishu_cookies = _feishu_state.get("cookies", [])
+                    if _feishu_cookies:
+                        await ctx.add_cookies(_feishu_cookies)
+                        logger.info("Loaded %d feishu cookies into browser context", len(_feishu_cookies))
+                except Exception:
+                    logger.warning("Failed to load feishu cookies", exc_info=True)
+
             page = await ctx.new_page()
+
+            # Block heavy non-essential resources to prevent renderer crashes
+            _BLOCK_PATTERN = re.compile(
+                r"\.(png|jpg|jpeg|gif|svg|woff2?|ttf|eot|mp4|webm)(\?|$)", re.IGNORECASE,
+            )
+
+            async def _block_heavy(route):
+                if _BLOCK_PATTERN.search(route.request.url):
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await page.route("**/*", _block_heavy)
 
             # Dict collecting encrypted CDN info from /space/api/box/file/cdn_url/
             cdn_url_data: dict[str, dict] = {}
@@ -1543,13 +1773,44 @@ async def crawl_articles(
                 )
 
                 doc = None
-                for attempt in range(2):
-                    doc = await _extract_feishu_via_browser(
-                        page, article_url, cdn_url_data,
-                    )
-                    if doc:
-                        break
-                    await page.wait_for_timeout(2000)
+                auth_expired = False
+
+                # Primary path: when we have a feishuDocxToken from SSR,
+                # go directly to the Feishu document — faster and more reliable
+                # than waiting for the yuntu page JSSDK to initialize.
+                if idx in feishu_doc_tokens:
+                    docx_token = feishu_doc_tokens[idx]
+                    feishu_url = f"https://larkoffice.com/docx/{docx_token}"
+                    logger.info("Harvester [%d/%d] %s — direct Feishu extraction: %s",
+                                idx + 1, len(articles), title, feishu_url)
+                    doc = await _extract_feishu_direct(page, feishu_url, cdn_url_data)
+
+                # Fallback: standard yuntu page JSSDK extraction
+                if not doc:
+                    for attempt in range(2):
+                        doc = await _extract_feishu_via_browser(
+                            page, article_url, cdn_url_data,
+                        )
+                        if isinstance(doc, dict) and doc.get("_error") == "auth_expired":
+                            auth_expired = True
+                            doc = None
+                            break
+                        if doc:
+                            break
+                        await page.wait_for_timeout(2000)
+
+                if auth_expired:
+                    job["chapters"].append({
+                        "index": idx,
+                        "title": title,
+                        "graph_path": article["graph_path"],
+                        "markdown": "",
+                        "text": "",
+                        "word_count": 0,
+                        "error": "auth_expired",
+                    })
+                    logger.warning("Harvester Browser [%d/%d] %s — auth expired, need re-login", idx + 1, len(articles), title)
+                    continue
 
                 if doc:
                     md = doc["markdown"]
@@ -1635,3 +1896,112 @@ async def crawl_articles(
         job.update({"status": "failed", "error": f"{type(e).__name__}: {e}\n{tb}", "current_article": None})
 
     return job
+
+
+# ═══ Local extraction upload ═══
+
+async def ingest_extracted_page(
+    url: str,
+    title: str,
+    markdown: str,
+    images: list[dict],
+    block_map: dict | None = None,
+) -> dict:
+    """Process content uploaded by the local browser_extract.py script.
+
+    Saves images, rewrites img URLs to local references, runs LLM analysis,
+    and stores the result as a job visible in the frontend.
+    """
+    import base64
+
+    job_id = str(uuid4())
+    img_dir = IMAGE_DIR / job_id
+    img_dir.mkdir(parents=True, exist_ok=True)
+
+    img_saved = 0
+    img_map: dict[str, str] = {}
+
+    for i, img in enumerate(images):
+        data_b64 = img.get("data_b64", "")
+        if not data_b64:
+            continue
+        try:
+            data = base64.b64decode(data_b64)
+        except Exception:
+            continue
+        if len(data) < 500:
+            continue
+
+        src = img.get("src", "")
+        ext = "png"
+        for try_ext in ("jpg", "jpeg", "png", "gif", "webp"):
+            if try_ext in src.lower():
+                ext = try_ext
+                break
+
+        filename = f"img_{i:03d}.{ext}"
+        (img_dir / filename).write_bytes(data)
+        img_map[src] = filename
+        img_saved += 1
+
+    for orig_src, local_name in img_map.items():
+        local_url = f"/api/omni/knowledge/harvester/images/{job_id}/{local_name}"
+        escaped = re.escape(orig_src)
+        pat = re.compile(r"!\[([^\]]*)\]\(" + escaped + r"\)")
+        m = pat.search(markdown)
+        if m:
+            alt = m.group(1)
+            markdown = pat.sub(f"![{alt}]({local_url})", markdown)
+        else:
+            markdown += f"\n\n![image]({local_url})"
+
+    img_analyzed = 0
+    if img_saved > 0:
+        from app.config import settings as _cfg
+        markdown, img_analyzed = await _auto_analyze_and_merge(
+            job_id, markdown, _cfg.ai_provider_hub_url,
+        )
+        markdown = clean_image_markdown(markdown)
+
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", markdown)
+
+    job = {
+        "status": "done",
+        "progress": 1,
+        "total": 1,
+        "chapters": [{
+            "index": 0,
+            "title": title,
+            "graph_path": title,
+            "markdown": markdown,
+            "text": text,
+            "word_count": len(text),
+            "block_count": 1,
+            "source_url": url,
+            "images": {
+                "downloaded": img_saved,
+                "total": len(images),
+                "analyzed": img_analyzed,
+            },
+        }],
+        "current_article": None,
+        "graph_name": "本机提取",
+        "total_articles": 1,
+        "error": None,
+    }
+    _jobs[job_id] = job
+
+    global _last_upload_job_id
+    _last_upload_job_id = job_id
+
+    logger.info(
+        "ingest_extracted_page: job=%s title=%s chars=%d images=%d/%d analyzed=%d",
+        job_id, title, len(text), img_saved, len(images), img_analyzed,
+    )
+
+    return {
+        "job_id": job_id,
+        "word_count": len(text),
+        "images_saved": img_saved,
+        "images_analyzed": img_analyzed,
+    }

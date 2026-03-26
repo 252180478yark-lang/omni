@@ -1,10 +1,28 @@
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from enum import Enum
 
 from app.schemas.ai import ChatResponse, Message, TokenUsage
+
+_PLACEHOLDER_RE = re.compile(
+    r"^(your_|my_|put_|enter_|insert_|replace_|changeme|sk-xxx|placeholder)",
+    re.IGNORECASE,
+)
+
+
+def is_real_api_key(key: str | None) -> bool:
+    """Return True only if *key* looks like a real credential, not a placeholder."""
+    if not key or not key.strip():
+        return False
+    stripped = key.strip()
+    if _PLACEHOLDER_RE.search(stripped):
+        return False
+    if stripped.endswith("_here") or stripped.endswith("_key"):
+        return False
+    return True
 
 
 class ProviderCapability(str, Enum):

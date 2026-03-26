@@ -30,7 +30,7 @@ async def _llm_call(prompt: str, system: str = "", temperature: float = 0.3) -> 
         resp = await client.post(url, json={
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 1000,
+            "max_tokens": 1500,
             "model": _FAST_MODEL,
         })
         resp.raise_for_status()
@@ -42,9 +42,10 @@ async def _llm_call(prompt: str, system: str = "", temperature: float = 0.3) -> 
 _REWRITE_PROMPT = """\
 你是搜索查询优化专家。请将用户的原始问题改写为更适合知识库搜索的查询。
 要求：
-- 补充隐含的关键词
+- 补充隐含的关键词和同义词/近义词
 - 移除口语化表达
 - 保持原始意图
+- 如有专业术语，同时补充其常见别名
 - 只输出改写后的查询，不要解释
 
 原始问题：{query}"""
@@ -68,8 +69,9 @@ async def rewrite_query(query: str) -> str:
 # ═══ HyDE — Hypothetical Document Embedding ═══
 
 _HYDE_PROMPT = """\
-请针对以下问题，写一段可能出现在文档中的回答内容（100-200字）。
-不需要真实准确，只需要包含相关的关键词和表述。
+请针对以下问题，写一段可能出现在文档中的回答内容（200-400字）。
+不需要真实准确，但要尽量覆盖相关的关键词、专业术语和多种表述方式。
+包含该领域常见的概念和关联信息。
 只输出这段假设性内容，不要加前缀说明。
 
 问题：{query}"""

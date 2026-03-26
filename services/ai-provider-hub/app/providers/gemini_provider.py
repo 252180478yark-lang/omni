@@ -39,6 +39,7 @@ class GeminiProvider(BaseProvider):
     # ─── Chat ───
 
     async def chat(self, messages: list[Message], model: str, **kwargs: object) -> ChatResponse:
+        import asyncio
         key = self._key(**kwargs)
         if not key:
             raise RuntimeError("Gemini API Key 未配置")
@@ -47,14 +48,31 @@ class GeminiProvider(BaseProvider):
         url = f"{_API_BASE}/models/{model_id}:generateContent"
         body = _build_chat_body(messages, model=model_id, **kwargs)
 
-        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-            resp = await client.post(url, params={"key": key}, json=body)
-            resp.raise_for_status()
-            data = resp.json()
-
-        text = _extract_text(data)
-        usage = _extract_usage(data)
-        return ChatResponse(content=text, provider=self.name, model=model_id, usage=usage)
+        last_exc: Exception | None = None
+        for attempt in range(5):
+            try:
+                async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+                    resp = await client.post(url, params={"key": key}, json=body)
+                    if resp.status_code == 400:
+                        err = resp.json().get("error", {})
+                        reason = err.get("message", resp.text[:200])
+                        raise RuntimeError(f"Gemini API error (400): {reason}")
+                    resp.raise_for_status()
+                    data = resp.json()
+                text = _extract_text(data)
+                usage = _extract_usage(data)
+                return ChatResponse(content=text, provider=self.name, model=model_id, usage=usage)
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                last_exc = exc
+                if attempt < 4:
+                    await asyncio.sleep(min(2 ** attempt, 8))
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (429, 500, 502, 503, 504) and attempt < 4:
+                    last_exc = exc
+                    await asyncio.sleep(min(2 ** attempt, 8))
+                else:
+                    raise
+        raise last_exc
 
     async def chat_stream(self, messages: list[Message], model: str, **kwargs: object) -> AsyncIterator[str]:
         key = self._key(**kwargs)
@@ -168,15 +186,22 @@ class GeminiProvider(BaseProvider):
         key = (api_key or settings.gemini_api_key or "").strip()
         if not key:
             return False, "未提供 Gemini API Key", []
-        try:
-            async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
-                resp = await client.get(f"{_API_BASE}/models", params={"key": key})
-                resp.raise_for_status()
-                rows = resp.json().get("models", [])
-                models = [row.get("name", "").replace("models/", "") for row in rows if row.get("name")]
-            return True, f"连接成功，获取到 {len(models)} 个模型", models
-        except Exception as exc:
-            return False, f"连接失败: {exc}", []
+        import asyncio
+        max_retries = 8
+        last_exc: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+                    resp = await client.get(f"{_API_BASE}/models", params={"key": key})
+                    resp.raise_for_status()
+                    rows = resp.json().get("models", [])
+                    models = [row.get("name", "").replace("models/", "") for row in rows if row.get("name")]
+                return True, f"连接成功，获取到 {len(models)} 个模型", models
+            except Exception as exc:
+                last_exc = exc
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(min(2 ** attempt, 8))
+        return False, f"连接失败: {last_exc}", []
 
 
 # ─── Helpers ───

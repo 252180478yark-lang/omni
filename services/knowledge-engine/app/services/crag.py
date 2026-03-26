@@ -65,7 +65,7 @@ async def evaluate_retrieval(
         return CRAGResult()
 
     context_summary = "\n".join(
-        f"- {c['content'][:300]}" for c in chunks[:5]
+        f"- {c['content'][:500]}" for c in chunks[:8]
     )
 
     try:
@@ -80,7 +80,7 @@ async def evaluate_retrieval(
                         ),
                     }],
                     "temperature": 0.1,
-                    "max_tokens": 500,
+                    "max_tokens": 800,
                     "model": _JUDGE_MODEL,
                 },
             )
