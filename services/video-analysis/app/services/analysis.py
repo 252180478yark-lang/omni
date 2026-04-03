@@ -14,6 +14,57 @@ from .emotion_curve import build_curve
 DEFAULT_REPORT_OUTPUT_DIR = Path(os.getenv("VIDEO_ANALYSIS_PACK_DIR") or os.getenv("VIDEO_ANALYSIS_DATA_DIR") or "/app/data/video-analysis") / "reports"
 
 
+def _patch_httplib2_for_proxy() -> None:
+    """Patch httplib2.Http.__init__ once at module load to inject proxy config.
+
+    google-generativeai v0.8.x calls httplib2.Http() directly inside
+    FileServiceClient._setup_discovery_api() for video file uploads.
+    httplib2 ignores proxy env vars by default, so without this patch every
+    upload connects directly to Google (blocked in China).
+
+    The patch must run before any worker thread touches _setup_discovery_api()
+    because the result is cached in a threading.local().
+    """
+    # Prefer HTTPS_PROXY; skip loopback addresses (127.0.0.1 is not the host inside a container)
+    proxy_url = ""
+    for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        val = os.getenv(var, "").strip()
+        if val and "127.0.0.1" not in val and "localhost" not in val:
+            proxy_url = val
+            break
+
+    if not proxy_url:
+        return
+
+    try:
+        import httplib2
+        import socks as _socks
+        from urllib.parse import urlparse as _urlparse
+
+        if getattr(httplib2.Http, "_omni_proxy_patched", False):
+            return  # already patched, avoid double-wrapping
+
+        parsed = _urlparse(proxy_url)
+        proxy_info = httplib2.ProxyInfo(
+            proxy_type=_socks.PROXY_TYPE_HTTP,
+            proxy_host=parsed.hostname,
+            proxy_port=parsed.port or 80,
+        )
+        _orig_init = httplib2.Http.__init__
+
+        def _patched_init(self, *args, **kwargs):
+            kwargs.setdefault("proxy_info", proxy_info)
+            _orig_init(self, *args, **kwargs)
+
+        httplib2.Http.__init__ = _patched_init
+        httplib2.Http._omni_proxy_patched = True  # type: ignore[attr-defined]
+    except Exception:
+        pass  # PySocks not installed or config invalid — skip silently
+
+
+_patch_httplib2_for_proxy()
+
+
 def _build_placeholder_report(
     video_id: str, original_name: str, context: dict[str, Any] | None = None
 ) -> dict[str, Any]:

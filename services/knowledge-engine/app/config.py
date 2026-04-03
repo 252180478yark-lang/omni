@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     rag_contextual_compression: bool = True
 
     # RAG Advanced — CRAG
-    rag_crag_enabled: bool = True
+    rag_crag_enabled: bool = False
 
     # Indexing — chunk headers
     chunk_contextual_headers: bool = True

@@ -11,7 +11,7 @@ WORKDIR /app
 COPY pyproject.toml /app/pyproject.toml
 RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
     fastapi uvicorn[standard] pydantic pydantic-settings python-multipart \
-    requests openpyxl python-dotenv
+    requests openpyxl python-dotenv psycopg2-binary httpx
 
 COPY app /app/app
 RUN mkdir -p /app/data/livestream-analysis

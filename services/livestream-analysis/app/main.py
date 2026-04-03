@@ -1,9 +1,12 @@
 """直播切片分析 — FastAPI 服务入口"""
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import json
 import logging
 import os
-import sqlite3
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +15,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
+
+import psycopg2
+import psycopg2.extras
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,66 +39,81 @@ BASE_PREFIX = "/api/v1/livestream-analysis"
 settings = Settings()
 DATA_DIR = Path(settings.data_dir)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_PATH = DATA_DIR / "livestream.db"
 VIDEOS_DIR = DATA_DIR / "videos"
 VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
 
-# ── SQLite ──────────────────────────────────────────────────────────
-_local = threading.local()
+# ── PostgreSQL ───────────────────────────────────────────────────────
+_DB_DSN: str | None = None
 
 
-def _get_conn() -> sqlite3.Connection:
-    if not hasattr(_local, "conn"):
-        _local.conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-        _local.conn.row_factory = sqlite3.Row
-        _local.conn.execute("PRAGMA journal_mode=WAL")
-    return _local.conn
+def _dsn() -> str:
+    global _DB_DSN
+    if _DB_DSN is None:
+        _DB_DSN = os.environ.get("DATABASE_URL", "")
+    if not _DB_DSN:
+        raise RuntimeError("DATABASE_URL environment variable is not set")
+    return _DB_DSN
 
 
 @contextmanager
 def get_db():
-    conn = _get_conn()
+    conn = psycopg2.connect(_dsn())
+    conn.autocommit = False
     try:
         yield conn
         conn.commit()
     except Exception:
         conn.rollback()
         raise
+    finally:
+        conn.close()
+
+
+def _row_to_dict(cursor, row) -> dict:
+    cols = [desc[0] for desc in cursor.description]
+    return dict(zip(cols, row))
 
 
 def _init_db():
-    with get_db() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id TEXT PRIMARY KEY,
-                original_name TEXT NOT NULL,
-                display_name TEXT DEFAULT '',
-                status TEXT NOT NULL DEFAULT 'pending',
-                phase TEXT DEFAULT 'queued',
-                message TEXT DEFAULT '',
-                progress_current INTEGER DEFAULT 0,
-                progress_total INTEGER DEFAULT 4,
-                video_path TEXT,
-                excel_path TEXT,
-                json_path TEXT,
-                error TEXT,
-                summary_json TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-        """)
-        try:
-            conn.execute("ALTER TABLE tasks ADD COLUMN display_name TEXT DEFAULT ''")
-        except Exception:
-            pass
+    """Tables are created by init.sql at PostgreSQL startup; this is a no-op."""
+    logger.info("livestream-analysis using PostgreSQL (schema: livestream)")
 
 
-_init_db()
+def _sync_key_from_ai_hub() -> None:
+    """启动时从 ai-provider-hub 同步 Gemini API Key 和默认模型，hub 配置优先于本地 env。"""
+    import httpx
+    ai_hub_url = os.environ.get("AI_PROVIDER_HUB_URL", "http://ai-provider-hub:8001")
+    try:
+        resp = httpx.get(f"{ai_hub_url}/api/v1/ai/provider-secrets/gemini", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            key = data.get("api_key", "").strip()
+            model = data.get("default_chat_model", "").strip()
+            if key:
+                settings.gemini_api_key = key
+                logger.info("Gemini API Key 已从 ai-provider-hub 同步")
+            if model:
+                settings.gemini_model = model
+                logger.info("Gemini 模型已从 ai-provider-hub 同步: %s", model)
+            if key:
+                return
+    except Exception as exc:
+        logger.warning("无法从 ai-provider-hub 同步配置: %s，将使用本地环境变量", exc)
+    if settings.gemini_api_key:
+        logger.info("使用本地环境变量中的 Gemini API Key，模型: %s", settings.gemini_model)
+    else:
+        logger.warning("未找到 Gemini API Key，请在 ai-provider-hub 模型配置页面设置")
+
 
 # ── App ─────────────────────────────────────────────────────────────
 app = FastAPI(title="直播切片分析", version="1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
+
+
+@app.on_event("startup")
+def on_startup():
+    _sync_key_from_ai_hub()
 
 executor = ThreadPoolExecutor(max_workers=settings.parallel_workers)
 _job_lock = threading.Lock()
@@ -100,25 +121,30 @@ _active_jobs: set[str] = set()
 
 
 def _update_task(task_id: str, **kw):
-    kw["updated_at"] = datetime.now(timezone.utc).isoformat()
-    cols = ", ".join(f"{k}=?" for k in kw)
+    kw["updated_at"] = datetime.now(timezone.utc)
+    cols = ", ".join(f"{k} = %s" for k in kw)
     vals = list(kw.values()) + [task_id]
     with get_db() as conn:
-        conn.execute(f"UPDATE tasks SET {cols} WHERE id=?", vals)
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE livestream.tasks SET {cols} WHERE id = %s", vals)
 
 
 def _get_task(task_id: str) -> Optional[dict]:
     with get_db() as conn:
-        row = conn.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
-    return dict(row) if row else None
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM livestream.tasks WHERE id = %s", (task_id,))
+            row = cur.fetchone()
+            return _row_to_dict(cur, row) if row else None
 
 
 def _backfill_display_names():
     """For existing done tasks without display_name, generate one from their JSON report."""
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT id, json_path, created_at FROM tasks WHERE status='done' AND (display_name IS NULL OR display_name='')"
-        ).fetchall()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, json_path, created_at FROM livestream.tasks WHERE status='done' AND (display_name IS NULL OR display_name='')"
+            )
+            rows = [_row_to_dict(cur, r) for r in cur.fetchall()]
     for row in rows:
         tid = row["id"]
         jp = row["json_path"]
@@ -129,7 +155,7 @@ def _backfill_display_names():
             with open(jp, "r", encoding="utf-8") as f:
                 data = json.load(f)
             r = AnalysisResult(**data)
-            dt = datetime.fromisoformat(cat.replace("Z", "+00:00"))
+            dt = cat if isinstance(cat, datetime) else datetime.fromisoformat(str(cat).replace("Z", "+00:00"))
             date_str = dt.strftime("%m%d_%H%M")
             dur = r.summary.total_duration or "未知"
             parts: list[str] = []
@@ -296,13 +322,14 @@ async def upload_video(file: UploadFile = File(...)):
                 raise HTTPException(400, "文件大小不能超过 2GB")
             out.write(chunk)
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     with get_db() as conn:
-        conn.execute(
-            "INSERT INTO tasks (id, original_name, status, phase, message, video_path, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (task_id, file.filename, "queued", "queued", "排队中...", str(video_path), now, now),
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO livestream.tasks (id, original_name, status, phase, message, video_path, created_at, updated_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (task_id, file.filename, "queued", "queued", "排队中...", str(video_path), now, now),
+            )
 
     with _job_lock:
         _active_jobs.add(task_id)
@@ -314,10 +341,18 @@ async def upload_video(file: UploadFile = File(...)):
 @app.get(f"{BASE_PREFIX}/videos")
 def list_videos():
     with get_db() as conn:
-        rows = conn.execute(
-            "SELECT id, original_name, display_name, status, created_at FROM tasks ORDER BY created_at DESC"
-        ).fetchall()
-    return [dict(r) for r in rows]
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, original_name, display_name, status, created_at FROM livestream.tasks ORDER BY created_at DESC"
+            )
+            rows = cur.fetchall()
+            result = []
+            for r in rows:
+                d = _row_to_dict(cur, r)
+                if isinstance(d.get("created_at"), datetime):
+                    d["created_at"] = d["created_at"].isoformat()
+                result.append(d)
+            return result
 
 
 @app.get(f"{BASE_PREFIX}/tasks/{{task_id}}")
@@ -345,7 +380,7 @@ def task_status(task_id: str):
         "json_url": f"{BASE_PREFIX}/tasks/{task_id}/report.json" if t.get("json_path") else None,
         "error": t.get("error"),
         "summary": summary,
-        "created_at": t["created_at"],
+        "created_at": t["created_at"].isoformat() if isinstance(t["created_at"], datetime) else t["created_at"],
     }
 
 
@@ -368,7 +403,7 @@ def video_detail(video_id: str):
             "id": t["id"],
             "original_name": t["original_name"],
             "status": t["status"],
-            "created_at": t["created_at"],
+            "created_at": t["created_at"].isoformat() if isinstance(t["created_at"], datetime) else t["created_at"],
             "last_error": t.get("error"),
         },
         "report": report,
@@ -463,5 +498,6 @@ def delete_video(video_id: str):
     if task_dir.exists():
         shutil.rmtree(task_dir, ignore_errors=True)
     with get_db() as conn:
-        conn.execute("DELETE FROM tasks WHERE id=?", (video_id,))
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM livestream.tasks WHERE id = %s", (video_id,))
     return {"deleted": True}

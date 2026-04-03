@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,6 +8,9 @@ class Settings(BaseSettings):
     service_name: str = "video-analysis"
     service_port: int = 8006
     data_dir: str = "/app/data/video-analysis"
+
+    # 供 storage 使用；本地 .env 中 DATABASE_URL 不会写入 os.environ，需显式声明
+    database_url: str = Field(default="", validation_alias="DATABASE_URL")
 
     ai_provider_hub_url: str = "http://ai-provider-hub:8001"
     knowledge_engine_url: str = "http://knowledge-engine:8002"

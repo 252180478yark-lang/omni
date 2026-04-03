@@ -1,7 +1,7 @@
 """直播切片分析 — 配置管理"""
 
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
@@ -9,7 +9,7 @@ DATA_DIR = Path("/app/data/livestream-analysis")
 
 
 class Settings(BaseSettings):
-    gemini_api_key: str = Field(default="AIzaSyByUe8Nxi6bWlsBqLAHFUG8ryGPe7chJws", description="Gemini API Key")
+    gemini_api_key: str = Field(default="", description="Gemini API Key (通过 .env 或 ai-provider-hub 同步配置，禁止硬编码)")
     gemini_model: str = "gemini-2.5-pro-preview-06-05"
     gemini_temperature: float = 0.3
     gemini_max_output_tokens: int = 65536
@@ -29,7 +29,8 @@ class Settings(BaseSettings):
 
     data_dir: str = str(DATA_DIR)
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )

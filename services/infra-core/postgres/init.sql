@@ -115,6 +115,67 @@ CREATE INDEX IF NOT EXISTS idx_relations_document_id ON knowledge.relations (doc
 CREATE INDEX IF NOT EXISTS idx_relations_source ON knowledge.relations (kb_id, source_entity);
 CREATE INDEX IF NOT EXISTS idx_relations_target ON knowledge.relations (kb_id, target_entity);
 
+-- ═══ Video Analysis Tables ═══
+CREATE SCHEMA IF NOT EXISTS video_analysis;
+
+CREATE TABLE IF NOT EXISTS video_analysis.videos (
+    id TEXT PRIMARY KEY,
+    original_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    report_md_path TEXT,
+    report_json_path TEXT,
+    report_txt_path TEXT,
+    curve_path TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'queued',
+    retries INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    progress REAL NOT NULL DEFAULT 0,
+    status_message TEXT,
+    metrics_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS video_analysis.cost_logs (
+    id BIGSERIAL PRIMARY KEY,
+    video_id TEXT,
+    prompt_tokens INTEGER,
+    response_tokens INTEGER,
+    total_tokens INTEGER,
+    cost_usd REAL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS video_analysis.knowledge_base (
+    id BIGSERIAL PRIMARY KEY,
+    video_id TEXT,
+    summary TEXT,
+    tags TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    kb_pushed INTEGER NOT NULL DEFAULT 0
+);
+
+-- ═══ Livestream Analysis Tables ═══
+CREATE SCHEMA IF NOT EXISTS livestream;
+
+CREATE TABLE IF NOT EXISTS livestream.tasks (
+    id TEXT PRIMARY KEY,
+    original_name TEXT NOT NULL,
+    display_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    phase TEXT NOT NULL DEFAULT 'queued',
+    message TEXT NOT NULL DEFAULT '',
+    progress_current INTEGER NOT NULL DEFAULT 0,
+    progress_total INTEGER NOT NULL DEFAULT 4,
+    video_path TEXT,
+    excel_path TEXT,
+    json_path TEXT,
+    error TEXT,
+    summary_json TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ═══ HyPE — Hypothetical Prompt Embeddings ═══
 CREATE TABLE IF NOT EXISTS knowledge.hype_embeddings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -28,3 +28,7 @@ class JobStatusResponse(BaseModel):
     started_at: datetime
     finished_at: datetime | None = None
     error_log: str | None = None
+
+
+class JobListResponse(BaseModel):
+    jobs: list[JobStatusResponse] = Field(default_factory=list)

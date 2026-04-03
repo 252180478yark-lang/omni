@@ -2,6 +2,21 @@
 # 一键启动：docker-compose up -d
 # 单独启动基础设施：docker-compose up -d postgres redis nginx
 # 查看日志：docker-compose logs -f <service>
+#
+# VPN/代理配置：在根目录 .env 中设置 PROXY_URL（不要改这个文件）
+#   PROXY_URL=http://host.docker.internal:12334
+# 不使用代理则留空即可。
+
+# 容器内代理：优先 .env 中的 HTTP_PROXY/HTTPS_PROXY；否则用统一 PROXY_URL。
+# 切勿使用 127.0.0.1:端口 —— 在容器内指向容器自身，会导致 Connection refused (111)。
+# Clash 混合端口示例：PROXY_URL=http://host.docker.internal:12334
+x-proxy-env: &proxy-env
+  HTTP_PROXY: "${HTTP_PROXY:-${PROXY_URL:-}}"
+  HTTPS_PROXY: "${HTTPS_PROXY:-${PROXY_URL:-${HTTP_PROXY:-}}}"
+  http_proxy: "${HTTP_PROXY:-${PROXY_URL:-}}"
+  https_proxy: "${HTTPS_PROXY:-${PROXY_URL:-${HTTP_PROXY:-}}}"
+  NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
+  no_proxy: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
 
 services:
   # ═══ Infrastructure ═══
@@ -64,6 +79,8 @@ services:
         condition: service_started
       livestream-analysis:
         condition: service_started
+      identity-service:
+        condition: service_started
     ports:
       - "${NGINX_PORT:-80}:80"
       - "${NGINX_SSL_PORT:-443}:443"
@@ -74,6 +91,26 @@ services:
       - omni-network
 
   # ═══ Application Services ═══
+
+  identity-service:
+    build:
+      context: ./services/identity-service
+    container_name: omni-identity-service
+    env_file:
+      - ./services/identity-service/.env.example
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/3"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - omni-network
 
   frontend:
     build:
@@ -104,13 +141,11 @@ services:
     env_file:
       - ./services/ai-provider-hub/.env.example
     environment:
+      <<: *proxy-env
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/0"
-      HTTP_PROXY: "http://host.docker.internal:7890"
-      HTTPS_PROXY: "http://host.docker.internal:7890"
-      NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
-    ports:
-      - "8001:8001"
+    expose:
+      - "8001"
     volumes:
       - ai_hub_data:/app/data
     depends_on:
@@ -130,14 +165,12 @@ services:
     env_file:
       - ./services/knowledge-engine/.env.example
     environment:
+      <<: *proxy-env
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/1"
-      HTTP_PROXY: "http://host.docker.internal:7890"
-      HTTPS_PROXY: "http://host.docker.internal:7890"
-      NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
-    ports:
-      - "8002:8002"
+    expose:
+      - "8002"
     volumes:
       - knowledge_data:/app/data
     depends_on:
@@ -155,14 +188,12 @@ services:
     env_file:
       - ./services/news-aggregator/.env.example
     environment:
+      <<: *proxy-env
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/2"
-      HTTP_PROXY: "http://host.docker.internal:7890"
-      HTTPS_PROXY: "http://host.docker.internal:7890"
-      NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
-    ports:
-      - "8005:8005"
+    expose:
+      - "8005"
     depends_on:
       postgres:
         condition: service_healthy
@@ -182,21 +213,19 @@ services:
     env_file:
       - ./services/video-analysis/.env.example
     environment:
+      <<: *proxy-env
       AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
       KNOWLEDGE_TARGET_KB_ID: "default"
-      HTTP_PROXY: "http://host.docker.internal:7890"
-      HTTPS_PROXY: "http://host.docker.internal:7890"
-      http_proxy: "http://host.docker.internal:7890"
-      https_proxy: "http://host.docker.internal:7890"
-      NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
-      no_proxy: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8006"]
-    ports:
-      - "8006:8006"
+    expose:
+      - "8006"
     volumes:
       - video_analysis_data:/app/data
     depends_on:
+      postgres:
+        condition: service_healthy
       ai-provider-hub:
         condition: service_started
     networks:
@@ -209,15 +238,17 @@ services:
     env_file:
       - ./services/livestream-analysis/.env.example
     environment:
-      HTTP_PROXY: "http://host.docker.internal:7890"
-      HTTPS_PROXY: "http://host.docker.internal:7890"
-      NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
+      <<: *proxy-env
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8007"]
-    ports:
-      - "8007:8007"
+    expose:
+      - "8007"
     volumes:
       - livestream_analysis_data:/app/data
     depends_on:
+      postgres:
+        condition: service_healthy
       ai-provider-hub:
         condition: service_started
     networks:

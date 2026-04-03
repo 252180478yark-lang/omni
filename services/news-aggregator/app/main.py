@@ -32,6 +32,27 @@ def configure_logging() -> None:
     )
 
 
+async def _sync_config_from_hub() -> None:
+    """从 ai-provider-hub 同步 API key 与默认模型到 settings。"""
+    await asyncio.sleep(3)
+    hub_url = settings.sp3_base_url
+    for provider in ["gemini", "openai", "anthropic"]:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{hub_url}/api/v1/ai/provider-secrets/{provider}")
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                model = (data.get("default_chat_model") or "").strip()
+                if model:
+                    settings.enricher_provider = provider
+                    settings.enricher_model = model
+                    logger.info("news-aggregator: enricher 已同步配置 provider=%s model=%s", provider, model)
+                    return
+        except Exception as exc:
+            logger.warning("news-aggregator: 无法从 hub 同步 %s 配置: %s", provider, exc)
+
+
 async def _auto_retry_kb_pushes() -> None:
     """On startup, retry archived articles that never made it to knowledge-engine."""
     await asyncio.sleep(10)
@@ -70,6 +91,7 @@ async def _auto_retry_kb_pushes() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    asyncio.create_task(_sync_config_from_hub())
     asyncio.create_task(_auto_retry_kb_pushes())
     yield
     await engine.dispose()

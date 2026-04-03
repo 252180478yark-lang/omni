@@ -6,10 +6,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from app.dependencies import get_fetch_service
-from app.schemas.fetch import FetchRequest, FetchResponse, JobStatusResponse
+from app.schemas.fetch import FetchRequest, FetchResponse, JobStatusResponse, JobListResponse
 from app.services.fetch_service import FetchService
 
 router = APIRouter(tags=["news-fetch"])
+
+
+@router.get("/fetch", response_model=JobListResponse)
+async def list_fetch_jobs(
+    limit: int = 10,
+    service: FetchService = Depends(get_fetch_service),
+) -> JobListResponse:
+    jobs = await service.list_recent_jobs(limit=limit)
+    return JobListResponse(jobs=jobs)
 
 
 @router.post("/fetch", response_model=FetchResponse)

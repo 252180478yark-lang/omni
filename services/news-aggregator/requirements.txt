@@ -9,3 +9,4 @@ httpx==0.28.*
 redis[hiredis]==5.*
 python-jose[cryptography]==3.3.*
 structlog==24.*
+feedparser==6.*

@@ -60,9 +60,6 @@ class RelationData:
     weight: float = 1.0
 
 
-_GRAPH_EXTRACTION_MODEL = "gemini-3.1-flash-lite-preview"
-
-
 async def extract_entities_and_relations_llm(
     text: str,
     *,
@@ -85,8 +82,9 @@ async def extract_entities_and_relations_llm(
             ],
             "temperature": 0.1,
             "max_tokens": 4000,
-            "model": model or _GRAPH_EXTRACTION_MODEL,
         }
+        if model:
+            payload["model"] = model
         if provider:
             payload["provider"] = provider
 

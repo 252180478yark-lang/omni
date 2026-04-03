@@ -30,6 +30,17 @@ HEADERS = {
     "Accept": "application/json, text/html, */*",
 }
 
+# Blocking images/fonts/svg breaks Feishu/Lark loaders; only skip heavy video.
+_HARVESTER_ROUTE_ABORT_RE = re.compile(
+    r"\.(mp4|webm|mov|m4v)(\?|$)", re.IGNORECASE,
+)
+
+_CHROMIUM_HEADLESS_ARGS = (
+    "--disable-blink-features=AutomationControlled",
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+)
+
 # ═══ Job Store (in-memory, personal-use) ═══
 
 _jobs: dict[str, dict] = {}
@@ -1235,6 +1246,25 @@ def _is_feishu_url(url: str) -> bool:
                                    "larkoffice.com/wiki/", "feishu.cn/wiki/", "larksuite.com/wiki/"))
 
 
+def _lark_embed_urls(token: str, content_type: str) -> list[str]:
+    """Ordered Lark URLs for SSR feishuDocxToken. Wiki-root articles need /wiki/; tenant host matters."""
+    ct = (content_type or "").lower()
+    urls: list[str] = []
+    seen: set[str] = set()
+
+    def add(u: str) -> None:
+        if u not in seen:
+            seen.add(u)
+            urls.append(u)
+
+    if "wiki" in ct:
+        add(f"https://bytedance.larkoffice.com/wiki/{token}")
+        add(f"https://larkoffice.com/wiki/{token}")
+    add(f"https://bytedance.larkoffice.com/docx/{token}")
+    add(f"https://larkoffice.com/docx/{token}")
+    return urls
+
+
 async def _extract_feishu_direct(
     page,
     url: str,
@@ -1429,7 +1459,10 @@ async def crawl_feishu_doc(
         job["current_article"] = {"index": 0, "title": "正在提取飞书文档...", "graph_path": url}
 
         pw = await async_playwright().start()
-        browser = await pw.chromium.launch(headless=True)
+        browser = await pw.chromium.launch(
+            headless=True,
+            args=list(_CHROMIUM_HEADLESS_ARGS),
+        )
 
         ctx_kwargs: dict = {}
         if auth_state_path and Path(auth_state_path).exists():
@@ -1439,13 +1472,8 @@ async def crawl_feishu_doc(
         cdn_url_data: dict[str, dict] = {}
         page = await ctx.new_page()
 
-        # Block heavy non-essential resources to prevent renderer crashes
-        _heavy_re = re.compile(
-            r"\.(png|jpg|jpeg|gif|svg|woff2?|ttf|eot|mp4|webm)(\?|$)", re.IGNORECASE,
-        )
-
         async def _block_heavy(route):
-            if _heavy_re.search(route.request.url):
+            if _HARVESTER_ROUTE_ABORT_RE.search(route.request.url):
                 await route.abort()
             else:
                 await route.continue_()
@@ -1542,10 +1570,11 @@ async def crawl_feishu_doc(
 
 
 def _parse_single_article_url(url: str) -> dict | None:
-    """Detect a Yuntu single-article URL and extract its mapping_id + params.
+    """Detect a single-article URL and extract mapping_id + graph query params.
 
-    Single-article URLs look like:
-      https://yuntu.oceanengine.com/support/content/142334?graphId=610&mappingType=2&...
+    Supported shapes:
+      https://yuntu.oceanengine.com/support/content/142334?graphId=...&mappingType=2&...
+      https://support.oceanengine.com/help/content/206669?graphId=...&mappingType=2&...
     """
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
@@ -1564,6 +1593,36 @@ def _parse_single_article_url(url: str) -> dict | None:
         "page_id": qs.get("pageId", [""])[0],
         "space_id": qs.get("spaceId", [""])[0],
     }
+
+
+# SSR may return JSON string "null" instead of real HTML/markdown — do not ingest as text.
+_FEISHU_BROWSER_CONTENT_TYPES = (
+    "feishu_docx_new_import",
+    "feishu_docx_light_import_wiki_root",
+)
+
+
+def _ssr_raw_content_is_placeholder(raw: object) -> bool:
+    if raw is None:
+        return True
+    s = str(raw).strip()
+    if not s:
+        return True
+    return s.lower() in ("null", "none", "undefined")
+
+
+def _article_browse_url(seed_url: str, mid: str, gid: str, pid: str, sid: str) -> str:
+    """Open the same article on the host the user started from (support vs yuntu)."""
+    host = (urlparse(seed_url).hostname or "").lower()
+    if host.endswith("support.oceanengine.com"):
+        return (
+            f"https://support.oceanengine.com/help/content/{mid}"
+            f"?graphId={gid}&pageId={pid}&spaceId={sid}&mappingType=2"
+        )
+    return (
+        f"https://yuntu.oceanengine.com/support/content/{mid}"
+        f"?graphId={gid}&pageId={pid}&spaceId={sid}"
+    )
 
 
 async def crawl_articles(
@@ -1632,7 +1691,7 @@ async def crawl_articles(
         # Phase 1: Try SSR API extraction (no browser needed, fast)
         job["status"] = "extracting_api"
         api_extracted: set[int] = set()
-        feishu_doc_tokens: dict[int, str] = {}
+        feishu_doc_specs: dict[int, tuple[str, str]] = {}
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
             for idx, article in enumerate(articles):
                 title = article["title"]
@@ -1644,12 +1703,24 @@ async def crawl_articles(
 
                 ssr = await _fetch_article_ssr(client, mid, gid, pid, sid)
                 if ssr:
-                    content = ssr.get("content") or ""
+                    raw_content = ssr.get("content")
+                    content = "" if raw_content is None else str(raw_content)
                     content_type = ssr.get("contentType", "")
 
-                    if content.strip() and content_type not in ("feishu_docx_new_import",):
+                    api_title = ssr.get("name")
+                    if isinstance(api_title, str) and api_title.strip():
+                        article["title"] = api_title.strip()
+                        title = article["title"]
+
+                    can_use_ssr_text = (
+                        content.strip()
+                        and not _ssr_raw_content_is_placeholder(raw_content)
+                        and content_type not in _FEISHU_BROWSER_CONTENT_TYPES
+                    )
+                    if can_use_ssr_text:
                         content = clean_ssr_content(content)
                         if content.strip():
+                            src = _article_browse_url(url, mid, gid, pid, sid)
                             job["chapters"].append({
                                 "index": idx,
                                 "title": title,
@@ -1658,19 +1729,26 @@ async def crawl_articles(
                                 "text": content,
                                 "word_count": len(content),
                                 "block_count": 1,
-                                "source_url": f"https://yuntu.oceanengine.com/support/content/{mid}",
+                                "source_url": src,
                             })
                             api_extracted.add(idx)
                             logger.info("Harvester API [%d/%d] %s — %d chars", idx + 1, len(articles), title, len(content))
                             continue
 
-                is_jssdk = ssr and ssr.get("contentType") == "feishu_docx_new_import"
+                is_jssdk = bool(
+                    ssr
+                    and ssr.get("contentType") in _FEISHU_BROWSER_CONTENT_TYPES
+                    and (
+                        ssr.get("contentType") == "feishu_docx_new_import"
+                        or bool(ssr.get("feishuDocxToken"))
+                    )
+                )
                 needs_browser = has_auth or is_jssdk
 
                 if is_jssdk and ssr:
                     docx_token = ssr.get("feishuDocxToken", "")
                     if docx_token:
-                        feishu_doc_tokens[idx] = docx_token
+                        feishu_doc_specs[idx] = (docx_token, str(ssr.get("contentType") or ""))
                         logger.info("Harvester [%d/%d] %s — feishuDocxToken=%s", idx + 1, len(articles), title, docx_token)
 
                 job["chapters"].append({
@@ -1697,7 +1775,10 @@ async def crawl_articles(
 
             job["status"] = "extracting_browser"
             pw = await async_playwright().start()
-            browser = await pw.chromium.launch(headless=True)
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=list(_CHROMIUM_HEADLESS_ARGS),
+            )
             ctx_kwargs: dict = {}
             if has_auth:
                 ctx_kwargs["storage_state"] = auth_state_path
@@ -1718,13 +1799,8 @@ async def crawl_articles(
 
             page = await ctx.new_page()
 
-            # Block heavy non-essential resources to prevent renderer crashes
-            _BLOCK_PATTERN = re.compile(
-                r"\.(png|jpg|jpeg|gif|svg|woff2?|ttf|eot|mp4|webm)(\?|$)", re.IGNORECASE,
-            )
-
             async def _block_heavy(route):
-                if _BLOCK_PATTERN.search(route.request.url):
+                if _HARVESTER_ROUTE_ABORT_RE.search(route.request.url):
                     await route.abort()
                 else:
                     await route.continue_()
@@ -1767,23 +1843,20 @@ async def crawl_articles(
                     "index": idx, "title": title, "graph_path": article["graph_path"],
                 }
 
-                article_url = (
-                    f"https://yuntu.oceanengine.com/support/content/{mid}"
-                    f"?graphId={gid}&pageId={pid}&spaceId={sid}"
-                )
+                article_url = _article_browse_url(url, mid, gid, pid, sid)
 
                 doc = None
                 auth_expired = False
 
-                # Primary path: when we have a feishuDocxToken from SSR,
-                # go directly to the Feishu document — faster and more reliable
-                # than waiting for the yuntu page JSSDK to initialize.
-                if idx in feishu_doc_tokens:
-                    docx_token = feishu_doc_tokens[idx]
-                    feishu_url = f"https://larkoffice.com/docx/{docx_token}"
-                    logger.info("Harvester [%d/%d] %s — direct Feishu extraction: %s",
-                                idx + 1, len(articles), title, feishu_url)
-                    doc = await _extract_feishu_direct(page, feishu_url, cdn_url_data)
+                # Primary path: feishuDocxToken from SSR — try tenant + wiki/docx URL order.
+                if idx in feishu_doc_specs:
+                    docx_token, feishu_ct = feishu_doc_specs[idx]
+                    for feishu_url in _lark_embed_urls(docx_token, feishu_ct):
+                        logger.info("Harvester [%d/%d] %s — direct Feishu extraction: %s",
+                                    idx + 1, len(articles), title, feishu_url)
+                        doc = await _extract_feishu_direct(page, feishu_url, cdn_url_data)
+                        if doc:
+                            break
 
                 # Fallback: standard yuntu page JSSDK extraction
                 if not doc:

@@ -4,7 +4,16 @@ import sys
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 
-from app.services.harvester import parse_feishu_document, _blocks_to_md, _get_text, _cell_to_text
+from app.services.harvester import (
+    parse_feishu_document,
+    _blocks_to_md,
+    _get_text,
+    _cell_to_text,
+    _parse_single_article_url,
+    _ssr_raw_content_is_placeholder,
+    _article_browse_url,
+    _lark_embed_urls,
+)
 
 
 def _make_text_block(text_str: str, btype: str = "text", children=None, **extra):
@@ -184,6 +193,50 @@ def test_cell_to_text():
     assert "Line 2" in result, f"Missing Line 2 in cell: {result!r}"
     assert "<br>" in result, f"Missing <br> separator: {result!r}"
     print(f"[PASS] _cell_to_text: {result}")
+
+
+def test_parse_support_single_article_url():
+    u = (
+        "https://support.oceanengine.com/help/content/206669"
+        "?graphId=397&mappingType=2&pageId=221&spaceId=122"
+    )
+    p = _parse_single_article_url(u)
+    assert p is not None
+    assert p["mapping_id"] == "206669"
+    assert p["graph_id"] == "397"
+    assert p["page_id"] == "221"
+    assert p["space_id"] == "122"
+
+
+def test_ssr_placeholder_strings():
+    assert _ssr_raw_content_is_placeholder(None)
+    assert _ssr_raw_content_is_placeholder("")
+    assert _ssr_raw_content_is_placeholder("null")
+    assert _ssr_raw_content_is_placeholder("NULL")
+    assert not _ssr_raw_content_is_placeholder("<p>hi</p>")
+
+
+def test_article_browse_url_support_vs_yuntu():
+    s = "https://support.oceanengine.com/help/content/206669?graphId=397&mappingType=2"
+    assert "support.oceanengine.com/help/content/206669" in _article_browse_url(s, "206669", "397", "221", "122")
+    y = "https://yuntu.oceanengine.com/support/content/root?graphId=1"
+    assert "yuntu.oceanengine.com/support/content/206669" in _article_browse_url(y, "206669", "397", "221", "122")
+
+
+def test_lark_embed_urls_wiki_root_prefers_wiki():
+    tok = "XXf1ddEiDoyLvzxhEIfcmZGznLe"
+    urls = _lark_embed_urls(tok, "feishu_docx_light_import_wiki_root")
+    assert urls[0] == f"https://bytedance.larkoffice.com/wiki/{tok}"
+    assert f"https://larkoffice.com/wiki/{tok}" in urls
+    assert f"https://bytedance.larkoffice.com/docx/{tok}" in urls
+
+
+def test_lark_embed_urls_plain_docx():
+    tok = "abc123"
+    urls = _lark_embed_urls(tok, "feishu_docx_new_import")
+    assert urls[0] == f"https://bytedance.larkoffice.com/docx/{tok}"
+    assert f"https://larkoffice.com/docx/{tok}" in urls
+    assert all("/wiki/" not in u for u in urls)
 
 
 def test_pipe_escape_in_table():

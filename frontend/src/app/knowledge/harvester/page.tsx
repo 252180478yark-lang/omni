@@ -683,7 +683,7 @@ export default function HarvesterPage() {
                   </Button>
                 </div>
                 <CardDescription>
-                  Docker 容器无法渲染此页面。在本机终端运行以下命令，将自动打开浏览器提取完整内容+图片。
+                  若自动采集未拿到完整正文（常见于复杂嵌入页），可在本机终端运行以下命令，用浏览器完成提取并回传结果。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1046,7 +1046,7 @@ export default function HarvesterPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-amber-700">
                     <ShieldAlert className="w-4 h-4" />
-                    <span>部分文章提取失败（Docker 浏览器无法渲染此页面）。可使用本机浏览器提取完整内容+图片。</span>
+                    <span>部分文章自动采集未拿到正文。可选：使用本机浏览器脚本补充提取（见「本机提取」）。</span>
                   </div>
                   <Button
                     size="sm"

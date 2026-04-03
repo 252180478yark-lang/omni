@@ -2,6 +2,7 @@ const DEFAULTS = {
   gateway: '',
   aiHub: 'http://localhost:8001',
   knowledge: 'http://localhost:8002',
+  newsAggregator: 'http://localhost:8005',
   videoAnalysis: 'http://localhost:8006',
   livestreamAnalysis: 'http://localhost:8007',
 }
@@ -17,6 +18,7 @@ export function serviceBase() {
     // In local dev (without OMNI_API_BASE_URL), prefer direct service ports.
     aiHub: trimSlash(process.env.AI_PROVIDER_HUB_URL || fallback || DEFAULTS.aiHub),
     knowledge: trimSlash(process.env.KNOWLEDGE_ENGINE_URL || fallback || DEFAULTS.knowledge),
+    newsAggregator: trimSlash(process.env.NEWS_AGGREGATOR_URL || fallback || DEFAULTS.newsAggregator),
     videoAnalysis: trimSlash(process.env.VIDEO_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.videoAnalysis),
     livestreamAnalysis: trimSlash(process.env.LIVESTREAM_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.livestreamAnalysis),
   }

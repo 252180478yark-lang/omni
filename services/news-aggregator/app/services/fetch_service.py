@@ -20,12 +20,13 @@ from app.pipeline.enricher import ArticleEnricher
 from app.schemas.fetch import FetchRequest, FetchResponse, JobStatusResponse
 from app.sources.base import BaseFetcher, RawArticle
 from app.sources.bocha_fetcher import BochaFetcher
+from app.sources.rss_fetcher import RssFetcher
 from app.sources.serper_fetcher import SerperFetcher
 from app.sources.tianapi_fetcher import TianapiFetcher
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SOURCE_ORDER = ["serper", "bocha", "tianapi"]
+DEFAULT_SOURCE_ORDER = ["serper", "bocha", "tianapi", "rss"]
 
 
 class FetchService:
@@ -107,6 +108,26 @@ class FetchService:
                 await service._run_pipeline(job_id=job_id, sources=sources, keywords=keywords, freshness=freshness)
             finally:
                 await redis_client.aclose()
+
+    async def list_recent_jobs(self, limit: int = 10) -> list[JobStatusResponse]:
+        result = await self.db.execute(
+            select(FetchJob).order_by(FetchJob.started_at.desc()).limit(limit)
+        )
+        jobs = result.scalars().all()
+        return [
+            JobStatusResponse(
+                job_id=job.id,
+                status=job.status,
+                sources_used=job.sources_used,
+                total_fetched=job.total_fetched,
+                after_dedup=job.after_dedup,
+                after_enrich=job.after_enrich,
+                started_at=job.started_at,
+                finished_at=job.finished_at,
+                error_log=job.error_log,
+            )
+            for job in jobs
+        ]
 
     async def get_job_status(self, job_id: UUID) -> JobStatusResponse:
         job = await self.db.get(FetchJob, job_id)
@@ -247,6 +268,9 @@ class FetchService:
             return BochaFetcher(client=client, api_key=self.settings.bocha_api_key)
         if source_type == "tianapi":
             return TianapiFetcher(client=client, api_key=self.settings.tianapi_key)
+        if source_type == "rss":
+            feed_urls = [u.strip() for u in self.settings.rss_feed_urls.split(",") if u.strip()]
+            return RssFetcher(client=client, api_key="", feed_urls=feed_urls)
         return None
 
     @staticmethod

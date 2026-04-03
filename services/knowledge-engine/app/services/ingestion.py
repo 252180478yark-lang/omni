@@ -785,9 +785,6 @@ _HYPE_PROMPT = """\
 文本片段：
 {text}"""
 
-_HYPE_MODEL = "gemini-3.1-flash-lite-preview"
-
-
 async def _generate_hype_embeddings(
     chunks: list,
     emb_model: str,
@@ -809,7 +806,6 @@ async def _generate_hype_embeddings(
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0.7,
                         "max_tokens": 500,
-                        "model": _HYPE_MODEL,
                     },
                 )
                 resp.raise_for_status()

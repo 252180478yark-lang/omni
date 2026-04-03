@@ -8,8 +8,8 @@ class Settings(BaseSettings):
     service_port: int = 8001
     log_level: str = "INFO"
 
-    # Provider API keys
-    gemini_api_key: str = "AIzaSyByUe8Nxi6bWlsBqLAHFUG8ryGPe7chJws"
+    # Provider API keys (通过 /models 页面或 .env 文件配置，禁止硬编码)
+    gemini_api_key: str = ""
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""

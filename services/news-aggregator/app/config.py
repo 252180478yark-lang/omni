@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", frozen=False)
 
     app_env: str = "dev"
     service_name: str = "news-aggregator"
@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     serper_api_key: str = ""
     bocha_api_key: str = ""
     tianapi_key: str = ""
+    # RSS 免费源：逗号分隔的 feed URL，无需 API Key
+    # 示例: RSS_FEED_URLS=https://feeds.bbci.co.uk/zhongwen/simp/rss.xml,https://rss.36kr.com/feeds
+    rss_feed_urls: str = ""
 
     sp3_base_url: str = "http://ai-provider-hub:8001"
     sp4_base_url: str = "http://knowledge-engine:8002"

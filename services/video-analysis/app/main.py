@@ -10,8 +10,9 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -102,15 +103,40 @@ def _set_gemini_env(config: GeminiConfig) -> str:
     return model
 
 
+def _fetch_config_from_ai_hub() -> dict:
+    """从 ai-provider-hub 同步 Gemini API Key 和默认模型。"""
+    import httpx
+    try:
+        resp = httpx.get(
+            f"{settings.ai_provider_hub_url}/api/v1/ai/provider-secrets/gemini",
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return {}
+
+
 def _load_persisted_settings() -> None:
     data = load_settings()
-    api_key = str(data.get("gemini_api_key", "")).strip()
-    model = str(data.get("gemini_model", "")).strip()
+    local_model = str(data.get("gemini_model", "")).strip()
     cost = data.get("gemini_cost_per_1k")
-    if api_key:
-        os.environ["GEMINI_API_KEY"] = api_key
-    if model:
-        os.environ["GEMINI_MODEL"] = model
+    # ai-provider-hub 是统一配置中心，优先级最高
+    hub = _fetch_config_from_ai_hub()
+    hub_key = hub.get("api_key", "").strip()
+    hub_model = hub.get("default_chat_model", "").strip()
+    if hub_key:
+        os.environ["GEMINI_API_KEY"] = hub_key
+    else:
+        local_key = str(data.get("gemini_api_key", "")).strip()
+        if local_key:
+            os.environ["GEMINI_API_KEY"] = local_key
+    # 模型：hub 优先，其次本地 settings.json，最后保持默认
+    if hub_model:
+        os.environ["GEMINI_MODEL"] = hub_model
+    elif local_model:
+        os.environ["GEMINI_MODEL"] = local_model
     if cost is not None:
         os.environ["GEMINI_COST_PER_1K"] = str(cost)
 
@@ -395,7 +421,7 @@ def delete_videos_batch(body: DeleteVideosBody) -> dict[str, Any]:
 
 @app.get("/api/videos/{video_id}")
 @app.get(f"{BASE_PREFIX}/videos/{{video_id}}")
-def get_video_detail(video_id: str) -> JSONResponse:
+def get_video_detail(video_id: str) -> dict[str, Any]:
     video = get_video(video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -408,18 +434,17 @@ def get_video_detail(video_id: str) -> JSONResponse:
             report = None
     if report is None and video.get("status") in {"failed", "done"}:
         report = build_placeholder_report(video_id, str(video.get("original_name", "")))
-    return JSONResponse(
-        {
-            "video": video,
-            "report": report,
-            "report_markdown_url": f"{BASE_PREFIX}/videos/{video_id}/report.md",
-            "report_json_url": f"{BASE_PREFIX}/videos/{video_id}/report.json",
-            "report_txt_url": f"{BASE_PREFIX}/videos/{video_id}/report.txt",
-            "emotion_png_url": f"{BASE_PREFIX}/videos/{video_id}/emotion.png",
-            "bundle_url": f"{BASE_PREFIX}/videos/{video_id}/bundle.zip",
-            "original_video_url": f"{BASE_PREFIX}/videos/{video_id}/original",
-        }
-    )
+    # video 行含 psycopg2 的 datetime 等，不能交给 JSONResponse 裸序列化，否则会 500
+    return {
+        "video": jsonable_encoder(video),
+        "report": report,
+        "report_markdown_url": f"{BASE_PREFIX}/videos/{video_id}/report.md",
+        "report_json_url": f"{BASE_PREFIX}/videos/{video_id}/report.json",
+        "report_txt_url": f"{BASE_PREFIX}/videos/{video_id}/report.txt",
+        "emotion_png_url": f"{BASE_PREFIX}/videos/{video_id}/emotion.png",
+        "bundle_url": f"{BASE_PREFIX}/videos/{video_id}/bundle.zip",
+        "original_video_url": f"{BASE_PREFIX}/videos/{video_id}/original",
+    }
 
 
 @app.get("/api/videos/{video_id}/report.md")

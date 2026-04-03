@@ -23,6 +23,14 @@ import {
 
 type HealthState = 'healthy' | 'down'
 
+interface ActivityItem {
+  id: string
+  title: string
+  status: string
+  time: string
+  source: 'knowledge' | 'news' | 'video' | 'livestream'
+}
+
 interface OverviewData {
   health: {
     aiHub: HealthState
@@ -37,9 +45,20 @@ interface OverviewData {
   }
 }
 
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return '刚刚'
+  if (m < 60) return `${m} 分钟前`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h} 小时前`
+  return `${Math.floor(h / 24)} 天前`
+}
+
 export default function Home() {
   const [loading, setLoading] = useState(true)
   const [overview, setOverview] = useState<OverviewData | null>(null)
+  const [activity, setActivity] = useState<ActivityItem[]>([])
   const [error, setError] = useState<string>('')
 
   useEffect(() => {
@@ -47,12 +66,19 @@ export default function Home() {
       setLoading(true)
       setError('')
       try {
-        const res = await fetch('/api/omni/overview', { cache: 'no-store' })
-        const json = (await res.json()) as { success: boolean; data?: OverviewData; error?: string }
-        if (!json.success || !json.data) {
-          throw new Error(json.error || '加载失败')
+        const [overviewRes, activityRes] = await Promise.all([
+          fetch('/api/omni/overview', { cache: 'no-store' }),
+          fetch('/api/omni/activity', { cache: 'no-store' }),
+        ])
+        const overviewJson = (await overviewRes.json()) as { success: boolean; data?: OverviewData; error?: string }
+        if (!overviewJson.success || !overviewJson.data) {
+          throw new Error(overviewJson.error || '加载失败')
         }
-        setOverview(json.data)
+        setOverview(overviewJson.data)
+        const activityJson = (await activityRes.json()) as { success: boolean; data?: ActivityItem[] }
+        if (activityJson.success && activityJson.data) {
+          setActivity(activityJson.data)
+        }
       } catch (err) {
         setError(String(err))
       } finally {
@@ -247,22 +273,28 @@ export default function Home() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      {[
-                        { title: "新闻抓取任务完成 (job_19a)", time: "5 分钟前", icon: Newspaper, bg: "bg-blue-100", color: "text-blue-600" },
-                        { title: "模型配置切换为 gpt-4o", time: "15 分钟前", icon: Cpu, bg: "bg-purple-100", color: "text-purple-600" },
-                        { title: "文档入库任务完成 (doc_041)", time: "1 小时前", icon: Database, bg: "bg-green-100", color: "text-green-600" },
-                        { title: "Redis 缓存全量刷新", time: "2 小时前", icon: Network, bg: "bg-orange-100", color: "text-orange-600" },
-                      ].map((item, i) => (
-                        <div key={i} className="flex items-start gap-4">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${item.bg}`}>
-                            <item.icon className={`w-5 h-5 ${item.color}`} />
+                      {activity.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-4">暂无近期活动</p>
+                      ) : activity.map((item) => {
+                        const iconMap: Record<string, { icon: React.ElementType; bg: string; color: string }> = {
+                          knowledge: { icon: Database, bg: 'bg-green-100', color: 'text-green-600' },
+                          news: { icon: Newspaper, bg: 'bg-blue-100', color: 'text-blue-600' },
+                          video: { icon: Clapperboard, bg: 'bg-purple-100', color: 'text-purple-600' },
+                          livestream: { icon: Radio, bg: 'bg-orange-100', color: 'text-orange-600' },
+                        }
+                        const { icon: Icon, bg, color } = iconMap[item.source] ?? { icon: Activity, bg: 'bg-gray-100', color: 'text-gray-600' }
+                        return (
+                          <div key={item.id} className="flex items-start gap-4">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${bg}`}>
+                              <Icon className={`w-5 h-5 ${color}`} />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">{item.title}</p>
+                              <p className="text-xs text-gray-500">{timeAgo(item.time)} · {item.status}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{item.title}</p>
-                            <p className="text-xs text-gray-500">{item.time}</p>
-                          </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </CardContent>
                 </Card>
