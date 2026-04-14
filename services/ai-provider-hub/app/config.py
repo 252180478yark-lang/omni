@@ -15,10 +15,21 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     ollama_base_url: str = "http://ollama:11434"
 
+    # Video generation providers
+    # Seedance 2.0 (火山方舟 Ark) — 推荐使用 ARK_API_KEY
+    ark_api_key: str = ""
+    seedance_access_key: str = ""  # legacy, 若 ark_api_key 为空则回退
+    seedance_secret_key: str = ""  # legacy
+    seedance_model: str = "doubao-seedance-2-0-260128"
+    seedance_fast_model: str = "doubao-seedance-2-0-fast-260128"
+    kling_api_key: str = ""
+
     # Defaults
     default_chat_provider: str = "gemini"
     default_embedding_provider: str = "gemini"
     request_timeout_seconds: float = 120.0
+    # 流式对话（含 RAG 长文生成）单次连接的读取超时，过短会导致长输出中途被断开
+    chat_stream_timeout_seconds: float = 900.0
     provider_config_path: str = "/app/data/provider-config.json"
 
     # Redis (session / cost / rate / video-task)

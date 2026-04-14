@@ -6,6 +6,7 @@ the sentences most relevant to the user's question.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import httpx
@@ -28,61 +29,62 @@ _COMPRESS_PROMPT = """\
 {text}"""
 
 
+async def _compress_one(client: httpx.AsyncClient, query: str, chunk: dict) -> dict:
+    """Compress a single chunk; returns original on failure or short content."""
+    original_content = chunk["content"]
+    if len(original_content) < 200:
+        return chunk
+    try:
+        resp = await client.post(
+            f"{settings.ai_provider_hub_url}/api/v1/ai/chat",
+            json={
+                "messages": [{
+                    "role": "user",
+                    "content": _COMPRESS_PROMPT.format(
+                        query=query, text=original_content[:3000],
+                    ),
+                }],
+                "temperature": 0.1,
+                "max_tokens": 1500,
+                "model": _COMPRESS_MODEL,
+            },
+        )
+        resp.raise_for_status()
+        result = resp.json().get("content", "").strip()
+        if result and len(result) > 20:
+            c = dict(chunk)
+            c["content"] = result
+            c["metadata"] = {
+                **chunk.get("metadata", {}),
+                "compressed": True,
+                "original_length": len(original_content),
+            }
+            return c
+    except Exception:
+        logger.debug("Chunk compression failed, using original", exc_info=True)
+    return chunk
+
+
 async def compress_chunks(
     query: str,
     chunks: list[dict],
 ) -> list[dict]:
-    """Compress each chunk to only include query-relevant content."""
+    """Compress chunks in parallel to only include query-relevant content."""
     if not settings.rag_contextual_compression or not chunks:
         return chunks
 
-    compressed: list[dict] = []
     async with httpx.AsyncClient(timeout=60.0) as client:
-        for chunk in chunks:
-            original_content = chunk["content"]
-            if len(original_content) < 200:
-                compressed.append(chunk)
-                continue
+        compressed = await asyncio.gather(
+            *[_compress_one(client, query, chunk) for chunk in chunks]
+        )
 
-            try:
-                resp = await client.post(
-                    f"{settings.ai_provider_hub_url}/api/v1/ai/chat",
-                    json={
-                        "messages": [{
-                            "role": "user",
-                            "content": _COMPRESS_PROMPT.format(
-                                query=query, text=original_content[:3000],
-                            ),
-                        }],
-                        "temperature": 0.1,
-                        "max_tokens": 1500,
-                        "model": _COMPRESS_MODEL,
-                    },
-                )
-                resp.raise_for_status()
-                result = resp.json().get("content", "").strip()
-
-                if result and len(result) > 20:
-                    c = dict(chunk)
-                    c["content"] = result
-                    c["metadata"] = {
-                        **chunk.get("metadata", {}),
-                        "compressed": True,
-                        "original_length": len(original_content),
-                    }
-                    compressed.append(c)
-                    continue
-            except Exception:
-                logger.debug("Chunk compression failed, using original", exc_info=True)
-
-            compressed.append(chunk)
-
+    result = list(compressed)
     logger.info(
         "Compressed %d chunks, avg reduction %.0f%%",
-        len(compressed),
-        _avg_reduction(chunks, compressed),
+        len(result),
+        _avg_reduction(chunks, result),
     )
-    return compressed
+    return result
 
 
 def _avg_reduction(original: list[dict], compressed: list[dict]) -> float:

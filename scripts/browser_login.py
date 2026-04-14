@@ -17,7 +17,7 @@ import urllib.request
 
 PROFILES = {
     "oceanengine": {
-        "url": "https://yuntu.oceanengine.com",
+        "url": "https://support.oceanengine.com",
         "label": "帮助中心 (Ocean Engine)",
         "session_keys": ("session", "sid_tt", "sid_guard", "uid_tt"),
         "cookie_domains": ("oceanengine", "bytedance", "toutiao"),

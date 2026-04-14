@@ -223,6 +223,17 @@ def test_article_browse_url_support_vs_yuntu():
     assert "yuntu.oceanengine.com/support/content/206669" in _article_browse_url(y, "206669", "397", "221", "122")
 
 
+def test_article_browse_url_omits_empty_graph_id():
+    s = "https://support.oceanengine.com/help/content/182478?pageId=221&spaceId=122"
+    u = _article_browse_url(s, "182478", "", "221", "122")
+    assert "graphId=" not in u
+    assert "pageId=221" in u and "spaceId=122" in u
+    y = "https://yuntu.oceanengine.com/support/content/182478?pageId=221&spaceId=122"
+    uy = _article_browse_url(y, "182478", "", "221", "122")
+    assert "graphId=" not in uy
+    assert "pageId=221" in uy
+
+
 def test_lark_embed_urls_wiki_root_prefers_wiki():
     tok = "XXf1ddEiDoyLvzxhEIfcmZGznLe"
     urls = _lark_embed_urls(tok, "feishu_docx_light_import_wiki_root")
@@ -258,11 +269,129 @@ def test_pipe_escape_in_table():
     print(f"[PASS] pipe escape in table")
 
 
+def test_get_text_elements_text_run():
+    """Test newer Feishu element-based format: elements[].text_run.content"""
+    bd = {
+        "type": "text",
+        "text": {},
+        "elements": [
+            {"text_run": {"content": "Hello "}},
+            {"text_run": {"content": "world"}},
+        ],
+    }
+    result = _get_text(bd)
+    assert result == "Hello world", f"elements/text_run extraction failed: {result!r}"
+    print("[PASS] _get_text elements/text_run format")
+
+
+def test_get_text_elements_mixed():
+    """Test elements with text_run + mention + equation."""
+    bd = {
+        "type": "text",
+        "text": {},
+        "elements": [
+            {"text_run": {"content": "See "}},
+            {"mention_doc": {"text": "@doc123"}},
+            {"text_run": {"content": " for details"}},
+        ],
+    }
+    result = _get_text(bd)
+    assert result == "See @doc123 for details", f"mixed elements extraction failed: {result!r}"
+    print("[PASS] _get_text mixed elements format")
+
+
+def test_get_text_direct_content():
+    """Test direct content field fallback."""
+    bd = {"type": "text", "content": "Direct content here"}
+    result = _get_text(bd)
+    assert result == "Direct content here", f"direct content extraction failed: {result!r}"
+    print("[PASS] _get_text direct content fallback")
+
+
+def test_get_text_deep_search():
+    """Test deep recursive search finds text in nested structures."""
+    bd = {
+        "type": "text",
+        "some_nested": {
+            "wrapper": {
+                "content": "Deep nested content"
+            }
+        },
+    }
+    result = _get_text(bd)
+    assert result == "Deep nested content", f"deep search extraction failed: {result!r}"
+    print("[PASS] _get_text deep recursive search")
+
+
+def test_get_text_text_elements_inside_text():
+    """Test elements inside text dict (Lark Docx SPA format)."""
+    bd = {
+        "type": "text",
+        "text": {
+            "elements": [
+                {"text_run": {"content": "火锅季行业洞察"}},
+            ]
+        },
+    }
+    result = _get_text(bd)
+    assert result == "火锅季行业洞察", f"text.elements extraction failed: {result!r}"
+    print("[PASS] _get_text text.elements format")
+
+
+def test_ordered_video_urls_feishu():
+    """Test that feishu:// video URLs are extracted from markdown."""
+    from app.services.harvester import _ordered_video_urls_from_markdown
+    md = (
+        "Some text\n"
+        "[视频: demo.mp4](feishu://media/abc123)\n"
+        "More text\n"
+        "[视频](https://douyin.com/video/456)\n"
+        "[link](https://example.com/page)\n"  # not a video
+        "[视频: clip](feishu://file_token/def789)\n"
+    )
+    urls = _ordered_video_urls_from_markdown(md)
+    assert len(urls) == 3, f"Expected 3 video URLs, got {len(urls)}: {urls}"
+    assert urls[0] == "feishu://media/abc123"
+    assert urls[1] == "https://douyin.com/video/456"
+    assert urls[2] == "feishu://file_token/def789"
+    print(f"[PASS] feishu:// video URL extraction: {urls}")
+
+
+def test_table_property_field_names():
+    """Test that table blocks with property.rows_id work."""
+    bmap = {
+        "page": {"data": {
+            "type": "page", "text": {}, "children": ["tbl"],
+        }},
+        "tbl": {"data": {
+            "type": "table", "text": {}, "children": [],
+            "property": {
+                "rows_id": ["r1"],
+                "columns_id": ["c1"],
+                "cell_set": {"r1c1": {"block_id": "cell1"}},
+            },
+        }},
+        "cell1": {"data": {"type": "table_cell", "children": ["tx"]}},
+        "tx": {"data": _make_text_block("Prop field data")},
+    }
+    lines = _blocks_to_md(bmap, ["page"])
+    md = "\n".join(lines)
+    assert "Prop field data" in md, f"property field table not rendered: {md!r}"
+    print(f"[PASS] table with property field names")
+
+
 if __name__ == "__main__":
     test_get_text_apool()
     test_get_text_snippet()
     test_get_text_ordered_keys()
+    test_get_text_elements_text_run()
+    test_get_text_elements_mixed()
+    test_get_text_direct_content()
+    test_get_text_deep_search()
+    test_get_text_text_elements_inside_text()
     test_cell_to_text()
     test_pipe_escape_in_table()
+    test_table_property_field_names()
+    test_ordered_video_urls_feishu()
     print()
     test_full_parse()

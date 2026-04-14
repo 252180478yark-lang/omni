@@ -50,6 +50,11 @@ class RAGRequest(BaseModel):
     provider: str | None = None
     stream: bool = False
     session_id: str | None = None
+    # 目标字数（字符数，含中文）；>0 时自动多轮调用模型续写直至接近目标或达到轮次上限
+    target_chars: int | None = Field(default=None, ge=0, le=500_000)
+    continue_max_rounds: int | None = Field(default=None, ge=1, le=100)
+    # SP9 Persona: injected before RAG system prompt in knowledge-engine
+    persona_prompt: str | None = None
 
     def resolved_kb_ids(self) -> list[str]:
         """Return deduplicated list of KB IDs (kb_ids takes priority over kb_id)."""

@@ -80,7 +80,13 @@ class OpenAIProvider(BaseProvider):
         if kwargs.get("max_tokens"):
             payload["max_tokens"] = kwargs["max_tokens"]
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        stream_timeout = httpx.Timeout(
+            connect=30.0,
+            read=settings.chat_stream_timeout_seconds,
+            write=60.0,
+            pool=30.0,
+        )
+        async with httpx.AsyncClient(timeout=stream_timeout) as client:
             async with client.stream("POST", f"{_BASE_URL}/chat/completions", headers=self._headers(), json=payload) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
@@ -127,18 +133,29 @@ class OpenAIProvider(BaseProvider):
     async def generate_image(self, prompt: str, model: str, **kwargs: object) -> dict:
         if not self._has_key():
             return {
-                "images": [{"url": "https://placeholder.co/1024x1024?text=mock", "revised_prompt": prompt}],
+                "images": [{"url": "https://placeholder.co/1536x1024?text=mock", "revised_prompt": prompt}],
                 "usage": {"cost_usd": 0},
             }
 
+        chosen_model = model or "gpt-image-1.5"
+        size = kwargs.get("size", "1536x1024")
+        quality = kwargs.get("quality", "auto")
+
+        if chosen_model.startswith("gpt-image"):
+            if quality == "standard":
+                quality = "auto"
+            valid_sizes = {"1024x1024", "1024x1536", "1536x1024"}
+            if size not in valid_sizes:
+                size = "1536x1024"
+
         payload = {
-            "model": model or "dall-e-3",
+            "model": chosen_model,
             "prompt": prompt,
-            "size": kwargs.get("size", "1024x1024"),
-            "quality": kwargs.get("quality", "standard"),
+            "size": size,
+            "quality": quality,
             "n": kwargs.get("n", 1),
         }
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(f"{_BASE_URL}/images/generations", headers=self._headers(), json=payload)
             resp.raise_for_status()
             data = resp.json()

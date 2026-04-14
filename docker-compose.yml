@@ -15,8 +15,8 @@ x-proxy-env: &proxy-env
   HTTPS_PROXY: "${HTTPS_PROXY:-${PROXY_URL:-${HTTP_PROXY:-}}}"
   http_proxy: "${HTTP_PROXY:-${PROXY_URL:-}}"
   https_proxy: "${HTTPS_PROXY:-${PROXY_URL:-${HTTP_PROXY:-}}}"
-  NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
-  no_proxy: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,frontend,postgres,redis"
+  NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,omni-ad-review,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis"
+  no_proxy: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,omni-ad-review,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis"
 
 services:
   # ═══ Infrastructure ═══
@@ -79,6 +79,8 @@ services:
         condition: service_started
       livestream-analysis:
         condition: service_started
+      ad-review-service:
+        condition: service_started
       identity-service:
         condition: service_started
     ports:
@@ -125,12 +127,48 @@ services:
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
       LIVESTREAM_ANALYSIS_SERVICE_URL: "http://livestream-analysis:8007"
       NEWS_AGGREGATOR_URL: "http://news-aggregator:8005"
+      AD_REVIEW_SERVICE_URL: "http://ad-review-service:8008"
     command: ["npm", "run", "start"]
     ports:
       - "3000:3000"
     depends_on:
       - ai-provider-hub
       - knowledge-engine
+      - ad-review-service
+    networks:
+      - omni-network
+
+  ad-review-service:
+    build:
+      context: ./services/ad-review-service
+    container_name: omni-ad-review
+    environment:
+      <<: *proxy-env
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      AI_HUB_URL: "http://ai-provider-hub:8001"
+      KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
+      VIDEO_ANALYSIS_URL: "http://video-analysis:8006"
+      REVIEW_MODEL: "${REVIEW_MODEL:-gemini-2.0-flash}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      DATA_DIR: "/app/data"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8008"]
+    ports:
+      - "${AD_REVIEW_PORT:-8008}:8008"
+    expose:
+      - "8008"
+    volumes:
+      - ad_review_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-provider-hub:
+        condition: service_started
+      knowledge-engine:
+        condition: service_started
+      video-analysis:
+        condition: service_started
     networks:
       - omni-network
 
@@ -168,6 +206,7 @@ services:
       <<: *proxy-env
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/1"
+      VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     expose:
       - "8002"
@@ -261,6 +300,7 @@ volumes:
   knowledge_data:
   video_analysis_data:
   livestream_analysis_data:
+  ad_review_data:
 
 networks:
   omni-network:

@@ -55,6 +55,8 @@ def apply_persisted_provider_config(registry: ProviderRegistry) -> None:
                 "gemini": "gemini_api_key",
                 "anthropic": "anthropic_api_key",
                 "deepseek": "deepseek_api_key",
+                "seedance": "ark_api_key",
+                "kling": "kling_api_key",
             }.get(provider_name)
             if key_attr:
                 setattr(settings, key_attr, api_key.strip())

@@ -16,7 +16,8 @@ from app.services.harvester import (
     crawl_articles, crawl_feishu_doc, fetch_nav_tree, get_job, IMAGE_DIR,
     list_job_images, get_chapter_images, analyze_images, merge_image_descriptions,
     start_browser_login, get_login_session, _is_feishu_url,
-    ingest_extracted_page, get_last_upload_job_id,
+    ingest_extracted_page, get_last_upload_job_id, request_cancel_harvest,
+    _jobs,
 )
 from app.services.ingestion import submit_ingestion_task
 from app.config import settings
@@ -37,7 +38,7 @@ class SelectedArticle(BaseModel):
 
 class CrawlRequest(BaseModel):
     url: str = Field(min_length=10)
-    max_pages: int | None = Field(default=None, ge=1, le=200)
+    max_pages: int | None = Field(default=None, ge=1, le=2000)
     selected_articles: list[SelectedArticle] | None = None
 
 
@@ -129,7 +130,7 @@ async def upload_login_cookies(req: UploadLoginCookiesRequest):
 
 
 class BrowserLoginRequest(BaseModel):
-    url: str = Field(default="https://yuntu.oceanengine.com", min_length=5)
+    url: str = Field(default="https://support.oceanengine.com", min_length=5)
 
 
 @router.post("/browser-login")
@@ -215,7 +216,12 @@ async def start_crawl(req: CrawlRequest):
         logger.warning("Auth state file not found at %s — crawling without auth (some pages may fail)", auth_path)
 
     sel_articles = None
-    if req.selected_articles:
+    if req.selected_articles is not None:
+        if len(req.selected_articles) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="selected_articles 为空：请至少勾选一篇文章，或改用「爬取全部」且不要在请求里传空的 selected_articles。",
+            )
         sel_articles = [
             {"title": a.title, "mapping_id": a.mapping_id, "graph_path": a.graph_path,
              "target_id": a.target_id or a.mapping_id}
@@ -230,6 +236,22 @@ async def start_crawl(req: CrawlRequest):
         )
     )
     return {"success": True, "data": {"job_id": job_id, "has_auth": auth_state is not None, "type": "yuntu"}}
+
+
+@router.get("/jobs")
+async def list_jobs():
+    """List all in-memory jobs (id, status, chapter count, titles)."""
+    result = []
+    for jid, job in _jobs.items():
+        chapters = job.get("chapters", [])
+        result.append({
+            "job_id": jid,
+            "status": job.get("status", "unknown"),
+            "chapter_count": len(chapters),
+            "titles": [ch.get("title", "") for ch in chapters[:20]],
+            "total_chars": sum(ch.get("word_count", 0) for ch in chapters),
+        })
+    return {"success": True, "data": result}
 
 
 @router.get("/latest-upload")
@@ -248,6 +270,15 @@ async def job_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"success": True, "data": job}
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_harvest_job(job_id: str):
+    """Stop crawl after the current article; partial chapters remain for review."""
+    job = request_cancel_harvest(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"success": True, "data": {"job_id": job_id, "status": job.get("status")}}
 
 
 @router.get("/images/{job_id}/{filename}")

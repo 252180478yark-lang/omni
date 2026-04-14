@@ -2,8 +2,10 @@ from app.providers import (
     AnthropicProvider,
     DeepSeekProvider,
     GeminiProvider,
+    KlingProvider,
     OllamaProvider,
     OpenAIProvider,
+    SeedanceProvider,
     ProviderRegistry,
 )
 from app.services.analyze_service import AnalyzeService
@@ -30,4 +32,6 @@ def bootstrap_providers() -> None:
     registry.register("anthropic", AnthropicProvider())
     registry.register("deepseek", DeepSeekProvider())
     registry.register("ollama", OllamaProvider())
+    registry.register("seedance", SeedanceProvider())
+    registry.register("kling", KlingProvider())
     apply_persisted_provider_config(registry)

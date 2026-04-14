@@ -16,6 +16,7 @@ import numpy as np
 
 from app.config import settings
 from app.database import get_pool
+from app.services.chinese_seg import segment_for_search
 from app.services.chunking import ChunkStrategy, auto_detect_strategy, split_text, add_contextual_headers
 from app.services.content_cleaner import clean_for_ingestion
 from app.services.embedding_client import embed_texts
@@ -554,14 +555,17 @@ async def _run_pipeline(
             np_vec = np.array(vec, dtype=np.float32)
             chunk_id = str(uuid4())
             chunk_ids.append(chunk_id)
+            segmented = segment_for_search(chunk.content)
             await pool.execute(
                 """
                 INSERT INTO knowledge_chunks
-                    (id, document_id, kb_id, chunk_index, title, source_url, content, embedding, metadata, source_type)
-                VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::vector, $9::jsonb, $10)
+                    (id, document_id, kb_id, chunk_index, title, source_url, content, embedding, metadata, source_type, tsv)
+                VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::vector, $9::jsonb, $10,
+                        to_tsvector('simple', $11))
                 """,
                 chunk_id, document_id, kb_id, chunk.chunk_index, title, source_url,
                 chunk.content, np_vec, json.dumps(chunk.metadata, ensure_ascii=False), source_type,
+                segmented,
             )
             if (idx + 1) % _CHUNK_INSERT_BATCH == 0:
                 await asyncio.sleep(0)

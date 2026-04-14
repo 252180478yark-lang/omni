@@ -18,6 +18,8 @@ dependencies = [
   "redis[hiredis]>=5.0.0",
   # LangGraph RAG workflow
   "langgraph>=0.2.0",
+  # Chinese word segmentation
+  "jieba>=0.42.1",
   # Text chunking
   "langchain-text-splitters>=0.3.0",
   "tiktoken>=0.7.0",

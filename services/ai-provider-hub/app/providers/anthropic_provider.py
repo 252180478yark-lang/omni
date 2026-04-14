@@ -15,7 +15,7 @@ _API_VERSION = "2023-06-01"
 
 class AnthropicProvider(BaseProvider):
     name = "anthropic"
-    default_chat_model = "claude-sonnet-4-20250514"
+    default_chat_model = "claude-opus-4-6"
     default_embedding_model = ""
     capabilities = {ProviderCapability.CHAT, ProviderCapability.VISION, ProviderCapability.ANALYSIS}
 
@@ -109,6 +109,9 @@ class AnthropicProvider(BaseProvider):
 
     async def list_models(self, api_key: str | None = None) -> list[str]:
         return [
+            "claude-opus-4-6",
+            "claude-sonnet-4-6",
+            "claude-haiku-4-5-20251001",
             "claude-sonnet-4-20250514",
             "claude-3-5-sonnet-20241022",
             "claude-3-5-haiku-20241022",

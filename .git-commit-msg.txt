@@ -1,7 +1,11 @@
-feat: 添加知识收割机、直播分析服务及多项功能更新
+feat: 新增投放复盘、角色圆桌、内容工作台等多模块功能
 
-- 新增 knowledge harvester (知识收割机) 前后端完整功能
-- 新增 livestream-analysis (直播分析) 独立服务及前端页面
-- 更新 knowledge-engine: intent router, hybrid search, RAG chain
-- 更新前端: chat, knowledge, 首页等多个页面
-- 清理 __pycache__ 并完善 .gitignore
+- 新增投放复盘系统(ad-review)前后端完整实现
+- 新增角色系统与圆桌会议功能(persona/roundtable)
+- 新增内容工作台(content-studio)模块
+- AI Provider Hub 新增 Kling/Seedance 视频生成提供商
+- Knowledge Engine 新增 content_studio 路由和中文分词服务
+- 前端新增 AppShell/Sidebar 导航组件和多个状态管理 store
+- 完善聊天页面、知识收割机页面和模型管理页面
+- 更新 docker-compose、nginx 配置和数据库初始化脚本
+- 新增项目文档(PRD/IMPL/UAT)

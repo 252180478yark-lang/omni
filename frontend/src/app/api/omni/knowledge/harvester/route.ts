@@ -44,6 +44,13 @@ export async function POST(request: Request) {
     if (action === 'crawl') {
       return proxyPost(`${base.knowledge}/api/v1/knowledge/harvester/crawl`, payload)
     }
+    if (action === 'cancel') {
+      const jobId = (payload as { job_id?: string })?.job_id
+      if (!jobId || typeof jobId !== 'string') {
+        return Response.json({ success: false, error: 'job_id required' }, { status: 400 })
+      }
+      return proxyPost(`${base.knowledge}/api/v1/knowledge/harvester/jobs/${encodeURIComponent(jobId)}/cancel`, {})
+    }
     if (action === 'save') {
       return proxyPost(`${base.knowledge}/api/v1/knowledge/harvester/save`, payload)
     }

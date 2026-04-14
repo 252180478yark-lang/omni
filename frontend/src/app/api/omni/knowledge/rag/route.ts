@@ -11,6 +11,12 @@ interface RAGBody {
   model?: string
   provider?: string
   stream?: boolean
+  session_id?: string
+  /** >0 时服务端多轮续写直至接近目标字符数 */
+  target_chars?: number
+  continue_max_rounds?: number
+  /** SP9：角色 system prompt，由 Knowledge Engine 注入 RAG system 前 */
+  persona_prompt?: string | null
 }
 
 /**

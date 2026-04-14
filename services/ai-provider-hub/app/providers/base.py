@@ -60,6 +60,9 @@ class BaseProvider(ABC):
     async def generate_video(self, prompt: str, model: str, **kwargs: object) -> dict:
         raise NotImplementedError(f"{self.name} does not support video generation")
 
+    async def get_video_status(self, task_id: str) -> dict:
+        raise NotImplementedError(f"{self.name} does not support video status polling")
+
     async def analyze(self, content: str, prompt: str, model: str, **kwargs: object) -> dict:
         raise NotImplementedError(f"{self.name} does not support multimodal analysis")
 

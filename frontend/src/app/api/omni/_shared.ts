@@ -5,6 +5,7 @@ const DEFAULTS = {
   newsAggregator: 'http://localhost:8005',
   videoAnalysis: 'http://localhost:8006',
   livestreamAnalysis: 'http://localhost:8007',
+  adReview: 'http://localhost:8008',
 }
 
 function trimSlash(value: string): string {
@@ -21,6 +22,7 @@ export function serviceBase() {
     newsAggregator: trimSlash(process.env.NEWS_AGGREGATOR_URL || fallback || DEFAULTS.newsAggregator),
     videoAnalysis: trimSlash(process.env.VIDEO_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.videoAnalysis),
     livestreamAnalysis: trimSlash(process.env.LIVESTREAM_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.livestreamAnalysis),
+    adReview: trimSlash(process.env.AD_REVIEW_SERVICE_URL || fallback || DEFAULTS.adReview),
   }
 }
 

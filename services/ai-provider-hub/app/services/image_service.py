@@ -18,7 +18,7 @@ class ImageService:
         last_error: Exception | None = None
         for name in providers:
             provider = self.registry.get(name)
-            model = payload.model or "dall-e-3"
+            model = payload.model or "gpt-image-1.5"
             try:
                 result = await call_with_retry(
                     provider.generate_image,

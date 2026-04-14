@@ -82,9 +82,9 @@ CREATE INDEX IF NOT EXISTS idx_chunks_embedding_hnsw
     WITH (m = 16, ef_construction = 64);
 
 -- 全文搜索列 + GIN 索引
+-- tsv 由应用层用 jieba 分词后写入，而非 GENERATED，以支持中文全文检索。
 ALTER TABLE knowledge.knowledge_chunks
-    ADD COLUMN IF NOT EXISTS tsv tsvector
-    GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content, ''))) STORED;
+    ADD COLUMN IF NOT EXISTS tsv tsvector;
 CREATE INDEX IF NOT EXISTS idx_chunks_tsv ON knowledge.knowledge_chunks USING gin (tsv);
 
 CREATE TABLE IF NOT EXISTS knowledge.entities (
@@ -191,3 +191,183 @@ CREATE INDEX IF NOT EXISTS idx_hype_embedding_hnsw
     ON knowledge.hype_embeddings
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
+
+-- ═══ Ad Review (SP8) ═══
+CREATE SCHEMA IF NOT EXISTS ad_review;
+COMMENT ON SCHEMA ad_review IS 'Ad campaign review & optimization logs';
+
+CREATE TABLE IF NOT EXISTS ad_review.products (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    sku VARCHAR(100),
+    price DECIMAL(12,2),
+    margin_rate DECIMAL(5,4),
+    category VARCHAR(100),
+    description TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_products_name ON ad_review.products (name);
+
+CREATE TABLE IF NOT EXISTS ad_review.campaigns (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    product_id UUID NOT NULL REFERENCES ad_review.products(id) ON DELETE CASCADE,
+    name VARCHAR(500) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    total_budget DECIMAL(12,2),
+    total_cost DECIMAL(12,2),
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    review_log_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_campaigns_product ON ad_review.campaigns (product_id);
+CREATE INDEX IF NOT EXISTS idx_campaigns_status ON ad_review.campaigns (status);
+CREATE INDEX IF NOT EXISTS idx_campaigns_date ON ad_review.campaigns (start_date DESC);
+
+CREATE TABLE IF NOT EXISTS ad_review.audience_packs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    campaign_id UUID NOT NULL REFERENCES ad_review.campaigns(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT DEFAULT '',
+    tags JSONB DEFAULT '[]',
+    targeting_method_text TEXT,
+    targeting_method_file TEXT,
+    audience_profile_text TEXT,
+    audience_profile_file TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_audience_campaign ON ad_review.audience_packs (campaign_id);
+
+CREATE TABLE IF NOT EXISTS ad_review.material_groups (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    audience_pack_id UUID NOT NULL REFERENCES ad_review.audience_packs(id) ON DELETE CASCADE,
+    campaign_id UUID NOT NULL REFERENCES ad_review.campaigns(id) ON DELETE CASCADE,
+    style_label VARCHAR(100) NOT NULL,
+    video_purpose VARCHAR(20) NOT NULL DEFAULT 'seeding',
+    description TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_material_groups_audience ON ad_review.material_groups (audience_pack_id);
+CREATE INDEX IF NOT EXISTS idx_material_groups_campaign ON ad_review.material_groups (campaign_id);
+
+CREATE TABLE IF NOT EXISTS ad_review.materials (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    audience_pack_id UUID NOT NULL REFERENCES ad_review.audience_packs(id) ON DELETE CASCADE,
+    campaign_id UUID NOT NULL REFERENCES ad_review.campaigns(id) ON DELETE CASCADE,
+    group_id UUID REFERENCES ad_review.material_groups(id) ON DELETE SET NULL,
+    name VARCHAR(500) NOT NULL,
+    parent_material_id UUID REFERENCES ad_review.materials(id) ON DELETE SET NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    iteration_note TEXT,
+    change_tags JSONB DEFAULT '[]',
+    cost DECIMAL(12,2),
+    impressions INTEGER,
+    clicks INTEGER,
+    front_impressions INTEGER,
+    ctr DECIMAL(8,4),
+    shares_7d INTEGER,
+    comments INTEGER,
+    plays INTEGER,
+    play_3s INTEGER,
+    play_25pct INTEGER,
+    play_50pct INTEGER,
+    play_75pct INTEGER,
+    completion_rate DECIMAL(8,4),
+    new_a3 INTEGER,
+    cost_per_result DECIMAL(12,4),
+    a3_ratio DECIMAL(8,4),
+    play_3s_rate DECIMAL(8,4),
+    interaction_rate DECIMAL(8,4),
+    cpm DECIMAL(12,4),
+    cpc DECIMAL(12,4),
+    conversion_rate DECIMAL(8,6),
+    video_analysis_id TEXT,
+    video_analysis_scores JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_materials_audience ON ad_review.materials (audience_pack_id);
+CREATE INDEX IF NOT EXISTS idx_materials_campaign ON ad_review.materials (campaign_id);
+CREATE INDEX IF NOT EXISTS idx_materials_group ON ad_review.materials (group_id);
+CREATE INDEX IF NOT EXISTS idx_materials_parent ON ad_review.materials (parent_material_id);
+
+CREATE TABLE IF NOT EXISTS ad_review.review_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    campaign_id UUID NOT NULL REFERENCES ad_review.campaigns(id) ON DELETE CASCADE,
+    content_md TEXT NOT NULL,
+    ai_suggestions JSONB,
+    experience_tags JSONB DEFAULT '[]',
+    kb_id UUID,
+    kb_document_id UUID,
+    kb_synced_at TIMESTAMPTZ,
+    is_edited BOOLEAN DEFAULT FALSE,
+    generation_model VARCHAR(100),
+    generation_tokens INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_review_logs_campaign ON ad_review.review_logs (campaign_id);
+CREATE INDEX IF NOT EXISTS idx_review_logs_tags ON ad_review.review_logs USING gin (experience_tags);
+
+CREATE TABLE IF NOT EXISTS ad_review.csv_imports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    campaign_id UUID NOT NULL REFERENCES ad_review.campaigns(id) ON DELETE CASCADE,
+    audience_pack_id UUID NOT NULL REFERENCES ad_review.audience_packs(id) ON DELETE CASCADE,
+    original_filename VARCHAR(500),
+    row_count INTEGER,
+    column_mapping JSONB,
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ═══════════════════════════════════════════════════════════════════
+-- Content Studio (内容工坊)
+-- ═══════════════════════════════════════════════════════════════════
+CREATE SCHEMA IF NOT EXISTS content_studio;
+
+CREATE TABLE IF NOT EXISTS content_studio.pipelines (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    current_step TEXT NOT NULL DEFAULT 'copy',
+    source_text TEXT,
+    copy_result TEXT,
+    script_result JSONB,
+    -- 产品白底图 URL 列表，保证全流程产品外观一致
+    product_images JSONB DEFAULT '[]'::jsonb,
+    -- 人物档案：[{id, name, description, face_url, scenes}]，保证全流程人物一致
+    character_profiles JSONB DEFAULT '[]'::jsonb,
+    storyboard_results JSONB DEFAULT '[]'::jsonb,
+    video_results JSONB DEFAULT '[]'::jsonb,
+    final_video_url TEXT,
+    download_url TEXT,
+    config JSONB DEFAULT '{}'::jsonb,
+    cost_estimate JSONB DEFAULT '{}'::jsonb,
+    actual_cost JSONB DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_pipelines_status ON content_studio.pipelines (status);
+CREATE INDEX IF NOT EXISTS idx_pipelines_created ON content_studio.pipelines (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS content_studio.style_presets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    description TEXT,
+    is_builtin BOOLEAN NOT NULL DEFAULT FALSE,
+    config JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO content_studio.style_presets (name, description, is_builtin, config) VALUES
+('种草安利', '小红书/抖音种草风格，真实感强', TRUE,
+ '{"copy_style":"grassplanting","image_style":"lifestyle_photo","tone":"casual","pace":"medium"}'),
+('品牌宣传', '高端品牌调性，电影感', TRUE,
+ '{"copy_style":"brand","image_style":"cinematic","tone":"professional","pace":"slow"}'),
+('促销活动', '强调优惠力度、紧迫感', TRUE,
+ '{"copy_style":"promotion","image_style":"vibrant","tone":"exciting","pace":"fast"}'),
+('科技测评', '理性分析、数据驱动', TRUE,
+ '{"copy_style":"tech_review","image_style":"clean_modern","tone":"analytical","pace":"medium"}'),
+('温馨故事', '情感共鸣、生活化', TRUE,
+ '{"copy_style":"storytelling","image_style":"warm_illustration","tone":"emotional","pace":"slow"}')
+ON CONFLICT DO NOTHING;

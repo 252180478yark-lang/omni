@@ -14,6 +14,7 @@ import numpy as np
 
 from app.config import settings
 from app.database import get_pool
+from app.services.chinese_seg import segment_query
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,13 @@ async def fulltext_search(
     query: str,
     top_k: int = 10,
 ) -> list[dict]:
-    """Full-text search using tsvector + ts_rank."""
+    """Full-text search using tsvector + ts_rank.
+
+    The query is segmented with jieba so that Chinese words are split into
+    individual tokens that match the jieba-segmented tsvector stored at
+    ingestion time.
+    """
+    segmented = segment_query(query)
     pool = get_pool()
     rows = await pool.fetch(
         """
@@ -36,7 +43,7 @@ async def fulltext_search(
         ORDER BY score DESC
         LIMIT $3
         """,
-        query,
+        segmented,
         str(kb_id),
         top_k,
     )
@@ -90,6 +97,7 @@ async def hybrid_search(
     include_hype: bool = True,
 ) -> list[dict]:
     """RRF-fused hybrid search combining vector, fulltext, and optionally HyPE."""
+    segmented = segment_query(query)
     pool = get_pool()
     vec = np.array(query_embedding, dtype=np.float32)
     fetch_n = top_k * 3
@@ -120,7 +128,7 @@ async def hybrid_search(
         ORDER BY score DESC
         LIMIT $3
         """,
-        query,
+        segmented,
         str(kb_id),
         fetch_n,
     )

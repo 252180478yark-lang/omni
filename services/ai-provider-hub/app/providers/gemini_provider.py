@@ -16,22 +16,36 @@ _API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 _EMBED_DIMENSION = 1536
 _EMBED_BATCH_LIMIT = 100
 
-_THINKING_MODELS = frozenset({
-    "gemini-3-pro-preview",
-    "gemini-3.1-pro-preview",
-    "gemini-3.1-pro-preview-customtools",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
-})
 _THINKING_MIN_OUTPUT_TOKENS = 16384
+
+
+def _gemini_high_output_floor_model(model: str) -> bool:
+    """Gemini 1.5 / 2.x / 3.x 等长上下文模型：保证 maxOutputTokens 下限，避免默认值过小截断长回答。"""
+    m = (model or "").lower()
+    return any(
+        tok in m
+        for tok in (
+            "1.5-pro",
+            "1.5-flash",
+            "2.5-pro",
+            "2.5-flash",
+            "3-pro",
+            "3.1-",
+            "gemini-2.0",
+            "gemini-2.5",
+            "gemini-3",
+        )
+    )
 
 
 class GeminiProvider(BaseProvider):
     name = "gemini"
     default_chat_model = "gemini-3.1-pro-preview"
     default_embedding_model = "gemini-embedding-2-preview"
-    capabilities = {ProviderCapability.CHAT, ProviderCapability.EMBEDDING, ProviderCapability.VISION}
+    capabilities = {
+        ProviderCapability.CHAT, ProviderCapability.EMBEDDING,
+        ProviderCapability.VISION, ProviderCapability.IMAGE_GENERATION,
+    }
 
     def _key(self, **kwargs: object) -> str:
         return (str(kwargs.get("api_key", "")) or settings.gemini_api_key or "").strip()
@@ -51,7 +65,13 @@ class GeminiProvider(BaseProvider):
         last_exc: Exception | None = None
         for attempt in range(5):
             try:
-                async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+                read_timeout = max(
+                    settings.request_timeout_seconds,
+                    settings.chat_stream_timeout_seconds,
+                )
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(connect=30.0, read=read_timeout, write=60.0, pool=30.0),
+                ) as client:
                     resp = await client.post(url, params={"key": key}, json=body)
                     if resp.status_code == 400:
                         err = resp.json().get("error", {})
@@ -83,7 +103,13 @@ class GeminiProvider(BaseProvider):
         url = f"{_API_BASE}/models/{model_id}:streamGenerateContent"
         body = _build_chat_body(messages, model=model_id, **kwargs)
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        stream_timeout = httpx.Timeout(
+            connect=30.0,
+            read=settings.chat_stream_timeout_seconds,
+            write=60.0,
+            pool=30.0,
+        )
+        async with httpx.AsyncClient(timeout=stream_timeout) as client:
             async with client.stream(
                 "POST", url, params={"key": key, "alt": "sse"}, json=body,
             ) as resp:
@@ -154,6 +180,58 @@ class GeminiProvider(BaseProvider):
 
         usage = TokenUsage(prompt_tokens=total_tokens, completion_tokens=0, total_tokens=total_tokens)
         return all_vectors, usage
+
+    # ─── Image Generation (Nano Banana 2) ───
+
+    async def generate_image(self, prompt: str, model: str, **kwargs: object) -> dict:
+        import base64
+
+        key = self._key(**kwargs)
+        if not key:
+            return {
+                "images": [{"url": "https://placeholder.co/1536x1024?text=gemini-mock", "revised_prompt": prompt}],
+                "usage": {"cost_usd": 0},
+            }
+
+        model_id = model or "gemini-3.1-flash-image-preview"
+        url = f"{_API_BASE}/models/{model_id}:generateContent"
+
+        size_map = {"1024x1024": "1K", "1536x1024": "1K", "1024x1536": "1K", "2048x2048": "2K", "4096x4096": "4K"}
+        raw_size = str(kwargs.get("size", "1536x1024"))
+        image_size = size_map.get(raw_size, "1K")
+
+        aspect_map = {"1024x1024": "1:1", "1536x1024": "16:9", "1024x1536": "9:16"}
+        aspect = aspect_map.get(raw_size, "16:9")
+
+        body = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "responseModalities": ["TEXT", "IMAGE"],
+                "imageConfig": {"aspectRatio": aspect, "imageSize": image_size},
+            },
+        }
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=120.0, write=60.0, pool=30.0)) as client:
+            resp = await client.post(url, params={"key": key}, json=body)
+            resp.raise_for_status()
+            data = resp.json()
+
+        images = []
+        try:
+            parts = data["candidates"][0]["content"]["parts"]
+            for part in parts:
+                inline = part.get("inlineData")
+                if inline and inline.get("data"):
+                    mime = inline.get("mimeType", "image/png")
+                    b64 = inline["data"]
+                    data_url = f"data:{mime};base64,{b64}"
+                    images.append({"url": data_url, "revised_prompt": prompt})
+        except (KeyError, IndexError):
+            pass
+
+        if not images:
+            images.append({"url": "", "revised_prompt": prompt})
+        return {"images": images, "usage": {"cost_usd": 0.01 * len(images)}}
 
     # ─── Model Discovery ───
 
@@ -254,14 +332,14 @@ def _build_chat_body(messages: list[Message], model: str = "", **kwargs: object)
     if system_instruction:
         body["systemInstruction"] = system_instruction
 
-    is_thinking = any(t in model for t in ("3-pro", "3.1-", "2.5-pro", "2.5-flash"))
+    long_out = _gemini_high_output_floor_model(model)
     gen_config: dict = {}
     if (temp := kwargs.get("temperature")) is not None:
         gen_config["temperature"] = float(str(temp))
     if (max_tok := kwargs.get("max_tokens")) is not None:
         requested = int(str(max_tok))
-        gen_config["maxOutputTokens"] = max(requested, _THINKING_MIN_OUTPUT_TOKENS) if is_thinking else requested
-    elif is_thinking:
+        gen_config["maxOutputTokens"] = max(requested, _THINKING_MIN_OUTPUT_TOKENS) if long_out else requested
+    elif long_out:
         gen_config["maxOutputTokens"] = _THINKING_MIN_OUTPUT_TOKENS
     if gen_config:
         body["generationConfig"] = gen_config

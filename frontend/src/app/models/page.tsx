@@ -32,6 +32,7 @@ export default function ModelsConfig() {
   const [testing, setTesting] = useState(false)
   const [connectionNotice, setConnectionNotice] = useState('')
   const [connectionOk, setConnectionOk] = useState<boolean | null>(null)
+  const [savingKey, setSavingKey] = useState(false)
 
   const readDrafts = (): Record<string, { chatModel?: string; embeddingModel?: string }> => {
     if (typeof window === 'undefined') return {}
@@ -200,6 +201,46 @@ export default function ModelsConfig() {
       setConnectionOk(false)
     } finally {
       setTesting(false)
+    }
+  }
+
+  const handleSaveApiKey = async () => {
+    if (!active || active.id === 'ollama') return
+    const normalizedApiKey = apiKeyInput.trim()
+    if (!normalizedApiKey) {
+      setError('请先输入 API Key')
+      return
+    }
+    setSavingKey(true)
+    setError('')
+    setNotice('')
+    try {
+      const res = await fetch('/api/omni/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({
+          action: 'update-provider',
+          providerId: active.id,
+          apiKey: normalizedApiKey,
+          defaultChatModel: selectedChatModel,
+          defaultEmbeddingModel: selectedEmbeddingModel,
+        }),
+      })
+      const json = (await res.json()) as { success: boolean; data?: { providers: ProviderItem[] }; error?: string }
+      if (!json.success || !json.data) {
+        throw new Error(json.error || '保存 API Key 失败')
+      }
+      setProviders(json.data.providers)
+      const drafts = readDrafts()
+      delete drafts[active.id]
+      writeDrafts(drafts)
+      setNotice('API Key 已保存')
+      setApiKeyInput('')
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setSavingKey(false)
     }
   }
 
@@ -386,20 +427,34 @@ export default function ModelsConfig() {
                       <Key className="w-4 h-4 text-gray-400" />
                       API Key
                     </label>
-                    <input
-                      type="password"
-                      value={active.id === 'ollama' ? '无需密钥' : apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder={active.id === 'ollama' ? 'Ollama 不需要 API Key' : active.apiKeySet ? '已配置，输入新值可覆盖' : '输入新的 API Key'}
-                      disabled={active.id === 'ollama'}
-                      className={`w-full h-10 px-3 rounded-md border text-sm font-mono ${
-                        active.id === 'ollama'
-                          ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
-                          : 'border-gray-300 bg-white text-gray-900'
-                      }`}
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={active.id === 'ollama' ? '无需密钥' : apiKeyInput}
+                        onChange={(e) => setApiKeyInput(e.target.value)}
+                        placeholder={active.id === 'ollama' ? 'Ollama 不需要 API Key' : active.apiKeySet ? '已配置，输入新值可覆盖' : '输入新的 API Key'}
+                        disabled={active.id === 'ollama'}
+                        className={`flex-1 h-10 px-3 rounded-md border text-sm font-mono ${
+                          active.id === 'ollama'
+                            ? 'border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed'
+                            : 'border-gray-300 bg-white text-gray-900'
+                        }`}
+                      />
+                      {active.id !== 'ollama' && (
+                        <Button
+                          size="sm"
+                          className="h-10 bg-purple-600 hover:bg-purple-700 text-white px-4"
+                          onClick={handleSaveApiKey}
+                          disabled={savingKey || !apiKeyInput.trim()}
+                        >
+                          <Save className="w-4 h-4 mr-1" />
+                          {savingKey ? '保存中...' : '保存'}
+                        </Button>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      保存后会实时更新 AI Hub 运行配置，并持久化到服务端配置文件（重启后自动恢复）。
+                      {active.apiKeySet ? '✅ 已配置 API Key。' : '⚠️ 尚未配置 API Key。'}
+                      输入后点击保存，会实时更新 AI Hub 运行配置并持久化（重启后自动恢复）。
                     </p>
                     <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testing} className="mt-2">
                       {testing ? '测试中...' : '测试连接'}

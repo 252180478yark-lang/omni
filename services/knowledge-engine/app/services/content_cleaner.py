@@ -29,7 +29,7 @@ _LONG_BASE64_BLOB = re.compile(
 # ── Unresolved image CDN URLs ────────────────────────────────────────────
 
 _UNRESOLVED_CDN_IMG = re.compile(
-    r"!\[([^\]]*)\]\(https://internal-api-drive-stream[^)]+\)"
+    r"!\[([^\]]*)\]\((https://internal-api-drive-stream[^)]+)\)"
 )
 
 # ── Mock / failed AI analysis responses ──────────────────────────────────
@@ -121,12 +121,16 @@ def clean_ssr_content(content: str) -> str:
 
 
 def clean_image_markdown(markdown: str) -> str:
-    """Replace unresolved CDN image URLs with descriptive placeholders."""
+    """Turn unresolved Feishu stream image URLs into markdown links (keeps URL for tables/RAG).
+
+    Replacing with plain ``[图片]`` drops the link entirely and makes table cells look empty;
+    keeping ``[alt](url)`` preserves the source for re-fetch with auth or display.
+    """
     def _replace_cdn_img(m: re.Match) -> str:
         alt = m.group(1).strip()
-        if alt and alt not in ("image", "image.png", "img"):
-            return f"[图片: {alt}]"
-        return "[图片]"
+        url = m.group(2).strip()
+        label = alt if alt and alt not in ("image", "image.png", "img") else "图片"
+        return f"[{label}]({url})"
 
     return _UNRESOLVED_CDN_IMG.sub(_replace_cdn_img, markdown)
 

@@ -246,6 +246,9 @@ async def rag(payload: RAGRequest) -> dict:
                 provider=payload.provider,
                 kb_embedding_map=kb_embedding_map,
                 session_id=payload.session_id,
+                target_chars=payload.target_chars,
+                continue_max_rounds=payload.continue_max_rounds,
+                persona_prompt=payload.persona_prompt,
             ):
                 yield {"event": "message", "data": json.dumps(chunk, ensure_ascii=False)}
 
@@ -259,6 +262,9 @@ async def rag(payload: RAGRequest) -> dict:
         provider=payload.provider,
         kb_embedding_map=kb_embedding_map,
         session_id=payload.session_id,
+        target_chars=payload.target_chars,
+        continue_max_rounds=payload.continue_max_rounds,
+        persona_prompt=payload.persona_prompt,
     )
     return {"code": 200, "message": "success", "data": result}
 

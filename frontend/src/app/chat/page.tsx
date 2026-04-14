@@ -13,7 +13,6 @@ import {
   ExternalLink,
   ChevronDown,
   Sparkles,
-  ArrowLeft,
   Image as ImageIcon,
   Video,
   FileSearch,
@@ -34,6 +33,10 @@ import {
   type ImageResult,
   type VideoResult,
 } from '@/stores/chatStore'
+import { usePersonaStore } from '@/stores/personaStore'
+import { PersonaSelector } from '@/components/persona-selector'
+import { RoundtableView } from '@/components/roundtable-view'
+import { Checkbox } from '@/components/ui/checkbox'
 
 interface KBItem {
   id: string
@@ -67,10 +70,10 @@ const OUTPUT_MODES: { id: OutputMode; label: string; icon: React.ReactNode; desc
 
 /* ───── SSE streaming helper ───── */
 
-async function streamRAG(
-  kbId: string,
-  query: string,
-  sessionId: string,
+const DEFAULT_CHAT_SYSTEM = '你是 Omni-Vibe OS 的智能助手。'
+
+async function streamDirectChat(
+  messages: { role: string; content: string }[],
   assistantId: string,
   appendToken: (id: string, token: string) => void,
   finishAssistant: (id: string, sources: SourceRef[]) => void,
@@ -80,9 +83,86 @@ async function streamRAG(
   provider?: string,
 ) {
   try {
-    const payload: Record<string, unknown> = { kb_id: kbId, query, stream: true, top_k: 15, session_id: sessionId }
+    const res = await fetch('/api/omni/ai/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages,
+        model,
+        provider,
+        temperature: 0.5,
+      }),
+      signal,
+    })
+    if (!res.ok) {
+      const t = await res.text()
+      failAssistant(assistantId, `AI 服务错误: ${res.status} ${t}`)
+      return
+    }
+    if (!res.body) {
+      failAssistant(assistantId, '响应流为空')
+      return
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) continue
+        const raw = trimmed.slice(5).trim()
+        if (!raw || raw === '[DONE]') continue
+        try {
+          const chunk = JSON.parse(raw) as { content?: string; done?: boolean }
+          if (chunk.content && !chunk.done) appendToken(assistantId, chunk.content)
+        } catch {
+          /* skip */
+        }
+      }
+    }
+    finishAssistant(assistantId, [])
+  } catch (err) {
+    if ((err as Error).name === 'AbortError') {
+      finishAssistant(assistantId, [])
+    } else {
+      failAssistant(assistantId, String(err))
+    }
+  }
+}
+
+async function streamRAG(
+  kbIds: string[],
+  query: string,
+  sessionId: string,
+  assistantId: string,
+  appendToken: (id: string, token: string) => void,
+  finishAssistant: (id: string, sources: SourceRef[]) => void,
+  failAssistant: (id: string, error: string) => void,
+  signal: AbortSignal,
+  model?: string,
+  provider?: string,
+  targetChars?: number,
+  personaPrompt?: string | null,
+) {
+  try {
+    const primary = kbIds[0] || ''
+    const payload: Record<string, unknown> = {
+      kb_id: primary,
+      kb_ids: kbIds.length ? kbIds : [primary],
+      query,
+      stream: true,
+      top_k: 15,
+      session_id: sessionId,
+      persona_prompt: personaPrompt?.trim() ? personaPrompt : null,
+    }
     if (model) payload.model = model
     if (provider) payload.provider = provider
+    if (targetChars != null && targetChars > 0) payload.target_chars = Math.floor(targetChars)
     const res = await fetch('/api/omni/knowledge/rag', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -121,6 +201,10 @@ async function streamRAG(
           const obj = JSON.parse(payload)
           if (obj.type === 'text' && obj.content) {
             appendToken(assistantId, obj.content)
+          } else if (obj.type === 'continue_meta') {
+            // Show continuation progress as an inline hint
+            const hint = `\n\n*[续写第 ${obj.round} 段，已累计约 ${obj.chars_so_far} 字符，目标 ${obj.target} 字符...]*\n\n`
+            appendToken(assistantId, hint)
           } else if (obj.type === 'done') {
             sources = obj.sources || []
           }
@@ -213,14 +297,24 @@ async function analyzeContent(
 
 /* ───── Page Component ───── */
 
+type ChatPageMode = 'single' | 'roundtable'
+
 export default function ChatPage() {
   const {
-    kbId, sessionId, outputMode, messages, streaming,
-    setKbId, setOutputMode,
+    kbIds, sessionId, outputMode, messages, streaming,
+    setKbIds, toggleKbId, setOutputMode,
     addUserMessage, startAssistant, appendToken,
     finishAssistant, finishAssistantImage, finishAssistantVideo,
     failAssistant, setStreaming, setAbort, abortController, clearMessages,
   } = useChatStore()
+
+  const selectedPersonaId = usePersonaStore((s) => s.selectedPersonaId)
+  const personas = usePersonaStore((s) => s.personas)
+  const selectedPersona = selectedPersonaId
+    ? personas.find((p) => p.id === selectedPersonaId) ?? null
+    : null
+
+  const [chatMode, setChatMode] = useState<ChatPageMode>('single')
 
   const [allBases, setAllBases] = useState<KBItem[]>([])
   const [providers, setProviders] = useState<ProviderItem[]>([])
@@ -239,6 +333,8 @@ export default function ChatPage() {
   const [previewChunks, setPreviewChunks] = useState<ChunkPreview[]>([])
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewDocCount, setPreviewDocCount] = useState(0)
+  /** RAG 多轮续写目标字符数；留空则单轮 */
+  const [ragTargetChars, setRagTargetChars] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -252,7 +348,10 @@ export default function ChatPage() {
         const kbJson = await kbRes.json()
         if (!cancelled && kbJson.success && kbJson.data) {
           setAllBases(kbJson.data)
-          if (!kbId && kbJson.data.length > 0) setKbId(kbJson.data[0].id)
+          const cur = useChatStore.getState().kbIds
+          if (cur.length === 0 && kbJson.data.length > 0) {
+            setKbIds([kbJson.data[0].id])
+          }
         }
         const pJson = await pRes.json()
         if (!cancelled && pJson.success && pJson.data?.providers) {
@@ -311,7 +410,7 @@ export default function ChatPage() {
   const handleSend = useCallback(async () => {
     const q = input.trim()
     if (!q || streaming) return
-    if (outputMode === 'text' && !kbId) return
+    if (outputMode === 'text' && (!selectedProvider || !selectedModel)) return
 
     setInput('')
     const currentMode = outputMode
@@ -323,7 +422,51 @@ export default function ChatPage() {
     if (currentMode === 'text') {
       const ctrl = new AbortController()
       setAbort(ctrl)
-      await streamRAG(kbId, q, sessionId, aId, appendToken, finishAssistant, failAssistant, ctrl.signal, selectedModel || undefined, selectedProvider || undefined)
+      let targetN: number | undefined
+      const rawT = ragTargetChars.trim()
+      if (rawT) {
+        const p = parseInt(rawT, 10)
+        if (!Number.isNaN(p) && p > 0) targetN = p
+      }
+      const persona = usePersonaStore.getState().getSelectedPersona()
+      const sys = persona?.systemPrompt?.trim()
+        ? persona.systemPrompt.trim()
+        : DEFAULT_CHAT_SYSTEM
+      const personaRag = persona?.systemPrompt?.trim() || null
+
+      if (kbIds.length === 0) {
+        const hist = useChatStore
+          .getState()
+          .messages.filter((m) => m.id !== aId)
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({ role: m.role, content: m.content }))
+        const chatMsgs = [{ role: 'system' as const, content: sys }, ...hist]
+        await streamDirectChat(
+          chatMsgs,
+          aId,
+          appendToken,
+          finishAssistant,
+          failAssistant,
+          ctrl.signal,
+          selectedModel || undefined,
+          selectedProvider || undefined,
+        )
+      } else {
+        await streamRAG(
+          kbIds,
+          q,
+          sessionId,
+          aId,
+          appendToken,
+          finishAssistant,
+          failAssistant,
+          ctrl.signal,
+          selectedModel || undefined,
+          selectedProvider || undefined,
+          targetN,
+          personaRag,
+        )
+      }
     } else if (currentMode === 'image') {
       await generateImage(q, aId, finishAssistantImage, failAssistant)
     } else if (currentMode === 'video') {
@@ -336,7 +479,7 @@ export default function ChatPage() {
     setAbort(null)
     inputRef.current?.focus()
   }, [
-    input, kbId, sessionId, outputMode, streaming, selectedModel, selectedProvider,
+    input, kbIds, sessionId, ragTargetChars, outputMode, streaming, selectedModel, selectedProvider,
     addUserMessage, startAssistant, appendToken,
     finishAssistant, finishAssistantImage, finishAssistantVideo,
     failAssistant, setStreaming, setAbort,
@@ -355,23 +498,26 @@ export default function ChatPage() {
     }
   }
 
-  const selectedKb = allBases.find((b) => b.id === kbId)
+  const selectedKbs = kbIds.map((id) => allBases.find((b) => b.id === id)).filter(Boolean) as KBItem[]
+  const kbButtonLabel =
+    selectedKbs.length === 0
+      ? '选择知识库'
+      : selectedKbs.length === 1
+        ? selectedKbs[0].name
+        : `已选 ${selectedKbs.length} 个知识库`
   const modelLabel = selectedModel || '选择模型'
 
   return (
-    <div className="min-h-screen bg-[#F5F5F7] flex flex-col">
+    <div className="min-h-screen bg-[#F7F7FA] flex flex-col">
       {/* Header */}
-      <nav className="sticky top-0 z-50 glass border-b border-gray-200/50">
+      <nav className="sticky top-0 z-50 glass border-b border-gray-200/30">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-500 hover:text-gray-900 transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 to-purple-500 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-violet-600 to-purple-500 flex items-center justify-center shadow-md shadow-purple-200/50">
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
-              <span className="font-semibold tracking-tight">智能问答</span>
+              <span className="font-semibold tracking-tight text-gray-900">智能问答</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -381,7 +527,7 @@ export default function ChatPage() {
                 onClick={() => { setModelOpen((v) => !v); setKbOpen(false) }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white/80 hover:bg-white transition-colors shadow-sm"
               >
-                <BrainCircuit className="w-3.5 h-3.5 text-purple-500" />
+                <BrainCircuit className="w-3.5 h-3.5 text-violet-500" />
                 <span className="max-w-[140px] truncate">{loadingData ? '加载中...' : modelLabel}</span>
                 <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
               </button>
@@ -394,7 +540,7 @@ export default function ChatPage() {
                   )}
                   {!loadingData && providers.length === 0 && (
                     <div className="px-3 py-4 text-sm text-gray-400 text-center">
-                      暂无可用模型，请先在<Link href="/models" className="text-blue-500 underline ml-1">模型配置</Link>中设置 API Key
+                      暂无可用模型，请先在<Link href="/models" className="text-violet-500 underline ml-1">模型配置</Link>中设置 API Key
                     </div>
                   )}
                   {providers.map((prov) => (
@@ -407,13 +553,13 @@ export default function ChatPage() {
                         <button
                           key={`${prov.id}/${m}`}
                           onClick={() => { setSelectedProvider(prov.id); setSelectedModel(m); setModelOpen(false) }}
-                          className={`w-full text-left px-3 py-1.5 text-sm hover:bg-purple-50 transition-colors flex items-center justify-between ${
+                          className={`w-full text-left px-3 py-1.5 text-sm hover:bg-violet-50 transition-colors flex items-center justify-between ${
                             selectedProvider === prov.id && selectedModel === m
-                              ? 'bg-purple-50 text-purple-700 font-medium' : 'text-gray-700'
+                              ? 'bg-violet-50 text-violet-700 font-medium' : 'text-gray-700'
                           }`}
                         >
                           <span className="truncate">{m}</span>
-                          {selectedProvider === prov.id && selectedModel === m && <Check className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+                          {selectedProvider === prov.id && selectedModel === m && <Check className="w-3.5 h-3.5 text-violet-600 shrink-0" />}
                         </button>
                       ))}
                     </div>
@@ -428,7 +574,7 @@ export default function ChatPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border border-gray-200 bg-white/80 hover:bg-white transition-colors shadow-sm"
               >
                 <Database className="w-3.5 h-3.5 text-gray-500" />
-                <span className="max-w-[120px] truncate">{loadingData ? '加载中...' : (selectedKb?.name || '选择知识库')}</span>
+                <span className="max-w-[140px] truncate">{loadingData ? '加载中...' : kbButtonLabel}</span>
                 <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
               </button>
               {kbOpen && (
@@ -443,7 +589,7 @@ export default function ChatPage() {
                         value={kbSearch}
                         onChange={(e) => setKbSearch(e.target.value)}
                         placeholder="搜索知识库名称..."
-                        className="w-full h-8 pl-8 pr-8 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                        className="w-full h-8 pl-8 pr-8 text-sm rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
                       />
                       {kbSearch && (
                         <button onClick={() => setKbSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -466,14 +612,20 @@ export default function ChatPage() {
                     )}
                     {filteredBases.map((kb) => (
                       <div key={kb.id} className="border-b border-gray-50 last:border-0">
-                        <div className={`flex items-center gap-2 px-3 py-2 hover:bg-blue-50 transition-colors ${kb.id === kbId ? 'bg-blue-50' : ''}`}>
+                        <div className={`flex items-center gap-2 px-3 py-2 hover:bg-violet-50 transition-colors ${kbIds.includes(kb.id) ? 'bg-violet-50' : ''}`}>
+                          <Checkbox
+                            checked={kbIds.includes(kb.id)}
+                            onCheckedChange={() => toggleKbId(kb.id)}
+                            className="shrink-0"
+                          />
                           <button
-                            onClick={() => { setKbId(kb.id); setKbOpen(false); setKbSearch('') }}
+                            type="button"
+                            onClick={() => { toggleKbId(kb.id) }}
                             className="flex-1 text-left min-w-0"
                           >
                             <div className="flex items-center gap-2">
                               <div className="font-medium text-sm truncate text-gray-900">{kb.name}</div>
-                              {kb.id === kbId && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                              {kbIds.includes(kb.id) && <Check className="w-3.5 h-3.5 text-violet-600 shrink-0" />}
                             </div>
                             {kb.description && <div className="text-xs text-gray-400 truncate mt-0.5">{kb.description}</div>}
                             <div className="text-[10px] text-gray-400 mt-0.5">
@@ -482,7 +634,7 @@ export default function ChatPage() {
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); void loadKbPreview(kb.id) }}
-                            className={`shrink-0 p-1.5 rounded-md transition-colors ${previewKbId === kb.id ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:text-blue-500 hover:bg-blue-50'}`}
+                            className={`shrink-0 p-1.5 rounded-md transition-colors ${previewKbId === kb.id ? 'bg-violet-100 text-violet-600' : 'text-gray-400 hover:text-violet-500 hover:bg-violet-50'}`}
                             title="预览知识库内容"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -502,7 +654,7 @@ export default function ChatPage() {
                                 <div className="text-[10px] text-gray-500 font-medium">文档数: {previewDocCount} · 内容预览:</div>
                                 {previewChunks.map((c) => (
                                   <div key={c.id} className="bg-white rounded-md border border-gray-100 p-2 text-xs text-gray-600 line-clamp-3">
-                                    <Badge variant="outline" className="text-[9px] px-1 py-0 mb-1 bg-blue-50 text-blue-500 border-blue-200">#{c.chunk_index}</Badge>
+                                    <Badge variant="outline" className="text-[9px] px-1 py-0 mb-1 bg-violet-50 text-violet-500 border-violet-200">#{c.chunk_index}</Badge>
                                     <p className="leading-relaxed">{c.content.slice(0, 200)}{c.content.length > 200 ? '...' : ''}</p>
                                   </div>
                                 ))}
@@ -518,7 +670,7 @@ export default function ChatPage() {
                   </div>
                   {/* Footer */}
                   <div className="p-2 border-t border-gray-100 bg-gray-50/50">
-                    <Link href="/knowledge" className="text-xs text-blue-500 hover:text-blue-700 flex items-center gap-1">
+                    <Link href="/knowledge" className="text-xs text-violet-500 hover:text-violet-700 flex items-center gap-1">
                       <Database className="w-3 h-3" /> 管理知识库
                       <ExternalLink className="w-3 h-3 ml-auto" />
                     </Link>
@@ -533,18 +685,65 @@ export default function ChatPage() {
         </div>
       </nav>
 
+      <div className="max-w-5xl mx-auto px-4 pt-3 pb-2 flex flex-wrap gap-2 border-b border-gray-200/30 bg-[#F7F7FA]/80">
+        <Button
+          type="button"
+          variant={chatMode === 'single' ? 'default' : 'outline'}
+          size="sm"
+          className={chatMode === 'single' ? 'rounded-full bg-gradient-to-r from-violet-600 to-purple-500 shadow-md shadow-purple-200/50' : 'rounded-full'}
+          onClick={() => setChatMode('single')}
+        >
+          单人问答
+        </Button>
+        <Button
+          type="button"
+          variant={chatMode === 'roundtable' ? 'default' : 'outline'}
+          size="sm"
+          className={chatMode === 'roundtable' ? 'rounded-full bg-gradient-to-r from-violet-600 to-purple-500 shadow-md shadow-purple-200/50' : 'rounded-full'}
+          onClick={() => setChatMode('roundtable')}
+        >
+          圆桌会议
+        </Button>
+      </div>
+
+      {chatMode === 'roundtable' ? (
+        <div className="flex-1 overflow-auto px-4 py-4">
+          <RoundtableView
+            kbOptions={allBases.map((b) => ({ id: b.id, name: b.name, description: b.description }))}
+            kbIds={kbIds}
+            onToggleKb={toggleKbId}
+            selectedProvider={selectedProvider}
+            selectedModel={selectedModel}
+            onContinueSolo={() => setChatMode('single')}
+          />
+        </div>
+      ) : (
+        <>
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-auto chat-scroll px-4 py-6">
         <div className="max-w-3xl mx-auto space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3 pb-2 border-b border-gray-100">
+            <PersonaSelector />
+            {selectedPersona && selectedPersona.exampleQueries.length > 0 && (
+              <div className="flex-1 text-xs text-gray-600">
+                <div className="font-medium text-gray-500 mb-1">试试问我</div>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  {selectedPersona.exampleQueries.map((q) => (
+                    <li key={q}>{q}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-24 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center shadow-lg mb-6">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-violet-500 to-purple-500 flex items-center justify-center shadow-lg shadow-purple-200/50 mb-6">
                 <BrainCircuit className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-xl font-semibold text-gray-800 mb-2">智能问答</h2>
               <p className="text-gray-500 text-sm max-w-md">
-                基于 RAG 技术，从知识库中检索相关内容并生成精准回答。
-                <br />支持文本、图片、视频多模态输出。选择知识库后输入问题即可开始。
+                基于 RAG 与角色视角：可选知识库、可选角色；不选知识库时直连 AI 网关。
+                <br />支持文本、图片、视频多模态输出。
               </p>
               <div className="flex gap-3 mt-6">
                 {OUTPUT_MODES.map((m) => (
@@ -568,7 +767,7 @@ export default function ChatPage() {
               <div
                 className={`max-w-[85%] rounded-2xl px-4 py-3 ${
                   msg.role === 'user'
-                    ? 'bg-gradient-to-r from-blue-600 to-purple-500 text-white shadow-md'
+                    ? 'bg-gradient-to-r from-violet-600 to-purple-500 text-white shadow-md shadow-purple-200/30'
                     : 'bg-white shadow-sm border border-gray-100'
                 }`}
               >
@@ -583,9 +782,9 @@ export default function ChatPage() {
                 {msg.role === 'assistant' && msg.loading && !msg.content && !msg.images && !msg.video && (
                   <div className="flex items-center gap-2 text-gray-400 text-sm">
                     <div className="flex gap-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:0ms]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce [animation-delay:300ms]" />
                     </div>
                     {msg.outputMode === 'image' ? '正在生成图片...' :
                      msg.outputMode === 'video' ? '正在生成视频...' :
@@ -654,6 +853,18 @@ export default function ChatPage() {
                     </div>
                   </div>
                 )}
+
+                {msg.role === 'assistant' && msg.content && !msg.loading && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <a
+                      href={`/content-studio?source_text=${encodeURIComponent(msg.content.slice(0, 3000))}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-full bg-gradient-to-r from-purple-50 to-blue-50 text-purple-600 border border-purple-200/50 hover:shadow-sm transition-all"
+                    >
+                      <Sparkles className="h-3 w-3" />
+                      用此内容生成短视频
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -661,7 +872,7 @@ export default function ChatPage() {
       </div>
 
       {/* Input Area */}
-      <div className="sticky bottom-0 glass border-t border-gray-200/50">
+      <div className="sticky bottom-0 glass border-t border-gray-200/30">
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center gap-1.5 mb-2">
             {OUTPUT_MODES.map((m) => (
@@ -670,8 +881,8 @@ export default function ChatPage() {
                 onClick={() => setOutputMode(m.id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full transition-all ${
                   outputMode === m.id
-                    ? 'bg-gradient-to-r from-blue-600 to-purple-500 text-white shadow-md'
-                    : 'bg-white/80 text-gray-500 border border-gray-200 hover:bg-gray-50'
+                    ? 'bg-gradient-to-r from-violet-600 to-purple-500 text-white shadow-md shadow-purple-200/30'
+                    : 'bg-white/80 text-gray-500 border border-gray-200 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-200'
                 }`}
               >
                 {m.icon}
@@ -679,6 +890,23 @@ export default function ChatPage() {
               </button>
             ))}
           </div>
+
+          {outputMode === 'text' && (
+            <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+              <span className="text-gray-500 shrink-0">目标字数</span>
+              <input
+                type="number"
+                min={0}
+                step={500}
+                placeholder="留空=单轮"
+                value={ragTargetChars}
+                onChange={(e) => setRagTargetChars(e.target.value)}
+                disabled={kbIds.length === 0 || streaming}
+                className="w-28 h-8 px-2 rounded-lg border border-gray-200 bg-white/90 text-sm disabled:opacity-50"
+              />
+              <span className="text-gray-400 hidden sm:inline">服务端多轮续写直至接近目标（受模型单次输出上限影响）</span>
+            </div>
+          )}
 
           <div className="flex items-end gap-2">
             <div className="flex-1 relative">
@@ -688,14 +916,19 @@ export default function ChatPage() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  outputMode === 'text' ? (kbId ? '输入问题，Enter 发送...' : '请先选择知识库') :
-                  outputMode === 'image' ? '描述你想生成的图片...' :
-                  outputMode === 'video' ? '描述你想生成的视频...' :
-                  '输入要分析的内容...'
+                  outputMode === 'text'
+                    ? kbIds.length
+                      ? '输入问题，Enter 发送...'
+                      : '未选知识库时将直连 AI（需已选模型）；也可先勾选知识库走 RAG'
+                    : outputMode === 'image'
+                      ? '描述你想生成的图片...'
+                      : outputMode === 'video'
+                        ? '描述你想生成的视频...'
+                        : '输入要分析的内容...'
                 }
-                disabled={outputMode === 'text' && !kbId}
+                disabled={outputMode === 'text' && (!selectedProvider || !selectedModel)}
                 rows={1}
-                className="w-full resize-none rounded-xl border border-gray-200 bg-white/90 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full resize-none rounded-xl border border-gray-200 bg-white/90 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ maxHeight: 120 }}
                 onInput={(e) => {
                   const el = e.target as HTMLTextAreaElement
@@ -711,8 +944,8 @@ export default function ChatPage() {
             ) : (
               <Button
                 onClick={() => void handleSend()}
-                disabled={!input.trim() || (outputMode === 'text' && !kbId)}
-                className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-500 hover:from-blue-700 hover:to-purple-600 text-white shadow-md h-11 w-11 p-0 disabled:opacity-50"
+                disabled={!input.trim() || (outputMode === 'text' && (!selectedProvider || !selectedModel))}
+                className="rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 hover:from-violet-700 hover:to-purple-600 text-white shadow-md shadow-purple-200/30 h-11 w-11 p-0 disabled:opacity-50"
               >
                 <Send className="w-5 h-5" />
               </Button>
@@ -720,6 +953,8 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   )
 }
@@ -732,7 +967,7 @@ function SourceCard({ source }: { source: SourceRef }) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-600 border-blue-200">
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-600 border-violet-200">
               #{source.index}
             </Badge>
             {source.title && (
@@ -740,10 +975,10 @@ function SourceCard({ source }: { source: SourceRef }) {
             )}
             <span className="text-[10px] text-gray-400">相关度 {(source.score * 100).toFixed(0)}%</span>
           </div>
-          <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{source.content}</p>
+          <p className="text-xs text-gray-500 mt-0.5 line-clamp-6">{source.content}</p>
         </div>
         {source.source_url && (
-          <a href={source.source_url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-gray-400 hover:text-blue-500 transition-colors">
+          <a href={source.source_url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-gray-400 hover:text-violet-500 transition-colors">
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         )}

@@ -181,15 +181,50 @@ def _set_llm_notice(
 def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any] | None = None) -> str:
     prompt = (
         "你是专业的抖音短视频分析师，精通抖音推荐算法和内容生态。\n"
-        "分析时请基于以下抖音算法核心逻辑：\n"
+        "你的最高原则是“数据第一、证据优先”：所有结论必须来自视频内容本身或给定指标，不允许凭空补充。\n"
+        "\n"
+        "【数据优先铁律】\n"
+        "1. 只允许使用两类信息：视频可观察事实 + 输入中给出的 context/metrics。\n"
+        "2. 若证据不足，必须明确写“数据不足/无法判断”，禁止猜测行业均值、用户画像、ROI、流量级别。\n"
+        "3. 每个关键判断都要可追溯到输入证据（画面、文案、音频、或具体指标字段）。\n"
+        "4. 不得使用“通常/一般/大概率”替代证据。\n"
+        "5. 输出中若出现预测类字段，必须同时给出依据；无依据则填写“数据不足”。\n"
+        "\n"
+        "分析时可参考以下抖音算法背景知识（仅作分析框架，不得作为证据引用）：\n"
         "1. 流量池机制：200→3000→1万→10万→100万，逐级突破\n"
         "2. 核心指标权重：完播率 > 互动率 > 关注率 > 分享率\n"
         "3. 前3秒决定70%的完播率\n"
         "4. 评论区活跃度对流量池升级影响最大\n"
         "5. 内容与账号标签的一致性影响推荐精准度\n"
+        "注意：以上为算法机制常识，评分和结论仍必须依据视频可观察事实，不得仅凭机制常识下判断。\n"
         "\n"
         "请根据给定视频内容输出严格 JSON，不要额外文字。\n"
-        "字段结构如下（所有字段必填，字符串请用中文）：\n"
+        "\n"
+        "## 必选字段与可选字段规则\n"
+        "字段分为两类：\n"
+        "- 【必选】：必须从视频画面/音频中直接观察得出，不允许为 null。\n"
+        "- 【可选-需推断】：需要外部数据或主观推测才能填写。\n"
+        "  - 若证据充分 → 正常填写。\n"
+        "  - 若证据不足 → 输出 null，并在同级增加 \"_reason\": \"缺少XX数据\" 字段说明原因。\n"
+        "  - 例如：\"age_range\": null, \"age_range_reason\": \"视频中无年龄相关线索，输入中无受众数据\"\n"
+        "\n"
+        "【必选字段清单（从视频可直接观察）】：\n"
+        "summary, visual(全部子字段), bgm_audio(beat_sync/emotion_fit),\n"
+        "editing_rhythm(全部), copy_logic(golden_3s/narrative_model/on_screen_text/info_density),\n"
+        "scores(全部维度), emotion_curve, visual_elements,\n"
+        "douyin_specific(content_type/video_format)\n"
+        "\n"
+        "【可选字段清单（需推断，允许 null+reason）】：\n"
+        "bgm_audio.hotness_estimate,\n"
+        "business_strategy 全部子字段（monetization_path/trend_stage/cognitive_load/audience_persona/\n"
+        "  dou_plus_assessment/content_lifecycle_prediction/audience_detail 全部子字段）,\n"
+        "interaction_algo.comment_inducement.comment_template_prediction,\n"
+        "interaction_algo.negative_signal_risk 全部子字段,\n"
+        "douyin_specific(hashtag_strategy.topic_heat_assessment/\n"
+        "  douyin_native_elements 全部子字段/traffic_pool_prediction 全部子字段),\n"
+        "performance_attribution 全部子字段\n"
+        "\n"
+        "字段结构如下（字符串请用中文）：\n"
         "\n"
         "## 情绪曲线 emotion_curve 生成规则\n"
         "- 必须输出至少 30 个点（短视频）或 60 个点（长视频），t 为秒序号，v 为 0-1 之间的小数。\n"
@@ -207,17 +242,26 @@ def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any]
         "\n"
         "## 多维评分 scores 生成规则\n"
         "- 9 个维度各独立给分（1-10），附带一句话说明 brief。\n"
+        "- 评分标尺（必须严格遵守，避免所有维度集中在 6-8 分）：\n"
+        "  1-3 分：明显低于平台平均水平，存在硬伤\n"
+        "  4-5 分：平台中位偏下，有改进空间\n"
+        "  6-7 分：中等水平，有一定可取之处\n"
+        "  8-9 分：高于均值，有明显优势（需在 brief 中指出具体优势）\n"
+        "  10 分：顶级标杆（极少给出，需指出标杆级特征）\n"
         "- overall = 各维度 score × weight 求和（保留 1 位小数）。\n"
         "- 权重已在 schema 中给出默认值，请直接使用。\n"
+        "- 不同维度的分数应拉开差距，体现视频的优势和短板，禁止所有维度给出相近分数。\n"
         "- replicability 保留 0-1 分值，附带难度等级和关键壁垒。\n"
         "\n"
         "## 改进建议 improvement_suggestions 生成规则\n"
         "- priority_actions: 列出 3-5 个按紧急度排序的改进项。\n"
         "- 每个建议必须包含：当前问题 current_issue、具体改法 suggestion、预期效果 expected_impact。\n"
+        "- 每条建议必须是“问题-证据-动作”链路：问题来自视频可观察事实或给定指标。\n"
+        "- expected_impact 必须指明影响方向和影响维度（如“正向影响完播率，依据：当前前3秒无明确钩子(hook_power=4.5)”）；禁止写模糊的“会更好”；仅当输入包含 benchmark 数据时才允许给出数值区间预估。\n"
         "- copy_rewrite: 必须给出 3 个优化版标题 suggested_titles。\n"
-        "- editing_suggestions: 按时间轴标注需要改进的具体秒数。\n"
+        "- editing_suggestions: 按时间轴标注需要改进的具体秒数和改进内容。\n"
         "- algorithm_optimization: 针对抖音算法给出 3-5 条具体操作建议。\n"
-        "- a_b_test_suggestions: 给出 1-2 个 A/B 测试方案。\n"
+        "- a_b_test_suggestions: 给出 1-2 个 A/B 测试方案，必须明确测试变量和预期差异方向。\n"
         "\n"
         "{\n"
         '  "summary": "简要结论（2-3句话概括视频特征与传播潜力）",\n'
@@ -228,11 +272,12 @@ def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any]
         '      "appearance": "", "outfit": "", "micro_expression": "", "body_language": ""\n'
         "    },\n"
         '    "scene_semantics": "",\n'
-        '    "visual_elements": ["元素1", "元素2", "..."]\n'
+        '    "visual_elements": ["女性主播", "产品特写", "价格标签花字", "室内场景"]\n'
         "  },\n"
         '  "bgm_audio": {\n'
         '    "beat_sync": "", "emotion_fit": "",\n'
-        '    "hotness_estimate": "疑似爆款/非爆款/无法判断（无热度数据）"\n'
+        '    "hotness_estimate": "疑似爆款/非爆款 或 null",\n'
+        '    "hotness_estimate_reason": "若为null则填写原因，否则省略此字段"\n'
         "  },\n"
         '  "editing_rhythm": { "first_3s_hook": "", "cut_frequency": "" },\n'
         '  "copy_logic": {\n'
@@ -266,21 +311,30 @@ def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any]
         "    }\n"
         "  },\n"
         '  "business_strategy": {\n'
-        '    "monetization_path": "", "trend_stage": "",\n'
-        '    "cognitive_load": "", "audience_persona": "",\n'
+        '    "monetization_path": "字符串或null", "monetization_path_reason": "若null则填原因",\n'
+        '    "trend_stage": "字符串或null", "trend_stage_reason": "若null则填原因",\n'
+        '    "cognitive_load": "字符串或null", "cognitive_load_reason": "若null则填原因",\n'
+        '    "audience_persona": "字符串或null", "audience_persona_reason": "若null则填原因",\n'
         '    "dou_plus_assessment": {\n'
-        '      "worth_investing": true,\n'
-        '      "recommended_budget_tier": "低(100-300)/中(500-1000)/高(2000+)",\n'
-        '      "target_audience_suggestion": "投放人群建议",\n'
-        '      "expected_roi_range": "预期 ROI 范围"\n'
+        '      "worth_investing": "true/false/null",\n'
+        '      "recommended_budget_tier": "低(100-300)/中(500-1000)/高(2000+)或null",\n'
+        '      "target_audience_suggestion": "投放人群建议或null",\n'
+        '      "expected_roi_range": "预期ROI或null",\n'
+        '      "_reason": "若任意子字段为null，在此说明原因"\n'
         "    },\n"
-        '    "content_lifecycle_prediction": "内容衰减预期（3天热度/7天长尾/持续常青）",\n'
+        '    "content_lifecycle_prediction": "3天热度/7天长尾/持续常青 或null",\n'
+        '    "content_lifecycle_prediction_reason": "若null则填原因",\n'
         '    "audience_detail": {\n'
-        '      "age_range": "18-24/25-30/31-40/40+",\n'
-        '      "gender_skew": "偏女性/偏男性/均衡",\n'
-        '      "city_tier": "一线/新一线/二三线/下沉市场",\n'
-        '      "interest_tags": ["兴趣标签"],\n'
-        '      "consumption_power": "高/中/低"\n'
+        '      "age_range": "18-24/25-30/31-40/40+或null",\n'
+        '      "age_range_reason": "若null则填原因",\n'
+        '      "gender_skew": "偏女性/偏男性/均衡或null",\n'
+        '      "gender_skew_reason": "若null则填原因",\n'
+        '      "city_tier": "一线/新一线/二三线/下沉市场或null",\n'
+        '      "city_tier_reason": "若null则填原因",\n'
+        '      "interest_tags": ["标签或null"],\n'
+        '      "interest_tags_reason": "若null则填原因",\n'
+        '      "consumption_power": "高/中/低或null",\n'
+        '      "consumption_power_reason": "若null则填原因"\n'
         "    }\n"
         "  },\n"
         '  "douyin_specific": {\n'
@@ -303,28 +357,29 @@ def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any]
         '      "shopping_cart": "是否挂小黄车/商品链接"\n'
         "    },\n"
         '    "traffic_pool_prediction": {\n'
-        '      "estimated_level": "初级(200-500)/中级(3k-5k)/高级(1w-10w)/爆款(10w+)",\n'
-        '      "breakthrough_factors": ["有利因素"],\n'
-        '      "risk_factors": ["不利因素"]\n'
+        '      "estimated_level": "初级(200-500)/中级(3k-5k)/高级(1w-10w)/爆款(10w+)或null",\n'
+        '      "estimated_level_reason": "若null则填原因",\n'
+        '      "breakthrough_factors": ["有利因素或null"],\n'
+        '      "risk_factors": ["不利因素或null"]\n'
         "    }\n"
         "  },\n"
         '  "scores": {\n'
-        '    "overall": 7.0,\n'
+        '    "overall": 6.2,\n'
         '    "dimensions": {\n'
-        '      "hook_power":            {"score": 7.0, "weight": 0.20, "brief": ""},\n'
-        '      "content_value":         {"score": 7.0, "weight": 0.15, "brief": ""},\n'
-        '      "visual_quality":        {"score": 7.0, "weight": 0.10, "brief": ""},\n'
+        '      "hook_power":            {"score": 8.5, "weight": 0.20, "brief": "前3秒悬念问句+产品特写，拦截力强"},\n'
+        '      "content_value":         {"score": 5.0, "weight": 0.15, "brief": "信息密度偏低，核心卖点不清晰"},\n'
+        '      "visual_quality":        {"score": 6.5, "weight": 0.10, "brief": ""},\n'
         '      "editing_rhythm":        {"score": 7.0, "weight": 0.10, "brief": ""},\n'
-        '      "audio_bgm":             {"score": 7.0, "weight": 0.10, "brief": ""},\n'
-        '      "copy_script":           {"score": 7.0, "weight": 0.10, "brief": ""},\n'
-        '      "interaction_design":    {"score": 7.0, "weight": 0.10, "brief": ""},\n'
-        '      "algorithm_friendliness":{"score": 7.0, "weight": 0.10, "brief": ""},\n'
-        '      "commercial_potential":  {"score": 7.0, "weight": 0.05, "brief": ""}\n'
+        '      "audio_bgm":             {"score": 4.0, "weight": 0.10, "brief": "BGM与内容节奏不匹配"},\n'
+        '      "copy_script":           {"score": 6.0, "weight": 0.10, "brief": ""},\n'
+        '      "interaction_design":    {"score": 3.5, "weight": 0.10, "brief": "无互动引导，无评论区引导"},\n'
+        '      "algorithm_friendliness":{"score": 7.5, "weight": 0.10, "brief": ""},\n'
+        '      "commercial_potential":  {"score": 8.0, "weight": 0.05, "brief": "产品展示清晰，转化路径明确"}\n'
         "    },\n"
         '    "replicability": {\n'
-        '      "score": 0.5,\n'
-        '      "difficulty": "中等",\n'
-        '      "key_barriers": ["壁垒1"]\n'
+        '      "score": 0.7,\n'
+        '      "difficulty": "较低",\n'
+        '      "key_barriers": ["需要同款产品实物", "拍摄场地要求一般"]\n'
         "    }\n"
         "  },\n"
         '  "improvement_suggestions": {\n'
@@ -352,7 +407,7 @@ def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any]
         "  },\n"
         '  "ai_insights": {\n'
         '    "semantic_tags": [], "replicability_score": 0.0,\n'
-        '    "emotion_curve": [{"t": 0, "v": 0.3}, {"t": 1, "v": 0.5}, "..."]\n'
+        '    "emotion_curve": [{"t": 0, "v": 0.3}, {"t": 1, "v": 0.6}, {"t": 2, "v": 0.4}]\n'
         "  }\n"
         "}\n"
     )
@@ -363,18 +418,20 @@ def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any]
         prompt += (
             "\n\n以下是该视频在抖音的实际表现数据：\n"
             + json.dumps(metrics, ensure_ascii=False, indent=2)
-            + "\n\n请基于内容分析结果和实际数据进行归因分析：\n"
+            + "\n\n请基于内容分析结果和实际数据进行归因分析（仅可使用已给出的指标字段）：\n"
             "1. 数据表现与内容质量是否匹配？\n"
             "2. 如果数据好，归因到具体哪些内容因素\n"
             "3. 如果数据差，找出内容层面的具体瓶颈\n"
-            "4. 对比同类型视频的典型数据，给出相对评价\n"
+            "4. 仅当输入中存在 benchmark 或同类对照数据时，才能做相对评价；否则写“数据不足，无法做同类对比”\n"
             "\n请将归因分析结果放入 performance_attribution 字段：\n"
             '{\n'
             '  "performance_attribution": {\n'
             '    "data_vs_content_alignment": "高度匹配/内容优于数据/数据优于内容",\n'
             '    "positive_factors": [{"factor": "", "estimated_contribution": ""}],\n'
             '    "negative_factors": [{"factor": "", "estimated_contribution": ""}],\n'
-            '    "benchmark": {"category_avg_completion_rate": 0.35, "actual_vs_benchmark": ""}\n'
+            '    "benchmark": {"category_avg_completion_rate": 0.35, "actual_vs_benchmark": "或数据不足"},\n'
+            '    "data_sufficiency": "充分/部分充分/不足",\n'
+            '    "missing_metrics": ["缺失但关键的指标名"]\n'
             "  }\n"
             "}\n"
         )
@@ -423,6 +480,18 @@ def _ensure_str(value: Any, fallback: str) -> str:
     if value is None:
         return fallback
     return str(value)
+
+
+def _ensure_nullable_str(container: dict[str, Any], key: str, fallback: str) -> None:
+    """For optional fields: preserve explicit null and keep companion _reason."""
+    val = container.get(key)
+    if val is None:
+        container[key] = None
+        reason_key = f"{key}_reason"
+        if reason_key not in container or not container[reason_key]:
+            container[reason_key] = fallback or "数据不足"
+    else:
+        container[key] = str(val)
 
 
 def _ensure_float(value: Any, fallback: float) -> float:
@@ -476,7 +545,7 @@ def _coerce_report(report: dict[str, Any], fallback: dict[str, Any]) -> dict[str
     bgm = report["bgm_audio"]
     bgm["beat_sync"] = _ensure_str(bgm.get("beat_sync"), fallback["bgm_audio"]["beat_sync"])
     bgm["emotion_fit"] = _ensure_str(bgm.get("emotion_fit"), fallback["bgm_audio"]["emotion_fit"])
-    bgm["hotness_estimate"] = _ensure_str(bgm.get("hotness_estimate"), fallback["bgm_audio"]["hotness_estimate"])
+    _ensure_nullable_str(bgm, "hotness_estimate", "无热度数据")
 
     report["editing_rhythm"] = _ensure_dict(report.get("editing_rhythm"), fallback["editing_rhythm"])
     er = report["editing_rhythm"]
@@ -503,10 +572,14 @@ def _coerce_report(report: dict[str, Any], fallback: dict[str, Any]) -> dict[str
 
     report["business_strategy"] = _ensure_dict(report.get("business_strategy"), fallback["business_strategy"])
     bs = report["business_strategy"]
-    bs["monetization_path"] = _ensure_str(bs.get("monetization_path"), fallback["business_strategy"]["monetization_path"])
-    bs["trend_stage"] = _ensure_str(bs.get("trend_stage"), fallback["business_strategy"]["trend_stage"])
-    bs["cognitive_load"] = _ensure_str(bs.get("cognitive_load"), fallback["business_strategy"]["cognitive_load"])
-    bs["audience_persona"] = _ensure_str(bs.get("audience_persona"), fallback["business_strategy"]["audience_persona"])
+    for bs_key in ("monetization_path", "trend_stage", "cognitive_load", "audience_persona",
+                    "content_lifecycle_prediction"):
+        _ensure_nullable_str(bs, bs_key, "数据不足")
+
+    bs["dou_plus_assessment"] = _ensure_dict(bs.get("dou_plus_assessment"), {})
+    bs["audience_detail"] = _ensure_dict(bs.get("audience_detail"), {})
+    for ad_key in ("age_range", "gender_skew", "city_tier", "consumption_power"):
+        _ensure_nullable_str(bs["audience_detail"], ad_key, "数据不足")
 
     # --- douyin_specific ---
     report["douyin_specific"] = _ensure_dict(report.get("douyin_specific"), fallback.get("douyin_specific", {}))
@@ -716,7 +789,10 @@ def analyze_video(
         last_err = None
         for attempt in range(3):
             try:
-                response = model.generate_content([video_file, _build_prompt(context, metrics)])
+                response = model.generate_content(
+                    [video_file, _build_prompt(context, metrics)],
+                    generation_config={"response_mime_type": "application/json"},
+                )
                 break
             except Exception as e:
                 last_err = e

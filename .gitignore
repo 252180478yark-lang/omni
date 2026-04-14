@@ -60,6 +60,11 @@ downloads/
 # Service runtime data (ai-provider-hub)
 services/ai-provider-hub/data/
 
+# Temporary exported/extracted files
+exported_*
+extracted_*
+image_analysis_*.json
+
 # Vercel
 .vercel
 

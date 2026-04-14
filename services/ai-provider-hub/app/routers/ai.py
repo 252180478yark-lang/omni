@@ -116,6 +116,28 @@ async def video_status(task_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/videos/edit", dependencies=[Depends(_rate_limit_guard)])
+async def edit_video(payload: VideoGenerateRequest):
+    """Edit an existing video (Seedance 2.0 edit mode)."""
+    payload.mode = "edit"
+    try:
+        result = await video_service.generate(payload)
+        return result.model_dump()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/videos/extend", dependencies=[Depends(_rate_limit_guard)])
+async def extend_video(payload: VideoGenerateRequest):
+    """Extend / concatenate videos (Seedance 2.0 extend mode)."""
+    payload.mode = "extend"
+    try:
+        result = await video_service.generate(payload)
+        return result.model_dump()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 # ═══ Multimodal Analysis (MOD-04) ═══
 
 @router.post("/analyze", dependencies=[Depends(_rate_limit_guard)])
@@ -137,6 +159,8 @@ async def providers() -> dict:
         "gemini": lambda: bool(settings.gemini_api_key),
         "anthropic": lambda: bool(settings.anthropic_api_key),
         "deepseek": lambda: bool(settings.deepseek_api_key),
+        "seedance": lambda: bool(settings.ark_api_key or settings.seedance_access_key),
+        "kling": lambda: bool(settings.kling_api_key),
     }
     for name, item in data.items():
         checker = key_check.get(name)
@@ -195,7 +219,14 @@ async def update_provider_config(payload: ProviderConfigUpdateRequest) -> dict:
     if payload.api_key is not None:
         value = payload.api_key.strip()
         normalized_api_key = value
-        key_setters = {"openai": "openai_api_key", "gemini": "gemini_api_key", "anthropic": "anthropic_api_key", "deepseek": "deepseek_api_key"}
+        key_setters = {
+            "openai": "openai_api_key",
+            "gemini": "gemini_api_key",
+            "anthropic": "anthropic_api_key",
+            "deepseek": "deepseek_api_key",
+            "seedance": "ark_api_key",
+            "kling": "kling_api_key",
+        }
         attr = key_setters.get(payload.provider)
         if attr:
             setattr(settings, attr, value)
@@ -212,7 +243,14 @@ async def update_provider_config(payload: ProviderConfigUpdateRequest) -> dict:
         default_embedding_model=payload.default_embedding_model,
     )
 
-    key_check = {"openai": "openai_api_key", "gemini": "gemini_api_key", "anthropic": "anthropic_api_key", "deepseek": "deepseek_api_key"}
+    key_check = {
+        "openai": "openai_api_key",
+        "gemini": "gemini_api_key",
+        "anthropic": "anthropic_api_key",
+        "deepseek": "deepseek_api_key",
+        "seedance": "ark_api_key",
+        "kling": "kling_api_key",
+    }
     attr = key_check.get(payload.provider)
     api_key_set = bool(getattr(settings, attr)) if attr else True
 
@@ -262,7 +300,14 @@ async def provider_secrets(provider: str) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     persisted = read_provider_config(provider)
-    key_map = {"openai": "openai_api_key", "gemini": "gemini_api_key", "anthropic": "anthropic_api_key", "deepseek": "deepseek_api_key"}
+    key_map = {
+        "openai": "openai_api_key",
+        "gemini": "gemini_api_key",
+        "anthropic": "anthropic_api_key",
+        "deepseek": "deepseek_api_key",
+        "seedance": "ark_api_key",
+        "kling": "kling_api_key",
+    }
     attr = key_map.get(provider)
     api_key = getattr(settings, attr, "") if attr else ""
 

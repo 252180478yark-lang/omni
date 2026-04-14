@@ -19,7 +19,10 @@ _BASE_DELAY = 1.0
 
 class FallbackChain:
     def __init__(self, ordered: list[str] | None = None) -> None:
-        self.ordered = ordered or ["gemini", "openai", "anthropic", "deepseek", "ollama"]
+        self.ordered = ordered or [
+            "gemini", "openai", "anthropic", "deepseek", "ollama",
+            "seedance", "kling",
+        ]
 
     def get_chain(self, preferred: str | None, registry: ProviderRegistry) -> list[str]:
         names = [name for name in self.ordered if name in registry.list_providers()]

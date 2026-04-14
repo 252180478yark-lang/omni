@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +16,7 @@ import {
   Eye,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Save,
   RefreshCw,
   KeyRound,
@@ -27,6 +28,8 @@ import {
   Sparkles,
   CheckSquare,
   Square,
+  Clapperboard,
+  FolderOpen,
 } from 'lucide-react'
 
 interface TreeArticle {
@@ -36,17 +39,31 @@ interface TreeArticle {
   target_id?: string | number
 }
 
+interface TreeNode {
+  title: string
+  mapping_type: number
+  mapping_id?: string | number
+  graph_path: string
+  target_id?: string | number
+  children: TreeNode[]
+}
+
 interface NavTree {
   graph_name: string
   graph_id: string
   articles: TreeArticle[]
   total_articles: number
+  tree_nodes?: TreeNode[]
 }
 
 interface ChapterImages {
   downloaded: number
   total: number
   analyzed?: number
+}
+
+interface ChapterVideos {
+  analyzed: number
 }
 
 interface Chapter {
@@ -60,6 +77,7 @@ interface Chapter {
   source_url?: string
   error?: string
   images?: ChapterImages
+  videos?: ChapterVideos
   image_descriptions?: Record<string, string>
 }
 
@@ -76,17 +94,48 @@ interface CurrentArticle {
   index: number
   title: string
   graph_path: string
+  /** 后端在长时间步骤（如图解读、短视频）里刷新的子状态文案 */
+  detail?: string
+}
+
+interface ActivityLogEntry {
+  t: number
+  msg: string
+  snippet?: string
 }
 
 interface CrawlJob {
   status: string
   progress: number
+  /** 当前篇内部的完成比例 0–0.99，用于进度条在 chapters 尚未写入时不长时间停在 0% */
+  progress_hint?: number
   total?: number
   chapters: Chapter[]
   current_article?: CurrentArticle | null
   graph_name?: string
   total_articles?: number
   error?: string | null
+  /** 后端追加的实时步骤日志（轮询 GET job） */
+  activity_log?: ActivityLogEntry[]
+  /** 最近一次提取到的纯文本预览 */
+  text_preview?: string
+}
+
+function crawlProgressPct(job: CrawlJob): number {
+  const total = job.total || 1
+  const hint = typeof job.progress_hint === 'number' ? job.progress_hint : 0
+  const completedBoost =
+    job.chapters.length > 0 && job.chapters[job.chapters.length - 1].index === job.progress ? 1 : 0
+  return Math.min(100, Math.round(((job.progress + hint + completedBoost) / total) * 100))
+}
+
+/** 统一 snake_case / camelCase，避免代理或旧后端漏字段导致日志区空白 */
+function normalizeHarvesterJob(data: CrawlJob): CrawlJob {
+  const d = data as CrawlJob & { activityLog?: ActivityLogEntry[]; textPreview?: string }
+  const log = d.activity_log ?? d.activityLog
+  const activity_log = Array.isArray(log) ? log : []
+  const text_preview = d.text_preview ?? d.textPreview ?? ''
+  return { ...d, activity_log, text_preview }
 }
 
 interface KBItem {
@@ -96,6 +145,191 @@ interface KBItem {
 }
 
 type Step = 'input' | 'browse' | 'crawling' | 'review' | 'saving' | 'done'
+
+/** 刷新 / 新开标签后恢复采集任务：job 仍在知识引擎进程内存中时可拉回（引擎重启后仍会丢失）。 */
+const HARVESTER_JOB_STORAGE_KEY = 'omni-knowledge-harvester-job-id'
+/** 旧版仅用 sessionStorage，迁移一次到 localStorage */
+const HARVESTER_JOB_SESSION_LEGACY_KEY = 'omni-knowledge-harvester-job-id'
+
+function readStoredHarvestJobId(): string {
+  try {
+    if (typeof window === 'undefined') return ''
+    const qs = new URLSearchParams(window.location.search)
+    const fromUrl = qs.get('job_id')?.trim()
+    if (fromUrl) return fromUrl
+    let v = window.localStorage.getItem(HARVESTER_JOB_STORAGE_KEY) || ''
+    if (!v) {
+      v = window.sessionStorage.getItem(HARVESTER_JOB_SESSION_LEGACY_KEY) || ''
+      if (v) {
+        window.localStorage.setItem(HARVESTER_JOB_STORAGE_KEY, v)
+        window.sessionStorage.removeItem(HARVESTER_JOB_SESSION_LEGACY_KEY)
+      }
+    }
+    return v
+  } catch {
+    return ''
+  }
+}
+
+function persistHarvestJobId(id: string) {
+  try {
+    if (typeof window !== 'undefined' && id) {
+      window.localStorage.setItem(HARVESTER_JOB_STORAGE_KEY, id)
+      try {
+        const url = new URL(window.location.href)
+        if (url.searchParams.get('job_id') !== id) {
+          url.searchParams.set('job_id', id)
+          window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+        }
+      } catch { /* ignore */ }
+    }
+  } catch { /* ignore */ }
+}
+
+function clearPersistedHarvestJobId() {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(HARVESTER_JOB_STORAGE_KEY)
+      window.sessionStorage.removeItem(HARVESTER_JOB_SESSION_LEGACY_KEY)
+      try {
+        const url = new URL(window.location.href)
+        if (!url.searchParams.has('job_id')) return
+        url.searchParams.delete('job_id')
+        const q = url.searchParams.toString()
+        window.history.replaceState({}, '', `${url.pathname}${q ? `?${q}` : ''}${url.hash}`)
+      } catch { /* ignore */ }
+    }
+  } catch { /* ignore */ }
+}
+
+/** 目录 API 可能返回 number 或 string，统一成字符串避免 Set.has 匹配失败导致「选了 A 却爬成别篇或退回全量」。 */
+function midKey(id: string | number | undefined | null): string {
+  if (id == null || id === '') return ''
+  return String(id)
+}
+
+function allLeafMappingIds(nodes: TreeNode[] | undefined): string[] {
+  if (!nodes?.length) return []
+  const out: string[] = []
+  const walk = (list: TreeNode[]) => {
+    for (const n of list) {
+      if (n.mapping_type === 2 && n.mapping_id != null && n.mapping_id !== '') {
+        const k = midKey(n.mapping_id)
+        if (k) out.push(k)
+      }
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(nodes)
+  return out
+}
+
+function filterNavTree(nodes: TreeNode[], q: string): TreeNode[] {
+  const t = q.trim().toLowerCase()
+  if (!t) return nodes
+  const filt = (list: TreeNode[]): TreeNode[] => {
+    const res: TreeNode[] = []
+    for (const n of list) {
+      const hit = n.title.toLowerCase().includes(t) || n.graph_path.toLowerCase().includes(t)
+      const kids = n.children?.length ? filt(n.children) : []
+      if (n.mapping_type === 2) {
+        if (hit) res.push({ ...n, children: [] })
+      } else if (kids.length || hit) {
+        res.push({ ...n, children: kids })
+      }
+    }
+    return res
+  }
+  return filt(nodes)
+}
+
+function HarvesterTreeRow({
+  node,
+  depth,
+  treeSelected,
+  setTreeSelected,
+  expandedPaths,
+  setExpandedPaths,
+}: {
+  node: TreeNode
+  depth: number
+  treeSelected: Set<string>
+  setTreeSelected: React.Dispatch<React.SetStateAction<Set<string>>>
+  expandedPaths: Set<string>
+  setExpandedPaths: React.Dispatch<React.SetStateAction<Set<string>>>
+}) {
+  const isLeaf = node.mapping_type === 2
+  const expanded = expandedPaths.has(node.graph_path)
+
+  if (isLeaf && node.mapping_id != null) {
+    const k = midKey(node.mapping_id)
+    const isSelected = k ? treeSelected.has(k) : false
+    return (
+      <div
+        style={{ paddingLeft: `${12 + depth * 16}px` }}
+        className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition ${isSelected ? 'bg-blue-50/50' : ''}`}
+        onClick={() => {
+          if (!k) return
+          setTreeSelected(prev => {
+            const next = new Set(prev)
+            if (next.has(k)) next.delete(k)
+            else next.add(k)
+            return next
+          })
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={isSelected}
+          readOnly
+          className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 flex-shrink-0"
+        />
+        <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-gray-900 truncate">{node.title}</div>
+          <div className="text-xs text-gray-400 truncate">{node.graph_path}</div>
+        </div>
+        <Badge variant="outline" className="text-xs text-gray-400 flex-shrink-0">
+          #{node.mapping_id}
+        </Badge>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border-b border-gray-50 last:border-0">
+      <div
+        style={{ paddingLeft: `${8 + depth * 16}px` }}
+        className="flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-amber-50/40 text-sm font-medium text-gray-800"
+        onClick={() => {
+          setExpandedPaths(prev => {
+            const next = new Set(prev)
+            if (next.has(node.graph_path)) next.delete(node.graph_path)
+            else next.add(node.graph_path)
+            return next
+          })
+        }}
+      >
+        {expanded
+          ? <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0" />
+          : <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />}
+        <FolderOpen className="w-4 h-4 text-amber-500 flex-shrink-0" />
+        <span className="truncate">{node.title}</span>
+      </div>
+      {expanded && (node.children || []).map((ch, j) => (
+        <HarvesterTreeRow
+          key={`${ch.graph_path}-${j}`}
+          node={ch}
+          depth={depth + 1}
+          treeSelected={treeSelected}
+          setTreeSelected={setTreeSelected}
+          expandedPaths={expandedPaths}
+          setExpandedPaths={setExpandedPaths}
+        />
+      ))}
+    </div>
+  )
+}
 
 export default function HarvesterPage() {
   const [step, setStep] = useState<Step>('input')
@@ -125,8 +359,12 @@ export default function HarvesterPage() {
   const [extractPolling, setExtractPolling] = useState(false)
   const [navTree, setNavTree] = useState<NavTree | null>(null)
   const [treeLoading, setTreeLoading] = useState(false)
-  const [treeSelected, setTreeSelected] = useState<Set<string | number>>(new Set())
+  const [treeSelected, setTreeSelected] = useState<Set<string>>(new Set())
   const [treeFilter, setTreeFilter] = useState('')
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
+  const [endingHarvest, setEndingHarvest] = useState(false)
+  const activityLogRef = useRef<HTMLDivElement>(null)
+  const restoreAttemptedRef = useRef(false)
 
   const isFeishuUrl = (u: string) => /larkoffice\.com\/docx\/|feishu\.cn\/docx\/|larksuite\.com\/docx\/|larkoffice\.com\/wiki\/|feishu\.cn\/wiki\//i.test(u)
 
@@ -146,12 +384,54 @@ export default function HarvesterPage() {
   useEffect(() => { checkAuth() }, [checkAuth])
 
   useEffect(() => {
+    if (jobId) persistHarvestJobId(jobId)
+  }, [jobId])
+
+  useEffect(() => {
+    if (restoreAttemptedRef.current) return
+    restoreAttemptedRef.current = true
+    const stored = readStoredHarvestJobId()
+    if (!stored.trim()) return
+
+    void (async () => {
+      try {
+        const res = await fetch(`/api/omni/knowledge/harvester?job_id=${encodeURIComponent(stored)}`, {
+          cache: 'no-store',
+        })
+        const json = await res.json()
+        if (!json.success || !json.data) {
+          clearPersistedHarvestJobId()
+          return
+        }
+        const j = normalizeHarvesterJob(json.data as CrawlJob)
+        setJobId(stored)
+        setJob(j)
+        if (j.status === 'done') {
+          setStep('review')
+          setSelected(new Set(j.chapters.filter(c => c.word_count > 0).map(c => c.index)))
+          setError('')
+        } else if (j.status === 'failed') {
+          setError(j.error || '上次采集任务已失败')
+          setStep('input')
+          clearPersistedHarvestJobId()
+        } else {
+          setStep('crawling')
+        }
+      } catch {
+        clearPersistedHarvestJobId()
+      }
+    })()
+  }, [])
+
+  useEffect(() => {
     fetch('/api/omni/knowledge/bases', { cache: 'no-store' })
       .then(r => r.json())
       .then(json => {
-        if (json.success && json.data) {
-          setBases(json.data)
-          if (json.data.length > 0) setSelectedKb(json.data[0].id)
+        if (json.success && json.data?.length) {
+          const list = json.data as KBItem[]
+          setBases(list)
+          const prefer = list.find(k => k.name.includes('巨量千川'))
+          setSelectedKb(prefer?.id ?? list[0].id)
         }
       })
       .catch(() => {})
@@ -250,7 +530,7 @@ export default function HarvesterPage() {
           const jRes = await fetch(`/api/omni/knowledge/harvester?job_id=${newJobId}`)
           const jJson = await jRes.json()
           if (jJson.success && jJson.data) {
-            const j = jJson.data as CrawlJob
+            const j = normalizeHarvesterJob(jJson.data as CrawlJob)
             setJob(j)
             if (j.status === 'done') {
               setStep('review')
@@ -278,7 +558,9 @@ export default function HarvesterPage() {
       if (!res.ok || !json.success) throw new Error(json.error || `${res.status}: 获取目录失败`)
       const tree = json.data as NavTree
       setNavTree(tree)
-      setTreeSelected(new Set(tree.articles.map(a => a.mapping_id)))
+      const leaves = allLeafMappingIds(tree.tree_nodes)
+      setTreeSelected(new Set(leaves.length ? leaves : tree.articles.map(a => midKey(a.mapping_id)).filter(Boolean)))
+      setExpandedPaths(new Set((tree.tree_nodes || []).map(n => n.graph_path)))
       setStep('browse')
     } catch (e) {
       setError(String(e))
@@ -309,6 +591,45 @@ export default function HarvesterPage() {
     }
   }, [url, maxPages])
 
+  /** 结束爬取：后端在当前篇完成后停止，保留已采集章节并进入审核入库 */
+  const cancelHarvestToReview = useCallback(async () => {
+    if (!jobId) return
+    setEndingHarvest(true)
+    setError('')
+    try {
+      const res = await fetch('/api/omni/knowledge/harvester?action=cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId }),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.error || '结束任务失败')
+      for (let i = 0; i < 600; i++) {
+        await new Promise(r => setTimeout(r, 1000))
+        const jRes = await fetch(`/api/omni/knowledge/harvester?job_id=${jobId}`)
+        const jJson = await jRes.json()
+        if (!jJson.success || !jJson.data) continue
+        const j = normalizeHarvesterJob(jJson.data as CrawlJob)
+        setJob(j)
+        if (j.status === 'done') {
+          setStep('review')
+          setSelected(new Set(j.chapters.filter(c => c.word_count > 0 && c.markdown).map(c => c.index)))
+          return
+        }
+        if (j.status === 'failed') {
+          setError(j.error || '任务失败')
+          setStep('input')
+          return
+        }
+      }
+      setError('等待结束超时，请刷新页面或到任务进度查看状态')
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setEndingHarvest(false)
+    }
+  }, [jobId])
+
   const crawlSelected = useCallback(async () => {
     if (!url.trim() || !navTree || treeSelected.size === 0) return
     setError('')
@@ -316,13 +637,18 @@ export default function HarvesterPage() {
     setJob(null)
     try {
       const selectedArticles = navTree.articles
-        .filter(a => treeSelected.has(a.mapping_id))
+        .filter(a => treeSelected.has(midKey(a.mapping_id)))
         .map(a => ({
           title: a.title,
           mapping_id: a.mapping_id,
           graph_path: a.graph_path,
           target_id: a.target_id || a.mapping_id,
         }))
+      if (selectedArticles.length === 0) {
+        setError('没有匹配到已选文章（可能是目录 ID 类型异常），请取消全选后重新勾选再试。')
+        setStep('browse')
+        return
+      }
       const res = await fetch('/api/omni/knowledge/harvester?action=crawl', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -344,7 +670,7 @@ export default function HarvesterPage() {
         const res = await fetch(`/api/omni/knowledge/harvester?job_id=${jobId}`)
         const json = await res.json()
         if (json.success && json.data) {
-          const j = json.data as CrawlJob
+          const j = normalizeHarvesterJob(json.data as CrawlJob)
           setJob(j)
           if (j.status === 'done') {
             setStep('review')
@@ -358,9 +684,18 @@ export default function HarvesterPage() {
           }
         }
       } catch { /* ignore */ }
-    }, 2000)
+    }, 1000)
     return () => clearInterval(interval)
   }, [step, jobId])
+
+  const activityTail = job?.activity_log?.length
+    ? job.activity_log[job.activity_log.length - 1]?.t
+    : 0
+  useEffect(() => {
+    const el = activityLogRef.current
+    if (!el || !job?.activity_log?.length) return
+    el.scrollTop = el.scrollHeight
+  }, [job?.activity_log?.length, activityTail])
 
   const toggleSelect = (idx: number) => {
     setSelected(prev => {
@@ -411,6 +746,7 @@ export default function HarvesterPage() {
       const json = await res.json()
       if (!json.success) throw new Error(json.error || '保存失败')
       setSavedTasks(json.data.task_ids)
+      clearPersistedHarvestJobId()
       setStep('done')
     } catch (e) {
       setError(String(e))
@@ -499,6 +835,7 @@ export default function HarvesterPage() {
   }, [jobId, selectedImages, job])
 
   const reset = () => {
+    clearPersistedHarvestJobId()
     setStep('input')
     setUrl('')
     setMaxPages('')
@@ -515,6 +852,7 @@ export default function HarvesterPage() {
     setNavTree(null)
     setTreeSelected(new Set())
     setTreeFilter('')
+    setExpandedPaths(new Set())
   }
 
   return (
@@ -580,7 +918,7 @@ export default function HarvesterPage() {
               <CardContent className="space-y-4">
                 <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 space-y-1">
                   <p className="font-medium text-gray-700">获取方法：</p>
-                  <p>1. 在浏览器中打开并登录 yuntu.oceanengine.com</p>
+                  <p>1. 在浏览器中打开并登录 support.oceanengine.com 或 yuntu.oceanengine.com</p>
                   <p>2. 按 F12 打开开发者工具 → Application → Cookies</p>
                   <p>3. 复制所有 Cookie（格式: name=value; name2=value2）</p>
                 </div>
@@ -806,7 +1144,12 @@ export default function HarvesterPage() {
             <Card className="apple-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Globe className="w-5 h-5 text-blue-500" /> 知识采集器</CardTitle>
-                <CardDescription>输入帮助中心或飞书文档 URL，系统自动爬取正文+图片 → AI解读图片 → 审核确认 → 入库向量化+RAG</CardDescription>
+                <CardDescription>
+                  输入帮助中心或飞书文档 URL，系统自动爬取正文+表格+图片+视频 → AI解读图片 → 短视频分析解读视频 → 审核确认 → 入库向量化+RAG
+                  <span className="block mt-2 text-xs text-gray-500 leading-relaxed">
+                    提示：采集任务 ID 会写入本机存储与地址栏（?job_id=…），刷新或新开本站标签页可继续上次的任务；若知识引擎服务曾重启，内存中的未入库任务会清空，重要内容请尽快入库。
+                  </span>
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -833,7 +1176,7 @@ export default function HarvesterPage() {
                       onChange={e => setMaxPages(e.target.value)}
                       placeholder="留空则爬取全部"
                       min={1}
-                      max={200}
+                      max={2000}
                       className="w-48 px-4 py-3 rounded-xl border border-gray-200 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                     />
                   </div>
@@ -881,7 +1224,14 @@ export default function HarvesterPage() {
                     placeholder="搜索文章标题..."
                     className="flex-1 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                   />
-                  <Button variant="outline" size="sm" onClick={() => setTreeSelected(new Set(navTree.articles.map(a => a.mapping_id)))}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const leaves = allLeafMappingIds(navTree.tree_nodes)
+                      setTreeSelected(new Set(leaves.length ? leaves : navTree.articles.map(a => midKey(a.mapping_id)).filter(Boolean)))
+                    }}
+                  >
                     全选
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setTreeSelected(new Set())}>
@@ -889,40 +1239,64 @@ export default function HarvesterPage() {
                   </Button>
                 </div>
 
-                <div className="max-h-[500px] overflow-y-auto rounded-lg border border-gray-100 divide-y divide-gray-50">
-                  {navTree.articles
-                    .filter(a => !treeFilter || a.title.toLowerCase().includes(treeFilter.toLowerCase()) || a.graph_path.toLowerCase().includes(treeFilter.toLowerCase()))
-                    .map((article, i) => {
-                      const isSelected = treeSelected.has(article.mapping_id)
-                      return (
-                        <div
-                          key={`${article.mapping_id}-${i}`}
-                          className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition ${isSelected ? 'bg-blue-50/50' : ''}`}
-                          onClick={() => {
-                            setTreeSelected(prev => {
-                              const next = new Set(prev)
-                              if (next.has(article.mapping_id)) next.delete(article.mapping_id)
-                              else next.add(article.mapping_id)
-                              return next
-                            })
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            readOnly
-                            className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 flex-shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-gray-900 truncate">{article.title}</div>
-                            <div className="text-xs text-gray-400 truncate">{article.graph_path}</div>
-                          </div>
-                          <Badge variant="outline" className="text-xs text-gray-400 flex-shrink-0">
-                            #{article.mapping_id}
-                          </Badge>
-                        </div>
-                      )
-                    })}
+                <div className="max-h-[500px] overflow-y-auto rounded-lg border border-gray-100">
+                  {navTree.tree_nodes && navTree.tree_nodes.length > 0 ? (
+                    <>
+                      {treeFilter.trim() && (
+                        <p className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border-b border-gray-100">
+                          搜索模式下按标题/路径筛选目录树；留空显示完整层级。
+                        </p>
+                      )}
+                      {filterNavTree(navTree.tree_nodes, treeFilter).map((node, i) => (
+                        <HarvesterTreeRow
+                          key={`${node.graph_path}-root-${i}`}
+                          node={node}
+                          depth={0}
+                          treeSelected={treeSelected}
+                          setTreeSelected={setTreeSelected}
+                          expandedPaths={expandedPaths}
+                          setExpandedPaths={setExpandedPaths}
+                        />
+                      ))}
+                    </>
+                  ) : (
+                    <div className="divide-y divide-gray-50">
+                      {navTree.articles
+                        .filter(a => !treeFilter || a.title.toLowerCase().includes(treeFilter.toLowerCase()) || a.graph_path.toLowerCase().includes(treeFilter.toLowerCase()))
+                        .map((article, i) => {
+                          const ak = midKey(article.mapping_id)
+                          const isSelected = treeSelected.has(ak)
+                          return (
+                            <div
+                              key={`${article.mapping_id}-${i}`}
+                              className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition ${isSelected ? 'bg-blue-50/50' : ''}`}
+                              onClick={() => {
+                                setTreeSelected(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has(ak)) next.delete(ak)
+                                  else next.add(ak)
+                                  return next
+                                })
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                readOnly
+                                className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 flex-shrink-0"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">{article.title}</div>
+                                <div className="text-xs text-gray-400 truncate">{article.graph_path}</div>
+                              </div>
+                              <Badge variant="outline" className="text-xs text-gray-400 flex-shrink-0">
+                                #{article.mapping_id}
+                              </Badge>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3 pt-2">
@@ -946,9 +1320,25 @@ export default function HarvesterPage() {
           <>
             <Card className="apple-card mb-6">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 flex-wrap">
                   <Loader2 className="w-5 h-5 animate-spin text-blue-500" /> 正在爬取
                   {job?.graph_name && <Badge variant="outline" className="ml-2 font-normal">{job.graph_name}</Badge>}
+                  {jobId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="ml-auto h-8 text-amber-700 border-amber-300 hover:bg-amber-50"
+                      disabled={endingHarvest}
+                      onClick={() => void cancelHarvestToReview()}
+                    >
+                      {endingHarvest ? (
+                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 结束中…</>
+                      ) : (
+                        <>结束并去审核</>
+                      )}
+                    </Button>
+                  )}
                 </CardTitle>
                 <CardDescription>
                   {!job && '正在解析导航树...'}
@@ -964,32 +1354,92 @@ export default function HarvesterPage() {
                       }),
                       { downloaded: 0, analyzed: 0 }
                     )
-                    return `已完成 ${job.chapters.length}/${job.total} 篇，浏览器提取 + 图片分析中...` +
-                      (imgStats.downloaded > 0 ? ` (${imgStats.downloaded}张图片，${imgStats.analyzed}张已解读)` : '')
+                    const sub = job.current_article?.detail
+                    return (
+                      `已完成 ${job.chapters.length}/${job.total} 篇，浏览器提取 + 图片/视频处理中` +
+                      (imgStats.downloaded > 0 ? `（已累计 ${imgStats.downloaded} 张图 / ${imgStats.analyzed} 张已解读）` : '') +
+                      (sub ? ` — ${sub}` : '')
+                    )
                   })()}
+                  <span className="block mt-1.5 text-xs text-amber-700/90">
+                    可先点右上角「结束并去审核」：当前篇处理完后会停止爬取，已采文章保留；在审核页选「巨量千川」知识库后保存入库。
+                  </span>
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-800">实时日志</span>
+                    <span className="text-[10px] text-gray-400">约每秒刷新 · job {jobId.slice(0, 8)}…</span>
+                  </div>
+                  <div
+                    ref={activityLogRef}
+                    className="min-h-[140px] max-h-64 overflow-y-auto rounded-xl border-2 border-gray-700 bg-gray-950 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-green-400/95 shadow-inner"
+                  >
+                    {!job?.activity_log?.length && (
+                      <div className="space-y-1 text-gray-400">
+                        <p>已连接任务，等待后端写入步骤…</p>
+                        <p className="text-[10px] text-amber-600/90">
+                          若一直无新行：请执行 <code className="text-amber-700">docker compose up -d --build frontend knowledge-engine</code>
+                        </p>
+                      </div>
+                    )}
+                    {job?.activity_log?.map((e, i) => (
+                      <div key={`${e.t}-${i}`} className="border-b border-gray-800/80 py-1.5 last:border-0">
+                        <div className="flex gap-2 text-gray-500">
+                          <span className="flex-shrink-0 w-[64px]">
+                            {new Date((e.t || 0) * 1000).toLocaleTimeString('zh-CN', { hour12: false })}
+                          </span>
+                          <span className="min-w-0 flex-1 text-gray-200 break-words">{e.msg}</span>
+                        </div>
+                        {e.snippet ? (
+                          <pre className="mt-1 ml-[64px] whitespace-pre-wrap break-words text-amber-200/80 text-[10px] max-h-24 overflow-y-auto">
+                            {e.snippet}
+                          </pre>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-xs font-medium text-gray-600">正文预览</span>
+                  <div className="min-h-[100px] max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-mono">
+                    {job?.text_preview ? (
+                      job.text_preview
+                    ) : (
+                      <span className="text-gray-400">结构提取完成后会在此显示正文；若后端已返回文本，约 1 秒内刷新可见。</span>
+                    )}
+                  </div>
+                </div>
+
                 {job && !!job.total && (
                   <div>
                     <div className="flex justify-between text-xs text-gray-500 mb-1.5">
                       <span>{job.chapters.length} 篇已提取</span>
-                      <span>{Math.round(((job.progress + (job.chapters.length > 0 && job.chapters[job.chapters.length - 1].index === job.progress ? 1 : 0)) / job.total) * 100)}%</span>
+                      <span>{crawlProgressPct(job)}%</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                       <div
                         className="bg-gradient-to-r from-blue-500 to-blue-400 h-full rounded-full transition-all duration-700 ease-out"
-                        style={{ width: `${Math.max(2, Math.round(((job.progress + (job.chapters.length > 0 && job.chapters[job.chapters.length - 1].index === job.progress ? 1 : 0)) / job.total) * 100))}%` }}
+                        style={{ width: `${Math.max(2, crawlProgressPct(job))}%` }}
                       />
                     </div>
                   </div>
                 )}
 
                 {job?.current_article && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500 flex-shrink-0" />
-                    <span className="text-sm text-blue-700 truncate">正在提取: {job.current_article.title}</span>
-                    <span className="text-xs text-blue-400 flex-shrink-0">{job.current_article.index + 1}/{job.total}</span>
+                  <div className="flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500 flex-shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-blue-700 truncate">正在提取: {job.current_article.title}</span>
+                        <span className="text-xs text-blue-400 flex-shrink-0">{job.current_article.index + 1}/{job.total}</span>
+                      </div>
+                      {job.current_article.detail && (
+                        <p className="text-xs text-blue-600/90 mt-1 break-words">{job.current_article.detail}</p>
+                      )}
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -1026,10 +1476,36 @@ export default function HarvesterPage() {
                                 {ch.images.downloaded}图{(ch.images.analyzed ?? 0) > 0 ? `/${ch.images.analyzed}解读` : ''}
                               </Badge>
                             )}
+                            {(ch.videos?.analyzed ?? 0) > 0 && (
+                              <Badge variant="outline" className="text-xs text-violet-600 border-violet-300">
+                                <Clapperboard className="w-3 h-3 inline mr-0.5" />
+                                {ch.videos!.analyzed}视频解读
+                              </Badge>
+                            )}
                           </>
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 shrink-0"
+                          title={expanded.has(ch.index) ? '收起正文' : '查看提取正文'}
+                          aria-label={expanded.has(ch.index) ? '收起正文' : '查看提取正文'}
+                          onClick={() => toggleExpand(ch.index)}
+                        >
+                          {expanded.has(ch.index) ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </Button>
                       </div>
                     </div>
+                    {expanded.has(ch.index) && (
+                      <CardContent className="pt-0 pb-4 px-5 border-t border-gray-100">
+                        <p className="text-xs text-gray-500 mb-2">提取正文（Markdown / 纯文本）</p>
+                        <div className="bg-gray-50 rounded-lg p-4 max-h-[min(28rem,70vh)] overflow-y-auto">
+                          <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono leading-relaxed">
+                            {ch.markdown || ch.text || '（暂无正文，若仍在采集中可稍后再展开）'}
+                          </pre>
+                        </div>
+                      </CardContent>
+                    )}
                   </Card>
                 ))}
               </div>
@@ -1147,6 +1623,11 @@ export default function HarvesterPage() {
                           {(ch.images?.analyzed ?? 0) > 0 && (
                             <Badge variant="outline" className="text-green-600 border-green-300 flex items-center gap-0.5">
                               <Sparkles className="w-3 h-3" />已解读{ch.images!.analyzed}张
+                            </Badge>
+                          )}
+                          {(ch.videos?.analyzed ?? 0) > 0 && (
+                            <Badge variant="outline" className="text-violet-600 border-violet-300 flex items-center gap-0.5">
+                              <Clapperboard className="w-3 h-3" />{ch.videos!.analyzed}段视频已解读
                             </Badge>
                           )}
                           {ch.image_descriptions && Object.keys(ch.image_descriptions).length > 0 && (

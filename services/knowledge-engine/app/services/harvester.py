@@ -110,6 +110,22 @@ def get_job(job_id: str) -> dict | None:
     return _jobs.get(job_id)
 
 
+def request_cancel_harvest(job_id: str) -> dict | None:
+    """Ask a running crawl to stop soon; finished jobs are unchanged.
+
+    The worker checks ``cancel_requested`` between articles (API phase and browser phase).
+    Partial ``chapters`` are kept for review / save.
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        return None
+    if job.get("status") in ("done", "failed"):
+        return job
+    job["cancel_requested"] = True
+    _job_log(job, "已请求结束任务：将在当前篇完成后停止，并保留已采集章节…")
+    return job
+
+
 def get_last_upload_job_id() -> str | None:
     return _last_upload_job_id
 
@@ -652,9 +668,17 @@ def _cell_to_text(
         if btype == "text":
             if text.strip():
                 parts.append(text.strip())
+            if children:
+                nested = _cell_to_text(bmap, children, seq_pos)
+                if nested:
+                    parts.append(nested)
         elif btype.startswith("heading"):
             if text.strip():
                 parts.append(f"**{text.strip()}**")
+            if children:
+                nested = _cell_to_text(bmap, children, seq_pos)
+                if nested:
+                    parts.append(nested)
         elif btype in ("ordered", "bullet"):
             if children:
                 for i, sub_id in enumerate(children, 1):
@@ -688,9 +712,18 @@ def _cell_to_text(
             mark = "✓" if bd.get("checked") else "☐"
             if text.strip():
                 parts.append(f"{mark} {text.strip()}")
+            if children:
+                nested = _cell_to_text(bmap, children, seq_pos)
+                if nested:
+                    parts.append(nested)
         elif btype == "code_block":
             if text.strip():
                 parts.append(f"`{text.strip()}`")
+            if children:
+                for sub_id in _order_sibling_ids(children, seq_pos):
+                    ct = _get_text(bmap.get(sub_id, {}).get("data", {}))
+                    if ct.strip():
+                        parts.append(f"`{ct.strip()}`")
         elif btype == "embed":
             if not _HARVESTER_TEXT_AND_TABLES_ONLY:
                 embed_url = bd.get("url", "") or bd.get("embedUrl", "")
@@ -756,6 +789,10 @@ def _cell_to_text(
             eq = bd.get("equation", "") or bd.get("formula", "") or text
             if eq.strip():
                 parts.append(f"${eq.strip()}$")
+            if children:
+                nested = _cell_to_text(bmap, children, seq_pos)
+                if nested:
+                    parts.append(nested)
         elif btype in ("divider", "horizontal_rule", "thematic_break"):
             parts.append("---")
         elif btype in ("quote", "quote_container"):
@@ -781,6 +818,10 @@ def _cell_to_text(
                 parts.append(f"[{text.strip() or url}]({url})")
             elif text.strip():
                 parts.append(text.strip())
+            if children:
+                nested = _cell_to_text(bmap, children, seq_pos)
+                if nested:
+                    parts.append(nested)
         elif btype in ("task", "task_list"):
             mark = "✓" if bd.get("done") or bd.get("checked") else "☐"
             if text.strip():
@@ -793,6 +834,10 @@ def _cell_to_text(
                         "chat_card", "jira", "jira_issue", "okr", "okr_block"):
             if text.strip():
                 parts.append(text.strip())
+            if children:
+                nested = _cell_to_text(bmap, children, seq_pos)
+                if nested:
+                    parts.append(nested)
         else:
             # Catch-all: always extract text AND children
             if text.strip():
@@ -826,6 +871,8 @@ def _blocks_to_md(
             level = int(btype[-1]) if btype[-1].isdigit() else 1
             if text.strip():
                 lines.append(f"{'#' * level} {text}")
+            if children:
+                lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
 
         elif btype == "text":
             if text.strip():
@@ -960,6 +1007,8 @@ def _blocks_to_md(
                 lines.append(f"{indent}[{text or url}]({url})")
             elif text.strip():
                 lines.append(f"{indent}{text}")
+            if children:
+                lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
 
         elif btype == "embed":
             if not _HARVESTER_TEXT_AND_TABLES_ONLY:
@@ -1061,16 +1110,20 @@ def _blocks_to_md(
         elif btype in ("chat_card", "chat_group"):
             if text.strip():
                 lines.append(f"{indent}[聊天卡片: {text}]")
-            elif children:
+            if children:
                 lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
 
         elif btype in ("mention", "mention_doc", "mention_user"):
             if text.strip():
                 lines.append(f"{indent}{text}")
+            if children:
+                lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
 
         elif btype == "reminder":
             if text.strip():
                 lines.append(f"{indent}[提醒: {text}]")
+            if children:
+                lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
 
         elif btype in ("task", "task_list"):
             mark = "x" if bd.get("done") or bd.get("checked") else " "
@@ -1088,11 +1141,15 @@ def _blocks_to_md(
                 lines.append(f"{indent}[{label}]({link_url})")
             elif label:
                 lines.append(f"{indent}{label}")
+            if children:
+                lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
 
         elif btype in ("jira", "jira_issue"):
             jira_key = bd.get("key", "") or bd.get("issueKey", "") or text
             if jira_key.strip():
                 lines.append(f"{indent}[JIRA: {jira_key}]")
+            if children:
+                lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
 
         elif btype in ("okr", "okr_block"):
             if text.strip():
@@ -1113,6 +1170,8 @@ def _blocks_to_md(
                     lines.append(f"{indent}[画板: {token}]")
                 elif text.strip():
                     lines.append(f"{indent}[画板: {text}]")
+            if children:
+                lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
 
         elif btype in ("view", "view_block"):
             # Feishu "view" blocks are container blocks (e.g. table views)
@@ -1121,12 +1180,22 @@ def _blocks_to_md(
             elif text.strip():
                 lines.append(f"{indent}{text}")
 
-        elif btype in ("iframe", "bitable", "mindnote", "sheet", "diagram"):
+        elif btype in ("iframe", "bitable", "mindnote", "sheet", "diagram", "slides"):
+            token = bd.get("token", "") or bd.get("file_token", "")
+            if not token:
+                # Try extracting from embedded URL
+                embed_url = bd.get("url", "") or bd.get("embedUrl", "") or bd.get("src", "")
+                if embed_url:
+                    tm = re.search(r"/(base|sheets|mindnotes|board|slides|diagram)/([A-Za-z0-9_-]{10,})", embed_url)
+                    if tm:
+                        token = tm.group(2)
             if _HARVESTER_TEXT_AND_TABLES_ONLY:
                 if children:
                     lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
             else:
-                if text.strip():
+                if token:
+                    lines.append(f"{indent}[{btype}: {token}]")
+                elif text.strip():
                     lines.append(f"{indent}[{btype}: {text}]")
                 elif children:
                     lines.extend(_blocks_to_md(bmap, children, indent, seq_pos))
@@ -2410,6 +2479,154 @@ def merge_image_descriptions(
     return chapter
 
 
+# ── Embedded content screenshot (画板 / 思维导图 / 幻灯片 / 多维表格) ────────
+
+# Matches placeholders like [画板: TOKEN], [mindnote: TOKEN], [bitable: TOKEN], etc.
+_EMBEDDED_PLACEHOLDER_RE = re.compile(
+    r"\[(画板|whiteboard|mindnote|bitable|sheet|diagram|slides|iframe):\s*([A-Za-z0-9_-]{10,})\]"
+)
+
+# Feishu URL patterns for each embedded type
+_EMBEDDED_URL_TEMPLATES: dict[str, str] = {
+    "画板": "https://bytedance.larkoffice.com/board/{token}",
+    "whiteboard": "https://bytedance.larkoffice.com/board/{token}",
+    "mindnote": "https://bytedance.larkoffice.com/mindnotes/{token}",
+    "bitable": "https://bytedance.larkoffice.com/base/{token}",
+    "sheet": "https://bytedance.larkoffice.com/sheets/{token}",
+    "diagram": "https://bytedance.larkoffice.com/diagram/{token}",
+    "slides": "https://bytedance.larkoffice.com/slides/{token}",
+    "iframe": "",  # generic — cannot construct URL from token alone
+}
+
+
+async def _screenshot_embedded_content(
+    ctx,
+    markdown: str,
+    job_id: str,
+    job: dict | None = None,
+) -> tuple[str, int]:
+    """Screenshot embedded Feishu content (画板, 思维导图, PPT, etc.).
+
+    For each `[画板: TOKEN]` / `[mindnote: TOKEN]` / etc. placeholder:
+    1. Open the Feishu URL in a new browser context (prefer Feishu auth for direct access)
+    2. Wait for content to render
+    3. Take a full-page screenshot and save as image
+    4. Replace the placeholder with a markdown image reference
+    Returns (updated_markdown, screenshot_count).
+    """
+    matches = list(_EMBEDDED_PLACEHOLDER_RE.finditer(markdown))
+    if not matches:
+        return markdown, 0
+
+    img_dir = IMAGE_DIR / job_id
+    img_dir.mkdir(parents=True, exist_ok=True)
+    count = 0
+
+    # Use Feishu auth if available (画板 etc. are Feishu docs, need direct Feishu cookies)
+    from app.config import settings
+    feishu_auth = Path(settings.feishu_auth_state)
+    embed_ctx = ctx  # fallback to caller's context
+    own_ctx = False
+    if feishu_auth.exists():
+        try:
+            embed_ctx = await ctx.browser.new_context(storage_state=str(feishu_auth))
+            own_ctx = True
+            logger.info("Embedded screenshots: using Feishu auth for direct access")
+        except Exception as e:
+            logger.warning("Failed to create Feishu auth context: %s, falling back", e)
+
+    try:
+        for m in matches:
+            etype = m.group(1)
+            token = m.group(2)
+            url_template = _EMBEDDED_URL_TEMPLATES.get(etype, "")
+            if not url_template:
+                logger.info("No URL template for embedded type '%s', skip token %s", etype, token)
+                continue
+
+            embed_url = url_template.format(token=token)
+            fname = f"_embed_{etype}_{token}.png"
+            fpath = img_dir / fname
+
+            if fpath.exists() and fpath.stat().st_size > 5000:
+                logger.info("Embedded screenshot already exists: %s", fname)
+                local_url = f"/api/omni/knowledge/harvester/images/{job_id}/{fname}"
+                markdown = markdown.replace(m.group(0), f"![{etype}]({local_url})", 1)
+                count += 1
+                continue
+
+            try:
+                if job:
+                    _job_touch(job, f"截图嵌入内容: {etype} {token[:12]}…", None)
+
+                page = await embed_ctx.new_page()
+                await page.set_viewport_size({"width": 1920, "height": 1080})
+
+                try:
+                    await page.goto(embed_url, wait_until="networkidle", timeout=30000)
+                except Exception:
+                    # networkidle may timeout on heavy pages — try domcontentloaded
+                    try:
+                        await page.goto(embed_url, wait_until="domcontentloaded", timeout=20000)
+                    except Exception as nav_err:
+                        logger.warning("Cannot navigate to %s: %s", embed_url, nav_err)
+                        await page.close()
+                        continue
+
+                # Wait extra for rendering (Feishu canvas/board needs time)
+                await asyncio.sleep(5)
+
+                # Try to dismiss any permission/login popups
+                for sel in [
+                    'button:has-text("我知道了")',
+                    'button:has-text("关闭")',
+                    'button:has-text("确定")',
+                    '[class*="close-btn"]',
+                    '[class*="modal"] button',
+                ]:
+                    try:
+                        btn = page.locator(sel).first
+                        if await btn.is_visible(timeout=500):
+                            await btn.click()
+                            await asyncio.sleep(0.5)
+                    except Exception:
+                        pass
+
+                await asyncio.sleep(2)
+
+                # Take screenshot
+                await page.screenshot(path=str(fpath), full_page=True, type="png")
+                await page.close()
+
+                if fpath.exists() and fpath.stat().st_size > 5000:
+                    local_url = f"/api/omni/knowledge/harvester/images/{job_id}/{fname}"
+                    markdown = markdown.replace(m.group(0), f"![{etype}]({local_url})", 1)
+                    count += 1
+                    logger.info("Embedded screenshot saved: %s (%d bytes)", fname, fpath.stat().st_size)
+                else:
+                    logger.warning("Embedded screenshot too small or empty: %s", fname)
+                    if fpath.exists():
+                        fpath.unlink()
+
+            except Exception as e:
+                logger.warning("Failed to screenshot embedded %s %s: %s", etype, token, e)
+                try:
+                    if not page.is_closed():
+                        await page.close()
+                except Exception:
+                    pass
+    finally:
+        if own_ctx:
+            try:
+                await embed_ctx.close()
+            except Exception:
+                pass
+
+    if count:
+        logger.info("Embedded screenshots: %d/%d captured for job %s", count, len(matches), job_id)
+    return markdown, count
+
+
 async def _auto_analyze_and_merge(
     job_id: str,
     markdown: str,
@@ -3009,6 +3226,7 @@ async def crawl_feishu_doc(
         "error": None,
         "activity_log": [],
         "text_preview": "",
+        "cancel_requested": False,
     }
     _jobs[job_id] = job
     _job_log(job, "飞书文档任务已创建", snippet=url)
@@ -3103,6 +3321,19 @@ async def crawl_feishu_doc(
                         )
 
                 md = clean_image_markdown(md)
+
+                # Screenshot embedded content (画板, 思维导图, PPT, etc.)
+                if _EMBEDDED_PLACEHOLDER_RE.search(md):
+                    _job_touch(job, "截图嵌入内容(画板/思维导图/PPT)…", 0.7)
+                    md, embed_count = await _screenshot_embedded_content(ctx, md, job_id, job=job)
+                    if embed_count > 0:
+                        _job_touch(job, f"AI 解读 {embed_count} 个嵌入截图…", 0.75)
+                        from app.config import settings as _cfg
+                        md, extra_analyzed = await _auto_analyze_and_merge(
+                            job_id, md, _cfg.ai_provider_hub_url, job=job,
+                        )
+                        img_analyzed += extra_analyzed
+                        img_saved += embed_count
 
                 from app.config import settings as _cfg
                 _job_touch(job, "检查视频链接…", 0.85)
@@ -3250,6 +3481,7 @@ async def crawl_articles(
         "error": None,
         "activity_log": [],
         "text_preview": "",
+        "cancel_requested": False,
     }
     _jobs[job_id] = job
     _job_log(job, "任务已创建，正在解析 URL / 获取目录…")
@@ -3280,7 +3512,19 @@ async def crawl_articles(
             except Exception as exc:
                 logger.info("目录展开跳过，按单篇处理: %s", exc)
 
-        if not articles and single:
+        if not articles and selected_articles:
+            # selected_articles takes priority over single-article URL parsing
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            gid = qs.get("graphId", [""])[0]
+            pid = qs.get("pageId", [""])[0]
+            sid = qs.get("spaceId", [""])[0]
+            articles = selected_articles
+            job["graph_name"] = "选定文章"
+            job["total_articles"] = len(articles)
+            job["total"] = len(articles)
+            logger.info("Crawling %d selected articles", len(articles))
+        elif not articles and single:
             gid, pid, sid = single["graph_id"], single["page_id"], single["space_id"]
             articles = [{
                 "title": f"文章 {single['mapping_id']}",
@@ -3292,17 +3536,6 @@ async def crawl_articles(
             job["total_articles"] = 1
             job["total"] = 1
             logger.info("Single-article URL detected: mapping_id=%s", single["mapping_id"])
-        elif not articles and selected_articles:
-            parsed = urlparse(url)
-            qs = parse_qs(parsed.query)
-            gid = qs.get("graphId", [""])[0]
-            pid = qs.get("pageId", [""])[0]
-            sid = qs.get("spaceId", [""])[0]
-            articles = selected_articles
-            job["graph_name"] = "选定文章"
-            job["total_articles"] = len(articles)
-            job["total"] = len(articles)
-            logger.info("Crawling %d selected articles", len(articles))
         elif not articles:
             tree = tree_cache if tree_cache is not None else await fetch_nav_tree(url)
             articles = tree["articles"]
@@ -3331,6 +3564,9 @@ async def crawl_articles(
         feishu_doc_specs: dict[int, tuple[str, str]] = {}
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=HEADERS) as client:
             for idx, article in enumerate(articles):
+                if job.get("cancel_requested"):
+                    _job_log(job, "已在 API 阶段停止采集（用户结束任务）")
+                    break
                 title = article["title"]
                 mid = article["mapping_id"]
                 job["progress"] = idx
@@ -3422,7 +3658,7 @@ async def crawl_articles(
 
         # Phase 2: Browser extraction for pending articles (auth or JSSDK)
         browser_queue = [ch for ch in job["chapters"] if ch.get("error") == "pending_browser"]
-        if browser_queue:
+        if browser_queue and not job.get("cancel_requested"):
             try:
                 from playwright.async_api import async_playwright
             except ImportError:
@@ -3490,6 +3726,9 @@ async def crawl_articles(
             job["chapters"] = [ch for ch in job["chapters"] if ch.get("error") != "pending_browser"]
 
             for idx, article in enumerate(articles):
+                if job.get("cancel_requested"):
+                    _job_log(job, "已在浏览器阶段停止采集（用户结束任务）")
+                    break
                 if idx in api_extracted:
                     continue
 
@@ -3646,6 +3885,19 @@ async def crawl_articles(
 
                         md = clean_image_markdown(md)
 
+                        # Screenshot embedded content (画板, 思维导图, PPT, etc.)
+                        if _EMBEDDED_PLACEHOLDER_RE.search(md):
+                            _job_touch(job, "截图嵌入内容(画板/思维导图/PPT)…", 0.7)
+                            md, embed_count = await _screenshot_embedded_content(ctx, md, job_id, job=job)
+                            if embed_count > 0:
+                                _job_touch(job, f"AI 解读 {embed_count} 个嵌入截图…", 0.75)
+                                from app.config import settings as _cfg
+                                md, extra_analyzed = await _auto_analyze_and_merge(
+                                    job_id, md, _cfg.ai_provider_hub_url, job=job,
+                                )
+                                img_analyzed += extra_analyzed
+                                img_saved += embed_count
+
                         from app.config import settings as _cfg
                         _job_touch(job, "检查正文中的视频链接…", 0.8)
                         md, vid_analyzed = await _auto_analyze_videos_in_markdown(
@@ -3704,6 +3956,13 @@ async def crawl_articles(
             await browser.close()
             await pw.stop()
 
+        # Drop queued-but-never-fetched placeholders if user cancelled mid-flight
+        if job.get("cancel_requested"):
+            job["chapters"] = [
+                ch for ch in job["chapters"]
+                if ch.get("error") != "pending_browser"
+            ]
+
         # Sort chapters by index for consistent order
         job["chapters"].sort(key=lambda c: c["index"])
 
@@ -3713,7 +3972,14 @@ async def crawl_articles(
             "progress_hint": 0.0,
             "current_article": None,
         })
-        _job_log(job, "全部采集完成")
+        user_stopped = bool(job.pop("cancel_requested", False))
+        if user_stopped:
+            _job_log(
+                job,
+                f"任务已结束（用户停止），保留 {len(job['chapters'])} 条章节，可去审核页勾选入库",
+            )
+        else:
+            _job_log(job, "全部采集完成")
 
     except Exception as e:
         import traceback
