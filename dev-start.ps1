@@ -1,4 +1,4 @@
-# Omni-Vibe OS Ultra — 本地开发一键启动
+﻿# Omni-Vibe OS Ultra — 本地开发一键启动
 # 用法: .\dev-start.ps1
 #   -SkipDocker     跳过 Docker 基础设施启动
 #   -SkipFrontend   只启动后端服务
@@ -80,6 +80,15 @@ if (-not $SkipDocker) {
     } else {
         Write-Host "  Postgres is healthy!" -ForegroundColor Green
     }
+
+    # Apply pending DB migrations (idempotent)
+    Write-Host "  Applying pending migrations..." -ForegroundColor Gray
+    $env:DATABASE_URL = "postgresql://omni_user:changeme_in_production@localhost:5432/omni_vibe_db"
+    $migOut = python "$ROOT\scripts\apply_migrations.py" 2>&1
+    Write-Host ($migOut -join "`n") -ForegroundColor DarkGray
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARNING: migrations script failed (continuing anyway)." -ForegroundColor DarkYellow
+    }
     Write-Host ""
 } else {
     Write-Host "[1/4] Skipping Docker (--SkipDocker)" -ForegroundColor DarkGray
@@ -91,11 +100,18 @@ $services = @(
     @{ Name = "knowledge-engine";     Port = 8002; Dir = "services\knowledge-engine" },
     @{ Name = "news-aggregator";      Port = 8005; Dir = "services\news-aggregator" },
     @{ Name = "video-analysis";       Port = 8006; Dir = "services\video-analysis" },
-    @{ Name = "livestream-analysis";  Port = 8007; Dir = "services\livestream-analysis" }
+    @{ Name = "livestream-analysis";  Port = 8007; Dir = "services\livestream-analysis" },
+    @{ Name = "ad-review-service";    Port = 8008; Dir = "services\ad-review-service" }
 )
 
 # ── 3. 启动 Python 后端服务 ──
 Write-Host "[2/4] Starting backend services..." -ForegroundColor Yellow
+
+# 关键：绕过系统代理。Windows 上若开启 Clash/V2Ray 等 HTTP 代理（IE 设置 ProxyEnable=1），
+# httpx/requests 会把 localhost 流量也送给代理，导致跨服务调用 502 Bad Gateway。
+# 必须把 localhost / 127.0.0.1 / ::1 + 私网段都加到 NO_PROXY，确保所有服务间互调直连。
+$env:NO_PROXY = "localhost,127.0.0.1,::1,0.0.0.0,*.local,10.*,172.16.*,172.17.*,172.18.*,172.19.*,172.20.*,172.21.*,172.22.*,172.23.*,172.24.*,172.25.*,172.26.*,172.27.*,172.28.*,172.29.*,172.30.*,172.31.*,192.168.*"
+$env:no_proxy = $env:NO_PROXY
 
 $pidFile = "$ROOT\.dev-pids"
 if (Test-Path $pidFile) { Remove-Item $pidFile }
@@ -115,8 +131,24 @@ foreach ($svc in $services) {
     # Check if port is already in use
     $existing = Get-NetTCPConnection -LocalPort $svc.Port -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Listen" }
     if ($existing) {
-        Write-Host "  [$($svc.Name)] port $($svc.Port) already in use (PID: $($existing.OwningProcess | Select-Object -First 1)), skipping" -ForegroundColor DarkYellow
-        continue
+        $occPid = $existing.OwningProcess | Select-Object -First 1
+        $occProc = Get-Process -Id $occPid -ErrorAction SilentlyContinue
+        $isStale = $false
+        if ($occProc) {
+            $age = (Get-Date) - $occProc.StartTime
+            # 把"超过 6 小时未重启"的 python 进程视为遗留僵尸（典型场景：上次跑了一天的 dev 实例）
+            if ($occProc.ProcessName -in @("python", "python3", "node") -and $age.TotalHours -gt 6) {
+                $isStale = $true
+            }
+        }
+        if ($isStale) {
+            Write-Host "  [$($svc.Name)] port $($svc.Port) held by stale PID $occPid ($([int]$age.TotalHours)h old), killing and restarting..." -ForegroundColor Yellow
+            Stop-Process -Id $occPid -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 800
+        } else {
+            Write-Host "  [$($svc.Name)] port $($svc.Port) already in use (PID: $occPid), skipping" -ForegroundColor DarkYellow
+            continue
+        }
     }
 
     $logFile = Join-Path $LOG_DIR "$($svc.Name).log"
@@ -125,14 +157,21 @@ foreach ($svc in $services) {
         # knowledge-engine needs ProactorEventLoop for Playwright subprocess on Windows;
         # use _dev_server.py helper to set the policy before uvicorn starts.
         $env:HARVESTER_IMAGE_DIR = "$svcDir\data\images"
-        $proc = Start-Process -FilePath python -ArgumentList "_dev_server.py", "$($svc.Port)" `
-            -WorkingDirectory $svcDir -PassThru -WindowStyle Hidden `
-            -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err"
+        $args = @("_dev_server.py", "$($svc.Port)", "--reload")
     } else {
-        $proc = Start-Process -FilePath python -ArgumentList "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$($svc.Port)", "--reload" `
-            -WorkingDirectory $svcDir -PassThru -WindowStyle Hidden `
-            -RedirectStandardOutput $logFile -RedirectStandardError "$logFile.err"
+        $args = @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "$($svc.Port)", "--reload")
     }
+
+    $startProcessParams = @{
+        FilePath = "python"
+        ArgumentList = $args
+        WorkingDirectory = $svcDir
+        PassThru = $true
+        WindowStyle = "Hidden"
+        RedirectStandardOutput = $logFile
+        RedirectStandardError = "$logFile.err"
+    }
+    $proc = Start-Process @startProcessParams
 
     Write-Host "  [$($svc.Name)] starting on port $($svc.Port) (PID: $($proc.Id))" -ForegroundColor Green
     Add-Content -Path $pidFile -Value "$($proc.Id)|$($svc.Name)|$($svc.Port)"
@@ -227,6 +266,7 @@ Write-Host "  Knowledge Engine:    http://localhost:8002" -ForegroundColor White
 Write-Host "  News Aggregator:     http://localhost:8005" -ForegroundColor White
 Write-Host "  Video Analysis:      http://localhost:8006" -ForegroundColor White
 Write-Host "  Livestream Analysis: http://localhost:8007" -ForegroundColor White
+Write-Host "  Ad Review Service:   http://localhost:8008" -ForegroundColor White
 Write-Host ""
 Write-Host "  Logs:     .dev-logs\" -ForegroundColor DarkGray
 Write-Host "  Stop all: .\dev-stop.ps1" -ForegroundColor DarkGray

@@ -1,4 +1,4 @@
-# Omni-Vibe OS Ultra — 本地开发一键停止
+﻿# Omni-Vibe OS Ultra — 本地开发一键停止
 # 用法: .\dev-stop.ps1
 #   -KeepDocker   保留 Postgres + Redis 容器运行
 
@@ -24,7 +24,8 @@ $knownPorts = @(
     @{ Name = "knowledge-engine";   Port = 8002 },
     @{ Name = "news-aggregator";    Port = 8005 },
     @{ Name = "video-analysis";     Port = 8006 },
-    @{ Name = "livestream-analysis"; Port = 8007 }
+    @{ Name = "livestream-analysis"; Port = 8007 },
+    @{ Name = "ad-review-service";  Port = 8008 }
 )
 
 foreach ($svc in $knownPorts) {
