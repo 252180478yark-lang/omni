@@ -44,6 +44,7 @@ import { SkuContextPanel } from '@/components/sku-context-panel'
 import { ChatHistoryPanel } from '@/components/chat-history-panel'
 import { appendMessageToSession } from '@/lib/chat-sessions-api'
 import { SaveToDecisionButton } from '@/components/save-to-decision-button'
+import { ApplyAsBriefButton } from '@/components/apply-as-brief-button'
 
 interface KBItem {
   id: string
@@ -959,6 +960,15 @@ export default function ChatPage() {
                           return prevUser ? prevUser.content.slice(0, 60) : msg.content.slice(0, 60)
                         })()}
                         content={msg.content}
+                      />
+                      <ApplyAsBriefButton
+                        topic={(() => {
+                          const idx = messages.findIndex((m) => m.id === msg.id)
+                          const prevUser = idx > 0 ? messages.slice(0, idx).reverse().find((m) => m.role === 'user') : null
+                          return prevUser ? prevUser.content.slice(0, 60) : msg.content.slice(0, 60)
+                        })()}
+                        content={msg.content}
+                        compact
                       />
                     </div>
                     <PromptFeedback

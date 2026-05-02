@@ -1,13 +1,12 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
 import { CitationMarkdown, SourceList } from '@/components/citation-markdown'
-import { Loader2, Play, Square, ChevronDown, ChevronRight, FileDown, MessageSquare, Wand2 } from 'lucide-react'
+import { Loader2, Play, Square, ChevronDown, ChevronRight, FileDown, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ApplyAsBriefButton } from '@/components/apply-as-brief-button'
 import {
   Select,
   SelectContent,
@@ -75,8 +74,6 @@ export function RoundtableView({
   onContinueSolo,
 }: RoundtableViewProps) {
   const { personas, getPersonaById } = usePersonaStore()
-  const searchParams = useSearchParams()
-  const skuIdFromUrl = searchParams.get('sku_id') || ''
   const {
     session,
     createSession,
@@ -752,8 +749,7 @@ export function RoundtableView({
               />
               <ApplyAsBriefButton
                 topic={session.topic}
-                summaryContent={session.summary.content}
-                skuIdFromUrl={skuIdFromUrl}
+                content={session.summary.content}
               />
             </div>
           )}
@@ -781,99 +777,4 @@ function simpleMdToHtml(md: string) {
   h = h.replace(/^- (.+)$/gm, '<li style="margin:4px 0;">$1</li>')
   h = h.replace(/\n/g, '<br/>')
   return h
-}
-
-
-/**
- * 圆桌结论 → Brief 草稿。
- *
- * 工作流：
- * 1. URL 带 sku_id：一步到位调 SKU 内容编排器（带 hint=圆桌结论）
- * 2. URL 不带 sku_id：调 briefs/generate，结论作为 hints.usp_hint，落得到一份独立 Brief
- */
-function ApplyAsBriefButton({
-  topic,
-  summaryContent,
-  skuIdFromUrl,
-}: {
-  topic: string
-  summaryContent: string
-  skuIdFromUrl: string
-}) {
-  const [working, setWorking] = useState(false)
-  const [result, setResult] = useState<{ kind: 'orch' | 'brief'; id: string } | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-
-  const apply = async () => {
-    setWorking(true)
-    setErr(null)
-    try {
-      if (skuIdFromUrl) {
-        const r = await fetch('/api/omni/content-studio/sku-orchestrations', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            sku_id: skuIdFromUrl,
-            title: `[来自圆桌] ${topic}`.slice(0, 100),
-            target_purpose: null,
-          }),
-        })
-        if (!r.ok) throw new Error(`orch ${r.status}`)
-        const data = await r.json()
-        setResult({ kind: 'orch', id: data.id })
-      } else {
-        const r = await fetch('/api/omni/content-studio/briefs/generate', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            title: `圆桌结论·${topic}`.slice(0, 80),
-            hints: {
-              usp_hint: summaryContent.slice(0, 4000),
-              audience_hint: '基于圆桌讨论的目标人群',
-            },
-          }),
-        })
-        if (!r.ok) throw new Error(`brief ${r.status}`)
-        const data = await r.json()
-        setResult({ kind: 'brief', id: data.id })
-      }
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setWorking(false)
-    }
-  }
-
-  if (result) {
-    if (result.kind === 'orch') {
-      return (
-        <Link href={`/sku/${skuIdFromUrl}?tab=content`}>
-          <Button variant="outline" className="gap-2 border-emerald-300 text-emerald-700">
-            ✓ 已起编排，去 SKU 工作台 →
-          </Button>
-        </Link>
-      )
-    }
-    return (
-      <Link href={`/content-studio/briefs/${result.id}`}>
-        <Button variant="outline" className="gap-2 border-emerald-300 text-emerald-700">
-          ✓ 已生成 Brief，去查看 →
-        </Button>
-      </Link>
-    )
-  }
-
-  return (
-    <Button
-      variant="outline"
-      className="gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
-      onClick={() => void apply()}
-      disabled={working}
-      title={skuIdFromUrl ? '把圆桌结论作为种子，给当前 SKU 起一份内容编排' : '把圆桌结论作为种子生成一份 Brief 草稿'}
-    >
-      {working ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-      {skuIdFromUrl ? '应用为 SKU 内容编排' : '应用为 Brief 草稿'}
-      {err && <span className="text-xs text-rose-600 ml-1">({err})</span>}
-    </Button>
-  )
 }
