@@ -374,6 +374,8 @@ export default function ContentStudioPage() {
   const [importError, setImportError] = useState('')
   const [selectedScenes, setSelectedScenes] = useState<number[]>([])
   const [useNextSceneAsLastFrame, setUseNextSceneAsLastFrame] = useState(true)
+  const [videoHints, setVideoHints] = useState<Record<number, string>>({})
+  const [skipFinalConcat, setSkipFinalConcat] = useState(false)
 
   useEffect(() => { fetchPipelines(); fetchPresets() }, [fetchPipelines, fetchPresets])
 
@@ -1309,6 +1311,32 @@ export default function ContentStudioPage() {
                         {vid && vid.video_url && (
                           <video src={vid.video_url} controls className="mt-2 w-full rounded" />
                         )}
+                        {vid && vid.video_url && (
+                          <details className="mt-2 group">
+                            <summary className="cursor-pointer text-[10px] text-violet-600 hover:text-violet-700 select-none">
+                              💬 提修改意见 + 重生成本段
+                            </summary>
+                            <div className="mt-1.5 space-y-1.5">
+                              <textarea
+                                className="w-full text-xs border rounded px-2 py-1.5 min-h-[60px] focus:border-violet-300 focus:outline-none"
+                                placeholder="例：人物表情更自然一些；背景换到厨房；运镜慢推；产品要正面出现"
+                                value={videoHints[sb.scene_id] || ''}
+                                onChange={(e) => setVideoHints((prev) => ({ ...prev, [sb.scene_id]: e.target.value }))}
+                              />
+                              <Button
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                disabled={!videoHints[sb.scene_id]?.trim() || (!!stepLoading && stepLoading.startsWith('video'))}
+                                onClick={() => regenerateVideoScene(pipe.id, sb.scene_id, undefined, videoHints[sb.scene_id])}
+                              >
+                                {stepLoading === `video-${sb.scene_id}`
+                                  ? <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  : <RefreshCw className="mr-1 h-3 w-3" />}
+                                按修改意见重生成
+                              </Button>
+                            </div>
+                          </details>
+                        )}
                       </div>
                     </div>
                   )
@@ -1367,11 +1395,33 @@ export default function ContentStudioPage() {
         {/* ── Step 7: Compose trigger ── */}
         {(pipe.current_step === 'compose' || (pipe.current_step === 'video' && videos.length > 0)) && !pipe.final_video_url && (
           <Card>
-            <CardContent className="p-6 text-center">
-              <Button onClick={() => composeFinal(pipe.id)} disabled={!!stepLoading} className="gap-2">
-                {stepLoading === 'compose' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}
-                合成最终视频
-              </Button>
+            <CardContent className="p-6 text-center space-y-3">
+              <label className="inline-flex items-center gap-2 text-xs text-gray-700 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={skipFinalConcat}
+                  onChange={(e) => setSkipFinalConcat(e.target.checked)}
+                  className="rounded"
+                />
+                <span>跳过合成 — 只下载 10 段独立视频，自己拿去剪</span>
+              </label>
+              <div>
+                <Button
+                  onClick={async () => {
+                    if (skipFinalConcat) {
+                      await updatePipeline(pipe.id, { skip_final_concat: true } as Partial<Pipeline>)
+                    }
+                    await composeFinal(pipe.id)
+                  }}
+                  disabled={!!stepLoading}
+                  className="gap-2"
+                >
+                  {stepLoading === 'compose'
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : skipFinalConcat ? <Download className="h-4 w-4" /> : <Film className="h-4 w-4" />}
+                  {skipFinalConcat ? '完成（不合成，下载 10 段）' : '合成最终视频'}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

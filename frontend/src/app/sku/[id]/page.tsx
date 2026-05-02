@@ -254,7 +254,7 @@ export default function SkuDetailPage() {
 
       {tab === 'overview' && <OverviewTab metrics={metrics} loading={loading} sku={sku} assets5a={assets5a} brandMind={brandMind} events={events} anomalies={anomalies} />}
       {tab === 'actions' && <ActionsTab events={events} loading={loading} />}
-      {tab === 'diagnosis' && <DiagnosisTab decisions={decisions} loading={loading} skuId={skuId} />}
+      {tab === 'diagnosis' && <DiagnosisTab decisions={decisions} loading={loading} skuId={skuId} onJumpToContent={() => setTab('content')} />}
       {tab === 'content' && <ContentTab skuId={skuId} sku={sku} onSkuRefresh={(s) => setSku(s)} />}
     </div>
   )
@@ -827,12 +827,37 @@ function VerificationCard({ result }: { result: VerificationResult }) {
 
 // ── Diagnosis Tab ──────────────────────────────────────────────────────────────
 
-function DiagnosisTab({ decisions, loading, skuId }: { decisions: Decision[]; loading: boolean; skuId: string }) {
+function DiagnosisTab({ decisions, loading, skuId, onJumpToContent }: {
+  decisions: Decision[]
+  loading: boolean
+  skuId: string
+  onJumpToContent: () => void
+}) {
   const [items, setItems] = useState<Decision[]>(decisions)
   const [triggering, setTriggering] = useState(false)
   const [triggerDone, setTriggerDone] = useState(false)
 
   useEffect(() => { setItems(decisions) }, [decisions])
+
+  async function handleTurnIntoBrief(d: Decision) {
+    // 用此 AI 结论快速创建一个 SKU 内容编排，然后跳到内容工作台 Tab
+    try {
+      const r = await fetch('/api/omni/content-studio/sku-orchestrations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sku_id: skuId,
+          title: `[来自AI诊断] ${d.title}`.slice(0, 100),
+          target_purpose: null, // 由 LLM 推荐
+        }),
+      })
+      if (r.ok) {
+        onJumpToContent()
+      }
+    } catch (exc) {
+      console.error('create orchestration failed', exc)
+    }
+  }
 
   async function handleAction(
     id: number,
@@ -921,7 +946,7 @@ function DiagnosisTab({ decisions, loading, skuId }: { decisions: Decision[]; lo
         </Button>
       </div>
       {items.map((d) => (
-        <DecisionCard key={d.id} decision={d} onAction={handleAction} />
+        <DecisionCard key={d.id} decision={d} onAction={handleAction} onTurnIntoBrief={handleTurnIntoBrief} />
       ))}
     </div>
   )
@@ -930,13 +955,16 @@ function DiagnosisTab({ decisions, loading, skuId }: { decisions: Decision[]; lo
 function DecisionCard({
   decision: d,
   onAction,
+  onTurnIntoBrief,
 }: {
   decision: Decision
   onAction: (id: number, status: 'adopted' | 'rejected', title: string, summary: string | null, rejectedReason?: string) => Promise<void>
+  onTurnIntoBrief: (decision: Decision) => Promise<void>
 }) {
   const [acting, setActing] = useState<string | null>(null)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [rejectReason, setRejectReason] = useState('')
+  const [turning, setTurning] = useState(false)
 
   async function act(status: 'adopted' | 'rejected', reason?: string) {
     setActing(status)
@@ -992,6 +1020,20 @@ function DecisionCard({
               onClick={() => {}}
             >
               <Clock className="w-3 h-3 mr-1" /> 延后
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!!acting || turning}
+              className="h-7 text-xs text-violet-600 hover:bg-violet-50"
+              onClick={async () => {
+                setTurning(true)
+                try { await onTurnIntoBrief(d) } finally { setTurning(false) }
+              }}
+              title="把此 AI 诊断作为种子，自动生成 SKU 内容编排"
+            >
+              {turning ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Wand2 className="w-3 h-3 mr-1" />}
+              起内容编排
             </Button>
           </div>
         )}

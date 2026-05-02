@@ -93,6 +93,8 @@ export interface Pipeline {
   cost_estimate?: Record<string, number>
   actual_cost?: Record<string, number>
   error_message?: string
+  skip_final_concat?: boolean
+  sku_id?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -185,11 +187,11 @@ interface ContentStudioState {
   regenerateStoryboardScene: (id: string, sceneId: number, promptOverride?: string) => Promise<void>
   regenerateStoryboardScenes: (id: string, sceneIds: number[], promptOverride?: string) => Promise<void>
   generateVideos: (id: string) => Promise<void>
-  regenerateVideoScene: (id: string, sceneId: number, promptOverride?: string) => Promise<void>
+  regenerateVideoScene: (id: string, sceneId: number, promptOverride?: string, userHint?: string) => Promise<void>
   regenerateVideoScenes: (
     id: string,
     sceneIds: number[],
-    opts?: { promptOverride?: string; useNextSceneAsLastFrame?: boolean },
+    opts?: { promptOverride?: string; useNextSceneAsLastFrame?: boolean; userHint?: string },
   ) => Promise<void>
   composeFinal: (id: string) => Promise<void>
 
@@ -467,12 +469,16 @@ export const useContentStudioStore = create<ContentStudioState>((set, get) => ({
     }
   },
 
-  regenerateVideoScene: async (id, sceneId, promptOverride) => {
+  regenerateVideoScene: async (id, sceneId, promptOverride, userHint) => {
     set({ stepLoading: `video-${sceneId}`, error: null })
     try {
       const pipe = await api<Pipeline>(`/video/regenerate?pipeline_id=${id}`, {
         method: 'POST',
-        body: JSON.stringify({ scene_id: sceneId, prompt_override: promptOverride || null }),
+        body: JSON.stringify({
+          scene_id: sceneId,
+          prompt_override: promptOverride || null,
+          user_hint: userHint || null,
+        }),
       })
       set({ currentPipeline: pipe, stepLoading: null })
     } catch (e: unknown) {
@@ -489,6 +495,7 @@ export const useContentStudioStore = create<ContentStudioState>((set, get) => ({
           scene_ids: sceneIds,
           prompt_override: opts.promptOverride || null,
           use_next_scene_as_last_frame: !!opts.useNextSceneAsLastFrame,
+          user_hint: opts.userHint || null,
         }),
       })
       set({ currentPipeline: pipe, stepLoading: null })
