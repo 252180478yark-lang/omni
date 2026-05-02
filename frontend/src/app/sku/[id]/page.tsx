@@ -219,6 +219,12 @@ export default function SkuDetailPage() {
           )}
         </div>
         <div className="flex gap-2 shrink-0">
+          <Link href={`/chat?sku_id=${skuId}`}>
+            <Button size="sm" variant="outline" className="gap-1">
+              <Brain className="w-4 h-4" />
+              在 AI 问答里讨论本 SKU
+            </Button>
+          </Link>
           <LogEventButton skuId={skuId} skuName={sku?.name} onSaved={() => {
             fetch(`/api/omni/scout/change-events?sku_id=${skuId}`).then(r => r.ok ? r.json() : []).then(setEvents)
           }} />

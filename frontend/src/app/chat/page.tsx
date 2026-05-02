@@ -40,6 +40,7 @@ import { PromptNodeDrawer } from '@/components/prompt-node-drawer'
 import { RoundtableView } from '@/components/roundtable-view'
 import { Checkbox } from '@/components/ui/checkbox'
 import { BriefContextPanel } from '@/components/brief-context-panel'
+import { SkuContextPanel } from '@/components/sku-context-panel'
 import { ChatHistoryPanel } from '@/components/chat-history-panel'
 import { appendMessageToSession } from '@/lib/chat-sessions-api'
 import { SaveToDecisionButton } from '@/components/save-to-decision-button'
@@ -794,6 +795,7 @@ export default function ChatPage() {
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-auto chat-scroll px-4 py-6">
         <div className="max-w-3xl mx-auto space-y-4">
+          <SkuContextPanel />
           <BriefContextPanel
             getLatestAssistantContent={() => {
               const ms = useChatStore.getState().messages

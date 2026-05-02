@@ -406,6 +406,10 @@ CREATE TABLE IF NOT EXISTS content_studio.pipelines (
     cost_estimate JSONB DEFAULT '{}'::jsonb,
     actual_cost JSONB DEFAULT '{}'::jsonb,
     error_message TEXT,
+    -- migration 011：跳过 ffmpeg 合成 final.mp4，仅打包 10 段独立视频供人工剪辑
+    skip_final_concat BOOLEAN NOT NULL DEFAULT FALSE,
+    -- migration 011：回溯 SKU 来源（路径 A mvp_sku.id）
+    sku_id VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -450,9 +454,20 @@ CREATE TABLE IF NOT EXISTS content_studio.briefs (
     quality_score NUMERIC(6,3) NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
     extra JSONB NOT NULL DEFAULT '{}'::jsonb,
+    -- migration 011：三类 USP（显性/隐性/独特）+ 目的分流 + 偏好内容 + SKU 直连
+    usp_explicit JSONB NOT NULL DEFAULT '[]'::jsonb,
+    usp_implicit JSONB NOT NULL DEFAULT '[]'::jsonb,
+    usp_unique JSONB NOT NULL DEFAULT '[]'::jsonb,
+    target_purpose VARCHAR(16),  -- awareness 曝光 / planting 种草 / conversion 收割
+    audience_content_preference JSONB NOT NULL DEFAULT '{}'::jsonb,
+    sku_id VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT briefs_target_purpose_check
+        CHECK (target_purpose IS NULL OR target_purpose IN ('awareness', 'planting', 'conversion'))
 );
+CREATE INDEX IF NOT EXISTS idx_briefs_sku_id ON content_studio.briefs (sku_id) WHERE sku_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_briefs_target_purpose ON content_studio.briefs (target_purpose) WHERE target_purpose IS NOT NULL;
 
 ALTER TABLE content_studio.pipelines
     ADD COLUMN IF NOT EXISTS product_id UUID NULL,
@@ -532,3 +547,57 @@ INSERT INTO content_studio.style_presets (name, description, is_builtin, config)
 ('温馨故事', '情感共鸣、生活化', TRUE,
  '{"copy_style":"storytelling","image_style":"warm_illustration","tone":"emotional","pace":"slow"}')
 ON CONFLICT DO NOTHING;
+
+
+-- ═══════════════════════════════════════════════════════════════════
+-- SKU Content Orchestrations (migration 011)
+-- 17 步内容编排状态机：SKU → 卖点 → 人群 → 画像 → 圈包 → 偏好 → 目的 → Brief → Pipeline
+-- ═══════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS content_studio.sku_orchestrations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sku_id VARCHAR(64) NOT NULL,
+    title TEXT,
+    status TEXT NOT NULL DEFAULT 'in_progress',           -- in_progress / paused / completed / failed
+    current_step TEXT NOT NULL DEFAULT 'selling_points',
+    target_purpose VARCHAR(16),                            -- awareness / planting / conversion (NULL=由 LLM 推荐)
+
+    -- 各步产物
+    selling_points_result JSONB,                           -- 三类 USP 分析
+    matched_audience_result JSONB,                         -- 人群匹配
+    audience_profile_result JSONB,                         -- 人群画像
+    dmp_sop_result TEXT,                                   -- 圈包策略
+    audience_content_pref_result JSONB,                    -- 偏好内容
+    script_result JSONB,                                   -- 短视频脚本
+
+    -- 链接产物
+    linked_brief_id UUID NULL,
+    linked_pipeline_id UUID NULL,
+
+    step_meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT sku_orchestrations_status_check
+        CHECK (status IN ('in_progress', 'paused', 'completed', 'failed')),
+    CONSTRAINT sku_orchestrations_target_purpose_check
+        CHECK (target_purpose IS NULL OR target_purpose IN ('awareness', 'planting', 'conversion'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sku_orch_sku_status ON content_studio.sku_orchestrations (sku_id, status);
+CREATE INDEX IF NOT EXISTS idx_sku_orch_created ON content_studio.sku_orchestrations (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sku_orch_brief ON content_studio.sku_orchestrations (linked_brief_id) WHERE linked_brief_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION content_studio.touch_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_sku_orch_touch ON content_studio.sku_orchestrations;
+CREATE TRIGGER trg_sku_orch_touch
+    BEFORE UPDATE ON content_studio.sku_orchestrations
+    FOR EACH ROW EXECUTE FUNCTION content_studio.touch_updated_at();
