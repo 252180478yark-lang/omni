@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import {
   Package, ArrowLeft, Plus, Sparkles, TrendingUp, History, Bot,
   CheckCircle2, XCircle, Clock, Loader2, Brain, User, Store, Cloud,
+  Wand2, Film, Edit3, Save, RefreshCw, ChevronRight, AlertCircle,
 } from 'lucide-react'
 import {
   ComposedChart, Line, XAxis, YAxis, Tooltip,
@@ -31,6 +32,30 @@ interface SkuDetail {
   locked_by_user: boolean
   total_stock: number | null
   available_stock: number | null
+  updated_at: string
+  owner_selling_points?: Array<{ text: string; category?: string; priority?: number }> | null
+  owner_notes?: string | null
+  price_min?: number | null
+  price_max?: number | null
+}
+
+interface Orchestration {
+  id: string
+  sku_id: string
+  title: string | null
+  status: 'in_progress' | 'paused' | 'completed' | 'failed'
+  current_step: string
+  target_purpose: 'awareness' | 'planting' | 'conversion' | null
+  selling_points_result: Record<string, unknown> | null
+  matched_audience_result: Record<string, unknown> | null
+  audience_profile_result: Record<string, unknown> | null
+  dmp_sop_result: string | null
+  audience_content_pref_result: Record<string, unknown> | null
+  script_result: { brief_id?: string; title?: string } | null
+  linked_brief_id: string | null
+  linked_pipeline_id: string | null
+  error_message: string | null
+  created_at: string
   updated_at: string
 }
 
@@ -99,7 +124,7 @@ interface BrandMind {
   preference: number | null
 }
 
-type TabKey = 'overview' | 'actions' | 'diagnosis'
+type TabKey = 'overview' | 'actions' | 'diagnosis' | 'content'
 
 const KEY_METRICS = ['gmv_paid', 'uv', 'ctr', 'cvr']
 const METRIC_LABELS: Record<string, string> = {
@@ -149,6 +174,7 @@ export default function SkuDetailPage() {
     { key: 'overview', label: '概览', icon: TrendingUp },
     { key: 'actions', label: '动作', icon: History, count: events.length },
     { key: 'diagnosis', label: 'AI 诊断', icon: Bot, count: decisions.length },
+    { key: 'content', label: '内容工作台', icon: Film },
   ]
 
   return (
@@ -229,6 +255,7 @@ export default function SkuDetailPage() {
       {tab === 'overview' && <OverviewTab metrics={metrics} loading={loading} sku={sku} assets5a={assets5a} brandMind={brandMind} events={events} anomalies={anomalies} />}
       {tab === 'actions' && <ActionsTab events={events} loading={loading} />}
       {tab === 'diagnosis' && <DiagnosisTab decisions={decisions} loading={loading} skuId={skuId} />}
+      {tab === 'content' && <ContentTab skuId={skuId} sku={sku} onSkuRefresh={(s) => setSku(s)} />}
     </div>
   )
 }
@@ -1066,6 +1093,493 @@ function LoadingCard() {
       <CardContent className="p-12 text-center text-sm text-gray-400">
         <Loader2 className="w-8 h-8 mx-auto animate-spin text-gray-300 mb-3" />
         加载中…
+      </CardContent>
+    </Card>
+  )
+}
+
+
+// ── Content Tab ────────────────────────────────────────────────────────────────
+// SKU 内容工作台：把 17 步链路（卖点 → 人群 → 画像 → 圈包 → 偏好 → 目的 → Brief → Pipeline）
+// 在 SKU 详情页内骨架化呈现，每步可单点重跑。
+
+const STEP_LABELS: Record<string, { label: string; hint: string }> = {
+  selling_points: { label: '1. 三类卖点', hint: '基于老板视角 + 大模型分析显性/隐性/独特' },
+  audience_match: { label: '2. 匹配人群', hint: '基于卖点 + 人群报告 KB 找可期待人群' },
+  audience_profile: { label: '3. 人群画像', hint: '深挖动机/犹豫/语言风格/触达渠道' },
+  dmp_sop: { label: '4. 圈包策略', hint: '生成可直接照做的 DMP 圈包 SOP' },
+  content_preference: { label: '5. 偏好内容', hint: '该人群喜欢看什么话题/形式/钩子' },
+  purpose_routing: { label: '6. 目的分流', hint: '曝光 / 种草 / 收割 三选一（可手动指定）' },
+  script_brief: { label: '7. 落地 Brief', hint: '把上面所有产物拼成短视频 Brief 草稿' },
+  pipeline_linked: { label: '8. 进入工坊', hint: '用 brief_id 起一个内容工坊 pipeline 准备做分镜' },
+  completed: { label: '✓ 完成', hint: '可去内容工坊继续做分镜与视频' },
+}
+
+const PURPOSE_LABELS: Record<string, { label: string; desc: string; color: string }> = {
+  awareness: { label: '曝光', desc: '泛人群第一次认识，A1 级别', color: 'bg-sky-50 text-sky-700 border-sky-200' },
+  planting: { label: '种草', desc: '建立兴趣与好感，A2-A3 级别', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  conversion: { label: '收割', desc: '高意向人群临门一脚，A4 级别', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+}
+
+function ContentTab({ skuId, sku, onSkuRefresh }: {
+  skuId: string
+  sku: SkuDetail | null
+  onSkuRefresh: (s: SkuDetail) => void
+}) {
+  const [orchestrations, setOrchestrations] = useState<Orchestration[]>([])
+  const [loading, setLoading] = useState(true)
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  const fetchList = async () => {
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/omni/content-studio/sku-orchestrations?sku_id=${skuId}`)
+      if (r.ok) {
+        const data = await r.json()
+        const items = data.items || []
+        setOrchestrations(items)
+        if (!activeId && items.length > 0) {
+          setActiveId(items[0].id)
+        }
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (skuId) fetchList()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skuId])
+
+  const active = useMemo(
+    () => orchestrations.find((o) => o.id === activeId) || null,
+    [orchestrations, activeId],
+  )
+
+  const refreshActive = async () => {
+    if (!activeId) return
+    const r = await fetch(`/api/omni/content-studio/sku-orchestrations/${activeId}`)
+    if (r.ok) {
+      const o = await r.json()
+      setOrchestrations((prev) => prev.map((x) => (x.id === o.id ? o : x)))
+    }
+  }
+
+  const createOrchestration = async (target_purpose: string | null) => {
+    setCreating(true)
+    try {
+      const r = await fetch('/api/omni/content-studio/sku-orchestrations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sku_id: skuId,
+          title: `${sku?.name || skuId}·${target_purpose ? PURPOSE_LABELS[target_purpose].label : '智能推荐'}`,
+          target_purpose,
+        }),
+      })
+      if (r.ok) {
+        const o = await r.json()
+        setActiveId(o.id)
+        await fetchList()
+      }
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 老板卖点编辑器 */}
+      <OwnerSellingPointsEditor
+        skuId={skuId}
+        sku={sku}
+        onSaved={onSkuRefresh}
+      />
+
+      {/* 创建编排 */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+              <Wand2 className="w-4 h-4 text-violet-600" />
+              新建内容编排
+            </h3>
+            <span className="text-[11px] text-gray-400">从 SKU 起步，自动跑完 8 步链路</span>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {(['awareness', 'planting', 'conversion'] as const).map((p) => (
+              <button
+                key={p}
+                disabled={creating}
+                onClick={() => createOrchestration(p)}
+                className={`p-3 border-2 rounded-lg text-left transition-all hover:shadow-sm hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed ${PURPOSE_LABELS[p].color}`}
+              >
+                <div className="font-semibold text-sm">{PURPOSE_LABELS[p].label}</div>
+                <div className="text-[11px] mt-0.5 opacity-80">{PURPOSE_LABELS[p].desc}</div>
+              </button>
+            ))}
+            <button
+              disabled={creating}
+              onClick={() => createOrchestration(null)}
+              className="p-3 border-2 border-dashed border-gray-200 rounded-lg text-left transition-all hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <div className="font-semibold text-sm text-gray-700">让 AI 推荐</div>
+              <div className="text-[11px] mt-0.5 text-gray-500">基于 SKU 状态智能选择</div>
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 编排列表 */}
+      {loading ? (
+        <LoadingCard />
+      ) : orchestrations.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center text-sm text-gray-400">
+            <Film className="w-10 h-10 mx-auto text-gray-200 mb-3" />
+            <p className="mb-1">还没有内容编排</p>
+            <p className="text-xs text-gray-400">点上方任一目的卡片开始</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-12 gap-4">
+          {/* 左：编排列表 */}
+          <div className="col-span-4 space-y-2">
+            {orchestrations.map((o) => (
+              <OrchestrationListItem
+                key={o.id}
+                orch={o}
+                active={o.id === activeId}
+                onClick={() => setActiveId(o.id)}
+              />
+            ))}
+          </div>
+          {/* 右：编排详情 + 步骤面板 */}
+          <div className="col-span-8">
+            {active ? (
+              <OrchestrationDetail orch={active} onRefresh={refreshActive} />
+            ) : (
+              <Card>
+                <CardContent className="p-12 text-center text-sm text-gray-400">
+                  选一个编排查看详情
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function OwnerSellingPointsEditor({ skuId, sku, onSaved }: {
+  skuId: string
+  sku: SkuDetail | null
+  onSaved: (s: SkuDetail) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [items, setItems] = useState<Array<{ text: string }>>(
+    (sku?.owner_selling_points || []).map((s) => ({ text: typeof s === 'string' ? s : (s?.text || '') })),
+  )
+  const [notes, setNotes] = useState(sku?.owner_notes || '')
+  const [priceMin, setPriceMin] = useState<string>(sku?.price_min != null ? String(sku.price_min) : '')
+  const [priceMax, setPriceMax] = useState<string>(sku?.price_max != null ? String(sku.price_max) : '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setItems((sku?.owner_selling_points || []).map((s) => ({ text: typeof s === 'string' ? s : (s?.text || '') })))
+    setNotes(sku?.owner_notes || '')
+    setPriceMin(sku?.price_min != null ? String(sku.price_min) : '')
+    setPriceMax(sku?.price_max != null ? String(sku.price_max) : '')
+  }, [sku])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const cleaned = items.map((it) => ({ text: it.text.trim() })).filter((it) => it.text)
+      const body: Record<string, unknown> = {
+        owner_selling_points: cleaned,
+        owner_notes: notes,
+      }
+      if (priceMin) body.price_min = parseFloat(priceMin)
+      if (priceMax) body.price_max = parseFloat(priceMax)
+      const r = await fetch(`/api/omni/scout/skus/${skuId}/owner-info`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (r.ok) {
+        const updated = await r.json()
+        onSaved(updated)
+        setEditing(false)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const sellingPointsCount = items.filter((it) => it.text.trim()).length
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+            <Edit3 className="w-4 h-4 text-amber-600" />
+            老板视角输入
+            <span className="text-[11px] text-gray-400 font-normal">（编排器的种子素材）</span>
+          </h3>
+          {!editing ? (
+            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+              <Edit3 className="w-3.5 h-3.5 mr-1" /> 编辑
+            </Button>
+          ) : (
+            <div className="flex gap-1">
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}>取消</Button>
+              <Button size="sm" onClick={save} disabled={saving}>
+                {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+                保存
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {!editing ? (
+          <div className="space-y-2 text-xs">
+            {sellingPointsCount > 0 ? (
+              <div>
+                <div className="text-gray-500 mb-1">老板手填卖点 ({sellingPointsCount})</div>
+                <ul className="space-y-0.5 text-gray-700">
+                  {items.filter((it) => it.text.trim()).map((it, i) => (
+                    <li key={i}>• {it.text}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="text-gray-400 italic">尚未填写卖点 — 点「编辑」开始</div>
+            )}
+            {notes && (
+              <div>
+                <div className="text-gray-500 mb-1">备注</div>
+                <div className="text-gray-700 whitespace-pre-wrap">{notes}</div>
+              </div>
+            )}
+            {(priceMin || priceMax) && (
+              <div className="text-gray-500">
+                价格区间：<span className="text-gray-700">{priceMin || '?'} - {priceMax || '?'}</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="text-[11px] text-gray-500 mb-1 block">卖点（每行一条）</label>
+              <textarea
+                className="w-full text-xs border rounded px-2 py-1.5 min-h-[100px] font-mono"
+                placeholder="例：&#10;0添加生抽&#10;180 天纯酿工艺&#10;江浙妈妈复购第一名"
+                value={items.map((it) => it.text).join('\n')}
+                onChange={(e) => setItems(e.target.value.split('\n').map((t) => ({ text: t })))}
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-gray-500 mb-1 block">备注（场景/原料/工艺等任意文字）</label>
+              <textarea
+                className="w-full text-xs border rounded px-2 py-1.5 min-h-[60px]"
+                placeholder="例：主打居家烹饪场景；原料黄豆来自东北；工艺与日本龟甲万对标"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] text-gray-500 mb-1 block">价格下限（元）</label>
+                <input
+                  type="number"
+                  className="w-full text-xs border rounded px-2 py-1.5"
+                  value={priceMin}
+                  onChange={(e) => setPriceMin(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-gray-500 mb-1 block">价格上限（元）</label>
+                <input
+                  type="number"
+                  className="w-full text-xs border rounded px-2 py-1.5"
+                  value={priceMax}
+                  onChange={(e) => setPriceMax(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function OrchestrationListItem({ orch, active, onClick }: {
+  orch: Orchestration
+  active: boolean
+  onClick: () => void
+}) {
+  const purpose = orch.target_purpose
+  const purposeBadge = purpose ? PURPOSE_LABELS[purpose] : null
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left p-3 border rounded-lg transition-all ${active ? 'border-violet-300 bg-violet-50/50 shadow-sm' : 'border-gray-200 hover:border-gray-300'}`}
+    >
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-medium text-gray-900 line-clamp-1">{orch.title || orch.id.slice(0, 8)}</span>
+        {orch.status === 'completed' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+        {orch.status === 'failed' && <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
+        {orch.status === 'in_progress' && <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />}
+      </div>
+      <div className="flex items-center gap-1.5">
+        {purposeBadge && (
+          <span className={`text-[10px] px-1.5 py-0.5 border rounded ${purposeBadge.color}`}>{purposeBadge.label}</span>
+        )}
+        <span className="text-[10px] text-gray-500">{STEP_LABELS[orch.current_step]?.label || orch.current_step}</span>
+      </div>
+    </button>
+  )
+}
+
+function OrchestrationDetail({ orch, onRefresh }: {
+  orch: Orchestration
+  onRefresh: () => Promise<void>
+}) {
+  const [running, setRunning] = useState<string | null>(null)
+  const steps = ['selling_points', 'audience_match', 'audience_profile', 'dmp_sop', 'content_preference', 'purpose_routing', 'script_brief', 'pipeline_linked']
+  const currentIdx = steps.indexOf(orch.current_step)
+
+  const runStep = async (step?: string) => {
+    setRunning(step || 'current')
+    try {
+      const url = step
+        ? `/api/omni/content-studio/sku-orchestrations/${orch.id}/run/${step}`
+        : `/api/omni/content-studio/sku-orchestrations/${orch.id}/run`
+      await fetch(url, { method: 'POST' })
+      await onRefresh()
+    } finally {
+      setRunning(null)
+    }
+  }
+
+  const advance = async () => {
+    setRunning('advance')
+    try {
+      await fetch(`/api/omni/content-studio/sku-orchestrations/${orch.id}/advance`, { method: 'POST' })
+      await onRefresh()
+    } finally {
+      setRunning(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        {/* 头部 */}
+        <div className="flex items-center justify-between mb-3 pb-3 border-b">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">{orch.title}</h3>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {orch.target_purpose && PURPOSE_LABELS[orch.target_purpose] && (
+                <span className={`text-[10px] px-1.5 py-0.5 border rounded mr-2 ${PURPOSE_LABELS[orch.target_purpose].color}`}>
+                  {PURPOSE_LABELS[orch.target_purpose].label}
+                </span>
+              )}
+              创建于 {new Date(orch.created_at).toLocaleString('zh-CN')}
+            </p>
+          </div>
+          <div className="flex gap-1.5">
+            {orch.status !== 'completed' && (
+              <Button size="sm" onClick={advance} disabled={running !== null}>
+                {running === 'advance' ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Sparkles className="w-3.5 h-3.5 mr-1" />}
+                一键跑到完
+              </Button>
+            )}
+            {orch.linked_pipeline_id && (
+              <Link href={`/content-studio?pipeline_id=${orch.linked_pipeline_id}`}>
+                <Button size="sm" variant="outline">
+                  去内容工坊 <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* 错误提示 */}
+        {orch.status === 'failed' && orch.error_message && (
+          <div className="mb-3 p-2.5 bg-rose-50 border border-rose-200 rounded text-xs text-rose-700 flex gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-medium">失败：</div>
+              <div className="font-mono mt-0.5">{orch.error_message}</div>
+            </div>
+          </div>
+        )}
+
+        {/* 步骤进度 */}
+        <div className="space-y-2">
+          {steps.map((s, i) => {
+            const isPast = i < currentIdx || orch.status === 'completed'
+            const isCurrent = i === currentIdx && orch.status !== 'completed'
+            const meta = STEP_LABELS[s]
+            const result = (orch as Record<string, unknown>)[`${s}_result`] || (s === 'pipeline_linked' ? orch.linked_pipeline_id : null)
+            return (
+              <div key={s} className={`p-2.5 border rounded-lg ${isCurrent ? 'border-violet-300 bg-violet-50/30' : isPast ? 'border-emerald-200 bg-emerald-50/20' : 'border-gray-200 bg-white'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5">
+                    {isPast && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                    {isCurrent && (running ? <Loader2 className="w-3.5 h-3.5 text-violet-500 animate-spin" /> : <Clock className="w-3.5 h-3.5 text-violet-500" />)}
+                    {!isPast && !isCurrent && <div className="w-3.5 h-3.5 rounded-full border-2 border-gray-200" />}
+                    <span className={`text-xs font-medium ${isCurrent ? 'text-violet-700' : isPast ? 'text-emerald-700' : 'text-gray-500'}`}>{meta?.label || s}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={() => runStep(s)}
+                    disabled={running !== null}
+                  >
+                    {running === s ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    <span className="ml-1">{isPast ? '重跑' : isCurrent ? '执行' : '跳到此步'}</span>
+                  </Button>
+                </div>
+                <div className="text-[11px] text-gray-500 mb-1.5">{meta?.hint}</div>
+                {result && isPast && (
+                  <pre className="text-[10px] text-gray-600 bg-gray-50 border border-gray-100 rounded p-2 overflow-auto max-h-24 font-mono">
+                    {typeof result === 'string' ? result.slice(0, 400) : JSON.stringify(result, null, 2).slice(0, 400)}
+                    {(typeof result === 'string' ? result.length > 400 : JSON.stringify(result).length > 400) && '...'}
+                  </pre>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* 完成态：跳转 brief & pipeline */}
+        {orch.status === 'completed' && (
+          <div className="mt-3 pt-3 border-t flex gap-2">
+            {orch.linked_brief_id && (
+              <Link href={`/content-studio/briefs/${orch.linked_brief_id}`} className="flex-1">
+                <Button variant="outline" className="w-full" size="sm">
+                  查看生成的 Brief <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </Link>
+            )}
+            {orch.linked_pipeline_id && (
+              <Link href={`/content-studio?pipeline_id=${orch.linked_pipeline_id}`} className="flex-1">
+                <Button className="w-full" size="sm">
+                  去内容工坊做分镜 <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </Link>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

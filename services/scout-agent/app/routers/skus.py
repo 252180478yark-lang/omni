@@ -113,6 +113,45 @@ async def lock_sku(sku_id: str, body: SkuLockRequest):
     return {"id": sku_id, "locked_by_user": body.locked}
 
 
+class SkuOwnerInfoRequest(BaseModel):
+    """老板视角字段：手填卖点 / 备注 / 价格区间。"""
+    owner_selling_points: Optional[list] = None  # [{text, category, priority}]
+    owner_notes: Optional[str] = None
+    price_min: Optional[float] = None
+    price_max: Optional[float] = None
+
+
+@router.patch("/skus/{sku_id}/owner-info")
+async def update_owner_info(sku_id: str, body: SkuOwnerInfoRequest):
+    """老板手填的卖点/备注/价格区间——给内容编排器作为输入种子。"""
+    import json as _json
+    sets: list[str] = []
+    vals: list = [sku_id]
+    if body.owner_selling_points is not None:
+        vals.append(_json.dumps(body.owner_selling_points, ensure_ascii=False))
+        sets.append(f"owner_selling_points = ${len(vals)}::jsonb")
+    if body.owner_notes is not None:
+        vals.append(body.owner_notes)
+        sets.append(f"owner_notes = ${len(vals)}")
+    if body.price_min is not None:
+        vals.append(body.price_min)
+        sets.append(f"price_min = ${len(vals)}")
+    if body.price_max is not None:
+        vals.append(body.price_max)
+        sets.append(f"price_max = ${len(vals)}")
+    if not sets:
+        raise HTTPException(status_code=400, detail="empty payload")
+    sets.append("updated_at = NOW()")
+
+    sql = f"UPDATE mvp_sku SET {', '.join(sets)} WHERE id = $1 RETURNING *"
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(sql, *vals)
+    if not row:
+        raise HTTPException(status_code=404, detail="SKU not found")
+    return dict(row)
+
+
 # ── Change events (Track A) ───────────────────────────────────────────────────
 
 class ChangeEventCreate(BaseModel):
