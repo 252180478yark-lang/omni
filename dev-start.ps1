@@ -111,7 +111,8 @@ if (-not $SkipDocker) {
         if ($h -eq "healthy") { break }
         Start-Sleep -Seconds 2
     }
-    Write-Host "  Postgres: $h" -ForegroundColor (if ($h -eq "healthy") { "Green" } else { "DarkYellow" })
+    $pgColor = if ($h -eq "healthy") { "Green" } else { "DarkYellow" }
+    Write-Host "  Postgres: $h" -ForegroundColor $pgColor
 
     Write-Host "  Applying migrations..." -ForegroundColor Gray
     $env:DATABASE_URL = "postgresql://omni_user:changeme_in_production@localhost:5432/omni_vibe_db"
