@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "cd frontend && npm run dev",
     "build": "cd frontend && npm run build",
-    "start": "cd frontend && npm run start"
+    "start": "cd frontend && npm run start",
+    "backup": "powershell -ExecutionPolicy Bypass -File scripts/backup.ps1"
   },
   "keywords": ["omni", "ai", "tri-mind", "debate", "llm"],
   "license": "MIT"

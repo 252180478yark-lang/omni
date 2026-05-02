@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
       POSTGRES_DB: ${POSTGRES_DB:-omni_vibe_db}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./services/infra-core/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -30,7 +30,7 @@ services:
     container_name: omni-redis
     command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:-changeme_redis}"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
       - ./services/infra-core/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro

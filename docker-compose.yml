@@ -30,7 +30,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
       POSTGRES_DB: ${POSTGRES_DB:-omni_vibe_db}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./services/infra-core/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -47,7 +47,7 @@ services:
     container_name: omni-redis
     command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:-changeme_redis}"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
       - ./services/infra-core/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -84,8 +84,8 @@ services:
       identity-service:
         condition: service_started
     ports:
-      - "${NGINX_PORT:-80}:80"
-      - "${NGINX_SSL_PORT:-443}:443"
+      - "127.0.0.1:${NGINX_PORT:-80}:80"
+      - "127.0.0.1:${NGINX_SSL_PORT:-443}:443"
     volumes:
       - ./services/infra-core/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/infra-core/nginx/conf.d:/etc/nginx/conf.d:ro
@@ -128,13 +128,15 @@ services:
       LIVESTREAM_ANALYSIS_SERVICE_URL: "http://livestream-analysis:8007"
       NEWS_AGGREGATOR_URL: "http://news-aggregator:8005"
       AD_REVIEW_SERVICE_URL: "http://ad-review-service:8008"
+      SCOUT_AGENT_URL: "http://scout-agent:8009"
     command: ["npm", "run", "start"]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - ai-provider-hub
       - knowledge-engine
       - ad-review-service
+      - scout-agent
     networks:
       - omni-network
 
@@ -153,7 +155,7 @@ services:
       DATA_DIR: "/app/data"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8008"]
     ports:
-      - "${AD_REVIEW_PORT:-8008}:8008"
+      - "127.0.0.1:${AD_REVIEW_PORT:-8008}:8008"
     expose:
       - "8008"
     volumes:
@@ -293,6 +295,34 @@ services:
     networks:
       - omni-network
 
+  scout-agent:
+    build: ./services/scout-agent
+    container_name: omni-scout-agent
+    environment:
+      <<: *proxy-env
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      AI_HUB_URL: "http://ai-provider-hub:8001"
+      DOUYIN_SHOP_ID: "${DOUYIN_SHOP_ID:-}"
+      YUNTU_BRAND_ID: "${YUNTU_BRAND_ID:-WADAKAN_HETIANKUAN}"
+      YUNTU_INDUSTRY: "${YUNTU_INDUSTRY:-food_beverage}"
+      WECOM_WEBHOOK_URL: "${WECOM_WEBHOOK_URL:-}"
+      PLAYWRIGHT_HEADLESS: "true"
+      ENABLE_SCHEDULER: "true"
+    ports:
+      - "127.0.0.1:8009:8009"
+    volumes:
+      - scout_sessions:/app/sessions
+      - scout_downloads:/app/downloads
+      - scout_snapshots:/app/snapshots
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-provider-hub:
+        condition: service_started
+    networks:
+      - omni-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
@@ -301,6 +331,9 @@ volumes:
   video_analysis_data:
   livestream_analysis_data:
   ad_review_data:
+  scout_sessions:
+  scout_downloads:
+  scout_snapshots:
 
 networks:
   omni-network:
