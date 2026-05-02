@@ -17,12 +17,18 @@ class BriefCreateRequest(BaseModel):
     usp: str = Field(min_length=1)
     product_id: str | None = None
     product_name: str | None = None
+    sku_id: str | None = None
     parent_brief_id: str | None = None
     scenarios: list[dict] = Field(default_factory=list)
     audience_profile: dict = Field(default_factory=dict)
     tone_style: dict = Field(default_factory=dict)
     source_notes: str | None = None
     dmp_sop: str | None = None
+    target_purpose: str | None = None  # awareness / planting / conversion
+    usp_explicit: list[dict] = Field(default_factory=list)
+    usp_implicit: list[dict] = Field(default_factory=list)
+    usp_unique: list[dict] = Field(default_factory=list)
+    audience_content_preference: dict = Field(default_factory=dict)
     extra: dict = Field(default_factory=dict)
 
 
@@ -35,6 +41,12 @@ class BriefUpdateRequest(BaseModel):
     source_notes: str | None = None
     dmp_sop: str | None = None
     status: str | None = None
+    target_purpose: str | None = None
+    usp_explicit: list[dict] | None = None
+    usp_implicit: list[dict] | None = None
+    usp_unique: list[dict] | None = None
+    audience_content_preference: dict | None = None
+    sku_id: str | None = None
     extra: dict | None = None
 
 
@@ -54,11 +66,18 @@ class BriefDeriveRequest(BaseModel):
     tone_style: dict | None = None
     source_notes: str | None = None
     dmp_sop: str | None = None
+    target_purpose: str | None = None
+    usp_explicit: list[dict] | None = None
+    usp_implicit: list[dict] | None = None
+    usp_unique: list[dict] | None = None
+    audience_content_preference: dict | None = None
 
 
 class BriefGenerateRequest(BaseModel):
     product_id: str | None = None
+    sku_id: str | None = None
     title: str | None = None
+    target_purpose: str | None = None  # awareness / planting / conversion
     hints: dict = Field(default_factory=dict)
 
 
@@ -90,8 +109,10 @@ async def list_briefs(
 async def generate_brief(req: BriefGenerateRequest):
     return await svc.generate_draft(
         product_id=req.product_id,
+        sku_id=req.sku_id,
         hints=req.hints,
         title=req.title,
+        target_purpose=req.target_purpose,
     )
 
 

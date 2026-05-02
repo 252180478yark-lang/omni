@@ -59,15 +59,18 @@ async def create_pipeline(
     product_id: str | None = None,
     brief_id: str | None = None,
     digital_human_id: str | None = None,
+    sku_id: str | None = None,
     audience_package: dict | None = None,
     extra_reference_images: list[dict] | None = None,
+    skip_final_concat: bool = False,
 ) -> dict:
     pool = get_pool()
     resolved_source = source_text
     resolved_audience_pkg = audience_package
+    resolved_sku_id = sku_id
     if brief_id:
         brief = await pool.fetchrow(
-            """SELECT title, usp, scenarios, audience_profile, tone_style, dmp_sop
+            """SELECT title, usp, scenarios, audience_profile, tone_style, dmp_sop, sku_id
                FROM content_studio.briefs WHERE id = $1""",
             uuid.UUID(brief_id),
         )
@@ -96,11 +99,14 @@ async def create_pipeline(
                         "tags": ap.get("tags") or {},
                         "notes": (brief.get("dmp_sop") or "")[:200],
                     }
+            # 若 brief 已绑 sku_id 且调用方未显式覆盖，自动继承
+            if not resolved_sku_id and brief.get("sku_id"):
+                resolved_sku_id = brief["sku_id"]
     row = await pool.fetchrow(
         """INSERT INTO content_studio.pipelines
            (title, source_text, config, product_id, brief_id, digital_human_id,
-            audience_package, extra_reference_images)
-           VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7::jsonb, $8::jsonb)
+            sku_id, audience_package, extra_reference_images, skip_final_concat)
+           VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10)
            RETURNING *""",
         title,
         resolved_source,
@@ -108,8 +114,10 @@ async def create_pipeline(
         uuid.UUID(product_id) if product_id else None,
         uuid.UUID(brief_id) if brief_id else None,
         uuid.UUID(digital_human_id) if digital_human_id else None,
+        resolved_sku_id,
         json.dumps(resolved_audience_pkg or {}, ensure_ascii=False),
         json.dumps(extra_reference_images or [], ensure_ascii=False),
+        skip_final_concat,
     )
     return dict(row)
 
@@ -1018,10 +1026,12 @@ async def generate_script(pipeline_id: str) -> dict:
 
     # voice_examples 已通过 kb_context_text 以 STYLE_SAMPLE 规则注入,
     # 不再传给 build_script_prompt (避免双重注入)。
+    target_purpose = brief.get("target_purpose") if brief else None
     prompt = build_script_prompt(
         pipe["copy_result"], config,
         banned_words=banned,
         voice_examples=None,
+        target_purpose=target_purpose,
     )
     if kb_context_text:
         prompt = prompt + kb_context_text
@@ -1351,16 +1361,22 @@ async def regenerate_storyboard_scenes(
     scene_ids: list[int],
     prompt_override: str | None = None,
 ) -> dict:
-    """Regenerate selected storyboard images without rerunning all scenes."""
+    """Regenerate selected storyboard images without rerunning all scenes.
+
+    并行触发，避免 N 段 × 单段耗时的串行累积。
+    """
     unique_scene_ids = list(dict.fromkeys(int(sid) for sid in scene_ids))
-    updated: dict | None = None
-    for sid in unique_scene_ids:
-        updated = await regenerate_storyboard_scene(
-            pipeline_id,
-            sid,
-            prompt_override=prompt_override,
-        )
-    final = updated or await get_pipeline(pipeline_id)
+    if not unique_scene_ids:
+        return await get_pipeline(pipeline_id) or {}
+    coros = [
+        regenerate_storyboard_scene(pipeline_id, sid, prompt_override=prompt_override)
+        for sid in unique_scene_ids
+    ]
+    results = await asyncio.gather(*coros, return_exceptions=True)
+    for sid, r in zip(unique_scene_ids, results):
+        if isinstance(r, Exception):
+            logger.warning("regenerate storyboard scene %s failed: %s", sid, r)
+    final = await get_pipeline(pipeline_id)
     if not final:
         raise ValueError("Pipeline not found")
     return final
@@ -1533,10 +1549,12 @@ async def regenerate_video_scene(
     prompt_override: str | None = None,
     *,
     last_frame_scene_id: int | None = None,
+    user_hint: str | None = None,
 ) -> dict:
     """Regenerate a single video scene.
 
     If prompt_override is given, skip LLM prompt transformation and use it directly.
+    If user_hint is given (老板的修改意见), append it as a hard requirement to the prompt.
     """
     pipe = await get_pipeline(pipeline_id)
     if not pipe:
@@ -1547,6 +1565,18 @@ async def regenerate_video_scene(
     scene = next((s for s in script.get("scenes", []) if s["scene_id"] == scene_id), None)
     if not scene:
         raise ValueError(f"Scene {scene_id} not found")
+
+    # 老板的修改意见 → 升级为 prompt_override（拼到 visual_description 或已有 override 之后）
+    if user_hint:
+        hint_block = f"\n\n## 必须遵守的修改要求\n{user_hint}\n（这是用户对上一版的不满意点，新版必须按此调整）"
+        if prompt_override:
+            prompt_override = prompt_override + hint_block
+        else:
+            base = scene.get("visual_description", "")
+            cam = scene.get("camera_movement", "")
+            if cam:
+                base += f"，运镜：{cam}"
+            prompt_override = base + hint_block
 
     storyboard = pipe["storyboard_results"]
     if isinstance(storyboard, str):
@@ -1644,18 +1674,33 @@ async def regenerate_video_scenes(
     prompt_override: str | None = None,
     *,
     use_next_scene_as_last_frame: bool = False,
+    user_hint: str | None = None,
 ) -> dict:
-    """Create/regenerate video tasks for selected scenes only."""
+    """Create/regenerate video tasks for selected scenes only.
+
+    并行触发（asyncio.gather），单段 30s × 5 段 = 30s，而非串行 150s。
+    user_hint 是老板对上一版的修改意见，会以"必须遵守"形式附加到 prompt。
+    """
     unique_scene_ids = list(dict.fromkeys(int(sid) for sid in scene_ids))
-    updated: dict | None = None
-    for sid in unique_scene_ids:
-        updated = await regenerate_video_scene(
+    if not unique_scene_ids:
+        return await get_pipeline(pipeline_id) or {}
+
+    coros = [
+        regenerate_video_scene(
             pipeline_id,
             sid,
             prompt_override=prompt_override,
             last_frame_scene_id=(sid + 1 if use_next_scene_as_last_frame else None),
+            user_hint=user_hint,
         )
-    final = updated or await get_pipeline(pipeline_id)
+        for sid in unique_scene_ids
+    ]
+    results = await asyncio.gather(*coros, return_exceptions=True)
+    for sid, r in zip(unique_scene_ids, results):
+        if isinstance(r, Exception):
+            logger.warning("regenerate video scene %s failed: %s", sid, r)
+
+    final = await get_pipeline(pipeline_id)
     if not final:
         raise ValueError("Pipeline not found")
     return final
@@ -1669,6 +1714,16 @@ async def compose_final_video(pipeline_id: str) -> dict:
     pipe = await get_pipeline(pipeline_id)
     if not pipe:
         raise ValueError("Pipeline not found")
+
+    # 老板可选『跳过合成』——只要 10 段独立视频，自己拿去剪。
+    if pipe.get("skip_final_concat"):
+        logger.info("pipeline %s skip_final_concat=True; mark as completed without ffmpeg", pipeline_id)
+        return await update_pipeline(
+            pipeline_id,
+            current_step="done",
+            status="completed",
+            error_message=None,
+        )
 
     await update_pipeline(pipeline_id, status="running", current_step="compose")
 

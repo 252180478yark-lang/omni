@@ -40,6 +40,76 @@ PACE_DESCRIPTIONS: dict[str, str] = {
 
 
 # ══════════════════════════════════════════════════
+# 三目的分流（曝光 / 种草 / 收割）— 完整说明书
+# ══════════════════════════════════════════════════
+
+PURPOSE_PLAYBOOK: dict[str, dict[str, str]] = {
+    "awareness": {
+        "label": "曝光",
+        "intent": "让大量泛人群第一次认识品牌或产品，建立眼缘与记忆点",
+        "content_principle": (
+            "泛娱乐 80% + 产品 20%。前 1.5 秒必须有强钩子（冲突/悬念/反差/视觉冲击）。"
+            "产品仅作为情节中的视觉线索出现，不强调功能与卖点。"
+            "适合穿插剧情、热点梗、生活段子、视觉奇观。"
+        ),
+        "scene_emphasis": "强情绪节拍 / 冲突反转 / 视觉记忆符号；卖点最多带 1 条最直观的（如外观/品牌色）。",
+        "audience_match": "宽口径，年龄/性别覆盖广；A1 级别人群（认知层）。",
+        "kpi_focus": "完播率 / 互动率 / 涨粉率 / 品牌搜索词增长。",
+        "do_nots": "不要堆功能点；不要硬广腔；不要密集出现产品镜头。",
+    },
+    "planting": {
+        "label": "种草",
+        "intent": "让中度兴趣人群对产品产生好感与冲动加购，沉浸式建立信任",
+        "content_principle": (
+            "真实体验 + 场景化解决方案。前 3 秒讲清楚『这个东西能解决你哪个具体痛』。"
+            "中段必须出现 1-2 个独特卖点的可视化证据（特写/对比/工艺细节/真实使用场景）。"
+            "末尾给一个具体的尝试理由（试用价/搭配方法/某类人群必入）。"
+        ),
+        "scene_emphasis": "痛点共鸣 → 产品出场 → 独特卖点可视化 → 体验时刻 → 推荐动作。",
+        "audience_match": "A2-A3 级别（兴趣 → 询问），匹配人群画像精准。",
+        "kpi_focus": "加购率 / 评论求购率 / A3 级人群增量 / 收藏率。",
+        "do_nots": "不要讲价格促销；不要泛泛 USP；不要让产品晚出场（≥3秒未现产品视为失败）。",
+    },
+    "conversion": {
+        "label": "收割",
+        "intent": "把高意向人群推上付款临门一脚，强转化",
+        "content_principle": (
+            "强促销 + 紧迫感 + 信任背书。前 3 秒必须出现『今日/限时/专属』关键词与价格利益点。"
+            "中段堆叠社会证据（销量/评价/达人背书/复购证言）。"
+            "结尾必须明确 CTA：『点小黄车』『限今日』『N 件套优惠』。"
+        ),
+        "scene_emphasis": "价格利益点 → 销量/口碑证据 → 限时机制 → CTA 闭环。",
+        "audience_match": "A4 级别（行动），已经被种过草的高意向人群。",
+        "kpi_focus": "GMV / CVR / ROI / 客单价。",
+        "do_nots": "不要拖戏；不要讲品牌故事；不要让 CTA 出现在 5 秒之后。",
+    },
+}
+
+
+def get_purpose_block(target_purpose: str | None) -> str:
+    """根据 target_purpose 返回完整的『目的说明书』段落，可拼到任何 prompt 里。
+
+    target_purpose:
+      - None / 未指定：返回空字符串（让 LLM 自己推断）
+      - awareness / planting / conversion：返回该目的的硬约束段落
+    """
+    if not target_purpose:
+        return ""
+    book = PURPOSE_PLAYBOOK.get(target_purpose)
+    if not book:
+        return ""
+    return f"""
+## 目的（target_purpose = {target_purpose} · {book['label']}）
+- **意图**：{book['intent']}
+- **内容原则**：{book['content_principle']}
+- **场景重点**：{book['scene_emphasis']}
+- **目标人群层级**：{book['audience_match']}
+- **核心 KPI**：{book['kpi_focus']}
+- **禁忌**：{book['do_nots']}
+"""
+
+
+# ══════════════════════════════════════════════════
 # 1. Original: copy / script generation
 # ══════════════════════════════════════════════════
 
@@ -78,6 +148,7 @@ def build_script_prompt(
     *,
     banned_words: list[str] | None = None,
     voice_examples: list[str] | None = None,
+    target_purpose: str | None = None,
 ) -> str:
     pace = config.get("pace", "medium")
     pace_desc = PACE_DESCRIPTIONS.get(pace, PACE_DESCRIPTIONS["medium"])
@@ -102,16 +173,19 @@ def build_script_prompt(
             "\n\n## 真人口播语料示例（请模仿语气和句长）\n" + sample
         )
 
+    purpose_block = get_purpose_block(target_purpose)
+
     return f"""你是一位专业的短视频分镜脚本编剧。请将以下营销文案拆解为结构化的短视频分镜脚本。
 
 ## 营销文案
 {copy_text}
-
+{purpose_block}
 ## 写作要求
 - 节奏：{pace_desc}
 - 画面风格：{image_style}{product_hint}
 - 必须恰好输出 10 个 scenes，scene_id 必须从 1 到 10 连续编号
 - 总时长 15-30 秒；10 个场景共同覆盖 hook、痛点、卖点、演示、信任背书、CTA
+- **场景节奏须严格匹配上方 target_purpose**：曝光强钩子+泛娱乐占主、种草前 3 秒必出产品+独特卖点视觉化、收割前 3 秒必出价格利益点+CTA
 - 画面描述要具体详细：构图、光线、色调、主体动作、场景环境全都要提
 - 每个场景的 narration 适合口播朗读（句短、不带 Markdown）
 

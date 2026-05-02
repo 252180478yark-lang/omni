@@ -31,9 +31,14 @@ class CreatePipelineRequest(BaseModel):
     product_id: str | None = None
     brief_id: str | None = None
     digital_human_id: str | None = None
+    sku_id: str | None = None
     audience_package: dict | None = None
     extra_reference_images: list[dict] = Field(default_factory=list)
     config: dict = Field(default_factory=dict)
+    skip_final_concat: bool = Field(
+        default=False,
+        description="跳过 ffmpeg 合成 final.mp4，仅打包 10 段独立视频供人工剪辑",
+    )
 
 
 class ExtraRefsRequest(BaseModel):
@@ -53,12 +58,17 @@ class UpdatePipelineRequest(BaseModel):
     copy_result: str | None = None
     script_result: dict | None = None
     config: dict | None = None
+    skip_final_concat: bool | None = None
 
 class RegenerateSceneRequest(BaseModel):
     scene_id: int
     prompt_override: str | None = Field(
         default=None,
         description="If provided, skip LLM prompt transformation and use this prompt directly",
+    )
+    user_hint: str | None = Field(
+        default=None,
+        description="老板对上一版的修改意见（中文），会作为硬要求附加到 prompt",
     )
 
 class BatchStoryboardRequest(BaseModel):
@@ -77,6 +87,10 @@ class BatchVideoRequest(BaseModel):
     use_next_scene_as_last_frame: bool = Field(
         default=False,
         description="Use the next storyboard image as the last frame for each selected scene when available.",
+    )
+    user_hint: str | None = Field(
+        default=None,
+        description="老板对上一版的修改意见（中文），会作为硬要求附加到本批所有 scene 的 prompt",
     )
 
 class PresetCreateRequest(BaseModel):
@@ -119,8 +133,10 @@ async def create_pipeline(req: CreatePipelineRequest):
         product_id=req.product_id,
         brief_id=req.brief_id,
         digital_human_id=req.digital_human_id,
+        sku_id=req.sku_id,
         audience_package=req.audience_package,
         extra_reference_images=req.extra_reference_images,
+        skip_final_concat=req.skip_final_concat,
     )
     return _serialize(pipe)
 
@@ -443,7 +459,9 @@ async def step_video(pipeline_id: str = Query(...)):
 async def regenerate_video(pipeline_id: str = Query(...), req: RegenerateSceneRequest = ...):
     try:
         pipe = await svc.regenerate_video_scene(
-            pipeline_id, req.scene_id, prompt_override=req.prompt_override,
+            pipeline_id, req.scene_id,
+            prompt_override=req.prompt_override,
+            user_hint=req.user_hint,
         )
         return _serialize(pipe)
     except ValueError as exc:
@@ -458,6 +476,7 @@ async def batch_regenerate_video(pipeline_id: str = Query(...), req: BatchVideoR
             req.scene_ids,
             prompt_override=req.prompt_override,
             use_next_scene_as_last_frame=req.use_next_scene_as_last_frame,
+            user_hint=req.user_hint,
         )
         return _serialize(pipe)
     except ValueError as exc:

@@ -30,6 +30,7 @@ from app.services.prompt_commons import (
     format_kb_snippets,
 )
 from app.services.prompt_rules import log_feedback, render_rules_suffix
+from app.services.prompt_templates import get_purpose_block
 
 logger = logging.getLogger(__name__)
 
@@ -246,13 +247,17 @@ async def create_brief(payload: dict) -> dict:
     row = await pool.fetchrow(
         """
         INSERT INTO content_studio.briefs
-        (product_id, product_name, parent_brief_id, title, usp, scenarios,
-         audience_profile, tone_style, source_notes, dmp_sop, extra)
-        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10, $11::jsonb)
+        (product_id, product_name, sku_id, parent_brief_id, title, usp, scenarios,
+         audience_profile, tone_style, source_notes, dmp_sop,
+         target_purpose, usp_explicit, usp_implicit, usp_unique,
+         audience_content_preference, extra)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11,
+                $12, $13::jsonb, $14::jsonb, $15::jsonb, $16::jsonb, $17::jsonb)
         RETURNING *
         """,
         uuid.UUID(payload["product_id"]) if payload.get("product_id") else None,
         payload.get("product_name"),
+        payload.get("sku_id"),
         uuid.UUID(payload["parent_brief_id"]) if payload.get("parent_brief_id") else None,
         payload["title"],
         payload["usp"],
@@ -261,6 +266,11 @@ async def create_brief(payload: dict) -> dict:
         json.dumps(payload.get("tone_style") or {}, ensure_ascii=False),
         payload.get("source_notes"),
         payload.get("dmp_sop"),
+        payload.get("target_purpose"),
+        json.dumps(payload.get("usp_explicit") or [], ensure_ascii=False),
+        json.dumps(payload.get("usp_implicit") or [], ensure_ascii=False),
+        json.dumps(payload.get("usp_unique") or [], ensure_ascii=False),
+        json.dumps(payload.get("audience_content_preference") or {}, ensure_ascii=False),
         json.dumps(payload.get("extra") or {}, ensure_ascii=False),
     )
     brief = dict(row)
@@ -328,6 +338,14 @@ async def update_brief(brief_id: str, payload: dict) -> dict | None:
         "source_notes": payload.get("source_notes", brief.get("source_notes")),
         "dmp_sop": payload.get("dmp_sop", brief.get("dmp_sop")),
         "status": payload.get("status", brief.get("status")),
+        "target_purpose": payload.get("target_purpose", brief.get("target_purpose")),
+        "usp_explicit": payload.get("usp_explicit", brief.get("usp_explicit") or []),
+        "usp_implicit": payload.get("usp_implicit", brief.get("usp_implicit") or []),
+        "usp_unique": payload.get("usp_unique", brief.get("usp_unique") or []),
+        "audience_content_preference": payload.get(
+            "audience_content_preference", brief.get("audience_content_preference") or {}
+        ),
+        "sku_id": payload.get("sku_id", brief.get("sku_id")),
         "extra": payload.get("extra", brief.get("extra") or {}),
     }
     row = await pool.fetchrow(
@@ -341,9 +359,15 @@ async def update_brief(brief_id: str, payload: dict) -> dict | None:
             source_notes = $6,
             dmp_sop = $7,
             status = $8,
-            extra = $9::jsonb,
+            target_purpose = $9,
+            usp_explicit = $10::jsonb,
+            usp_implicit = $11::jsonb,
+            usp_unique = $12::jsonb,
+            audience_content_preference = $13::jsonb,
+            sku_id = $14,
+            extra = $15::jsonb,
             updated_at = NOW()
-        WHERE id = $10
+        WHERE id = $16
         RETURNING *
         """,
         merged["title"],
@@ -354,6 +378,12 @@ async def update_brief(brief_id: str, payload: dict) -> dict | None:
         merged["source_notes"],
         merged["dmp_sop"],
         merged["status"],
+        merged["target_purpose"],
+        json.dumps(merged["usp_explicit"], ensure_ascii=False),
+        json.dumps(merged["usp_implicit"], ensure_ascii=False),
+        json.dumps(merged["usp_unique"], ensure_ascii=False),
+        json.dumps(merged["audience_content_preference"], ensure_ascii=False),
+        merged["sku_id"],
         json.dumps(merged["extra"], ensure_ascii=False),
         uuid.UUID(brief_id),
     )
@@ -458,6 +488,7 @@ async def derive_brief(brief_id: str, overrides: dict | None = None) -> dict | N
     payload = {
         "product_id": str(src["product_id"]) if src.get("product_id") else None,
         "product_name": src.get("product_name"),
+        "sku_id": src.get("sku_id"),
         "parent_brief_id": str(src["id"]),
         "title": overrides.get("title") or f"{src['title']} v{(src.get('version') or 1) + 1}",
         "usp": overrides.get("usp") or src["usp"],
@@ -466,6 +497,13 @@ async def derive_brief(brief_id: str, overrides: dict | None = None) -> dict | N
         "tone_style": overrides.get("tone_style") or src.get("tone_style") or {},
         "source_notes": overrides.get("source_notes") or src.get("source_notes"),
         "dmp_sop": overrides.get("dmp_sop") or src.get("dmp_sop"),
+        "target_purpose": overrides.get("target_purpose") or src.get("target_purpose"),
+        "usp_explicit": overrides.get("usp_explicit") or src.get("usp_explicit") or [],
+        "usp_implicit": overrides.get("usp_implicit") or src.get("usp_implicit") or [],
+        "usp_unique": overrides.get("usp_unique") or src.get("usp_unique") or [],
+        "audience_content_preference": (
+            overrides.get("audience_content_preference") or src.get("audience_content_preference") or {}
+        ),
         "extra": {"derived_from": str(src["id"])},
     }
     new = await create_brief(payload)
@@ -573,6 +611,36 @@ async def _fetch_product(product_id: str) -> dict | None:
         return None
 
 
+async def _fetch_sku(sku_id: str) -> dict | None:
+    """从路径 A mvp_sku 表读 SKU 主数据 + 老板视角字段。"""
+    if not sku_id:
+        return None
+    pool = get_pool()
+    try:
+        row = await pool.fetchrow(
+            """
+            SELECT id, name, category, status, push_tier,
+                   owner_selling_points, owner_notes, price_min, price_max,
+                   total_stock, growth_class, douyin_product_id, douyin_url
+            FROM public.mvp_sku WHERE id = $1
+            """,
+            sku_id,
+        )
+        if not row:
+            return None
+        d = dict(row)
+        # 反序列化 JSONB
+        if isinstance(d.get("owner_selling_points"), str):
+            try:
+                d["owner_selling_points"] = json.loads(d["owner_selling_points"])
+            except Exception:
+                d["owner_selling_points"] = []
+        return d
+    except Exception as exc:
+        logger.debug("fetch_sku failed: %s", exc)
+        return None
+
+
 async def _retrieve_tri_kb_with_fusion(
     queries_by_source: dict[str, tuple[str, str]],
     *,
@@ -674,19 +742,28 @@ def _parse_brief_json(raw: str) -> dict:
 async def generate_draft(
     *,
     product_id: str | None,
+    sku_id: str | None = None,
     hints: dict | None = None,
     title: str | None = None,
+    target_purpose: str | None = None,
 ) -> dict:
-    """LLM + 三 KB 联合召回，输出 Brief 草稿（已落库 + KB 同步）。"""
+    """LLM + 三 KB 联合召回，输出 Brief 草稿（已落库 + KB 同步）。
+
+    支持两种起点：
+    - product_id：走 ad-review.products（旧路径）
+    - sku_id：走 mvp_sku（路径 A 新路径，包含老板手填卖点）
+    """
     hints = hints or {}
     product = await _fetch_product(product_id) if product_id else None
+    sku = await _fetch_sku(sku_id) if sku_id else None
     product_name = (
         hints.get("product_name")
         or (product or {}).get("name")
+        or (sku or {}).get("name")
         or "未命名产品"
     )
 
-    # 结构化输入：用 XML 分段，LLM 能明确区分"产品硬事实"vs"用户线索"vs"目标"
+    # 结构化输入：用 XML 分段，LLM 能明确区分"产品硬事实"vs"老板视角"vs"用户线索"vs"目标"
     product_lines: list[str] = []
     if product:
         product_lines.append(f'  <name>{product.get("name", "")}</name>')
@@ -698,6 +775,27 @@ async def generate_draft(
             product_lines.append(f'  <category>{product["category"]}</category>')
         if product.get("description"):
             product_lines.append(f'  <description>{product["description"]}</description>')
+    if sku:
+        if not product:
+            product_lines.append(f'  <name>{sku.get("name", "")}</name>')
+            if sku.get("category"):
+                product_lines.append(f'  <category>{sku["category"]}</category>')
+        if sku.get("price_min") is not None or sku.get("price_max") is not None:
+            pmin = sku.get("price_min")
+            pmax = sku.get("price_max")
+            price_str = f"{pmin}-{pmax}" if (pmin and pmax) else (pmin or pmax)
+            product_lines.append(f'  <price_range>{price_str}</price_range>')
+        owner_sp = sku.get("owner_selling_points") or []
+        if owner_sp:
+            sp_text = " | ".join(
+                (it.get("text") if isinstance(it, dict) else str(it))
+                for it in owner_sp if it
+            )
+            product_lines.append(f'  <owner_selling_points>{sp_text}</owner_selling_points>')
+        if sku.get("owner_notes"):
+            product_lines.append(f'  <owner_notes>{sku["owner_notes"]}</owner_notes>')
+        if sku.get("growth_class"):
+            product_lines.append(f'  <growth_class>{sku["growth_class"]}</growth_class>')
 
     product_xml = (
         "<product>\n" + "\n".join(product_lines) + "\n</product>"
@@ -743,6 +841,8 @@ async def generate_draft(
 
     kb_block = format_kb_snippets(all_snippets)
 
+    purpose_block = get_purpose_block(target_purpose)
+
     prompt = f"""你是资深内容投放操盘手。请基于以下信息，输出一份结构化的内容 Brief（中文）。
 
 {KB_AS_CREATIVE_MATERIAL}
@@ -751,18 +851,23 @@ async def generate_draft(
 <user_input>
 {seed_text}
 </user_input>
-
+{purpose_block}
 ## 知识库召回（来自三个 KB：ocean_engine 巨量云图 / audience_report 人群报告 / content_strategy 内容策略）
 {kb_block}
 
 {NO_AI_SLANG}
 
 ## 内容要求
-- `usp_text`：3-5 行短句纯文本，直接可读。
-- `usp_structured`：至少 3 条、至多 5 条。每条必须有 `point` / `evidence` / `priority`（1=最高）。`evidence` 字段不少于 10 字。
+- **三类卖点必须同时给**（核心要求）：
+  - `usp_explicit` 显性卖点：客户一眼能看出来的（外观、规格、价格、配料表等）。≥2 条。
+  - `usp_implicit` 隐性卖点：需要解释或类比才能让用户感知的（工艺、技术、产地、研发故事）。≥2 条。
+  - `usp_unique` 独特卖点：区别于同品类竞品的差异化优势（专利/独家工艺/历史/创始人理念）。≥1 条。
+  - 每条都必须有 `point` / `evidence`（≥10 字）/ `priority`（1=最高）。
+- `usp_text`：3-5 行短句纯文本，把上面三类的 TOP 卖点融合成可读文本，直接可在 KB 里显示。
 - `scenarios`：至少 3 条。每条必须有 `context` / `trigger` / `pain` / `evidence` / `priority`。
 - `audience_profile.insights`：**必须同时包含** `motivation` / `objection` / `language_style` 三个字段，任一缺失即视为不合格。
 - `audience_profile.tags`：若无数据支撑，用宽泛值（如 `"age": "未知"`）而非编造具体分段。
+- `audience_content_preference`：**这个人群在抖音/小红书喜欢看什么内容**——必须给 `topics`（≥3 个话题）/ `formats`（如剧情/口播/测评/Vlog）/ `styles`（如治愈/搞笑/反差）/ `hooks`（≥3 条强钩子模板）。
 - `tone_style` 三个字段的取值必须从给定枚举中选（见 schema）。
 
 {JSON_OUTPUT_DISCIPLINE}
@@ -770,22 +875,37 @@ async def generate_draft(
 ## 输出 Schema
 ```json
 {{
-  "title": "简短标题，例如 '2026春季·XX面霜·25-35轻奢女性'",
+  "title": "简短标题，例如 '2026春季·零添加生抽·25-40 居家烹饪人群·种草'",
   "usp_text": "用 3~5 行短句的形式给一段纯文本，便于直接显示",
+  "usp_explicit": [
+    {{"point": "客户一眼能看出来的卖点", "evidence": "来源说明（≥10 字）", "priority": 1}}
+  ],
+  "usp_implicit": [
+    {{"point": "需要引导才能感知的卖点", "evidence": "来源说明（≥10 字）", "priority": 1}}
+  ],
+  "usp_unique": [
+    {{"point": "区别于竞品的独特卖点", "evidence": "来源说明（≥10 字）", "priority": 1}}
+  ],
   "usp_structured": [
-    {{"point": "核心卖点（一句话）", "evidence": "来源说明（≥10 字）", "priority": 1}}
+    {{"point": "（兼容字段，将上面三类按 priority 拍平的 TOP-N 列表）", "evidence": "...", "priority": 1}}
   ],
   "scenarios": [
     {{"context": "场景上下文", "trigger": "触发时机", "pain": "用户痛点", "evidence": "来源说明", "priority": 1}}
   ],
   "audience_profile": {{
-    "tags": {{"age": "25-35", "gender": "F", "interest": ["护肤"], "consumption_level": "A3-A4"}},
+    "tags": {{"age": "25-40", "gender": "F", "interest": ["居家烹饪"], "consumption_level": "A2-A3"}},
     "insights": {{
       "motivation": "为什么会买",
       "objection": "可能犹豫的点",
       "language_style": "她们日常说话的方式举例"
     }},
     "dmp_package_id": null
+  }},
+  "audience_content_preference": {{
+    "topics": ["话题1", "话题2", "话题3"],
+    "formats": ["剧情", "口播", "测评"],
+    "styles": ["治愈", "反差"],
+    "hooks": ["钩子模板1", "钩子模板2", "钩子模板3"]
   }},
   "tone_style": {{
     "style": "种草/品牌/促销/测评/温馨故事 之一",
@@ -838,12 +958,18 @@ async def generate_draft(
 
     payload = {
         "product_id": product_id,
+        "sku_id": sku_id,
         "product_name": product_name,
         "title": title or parsed.get("title") or f"{product_name} 草稿",
         "usp": usp_text or "",
         "scenarios": parsed.get("scenarios") or [],
         "audience_profile": parsed.get("audience_profile") or {},
         "tone_style": parsed.get("tone_style") or {},
+        "target_purpose": target_purpose,
+        "usp_explicit": parsed.get("usp_explicit") or [],
+        "usp_implicit": parsed.get("usp_implicit") or [],
+        "usp_unique": parsed.get("usp_unique") or [],
+        "audience_content_preference": parsed.get("audience_content_preference") or {},
         "source_notes": (
             f"AI 生成草稿\n命中知识库：{', '.join(k for k, v in snippets_by_source.items() if v) or '无'}"
         ),
