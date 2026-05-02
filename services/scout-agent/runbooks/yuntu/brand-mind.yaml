@@ -1,0 +1,66 @@
+# 巨量云图 — 品牌心智（监测 + 发现）
+name: 云图-品牌心智
+platform: yuntu
+description: 联想量/联想份额/美誉度/偏爱度/行业排名 → mvp_brand_mind_daily
+tags: [yuntu, daily, brand_mind]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate_monitor
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/image/insight/brand
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_mind_monitor
+    action: screenshot
+    selector: .mind-monitor-wrap, .mind-kpi-cards, .brand-mind-chart
+    save_to: ./snapshots/yuntu_mind_monitor_{date}.png
+
+  - id: navigate_discover
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/image/insight/brand?indicator=2
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_mind_discover
+    action: screenshot
+    selector: .mind-discover-wrap, .preference-chart, .reputation-chart
+    save_to: ./snapshots/yuntu_mind_discover_{date}.png
+
+  - id: extract_mind_metrics
+    action: llm_vision
+    image_from: screenshot_mind_monitor
+    prompt: |
+      图片是巨量云图"品牌心智"监测页面。请提取以下指标，返回严格 JSON：
+      {
+        "brand_assoc_count": <联想量人数, 整数>,
+        "industry_share": <联想份额 0-1, float>,
+        "industry_rank": <行业排名 第N名, 整数>,
+        "industry_ref_value": <行业参考值, 整数>,
+        "dwell": <停留指数, float>,
+        "connection": <联想指数, float>,
+        "increase": <增长指数, float>
+      }
+      联想份额若显示"15%"填0.15。数字去除逗号。不可见字段填 null。
+
+  - id: extract_preference_metrics
+    action: llm_vision
+    image_from: screenshot_mind_discover
+    prompt: |
+      图片是巨量云图"品牌心智"发现页面，展示美誉度和偏爱度。返回严格 JSON：
+      {
+        "reputation": <美誉度 0-1, float>,
+        "preference": <偏爱度 0-1, float>
+      }
+      百分比（如 65.3%）转成 0-1（0.653）。不可见字段填 null。
+
+  - id: persist_brand_mind
+    action: write_brand_mind
+    extra:
+      monitor_from: extract_mind_metrics
+      prefer_from: extract_preference_metrics

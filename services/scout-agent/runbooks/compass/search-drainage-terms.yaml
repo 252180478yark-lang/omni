@@ -1,0 +1,110 @@
+# 罗盘 - 搜索引流词（搜索 → 搜索引流词）
+# P1 每日：词级表 → TOP 词汇总 + TOP1 词详情（投放参考词金矿）
+name: 罗盘-搜索引流词
+platform: douyin_compass
+description: 搜索引流词 TOP 表汇总 → 总词数 / TOP15 UV 累加 / TOP1 词详情 → mvp_daily_metric
+tags: [compass, daily, p1, search]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/search/drainage-terms
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 8000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/search_terms_{date}.png
+
+  - id: extract_terms
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"搜索 → 搜索引流词"页面，展示 TOP 搜索引流词表格。
+      每行包含：搜索词、UV、点击、加购、成交、成交金额、UV 价值。
+      请提取以下汇总数据（不可见填 null；金额单位元；率值用 0-1 小数）：
+      {
+        "search_total_terms":      <表格总词数（看分页/标签）, integer>,
+        "search_top15_uv_sum":     <可见前 15 行 UV 累加, integer>,
+        "search_top15_orders_sum": <可见前 15 行 订单数累加, integer>,
+        "search_top15_gmv_sum":    <可见前 15 行 成交金额累加, float>,
+        "search_top1_term":        "<TOP1 词文本（保留原文）>",
+        "search_top1_uv":          <TOP1 词 UV, integer>,
+        "search_top1_orders":      <TOP1 词订单, integer>,
+        "search_top1_gmv":         <TOP1 词成交金额, float>,
+        "search_top1_uv_value":    <TOP1 词 UV 价值, float>
+      }
+      返回严格 JSON。
+
+  - id: write_total
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_total_terms
+      value_from: extract_terms
+      json_field: search_total_terms
+
+  - id: write_uv_sum
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_top15_uv_sum
+      value_from: extract_terms
+      json_field: search_top15_uv_sum
+
+  - id: write_orders_sum
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_top15_orders_sum
+      value_from: extract_terms
+      json_field: search_top15_orders_sum
+
+  - id: write_gmv_sum
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_top15_gmv_sum
+      value_from: extract_terms
+      json_field: search_top15_gmv_sum
+
+  - id: write_top1_uv
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_top1_uv
+      value_from: extract_terms
+      json_field: search_top1_uv
+
+  - id: write_top1_orders
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_top1_orders
+      value_from: extract_terms
+      json_field: search_top1_orders
+
+  - id: write_top1_gmv
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_top1_gmv
+      value_from: extract_terms
+      json_field: search_top1_gmv
+
+  - id: write_top1_uv_value
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_top1_uv_value
+      value_from: extract_terms
+      json_field: search_top1_uv_value

@@ -1,0 +1,39 @@
+# 罗盘 - 用户偏好-机会总结（人群 → 用户偏好）
+# P1 每周：本店用户在友商/大盘买了什么我没卖 → 选品金矿
+name: 罗盘-用户偏好机会总结
+platform: douyin_compass
+description: 本店用户在友商/大盘的购买行为 → 找未开拓品类机会
+tags: [compass, weekly, p1, audience, opportunity]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/biz-center/business-center/crowd/user-buy
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 10000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/user_buy_{date}.png
+
+  - id: extract_opportunity
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"人群 → 用户偏好"页面，展示本店用户在友商/大盘买了什么品类。
+      请提取以下信息（不可见填 null），返回严格 JSON：
+      {
+        "opportunity_categories": [<前 5 个友商热销品类名数组>],
+        "top_competitors":         [<前 5 个友商品牌名数组>],
+        "total_buyer_overlap":     <本店与友商重叠用户数, integer>,
+        "summary":                 "<一句话核心结论 ≤50字>"
+      }

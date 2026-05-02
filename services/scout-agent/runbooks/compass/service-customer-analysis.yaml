@@ -1,0 +1,63 @@
+# 罗盘 - 客服分析（体验 → 客服分析）
+# P1 每日：会话量 / 平均响应时长 / 不满意率 / 咨询意图 TOP5
+name: 罗盘-客服分析
+platform: douyin_compass
+description: 客服会话量/平均响应时长/不满意率 + 咨询意图 TOP5 LLM 摘要
+tags: [compass, daily, p1, service]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/service/customer-analysis
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 8000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/service_customer_{date}.png
+
+  - id: extract_service
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"体验 → 客服分析"页面。
+      请提取以下指标（不可见填 null；率值用 0-1 小数；时间转秒），返回严格 JSON：
+      {
+        "service_session_count":     <客服会话量, integer>,
+        "service_avg_response_sec":  <平均首次响应时长, 秒, float>,
+        "service_unsatisfied_rate":  <不满意率, 0-1, float>,
+        "service_intents_top5":      [<咨询意图 TOP5 关键词数组>]
+      }
+
+  - id: write_session
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: service_session_count
+      value_from: extract_service
+      json_field: service_session_count
+
+  - id: write_response_time
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: service_avg_response_sec
+      value_from: extract_service
+      json_field: service_avg_response_sec
+
+  - id: write_unsatisfied
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: service_unsatisfied_rate
+      value_from: extract_service
+      json_field: service_unsatisfied_rate

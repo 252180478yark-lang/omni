@@ -1,0 +1,20 @@
+﻿# Runbook G — 品牌心智（云图 每日）
+name: G-品牌心智
+platform: yuntu
+schedule: "0 9 * * *"
+description: 云图首页5A总览 + 品牌心智（联想量/美誉度/偏爱度）→ mvp_brand_mind_daily
+tags: [suite, daily, brand, mind, yuntu]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: run_yuntu_overview
+    action: sub_runbook
+    runbook: yuntu/home-overview
+
+  - id: run_brand_mind
+    action: sub_runbook
+    runbook: yuntu/brand-mind

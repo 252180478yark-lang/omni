@@ -1,0 +1,73 @@
+# 罗盘 - 用户原声（体验 → 用户原声）
+# P1 每日：差评率 / 投诉率 + LLM 提取差评关键词 TOP3
+name: 罗盘-用户原声
+platform: douyin_compass
+description: 差评率/投诉率 + 差评关键词 LLM 摘要 → SKU 改进信号
+tags: [compass, daily, p1, reviews, voice]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/service/user-sound
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 8000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/user_sound_{date}.png
+
+  - id: extract_voice
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"体验 → 用户原声"页面（差评/投诉/标签云/评价指标）。
+      请提取以下指标（不可见填 null；率值用 0-1 小数），返回严格 JSON：
+      {
+        "negative_review_rate":   <差评率, 0-1, float>,
+        "complaint_rate":         <投诉率, 0-1, float>,
+        "review_count":           <评价总数, integer>,
+        "negative_review_count":  <差评总数, integer>,
+        "top_negative_keywords":  [<差评 TOP5 关键词数组>],
+        "summary":                "<一句话差评核心原因 ≤30字>"
+      }
+
+  - id: write_neg_rate
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: negative_review_rate
+      value_from: extract_voice
+      json_field: negative_review_rate
+
+  - id: write_complaint_rate
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: complaint_rate
+      value_from: extract_voice
+      json_field: complaint_rate
+
+  - id: write_review_count
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: review_count
+      value_from: extract_voice
+      json_field: review_count
+
+  - id: write_neg_count
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: negative_review_count
+      value_from: extract_voice
+      json_field: negative_review_count

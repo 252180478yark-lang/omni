@@ -1,0 +1,82 @@
+# 罗盘 - 全店成交分析（交易 → 全店成交分析）
+# P0 每日：用户支付金额（gmv_paid）+ 成交金额/订单/人数/客单价
+# 改造为 vision 模式：罗盘没有"下载明细"按钮，截图后用 LLM 提取
+name: 罗盘-全店成交分析
+platform: douyin_compass
+description: 用户支付金额/成交金额/成交订单/成交人数/客单价 → mvp_daily_metric
+tags: [compass, daily, p0, transaction]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/business-part
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/business_part_{date}.png
+
+  - id: extract_metrics
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"交易 → 全店成交分析"页面，展示昨日成交概况。
+      请提取以下指标（金额单位：元；百分比转 0-1 小数；不可见或缺失填 null），返回严格 JSON：
+      {
+        "gmv":              <成交金额, float>,
+        "gmv_paid":         <用户支付金额, float>,
+        "orders":           <成交订单数, integer>,
+        "buyers":           <成交人数, integer>,
+        "customer_price":   <客单价, float>,
+        "gmv_yoy":          <成交金额较上 % 转 0-1, float>,
+        "gmv_paid_yoy":     <用户支付金额较上 %, float>,
+        "orders_yoy":       <成交订单数较上 %, float>,
+        "buyers_yoy":       <成交人数较上 %, float>
+      }
+      "30.44%" 写 0.3044；"-65.93%" 写 -0.6593。
+
+  - id: write_gmv
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: gmv
+      value_from: extract_metrics
+      json_field: gmv
+
+  - id: write_gmv_paid
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: gmv_paid
+      value_from: extract_metrics
+      json_field: gmv_paid
+
+  - id: write_orders
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: orders
+      value_from: extract_metrics
+      json_field: orders
+
+  - id: write_buyers
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: buyers
+      value_from: extract_metrics
+      json_field: buyers
+
+  - id: write_customer_price
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: customer_price
+      value_from: extract_metrics
+      json_field: customer_price

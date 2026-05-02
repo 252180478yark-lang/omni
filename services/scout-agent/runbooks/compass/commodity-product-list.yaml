@@ -1,0 +1,53 @@
+# 罗盘 - 商品列表（商品 → 商品列表）
+# P0 每日：全店 SKU 看板（按 douyin_product_id 抓 gmv_paid/uv/转化率到 SKU 级）
+# 改造为 vision 模式：罗盘没有"下载明细"按钮
+name: 罗盘-商品列表
+platform: douyin_compass
+description: 全店 SKU 列表 → 每个 SKU 抓 gmv_paid / uv / orders / conversion_rate → mvp_daily_metric
+tags: [compass, daily, p0, product_list]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/commodity/product-list
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 8000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/product_list_{date}.png
+
+  - id: extract_skus
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"商品 → 商品列表"页面，展示全店 SKU 表格。
+      每行包含：商品名（中文）、商品 ID（18-19 位纯数字）、用户支付金额、UV、订单数、转化率等。
+      请按行提取，最多前 20 行；不可见或缺失的字段填 null。返回严格 JSON：
+      {
+        "skus": [
+          {
+            "douyin_product_id": "<纯数字 ID, 18-19 位>",
+            "gmv_paid":          <用户支付金额, float>,
+            "uv":                <访客数 UV, integer>,
+            "orders":            <订单数, integer>,
+            "conversion_rate":   <转化率 0-1 小数, float>
+          }
+        ]
+      }
+      只提取数字 ID 在 16 位以上的真实商品行；汇总行/统计行/合计行跳过。
+      金额单位元；率用 0-1 小数。
+
+  - id: persist_per_sku_metrics
+    action: write_per_sku_metrics
+    extra:
+      data_from: extract_skus

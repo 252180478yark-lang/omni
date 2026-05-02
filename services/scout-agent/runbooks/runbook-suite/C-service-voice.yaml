@@ -1,0 +1,20 @@
+# Runbook C — 客服与原声（每日）
+name: C-客服与原声
+platform: douyin_compass
+schedule: "30 9 * * *"
+description: "客服会话量/响应时长/不满意率 + 差评关键词LLM摘要"
+tags: [suite, daily, p1, service, voice]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop/home
+  on_expired: notify_dispatcher
+
+steps:
+  - id: run_service_customer
+    action: sub_runbook
+    runbook: compass/service-customer-analysis
+
+  - id: run_user_sound
+    action: sub_runbook
+    runbook: compass/service-user-sound

@@ -1,0 +1,71 @@
+# 罗盘 - 物流时效（体验 → 物流分析）
+# P0 每日：揽收/干线/末端时效达成率 + 超时单数
+name: 罗盘-物流时效
+platform: douyin_compass
+description: 揽收/干线/末端达成率 + 超时单数 → mvp_daily_metric
+tags: [compass, daily, p0, logistics]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/logistics/diagnosis-index
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 8000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/logistics_{date}.png
+
+  - id: extract_rates
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"物流时效诊断"页面，显示揽收/干线/末端三段时效。
+      请提取以下指标（百分比转 0-1 小数；不可见填 null），返回严格 JSON：
+      {
+        "logistics_pickup_rate":   <揽收时效达成率, 0-1>,
+        "logistics_trunk_rate":    <干线时效达成率, 0-1>,
+        "logistics_lastmile_rate": <末端时效达成率, 0-1>,
+        "logistics_overdue_orders":<超时单数, integer>
+      }
+
+  - id: write_pickup
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: logistics_pickup_rate
+      value_from: extract_rates
+      json_field: logistics_pickup_rate
+
+  - id: write_trunk
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: logistics_trunk_rate
+      value_from: extract_rates
+      json_field: logistics_trunk_rate
+
+  - id: write_lastmile
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: logistics_lastmile_rate
+      value_from: extract_rates
+      json_field: logistics_lastmile_rate
+
+  - id: write_overdue_orders
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: logistics_overdue_orders
+      value_from: extract_rates
+      json_field: logistics_overdue_orders

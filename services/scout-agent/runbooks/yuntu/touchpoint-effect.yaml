@@ -1,0 +1,53 @@
+# 巨量云图 — 营销触点效能
+name: 云图-营销触点
+platform: yuntu
+description: 投放资源分布(通投/品牌广告/达人营销占比) + 触点效能 → mvp_daily_metric
+tags: [yuntu, weekly, touchpoint, marketing]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/evaluation_brand/history/distribution
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_touchpoint
+    action: screenshot
+    selector: .touchpoint-wrap, .channel-distribution, .touchpoint-effect-chart
+    save_to: ./snapshots/yuntu_touchpoint_{date}.png
+
+  - id: extract_touchpoint_metrics
+    action: llm_vision
+    image_from: screenshot_touchpoint
+    prompt: |
+      图片是巨量云图营销触点/决策页面，展示投放资源占比和触点效能分析。返回严格 JSON：
+      {
+        "general_placement_pct": <通投占比 0-1, float>,
+        "brand_ad_pct": <品牌广告占比 0-1, float>,
+        "kol_marketing_pct": <达人营销占比 0-1, float>,
+        "top_touchpoint_scene": <效能最高触点场景名, string>,
+        "top_touchpoint_ctr": <最高触点CTR 0-1, float>,
+        "touchpoint_roi": <整体触点ROI, float>
+      }
+      占比之和应为 1。百分比转 0-1。不可见字段填 null。
+
+  - id: write_kol_pct
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: yuntu_kol_marketing_pct
+      value_from: extract_touchpoint_metrics
+      json_field: kol_marketing_pct
+
+  - id: write_brand_ad_pct
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: yuntu_brand_ad_pct
+      value_from: extract_touchpoint_metrics
+      json_field: brand_ad_pct

@@ -1,0 +1,57 @@
+# 巨量云图 — 商品级 SPU 5A 资产
+# 由 foreach_focus_skus 调用，每次执行注入 _CURRENT_DOUYIN_PRODUCT_ID / _CURRENT_SKU_ID
+name: 云图-SPU5A资产
+platform: yuntu
+description: 重点池单个 SKU 商品级 5A 关系资产 → mvp_5a_asset_daily(sku_id 非空)
+tags: [yuntu, weekly, 5a, spu, per_sku]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate_spu_5a
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/assets/crowd/distribution?spuId={_CURRENT_DOUYIN_PRODUCT_ID}
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_spu_5a
+    action: screenshot
+    selector: .crowd-distribution-wrap, .asset-card-list, .five-a-cards
+    save_to: ./snapshots/yuntu_spu5a_{_CURRENT_SKU_ID}_{date}.png
+
+  - id: extract_spu_5a
+    action: llm_vision
+    image_from: screenshot_spu_5a
+    prompt: |
+      图片是巨量云图"5A关系资产"商品（SPU）级页面，显示该商品的 O/A1/A2/A3/A4/A5 共6张大卡。
+      每张大卡显示：本品人群规模、行业均值、超越百分位（如"超过行业X%"）。
+      请提取所有数据，返回严格 JSON：
+      {
+        "o_count": <O机会人群数, 整数>,
+        "a1_aware": <A1认知人群数, 整数>,
+        "a2_appeal": <A2吸引人群数, 整数>,
+        "a3_ask": <A3问询人群数, 整数>,
+        "a4_act": <A4行动人群数, 整数>,
+        "a5_advocate": <A5拥护人群数, 整数>,
+        "total_5a": <A1-A5合计, 整数>,
+        "o_industry_avg": <O行业均值, 整数>,
+        "a1_industry_avg": <A1行业均值, 整数>,
+        "a2_industry_avg": <A2行业均值, 整数>,
+        "a3_industry_avg": <A3行业均值, 整数>,
+        "a4_industry_avg": <A4行业均值, 整数>,
+        "a5_industry_avg": <A5行业均值, 整数>,
+        "a1_outperform_pct": <A1超越百分位 0-1, float>,
+        "a2_outperform_pct": <A2超越百分位 0-1, float>,
+        "a3_outperform_pct": <A3超越百分位 0-1, float>,
+        "a4_outperform_pct": <A4超越百分位 0-1, float>,
+        "a5_outperform_pct": <A5超越百分位 0-1, float>
+      }
+      数字去除逗号和单位（"14.7万"写 147000）。"超过行业82%"填0.82。不可见字段填 null。
+
+  - id: persist_spu_5a
+    action: write_5a_asset
+    extra:
+      data_from: extract_spu_5a

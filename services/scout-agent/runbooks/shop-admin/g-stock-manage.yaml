@@ -1,0 +1,34 @@
+﻿# 鎶栧簵鍚庡彴 鈥?搴撳瓨鍙樻洿璁板綍
+name: 鎶栧簵鍚庡彴-搴撳瓨鍙樻洿
+platform: douyin_shop_admin
+description: 涓嬭浇搴撳瓨鍙樻洿璁板綍CSV锛屽啓鍏?mvp_stock_change_log
+tags: [shop_admin, daily, stock]
+
+session:
+  storage_state: ./sessions/douyin_shop_admin/storage_state.json
+  recheck_url: https://fxg.jinritemai.com/
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/g-stock-manage
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: select_date_range
+    action: click_then_select
+    selector: .date-picker-trigger, [data-testid="date-range"]
+    value: yesterday
+
+  - id: download_stock_log
+    action: click_and_download
+    selector: .export-btn, [data-testid="export"], button:has-text("瀵煎嚭")
+    save_to: ./downloads/stock_change_{date}.csv
+    timeout: 60000
+
+  - id: parse_stock_csv
+    action: parse_csv
+    file_from: download_stock_log
+    schema_name: shop_admin_stock
+    write_to: mvp_stock_change_log

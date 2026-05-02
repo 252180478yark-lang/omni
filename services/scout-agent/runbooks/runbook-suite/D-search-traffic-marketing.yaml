@@ -1,0 +1,20 @@
+# Runbook D — 搜索/流量/营销（每日）
+name: D-搜索流量营销
+platform: douyin_compass
+schedule: "0 10 * * *"
+description: "搜索引流词表 + 用户偏好机会总结（每周五才跑后者）"
+tags: [suite, daily, p1, search, traffic]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop/home
+  on_expired: notify_dispatcher
+
+steps:
+  - id: run_search_terms
+    action: sub_runbook
+    runbook: compass/search-drainage-terms
+
+  - id: run_user_opportunity
+    action: sub_runbook
+    runbook: compass/biz-center-crowd-user-buy

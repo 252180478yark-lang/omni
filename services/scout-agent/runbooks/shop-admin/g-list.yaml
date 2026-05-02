@@ -1,0 +1,14 @@
+# 抖店后台商品列表 — SKU主数据同步
+name: 抖店后台-商品列表同步
+platform: douyin_shop_admin
+description: 全量 SKU 主数据同步到 mvp_sku（sync_skus action 调用 sku_bootstrapper）
+tags: [shop_admin, sku, bootstrap]
+
+session:
+  storage_state: ./sessions/douyin_shop_admin/storage_state.json
+  recheck_url: https://fxg.jinritemai.com/
+  on_expired: notify_dispatcher
+
+steps:
+  - id: sync_skus
+    action: sync_skus

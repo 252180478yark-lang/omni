@@ -1,0 +1,40 @@
+﻿# Runbook H — 品牌资产+触点效能（云图 每周三）
+name: H-品牌资产与触点效能
+platform: yuntu
+schedule: "0 10 * * 3"
+description: 5A资产6卡 + 5A流转6场景 + GMV归因 + 营销触点效能 + 货品概览 + 品牌搜索SOV + 重点池SPU级5A
+tags: [suite, weekly, brand, 5a, touchpoint, yuntu]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: run_5a_asset
+    action: sub_runbook
+    runbook: yuntu/5a-asset
+
+  - id: run_5a_flow
+    action: sub_runbook
+    runbook: yuntu/5a-flow
+
+  - id: run_gta_overview
+    action: sub_runbook
+    runbook: yuntu/gta-overview
+
+  - id: run_touchpoint
+    action: sub_runbook
+    runbook: yuntu/touchpoint-effect
+
+  - id: run_product_overview
+    action: sub_runbook
+    runbook: yuntu/product-overview
+
+  - id: run_search_overview
+    action: sub_runbook
+    runbook: yuntu/search-overview
+
+  - id: run_spu_5a_foreach
+    action: foreach_focus_skus
+    runbook: yuntu/spu-5a

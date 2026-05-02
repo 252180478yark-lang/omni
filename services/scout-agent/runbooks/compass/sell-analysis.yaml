@@ -1,0 +1,74 @@
+# 罗盘 - 营销工具分析（/shop/sell-analysis 实际落在"营销工具分析"页）
+# P0 每日：营销成交金额 / 订单 / 人数 / 曝光 — 反映优惠券/单品直降效果
+name: 罗盘-营销工具分析
+platform: douyin_compass
+description: 营销维度成交（金额/订单/人数/曝光）+ 同行基准对比 → mvp_daily_metric
+tags: [compass, daily, p0, sell, marketing]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/sell-analysis
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 10000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/sell_analysis_{date}.png
+
+  - id: extract_marketing
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"交易 → 营销工具分析"页面，展示昨日营销维度成交数据。
+      请提取以下指标（金额单位元；率值用 0-1 小数；不可见填 null），返回严格 JSON：
+      {
+        "marketing_gmv":         <营销成交金额, float>,
+        "marketing_orders":      <营销成交订单量, integer>,
+        "marketing_buyers":      <营销成交人数, integer>,
+        "marketing_exposure":    <营销商品曝光人数, integer>,
+        "marketing_gmv_yoy":     <营销成交金额较上周期 0-1, float>,
+        "marketing_orders_yoy":  <营销订单较上周期 0-1, float>,
+        "marketing_buyers_yoy":  <营销人数较上周期 0-1, float>
+      }
+
+  - id: write_marketing_gmv
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: marketing_gmv
+      value_from: extract_marketing
+      json_field: marketing_gmv
+
+  - id: write_marketing_orders
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: marketing_orders
+      value_from: extract_marketing
+      json_field: marketing_orders
+
+  - id: write_marketing_buyers
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: marketing_buyers
+      value_from: extract_marketing
+      json_field: marketing_buyers
+
+  - id: write_marketing_exposure
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: marketing_exposure
+      value_from: extract_marketing
+      json_field: marketing_exposure

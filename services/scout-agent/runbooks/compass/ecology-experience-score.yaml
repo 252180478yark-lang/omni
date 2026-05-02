@@ -1,0 +1,80 @@
+# 罗盘 - 商家体验分（体验 → 商家体验分）
+# P0 每日：体验总分 + 商品/物流/服务/履约 4 子维
+name: 罗盘-商家体验分
+platform: douyin_compass
+description: 体验总分 + 商品/物流/服务/履约 4 子维 → mvp_daily_metric
+tags: [compass, daily, p0, experience]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/ecology/experience-score
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 8000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/experience_score_{date}.png
+
+  - id: extract_score
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"商家体验分"页面，展示店铺整体体验分及 4 个子维度。
+      请提取以下分值（数值；不可见填 null），返回严格 JSON：
+      {
+        "experience_score":     <体验总分（满分 5 分）, float>,
+        "experience_product":   <商品体验分, float>,
+        "experience_logistics": <物流体验分, float>,
+        "experience_service":   <服务体验分, float>,
+        "experience_fulfill":   <履约体验分, float>
+      }
+
+  - id: write_score
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: experience_score
+      value_from: extract_score
+      json_field: experience_score
+
+  - id: write_product
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: experience_product
+      value_from: extract_score
+      json_field: experience_product
+
+  - id: write_logistics
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: experience_logistics
+      value_from: extract_score
+      json_field: experience_logistics
+
+  - id: write_service
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: experience_service
+      value_from: extract_score
+      json_field: experience_service
+
+  - id: write_fulfill
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: experience_fulfill
+      value_from: extract_score
+      json_field: experience_fulfill

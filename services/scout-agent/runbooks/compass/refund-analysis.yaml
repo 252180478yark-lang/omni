@@ -1,0 +1,78 @@
+# 罗盘 - 退款分析（交易 → 全店退款分析）
+# P0 每日：退款金额 / 退款率 / 投诉率
+name: 罗盘-退款分析
+platform: douyin_compass
+description: 退款金额/退款率/品质退款率 + 原因分布 → mvp_daily_metric
+tags: [compass, daily, p0, refund]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/refund-analysis
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/refund_{date}.png
+
+  - id: extract_refund
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘"交易 → 全店退款分析"页面，展示昨日退款数据。
+      请提取以下指标（金额单位元；率值用 0-1 小数；不可见填 null），返回严格 JSON：
+      {
+        "refund_amount":          <退款金额（全部）, float>,
+        "refund_rate":            <退款率, 0-1>,
+        "refund_orders":          <退款订单数, integer>,
+        "pre_ship_refund_amount": <发货前退款金额, float>,
+        "pre_ship_refund_rate":   <发货前退款率, 0-1>,
+        "post_ship_refund_amount":<发货后退款金额, float>,
+        "post_ship_refund_rate":  <发货后退款率, 0-1>
+      }
+
+  - id: write_refund_amount
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: refund_amount
+      value_from: extract_refund
+      json_field: refund_amount
+
+  - id: write_refund_rate
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: refund_rate
+      value_from: extract_refund
+      json_field: refund_rate
+
+  - id: write_refund_orders
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: refund_orders
+      value_from: extract_refund
+      json_field: refund_orders
+
+  - id: write_pre_ship_amount
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: pre_ship_refund_amount
+      value_from: extract_refund
+      json_field: pre_ship_refund_amount
+
+  - id: write_pre_ship_rate
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: pre_ship_refund_rate
+      value_from: extract_refund
+      json_field: pre_ship_refund_rate

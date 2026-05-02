@@ -1,0 +1,47 @@
+# 巨量云图 — 5A 关系流转（6 大场景）
+name: 云图-5A流转
+platform: yuntu
+description: 拉新/蓄水/种草/直播转化/种草转化/复购 6 大场景流转 → mvp_5a_flow_daily
+tags: [yuntu, weekly, 5a, flow]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/assets/crowd/flow
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_flow_overview
+    action: screenshot
+    selector: .crowd-flow-wrap, .flow-scene-list, .sankey-chart
+    save_to: ./snapshots/yuntu_5a_flow_{date}.png
+
+  - id: extract_flow_data
+    action: llm_vision
+    image_from: screenshot_flow_overview
+    prompt: |
+      图片是巨量云图"5A关系流转"页面，展示 6 大运营场景的流转人数和行业对比。
+      6 大场景：拉新(acquire)、蓄水(nurture)、种草(seed)、直播转化(live_convert)、
+               种草转化(seed_convert)、复购(repurchase)。
+      请提取每个场景的流转人数和行业均值，返回严格 JSON：
+      {
+        "scenes": {
+          "acquire":      {"flow_count": <整数>, "industry_avg": <整数>, "outperform_pct": <0-1 float>},
+          "nurture":      {"flow_count": <整数>, "industry_avg": <整数>, "outperform_pct": <0-1 float>},
+          "seed":         {"flow_count": <整数>, "industry_avg": <整数>, "outperform_pct": <0-1 float>},
+          "live_convert": {"flow_count": <整数>, "industry_avg": <整数>, "outperform_pct": <0-1 float>},
+          "seed_convert": {"flow_count": <整数>, "industry_avg": <整数>, "outperform_pct": <0-1 float>},
+          "repurchase":   {"flow_count": <整数>, "industry_avg": <整数>, "outperform_pct": <0-1 float>}
+        }
+      }
+      数字去除逗号和单位（"14.7万" 写 147000）。"超过行业82%" 填 0.82。不可见字段填 null。
+
+  - id: persist_5a_flow
+    action: write_5a_flow
+    extra:
+      data_from: extract_flow_data

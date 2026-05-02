@@ -1,0 +1,69 @@
+﻿# 鎶栧簵鍚庡彴 鈥?钀ラ攢娲诲姩 + 浼樻儬鍒?+ 鍗曞搧鐩撮檷
+name: 鎶栧簵鍚庡彴-钀ラ攢娲诲姩
+platform: douyin_shop_admin
+description: 鎶撳彇钀ラ攢娲诲姩姒傝锛堣繘琛屼腑娲诲姩鏁?浼樻儬鍒搁鍙栨暟/鍗曞搧鐩撮檷GMV璐＄尞锛?
+tags: [shop_admin, weekly, marketing]
+
+session:
+  storage_state: ./sessions/douyin_shop_admin/storage_state.json
+  recheck_url: https://fxg.jinritemai.com/
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate_activity
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/activity-center
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_activity_list
+    action: screenshot
+    selector: .activity-list, .marketing-center, .campaign-list
+    save_to: ./snapshots/marketing_activity_{date}.png
+
+  - id: navigate_coupon
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/coupon-manage
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_coupon_stats
+    action: screenshot
+    selector: .coupon-stats, .coupon-overview, .coupon-data
+    save_to: ./snapshots/coupon_stats_{date}.png
+
+  - id: extract_activity_metrics
+    action: llm_vision
+    image_from: screenshot_activity_list
+    prompt: |
+      鍥剧墖鏄姈闊冲皬搴楄惀閿€娲诲姩鍒楄〃銆傝缁熻浠ヤ笅淇℃伅锛岃繑鍥濲SON锛?      {
+        "active_campaign_count": <杩涜涓椿鍔ㄦ暟, integer>,
+        "upcoming_campaign_count": <鏈紑濮嬫椿鍔ㄦ暟, integer>,
+        "ended_campaign_count_7d": <杩?澶╃粨鏉熸椿鍔ㄦ暟, integer>
+      }
+      鑻ユ棤娉曡瘑鍒垯濉?0銆?
+  - id: extract_coupon_metrics
+    action: llm_vision
+    image_from: screenshot_coupon_stats
+    prompt: |
+      鍥剧墖鏄姈闊冲皬搴椾紭鎯犲埜绠＄悊椤甸潰銆傝鎻愬彇浠ヤ笅鎸囨爣锛岃繑鍥濲SON锛?      {
+        "coupon_claim_count_7d": <杩?澶╀紭鎯犲埜棰嗗彇鏁? integer>,
+        "coupon_use_rate": <浼樻儬鍒镐娇鐢ㄧ巼, float 0-1>,
+        "active_coupon_count": <鏈夋晥浼樻儬鍒告暟閲? integer>
+      }
+      鑻ユ棤娉曡瘑鍒垯濉?null銆?
+  - id: write_active_campaigns
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_active_campaign_count
+      value_from: extract_activity_metrics
+      json_field: active_campaign_count
+
+  - id: write_coupon_claims
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_coupon_claim_7d
+      value_from: extract_coupon_metrics
+      json_field: coupon_claim_count_7d

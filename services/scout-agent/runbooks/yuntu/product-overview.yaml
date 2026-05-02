@@ -1,0 +1,163 @@
+# 巨量云图 — 货品概览（产品结构 + 带货矩阵 + 流量来源）
+name: 云图-货品概览
+platform: yuntu
+description: 行业排名 + 货品结构(新品/主推/常规) + 带货矩阵(企业号/达人) + 流量来源(泛商城/信息流) → mvp_daily_metric
+tags: [yuntu, weekly, product, structure]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate_overview
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/product/productOverview
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_overview
+    action: screenshot
+    selector: .product-overview-wrap, .rank-card, .overview-metric-cards
+    save_to: ./snapshots/yuntu_product_overview_{date}.png
+
+  - id: navigate_structure
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/product/productOverview/productStructure
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_structure
+    action: screenshot
+    selector: .product-structure-wrap, .structure-chart, .structure-table
+    save_to: ./snapshots/yuntu_product_structure_{date}.png
+
+  - id: navigate_sell_matrix
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/product/productOverview/sellMatrix
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_matrix
+    action: screenshot
+    selector: .sell-matrix-wrap, .account-distribution-chart
+    save_to: ./snapshots/yuntu_product_matrix_{date}.png
+
+  - id: navigate_traffic
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/product/productOverview/trafficSources
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_traffic
+    action: screenshot
+    selector: .traffic-sources-wrap, .source-breakdown-chart
+    save_to: ./snapshots/yuntu_product_traffic_{date}.png
+
+  - id: extract_product_metrics
+    action: llm_vision
+    image_from: screenshot_overview
+    prompt: |
+      图片是巨量云图"货品"→"产品概览"页面，展示商品在行业的排名和综合表现。返回严格 JSON：
+      {
+        "product_industry_rank": <商品行业排名 第N名, 整数>
+      }
+      数字不可见填 null。
+
+  - id: extract_structure_metrics
+    action: llm_vision
+    image_from: screenshot_structure
+    prompt: |
+      图片是巨量云图"货品结构"页面，显示新品/主推品/常规品三类商品的销售额分布。返回严格 JSON：
+      {
+        "product_new_sales": <新品销售额 元, float>,
+        "product_main_sales": <主推品销售额 元, float>,
+        "product_regular_sales": <常规品销售额 元, float>
+      }
+      金额单位元，"万元"需乘 10000。不可见字段填 null。
+
+  - id: extract_matrix_metrics
+    action: llm_vision
+    image_from: screenshot_matrix
+    prompt: |
+      图片是巨量云图"带货矩阵"页面，展示企业号自播和达人带货的销售额对比。返回严格 JSON：
+      {
+        "product_brandsale_account": <企业号带货销售额 元, float>,
+        "product_talent_account": <达人带货销售额 元, float>
+      }
+      金额单位元。不可见字段填 null。
+
+  - id: extract_traffic_metrics
+    action: llm_vision
+    image_from: screenshot_traffic
+    prompt: |
+      图片是巨量云图"流量来源"页面，展示泛商城和信息流两大来源的销售额。返回严格 JSON：
+      {
+        "product_general_mall": <泛商城销售额 元, float>,
+        "product_information_flow": <信息流销售额 元, float>
+      }
+      金额单位元。不可见字段填 null。
+
+  - id: write_industry_rank
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: product_industry_rank
+      value_from: extract_product_metrics
+      json_field: product_industry_rank
+
+  - id: write_new_sales
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: product_new_sales
+      value_from: extract_structure_metrics
+      json_field: product_new_sales
+
+  - id: write_main_sales
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: product_main_sales
+      value_from: extract_structure_metrics
+      json_field: product_main_sales
+
+  - id: write_regular_sales
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: product_regular_sales
+      value_from: extract_structure_metrics
+      json_field: product_regular_sales
+
+  - id: write_brandsale_account
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: product_brandsale_account
+      value_from: extract_matrix_metrics
+      json_field: product_brandsale_account
+
+  - id: write_talent_account
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: product_talent_account
+      value_from: extract_matrix_metrics
+      json_field: product_talent_account
+
+  - id: write_general_mall
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: product_general_mall
+      value_from: extract_traffic_metrics
+      json_field: product_general_mall
+
+  - id: write_information_flow
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: product_information_flow
+      value_from: extract_traffic_metrics
+      json_field: product_information_flow

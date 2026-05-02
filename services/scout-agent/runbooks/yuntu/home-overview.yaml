@@ -1,0 +1,71 @@
+# 巨量云图 — 首页总览
+name: 云图-首页总览
+platform: yuntu
+description: 5A总资产 + 月活会员金额 + 心智3指标(停留/联想/增长) → mvp_daily_metric
+tags: [yuntu, daily, brand_mind, 5a]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/home/overview
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_overview
+    action: screenshot
+    selector: .brand-overview-wrap, .home-kpi-cards, .mind-ecg-chart
+    save_to: ./snapshots/yuntu_overview_{date}.png
+
+  - id: extract_overview_metrics
+    action: llm_vision
+    image_from: screenshot_overview
+    prompt: |
+      图片是巨量云图首页总览，展示品牌5A心智数据。请提取以下指标，返回严格 JSON：
+      {
+        "total_5a_asset": <5A总资产人数, 整数>,
+        "monthly_active_member_amount": <月活会员金额 元, float>,
+        "mind_dwell": <停留指数, float>,
+        "mind_connection": <联想指数, float>,
+        "mind_increase": <增长指数, float>,
+        "brand_assoc_count": <联想量人数, 整数>,
+        "industry_share": <联想份额 0-1, float>,
+        "industry_rank": <行业排名 第N名, 整数>
+      }
+      数字去除逗号和单位。不可见字段填 null。
+
+  - id: write_total_5a
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: yuntu_total_5a_asset
+      value_from: extract_overview_metrics
+      json_field: total_5a_asset
+
+  - id: write_mind_dwell
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: yuntu_mind_dwell
+      value_from: extract_overview_metrics
+      json_field: mind_dwell
+
+  - id: write_mind_connection
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: yuntu_mind_connection
+      value_from: extract_overview_metrics
+      json_field: mind_connection
+
+  - id: write_mind_increase
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: yuntu_mind_increase
+      value_from: extract_overview_metrics
+      json_field: mind_increase

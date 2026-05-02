@@ -1,0 +1,70 @@
+﻿# 鎶栧簵鍚庡彴 鈥?璇勪环绠＄悊锛? Tab锛?
+name: 鎶栧簵鍚庡彴-璇勪环绠＄悊
+platform: douyin_shop_admin
+description: 鎴浘4涓瘎浠稵ab锛堝ソ璇?涓瘎/宸瘎/寰呭洖璇勶級锛孡LM 鎻愬彇璁℃暟 + 宸瘎鍏抽敭璇?
+tags: [shop_admin, daily, review, voice]
+
+session:
+  storage_state: ./sessions/douyin_shop_admin/storage_state.json
+  recheck_url: https://fxg.jinritemai.com/
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/maftersale-comment
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_all_tabs
+    action: screenshot
+    selector: .comment-tabs, .review-tab-list, .comment-list-wrap
+    save_to: ./snapshots/comment_tabs_{date}.png
+
+  - id: click_bad_review_tab
+    action: click_then_select
+    selector: .comment-tab, [role="tab"]
+    value: bad_review
+
+  - id: screenshot_bad_reviews
+    action: screenshot
+    selector: .comment-list, .review-list
+    save_to: ./snapshots/bad_reviews_{date}.png
+
+  - id: extract_review_counts
+    action: llm_vision
+    image_from: screenshot_all_tabs
+    prompt: |
+      鍥剧墖鏄姈闊冲皬搴楄瘎浠风鐞嗛〉闈㈢殑Tab鏍忔垨姒傝銆傝鎻愬彇浠ヤ笅鏁伴噺锛岃繑鍥濲SON锛?      {
+        "good_review_count": <濂借瘎鏁? integer>,
+        "neutral_review_count": <涓瘎鏁? integer>,
+        "bad_review_count": <宸瘎鏁? integer>,
+        "pending_reply_count": <寰呭洖璇勬暟, integer>
+      }
+      鑻ユ棤娉曡瘑鍒煇椤瑰垯濉?0銆?
+  - id: extract_bad_review_keywords
+    action: llm_vision
+    image_from: screenshot_bad_reviews
+    prompt: |
+      鍥剧墖鏄姈闊冲皬搴楀樊璇勫垪琛ㄣ€傝鎻愬彇宸瘎涓渶甯歌鐨勯棶棰樺叧閿瘝锛堟渶澶?0涓級锛?      浠ュ強姣忔潯宸瘎鐨勫晢鍝佸悕锛堣嫢鍙锛夛紝杩斿洖JSON锛?      {
+        "top_keywords": ["鍏抽敭璇?", "鍏抽敭璇?", ...],
+        "sample_reviews": [
+          {"product": "鍟嗗搧鍚?, "issue": "绠€鐭棶棰樻弿杩?}
+        ]
+      }
+
+  - id: write_bad_review_count
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_bad_review_count
+      value_from: extract_review_counts
+      json_field: bad_review_count
+
+  - id: write_pending_reply_count
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_pending_reply_count
+      value_from: extract_review_counts
+      json_field: pending_reply_count

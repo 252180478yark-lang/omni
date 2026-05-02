@@ -1,0 +1,69 @@
+﻿# 鎶栧簵鍚庡彴 鈥?鐗╂祦璇婃柇锛? Tab锛?
+name: 鎶栧簵鍚庡彴-鐗╂祦璇婃柇
+platform: douyin_shop_admin
+description: 鎶撳彇鐗╂祦璇婃柇3涓猅ab锛氳秴鏃堕璀?寮傚父鍖呰９/閫€璐х墿娴侊紝鍐欏叆 mvp_daily_metric
+tags: [shop_admin, daily, logistics]
+
+session:
+  storage_state: ./sessions/douyin_shop_admin/storage_state.json
+  recheck_url: https://fxg.jinritemai.com/
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/logistics-diagnosis
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_tab_overtime
+    action: screenshot
+    selector: .logistics-diagnosis-wrap, .timeout-warn-tab, .logistics-tabs
+    save_to: ./snapshots/logistics_overtime_{date}.png
+
+  - id: click_abnormal_tab
+    action: click_then_select
+    selector: .logistics-tab, [role="tab"]
+    value: abnormal
+
+  - id: screenshot_tab_abnormal
+    action: screenshot
+    selector: .abnormal-package-list, .logistics-content
+    save_to: ./snapshots/logistics_abnormal_{date}.png
+
+  - id: click_return_tab
+    action: click_then_select
+    selector: .logistics-tab, [role="tab"]
+    value: return
+
+  - id: screenshot_tab_return
+    action: screenshot
+    selector: .return-logistics-list, .logistics-content
+    save_to: ./snapshots/logistics_return_{date}.png
+
+  - id: extract_logistics_metrics
+    action: llm_vision
+    image_from: screenshot_tab_overtime
+    prompt: |
+      鍥剧墖鏄姈闊冲皬搴楃墿娴佽瘖鏂〉闈€傝鎻愬彇浠ヤ笅鎸囨爣锛岃繑鍥濲SON锛?      {
+        "overtime_warning_count": <瓒呮椂棰勮鍗曟暟, integer>,
+        "abnormal_package_count": <寮傚父鍖呰９鏁? integer>,
+        "return_logistics_count": <閫€璐х墿娴佸鐞嗕腑鏁? integer>,
+        "avg_delivery_hours": <骞冲潎鍙戣揣鏃堕暱锛堝皬鏃讹級, float or null>
+      }
+      鑻ユ棤娉曡瘑鍒煇椤瑰垯濉?0銆?
+  - id: write_overtime_count
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_overtime_warning_count
+      value_from: extract_logistics_metrics
+      json_field: overtime_warning_count
+
+  - id: write_abnormal_count
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_abnormal_package_count
+      value_from: extract_logistics_metrics
+      json_field: abnormal_package_count

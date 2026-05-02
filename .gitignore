@@ -49,6 +49,9 @@ __pycache__/
 # Dev logs
 .dev-logs/
 
+# Local backups
+backups/
+
 # Large binary files
 *.mp4
 *.db-shm
@@ -71,3 +74,22 @@ image_analysis_*.json
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# 调研截图收件箱（临时）
+docs/路径A-抖店MVP/screenshots/*.png
+docs/路径A-抖店MVP/screenshots/*.jpg
+docs/路径A-抖店MVP/screenshots/*.jpeg
+
+# scout-agent 运行时数据（含浏览器登录态、真实截图）
+services/scout-agent/sessions/
+services/scout-agent/snapshots/
+services/scout-agent/downloads/
+
+# 本地临时脚本与备份
+*.bak
+.tmp-*.ps1
+.tmp-*.sh
+
+# 一次性导入报告（含真实店铺数据）
+import_yuntu_report.json
+

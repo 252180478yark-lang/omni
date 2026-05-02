@@ -1,0 +1,66 @@
+# 巨量云图 — GMV TO 5A（成交归因）
+name: 云图-GMV归因5A
+platform: yuntu
+description: 5A 各层成交人数占比 / 客单价 / 成交路径 → mvp_daily_metric
+tags: [yuntu, weekly, 5a, gmv, attribution]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate_overview
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/assets/gta/overview
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_gta_overview
+    action: screenshot
+    selector: .gta-overview-wrap, .deal-distribution-chart, .five-a-gmv-cards
+    save_to: ./snapshots/yuntu_gta_overview_{date}.png
+
+  - id: navigate_deal
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/assets/gta/deal
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_gta_deal
+    action: screenshot
+    selector: .gta-deal-wrap, .deal-path-sankey, .conversion-funnel
+    save_to: ./snapshots/yuntu_gta_deal_{date}.png
+
+  - id: extract_gta_metrics
+    action: llm_vision
+    image_from: screenshot_gta_overview
+    prompt: |
+      图片是巨量云图"GMV TO 5A"概览页面，展示各 5A 层级的成交数据。返回严格 JSON：
+      {
+        "a1_deal_pct": <A1层成交占比 0-1, float>,
+        "a2_deal_pct": <A2层成交占比 0-1, float>,
+        "a3_deal_pct": <A3层成交占比 0-1, float>,
+        "a4_deal_pct": <A4层成交占比 0-1, float>,
+        "a5_deal_pct": <A5层成交占比 0-1, float>,
+        "avg_order_value": <整体客单价 元, float>,
+        "total_deal_users": <总成交人数, 整数>,
+        "brand_avg_order_value": <行业均值客单价 元, float>
+      }
+      百分比（"35%"）转成 0-1（0.35）。金额单位元，去除逗号。不可见字段填 null。
+
+  - id: write_avg_order_value
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: yuntu_avg_order_value
+      value_from: extract_gta_metrics
+      json_field: avg_order_value
+
+  - id: write_total_deal_users
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: yuntu_total_deal_users
+      value_from: extract_gta_metrics
+      json_field: total_deal_users

@@ -1,0 +1,80 @@
+# 罗盘 - 首页总览（首页大盘 KPI）
+# P0 每日：全店 5 KPI（gmv_paid/uv/订单/UV价值/转化率）
+# 改造为 vision 模式：罗盘首页没有"下载明细"按钮
+name: 罗盘-首页总览
+platform: douyin_compass
+schedule: "30 8 * * *"
+description: 全店大盘 KPI（GMV/用户支付/UV/订单数/UV价值）→ mvp_daily_metric
+tags: [compass, daily, p0, home]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/home_{date}.png
+
+  - id: extract_metrics
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店罗盘首页（经营概况 + 收支概况），展示全店昨日大盘数据。
+      请提取以下指标，金额单位元；百分比转 0-1 小数；不可见或缺失填 null。返回严格 JSON：
+      {
+        "gmv_paid":         <用户支付金额（昨日）, float>,
+        "settlement_amount":<结算金额（昨日）, float>,
+        "refund_rate":      <退款率, 0-1 小数>,
+        "ad_cost_ratio":    <投放费比, 0-1 小数>,
+        "ad_cost":          <投放消耗, float>,
+        "platform_fee":     <平台佣金, float>,
+        "expense":          <支出金额, float>
+      }
+
+  - id: write_gmv_paid
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: gmv_paid_home
+      value_from: extract_metrics
+      json_field: gmv_paid
+
+  - id: write_settlement
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: settlement_amount
+      value_from: extract_metrics
+      json_field: settlement_amount
+
+  - id: write_refund_rate
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: refund_rate_home
+      value_from: extract_metrics
+      json_field: refund_rate
+
+  - id: write_ad_cost_ratio
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: ad_cost_ratio
+      value_from: extract_metrics
+      json_field: ad_cost_ratio
+
+  - id: write_ad_cost
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: ad_cost
+      value_from: extract_metrics
+      json_field: ad_cost

@@ -1,0 +1,25 @@
+# Runbook B — SKU详情（重点池 ~9 SKU，三源合并）
+# 每日 09:00，在 Runbook A 之后跑
+name: B-SKU详情
+platform: douyin_compass
+schedule: "0 9 * * *"
+description: "重点池SKU详情：罗盘商品列表 + 单品7Tab详情 + 抖店后台g-list主数据刷新"
+tags: [suite, daily, p0, sku]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop/home
+  on_expired: notify_dispatcher
+
+steps:
+  - id: run_product_list
+    action: sub_runbook
+    runbook: compass/commodity-product-list
+
+  - id: run_product_detail_foreach
+    action: foreach_focus_skus
+    runbook: compass/product-detail
+
+  - id: run_glist_sync
+    action: sub_runbook
+    runbook: shop-admin/g-list

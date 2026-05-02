@@ -1,0 +1,68 @@
+# 巨量云图 — 品牌搜索 SOV（搜索概览）
+name: 云图-品牌搜索SOV
+platform: yuntu
+description: 品牌曝光/搜索人数/SOV/搜索成交人数 → mvp_daily_metric
+tags: [yuntu, weekly, search, sov]
+
+session:
+  storage_state: ./sessions/yuntu/storage_state.json
+  recheck_url: https://yuntu.oceanengine.com/yuntu_brand/ecom
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://yuntu.oceanengine.com/yuntu_brand/ecom/search/overview
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_search
+    action: screenshot
+    selector: .search-overview-wrap, .sov-metric-cards, .search-data-cards
+    save_to: ./snapshots/yuntu_search_overview_{date}.png
+
+  - id: extract_search_metrics
+    action: llm_vision
+    image_from: screenshot_search
+    prompt: |
+      图片是巨量云图"搜索"→"搜索概览"页面，展示品牌在搜索场景的表现数据。
+      请提取以下指标，返回严格 JSON：
+      {
+        "search_brand_exposure": <品牌曝光次数, 整数>,
+        "search_brand_searcher": <品牌搜索人数, 整数>,
+        "search_sov": <搜索份额SOV 0-1 (如12.5%填0.125), float>,
+        "search_brand_buyer": <搜索成交人数, 整数>
+      }
+      SOV 若显示百分比（如12.5%）请转换为 0-1 小数。数据不可见填 null。
+
+  - id: write_brand_exposure
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_brand_exposure
+      value_from: extract_search_metrics
+      json_field: search_brand_exposure
+
+  - id: write_brand_searcher
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_brand_searcher
+      value_from: extract_search_metrics
+      json_field: search_brand_searcher
+
+  - id: write_sov
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_sov
+      value_from: extract_search_metrics
+      json_field: search_sov
+
+  - id: write_brand_buyer
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: search_brand_buyer
+      value_from: extract_search_metrics
+      json_field: search_brand_buyer

@@ -1,0 +1,28 @@
+# 罗盘 - 单品详情（商品 → 商品详情）
+# 用 foreach_focus_skus 循环调用，env 注入 _CURRENT_DOUYIN_PRODUCT_ID
+# 当前最简版：仅截图存档（SKU 级 gmv_paid 已由 compass/commodity-product-list 一次性拿全）
+# 后续需要单品 7 Tab 数据时，再扩展 vision 解析
+name: 罗盘-单品详情
+platform: douyin_compass
+description: 单品 360° 截图存档（每个重点池 SKU 一张全页快照，留待回看 / 后续 vision 解析）
+tags: [compass, daily, p1, product_detail]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://compass.jinritemai.com/shop/product/detail
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 8000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/compass/product_detail_{date}.png

@@ -1,0 +1,37 @@
+﻿# 鎶栧簵鍚庡彴 鈥?鍟嗗搧璇婃柇锛堟垚闀胯揣鏋讹級
+name: 鎶栧簵鍚庡彴-鍟嗗搧璇婃柇
+platform: douyin_shop_admin
+description: 鎴浘鍟嗗搧璇婃柇鍒嗙被骞剁敤 LLM 鎻愬彇 growth_class锛屾洿鏂?mvp_sku.growth_class
+tags: [shop_admin, weekly, sku, growth]
+
+session:
+  storage_state: ./sessions/douyin_shop_admin/storage_state.json
+  recheck_url: https://fxg.jinritemai.com/
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/growth-shelf
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_growth
+    action: screenshot
+    selector: .growth-shelf-table, .product-diagnosis-list, .growth-list
+    save_to: ./snapshots/growth_shelf_{date}.png
+
+  - id: extract_growth_classes
+    action: llm_vision
+    image_from: screenshot_growth
+    prompt: |
+      鍥剧墖鏄姈闊冲皬搴?鍟嗗搧璇婃柇"鎴?鎴愰暱璐ф灦"鍒楄〃锛屽睍绀哄悇鍟嗗搧鐨勬垚闀垮垎绫汇€?      璇锋彁鍙栨瘡涓晢鍝佺殑鍟嗗搧ID锛堟暟瀛椾覆锛夊拰鎴愰暱鍒嗙被锛岃繑鍥濲SON锛?      {
+        "classifications": {
+          "<douyin_product_id>": "<growing|stable|declining|new>"
+        }
+      }
+      鎴愰暱鍒嗙被鏄犲皠锛氫笂鍗?澧為暱/娼滃姏鍝佲啋growing锛涚ǔ瀹氣啋stable锛涗笅婊?琛伴€€鈫抎eclining锛涙柊鍝佲啋new銆?      鑻ユ棤娉曡瘑鍒垎绫诲垯鐢?stable銆?
+  - id: update_growth_class
+    action: update_sku_growth
+    extra:
+      data_from: extract_growth_classes

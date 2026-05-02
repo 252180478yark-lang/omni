@@ -6,6 +6,7 @@ const DEFAULTS = {
   videoAnalysis: 'http://localhost:8006',
   livestreamAnalysis: 'http://localhost:8007',
   adReview: 'http://localhost:8008',
+  scoutAgent: 'http://localhost:8009',
 }
 
 function trimSlash(value: string): string {
@@ -23,6 +24,7 @@ export function serviceBase() {
     videoAnalysis: trimSlash(process.env.VIDEO_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.videoAnalysis),
     livestreamAnalysis: trimSlash(process.env.LIVESTREAM_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.livestreamAnalysis),
     adReview: trimSlash(process.env.AD_REVIEW_SERVICE_URL || fallback || DEFAULTS.adReview),
+    scoutAgent: trimSlash(process.env.SCOUT_AGENT_URL || fallback || DEFAULTS.scoutAgent),
   }
 }
 

@@ -1,0 +1,88 @@
+# 抖店后台首页 - 6 待办数实时抓取
+name: 抖店后台-待办数
+platform: douyin_shop_admin
+description: 截图后台首页待办区 + LLM 提取 6 待办数 → mvp_daily_metric
+tags: [shop_admin, daily, todo]
+
+session:
+  storage_state: ./sessions/douyin_shop_admin/storage_state.json
+  recheck_url: https://fxg.jinritemai.com/
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/mshop/homepage/index
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: wait_render
+    action: sleep
+    timeout: 12000
+
+  - id: screenshot_full
+    action: screenshot
+    save_to: ./snapshots/shop_admin_todo_{date}.png
+
+  - id: extract_todo
+    action: llm_vision
+    image_from: screenshot_full
+    prompt: |
+      图片是抖店后台首页，包含一个待办区（通常显示「待发货」「待处理售后」「待回评」「待审核商品」「异常订单」「申诉中」等数字卡片）。
+      请提取以下 6 个待办数；不存在或为 0 时填 0；图片中找不到对应卡片时填 null。返回严格 JSON：
+      {
+        "pending_shipment":   <待发货, integer>,
+        "pending_aftersale":  <待处理售后, integer>,
+        "pending_review":     <待回评, integer>,
+        "pending_audit":      <待审核商品, integer>,
+        "abnormal_order":     <异常订单, integer>,
+        "appeal_in_progress": <申诉中, integer>
+      }
+
+  - id: write_pending_shipment
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_pending_shipment
+      value_from: extract_todo
+      json_field: pending_shipment
+
+  - id: write_pending_aftersale
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_pending_aftersale
+      value_from: extract_todo
+      json_field: pending_aftersale
+
+  - id: write_pending_review
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_pending_review
+      value_from: extract_todo
+      json_field: pending_review
+
+  - id: write_pending_audit
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_pending_audit
+      value_from: extract_todo
+      json_field: pending_audit
+
+  - id: write_abnormal_order
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_abnormal_order
+      value_from: extract_todo
+      json_field: abnormal_order
+
+  - id: write_appeal
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_appeal_in_progress
+      value_from: extract_todo
+      json_field: appeal_in_progress

@@ -1,0 +1,16 @@
+# Runbook E — 人群与机会（每周）
+name: E-人群与机会
+platform: douyin_compass
+schedule: "0 10 * * 1"
+description: "本店核心人群洞察 + 用户偏好机会 — 每周一运行"
+tags: [suite, weekly, p1, audience]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop/home
+  on_expired: notify_dispatcher
+
+steps:
+  - id: run_user_opportunity
+    action: sub_runbook
+    runbook: compass/biz-center-crowd-user-buy

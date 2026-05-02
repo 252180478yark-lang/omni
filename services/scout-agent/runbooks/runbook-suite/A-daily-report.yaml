@@ -1,0 +1,44 @@
+# Runbook A — 全店日报（罗盘 + 抖店后台）
+# 每日 08:30 自动运行
+name: A-全店日报
+platform: douyin_compass
+schedule: "30 8 * * *"
+description: "全店日报：home/交易/退款/体验分/物流 + 抖店后台6待办 + 异动检测"
+tags: [suite, daily, p0]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop/home
+  on_expired: notify_dispatcher
+
+steps:
+  - id: run_home
+    action: sub_runbook
+    runbook: compass/home
+
+  - id: run_business_part
+    action: sub_runbook
+    runbook: compass/business-part
+
+  - id: run_sell_analysis
+    action: sub_runbook
+    runbook: compass/sell-analysis
+
+  - id: run_refund
+    action: sub_runbook
+    runbook: compass/refund-analysis
+
+  - id: run_experience
+    action: sub_runbook
+    runbook: compass/ecology-experience-score
+
+  - id: run_logistics
+    action: sub_runbook
+    runbook: compass/logistics-diagnosis-index
+
+  - id: run_shop_admin_todo
+    action: sub_runbook
+    runbook: shop-admin/homepage-todo
+
+  - id: detect_anomalies
+    action: invoke_anomaly_engine

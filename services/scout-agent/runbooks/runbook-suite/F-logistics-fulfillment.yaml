@@ -1,0 +1,16 @@
+# Runbook F — 物流与履约（每日）
+name: F-物流与履约
+platform: douyin_compass
+schedule: "0 9 * * *"
+description: "罗盘物流时效 + 抖店后台物流诊断3Tab + 超时单数"
+tags: [suite, daily, p0, logistics]
+
+session:
+  storage_state: ./sessions/douyin_compass/storage_state.json
+  recheck_url: https://compass.jinritemai.com/shop/home
+  on_expired: notify_dispatcher
+
+steps:
+  - id: run_compass_logistics
+    action: sub_runbook
+    runbook: compass/logistics-diagnosis-index

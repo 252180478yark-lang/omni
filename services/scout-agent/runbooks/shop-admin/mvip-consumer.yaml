@@ -1,0 +1,69 @@
+﻿# 鎶栧簵鍚庡彴 鈥?鐢ㄦ埛涓績 + 浼氬憳
+name: 鎶栧簵鍚庡彴-鐢ㄦ埛浼氬憳
+platform: douyin_shop_admin
+description: 鎶撳彇鐢ㄦ埛涓績鏍稿績鎸囨爣锛氭柊澧炵敤鎴?澶嶈喘鐜?浼氬憳鏁帮紝鍐欏叆 mvp_daily_metric
+tags: [shop_admin, weekly, consumer, member]
+
+session:
+  storage_state: ./sessions/douyin_shop_admin/storage_state.json
+  recheck_url: https://fxg.jinritemai.com/
+  on_expired: notify_dispatcher
+
+steps:
+  - id: navigate_consumer
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/mvip-consumer
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_consumer_overview
+    action: screenshot
+    selector: .consumer-overview, .user-center-stats, .consumer-data-wrap
+    save_to: ./snapshots/consumer_overview_{date}.png
+
+  - id: navigate_member
+    action: goto
+    url: https://fxg.jinritemai.com/ffa/mvip-member
+    wait_until: domcontentloaded
+    timeout: 30000
+
+  - id: screenshot_member_stats
+    action: screenshot
+    selector: .member-stats, .vip-overview, .member-data-wrap
+    save_to: ./snapshots/member_stats_{date}.png
+
+  - id: extract_consumer_metrics
+    action: llm_vision
+    image_from: screenshot_consumer_overview
+    prompt: |
+      鍥剧墖鏄姈闊冲皬搴楃敤鎴蜂腑蹇冩暟鎹瑙堥〉闈€傝鎻愬彇浠ヤ笅鎸囨爣锛岃繑鍥濲SON锛?      {
+        "new_buyers_7d": <杩?澶╂柊澧炰拱瀹舵暟, integer>,
+        "repurchase_rate_30d": <杩?0澶╁璐巼, float 0-1>,
+        "total_buyers": <绱涔板鏁? integer>
+      }
+      澶嶈喘鐜囪嫢鏄剧ず涓虹櫨鍒嗘瘮锛堝15%锛夛紝璇疯浆鎹负灏忔暟锛?.15锛夈€傝嫢鏃犳硶璇嗗埆鍒欏～ null銆?
+  - id: extract_member_metrics
+    action: llm_vision
+    image_from: screenshot_member_stats
+    prompt: |
+      鍥剧墖鏄姈闊冲皬搴椾細鍛樻暟鎹〉闈€傝鎻愬彇浠ヤ笅鎸囨爣锛岃繑鍥濲SON锛?      {
+        "total_members": <鎬讳細鍛樻暟, integer>,
+        "new_members_7d": <杩?澶╂柊澧炰細鍛樻暟, integer>,
+        "member_repurchase_rate": <浼氬憳澶嶈喘鐜? float 0-1>
+      }
+      鑻ユ棤娉曡瘑鍒垯濉?null銆?
+  - id: write_new_buyers
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_new_buyers_7d
+      value_from: extract_consumer_metrics
+      json_field: new_buyers_7d
+
+  - id: write_total_members
+    action: write_metric
+    extra:
+      sku_id: ""
+      metric_name: shop_total_members
+      value_from: extract_member_metrics
+      json_field: total_members
