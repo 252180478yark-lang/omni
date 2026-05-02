@@ -16,6 +16,11 @@ from app.database import get_pool
 log = logging.getLogger(__name__)
 
 
+# 异动检测滚动 baseline 窗口（天数）。
+# 设为 3 让冷启动后第 3 天即可全量触发；后续若数据稳定可调回 7。
+BASELINE_DAYS = 3
+
+
 @dataclass
 class Rule:
     id: str
@@ -23,7 +28,7 @@ class Rule:
     severity: str
     template: str
     check: Callable[..., bool]
-    needs_trend: bool = False  # True = pass list of daily values, False = (today, avg7)
+    needs_trend: bool = False  # True = pass list of daily values, False = (today, avg_baseline)
 
 
 # ── Rule definitions ──────────────────────────────────────────────────────────
@@ -52,7 +57,7 @@ RULES: list[Rule] = [
         id="gmv_drop_25",
         metric="gmv_paid",
         severity="urgent",
-        template="用户支付金额跌幅 {delta_pct:.0f}% vs 7日均值",
+        template="用户支付金额跌幅 {delta_pct:.0f}% vs 近3日均值",
         check=lambda today, avg7: avg7 > 0 and today < avg7 * 0.75,
     ),
     Rule(
@@ -160,14 +165,14 @@ async def detect_anomalies_for_sku(sku_id: str, run_id: str) -> list[int]:
         for rule in RULES:
             try:
                 if rule.needs_trend:
-                    values = await _fetch_trend(conn, sku_id, rule.metric, today, days=7)
+                    values = await _fetch_trend(conn, sku_id, rule.metric, today, days=BASELINE_DAYS)
                     if not values:
                         continue
                     triggered = rule.check(values)
                     today_val = values[-1] if values else 0.0
                     avg7_val = sum(values) / len(values) if values else 0.0
                 else:
-                    today_val, avg7_val = await _fetch_today_avg7(conn, sku_id, rule.metric, today)
+                    today_val, avg7_val = await _fetch_today_baseline(conn, sku_id, rule.metric, today)
                     if today_val is None:
                         continue
                     triggered = rule.check(today_val, avg7_val)
@@ -255,21 +260,25 @@ async def _llm_one_liner(sku_id: str, rule_id: str, description: str, delta_pct:
         return ""
 
 
-async def _fetch_today_avg7(conn, sku_id: str, metric_name: str, today: date) -> tuple[float | None, float]:
+async def _fetch_today_baseline(conn, sku_id: str, metric_name: str, today: date) -> tuple[float | None, float]:
+    """取 today 当日值 + 过去 BASELINE_DAYS 天滚动均值（不含今日）。"""
     row = await conn.fetchrow(
-        """
+        f"""
         SELECT
             MAX(value) FILTER (WHERE date = $3) AS today_val,
-            AVG(value) FILTER (WHERE date BETWEEN $3 - INTERVAL '7 days' AND $3 - INTERVAL '1 day') AS avg7
+            AVG(value) FILTER (
+                WHERE date BETWEEN $3 - INTERVAL '{BASELINE_DAYS} days' AND $3 - INTERVAL '1 day'
+            ) AS avg_baseline
         FROM mvp_daily_metric
-        WHERE sku_id = $1 AND metric_name = $2 AND date BETWEEN $3 - INTERVAL '7 days' AND $3
+        WHERE sku_id = $1 AND metric_name = $2
+          AND date BETWEEN $3 - INTERVAL '{BASELINE_DAYS} days' AND $3
         """,
         sku_id, metric_name, today,
     )
     if row is None:
         return None, 0.0
     return (float(row["today_val"]) if row["today_val"] is not None else None,
-            float(row["avg7"]) if row["avg7"] is not None else 0.0)
+            float(row["avg_baseline"]) if row["avg_baseline"] is not None else 0.0)
 
 
 async def _fetch_trend(conn, sku_id: str, metric_name: str, today: date, days: int) -> list[float]:
