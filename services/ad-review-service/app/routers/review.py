@@ -11,7 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.database import get_pool
 from app.schemas import ReviewLogUpdate
-from app.services.kb_sync import sync_review_to_kb
+from app.services.kb_sync import sync_review_to_brief_and_avatar, sync_review_to_kb
 from app.services.review_engine import generate_review
 from app.config import settings
 
@@ -195,6 +195,87 @@ async def generate_review_sse(
             "event": "message",
             "data": json.dumps({"type": "done", "review_log_id": str(rid), "content": ""}, ensure_ascii=False),
         }
+
+        # ── Auto-sync to knowledge base ──
+        yield {
+            "event": "message",
+            "data": json.dumps({"type": "kb_sync_start", "content": "正在自动同步到知识库…"}, ensure_ascii=False),
+        }
+        try:
+            review_log_for_sync = {
+                "id": rid,
+                "content_md": full_md,
+                "experience_tags": tags,
+                "kb_document_id": None,
+            }
+            kb_id, doc_id = await sync_review_to_kb(review_log_for_sync, campaign, tags)
+            # Persist KB sync result
+            async with pool.acquire() as conn:
+                if doc_id:
+                    await conn.execute(
+                        """
+                        UPDATE ad_review.review_logs SET
+                          kb_id = $2::uuid, kb_document_id = $3::uuid,
+                          kb_synced_at = NOW(), updated_at = NOW()
+                        WHERE id = $1::uuid
+                        """,
+                        rid, kb_id, doc_id,
+                    )
+                else:
+                    await conn.execute(
+                        """
+                        UPDATE ad_review.review_logs SET
+                          kb_id = $2::uuid, kb_synced_at = NOW(), updated_at = NOW()
+                        WHERE id = $1::uuid
+                        """,
+                        rid, kb_id,
+                    )
+            yield {
+                "event": "message",
+                "data": json.dumps({
+                    "type": "kb_sync_done",
+                    "content": "复盘报告已自动同步到知识库",
+                    "kb_id": kb_id,
+                    "document_id": doc_id,
+                }, ensure_ascii=False),
+            }
+        except Exception as kb_err:
+            yield {
+                "event": "message",
+                "data": json.dumps({
+                    "type": "kb_sync_fail",
+                    "content": f"自动同步知识库失败: {kb_err!s}",
+                }, ensure_ascii=False),
+            }
+
+        # ── Flywheel: feed metrics back to Brief / Digital Human ──
+        try:
+            flywheel = await sync_review_to_brief_and_avatar(
+                campaign,
+                materials,
+                full_md,
+            )
+            flywheel_skipped = bool(flywheel.get("skipped"))
+            yield {
+                "event": "message",
+                "data": json.dumps({
+                    "type": "flywheel_sync_done",
+                    "content": (
+                        flywheel.get("message")
+                        if flywheel_skipped
+                        else "已回灌指标到 Brief / 数字人"
+                    ),
+                    "result": flywheel,
+                }, ensure_ascii=False),
+            }
+        except Exception as fw_err:
+            yield {
+                "event": "message",
+                "data": json.dumps({
+                    "type": "flywheel_sync_fail",
+                    "content": f"飞轮回灌失败: {fw_err!s}",
+                }, ensure_ascii=False),
+            }
 
     return EventSourceResponse(event_gen())
 

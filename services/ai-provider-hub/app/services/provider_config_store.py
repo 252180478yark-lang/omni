@@ -56,6 +56,7 @@ def apply_persisted_provider_config(registry: ProviderRegistry) -> None:
                 "anthropic": "anthropic_api_key",
                 "deepseek": "deepseek_api_key",
                 "seedance": "ark_api_key",
+                "seedream": "ark_api_key",
                 "kling": "kling_api_key",
             }.get(provider_name)
             if key_attr:
@@ -64,6 +65,13 @@ def apply_persisted_provider_config(registry: ProviderRegistry) -> None:
         default_chat_model = provider_data.get("default_chat_model")
         if isinstance(default_chat_model, str) and default_chat_model.strip():
             provider.default_chat_model = default_chat_model.strip()
+            # 媒体类 provider：把"默认模型"同步到 settings 对应字段
+            media_target = {
+                "seedream": "seedream_model",
+                "seedance": "seedance_model",
+            }.get(provider_name)
+            if media_target:
+                setattr(settings, media_target, default_chat_model.strip())
 
         default_embedding_model = provider_data.get("default_embedding_model")
         if isinstance(default_embedding_model, str) and default_embedding_model.strip():

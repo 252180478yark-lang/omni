@@ -24,6 +24,13 @@ export interface InterventionPayload {
   afterRound: number
 }
 
+const CITATION_NOTE_FOR_MODERATOR = `
+
+## 关于发言中的引用标记
+各角色发言中可能出现 [1][2] 等数字方括号标记——那是他们检索知识库时的来源编号，不是发言序号。在你的总结里：
+- 可以**提及**某个事实"已被知识库资料支撑"，但**不要原样复用 [1][2] 这种编号**（你的总结没有挂靠的来源数组，复用会变成失效引用）。
+- 引用某角色发言时使用"[投放优化·第 2 轮]"这种角色+轮次格式。`
+
 const DEFAULT_MODERATOR_PROMPT = `你是一场多角色圆桌会议的主持人，需要将所有参会者的多轮讨论整合为一份结构化决策报告。
 
 请严格按照以下结构输出：
@@ -50,12 +57,15 @@ const DEFAULT_MODERATOR_PROMPT = `你是一场多角色圆桌会议的主持人�
 具体的下一步行动，标注建议负责角色和优先级。
 
 要求：
-- 客观中立，不偏向任何角色
-- 引用发言时标注来源角色和轮次
-- 对不确定的结论明确标注
-- 每个章节都应展开论述，给出充分的细节和依据`
+- **只基于本次会议的实际发言**归纳，禁止编造未发生的观点或虚构数字。
+- 客观中立，不偏向任何角色。
+- 引用发言时标注来源角色和轮次（如"[投放优化·第 2 轮]"）。
+- 对不确定的结论明确标注"尚无共识"或"依据不足"。
+- 每个章节都应展开论述，给出充分的细节和依据。${CITATION_NOTE_FOR_MODERATOR}`
 
-const BOSS_MODERATOR_PROMPT = `你是公司CEO，刚听完一场多角色圆桌讨论。请以老板决策者的视角整合所有信息，输出决策报告。
+const BOSS_MODERATOR_PROMPT = `你是公司 CEO，刚听完一场多角色圆桌讨论。请以老板决策者的视角整合所有信息，输出决策报告。
+
+注意：若会议中本身存在"老板决策"角色发言，你不是替代它，而是在其基础上做最终拍板——把各方观点（含老板角色的意见）收敛成一个可执行的决定。
 
 请严格按照以下结构输出：
 
@@ -81,10 +91,11 @@ const BOSS_MODERATOR_PROMPT = `你是公司CEO，刚听完一场多角色圆桌�
 谁来做、什么时候交付、怎么验收。
 
 要求：
-- 用老板的口吻，简洁直接
-- 关注利润、人效、现金流，不纠结细节
-- 每个行动项要有明确的判断标准（什么情况下叫停）
-- 每个章节都应有具体的数据、判断逻辑和决策依据`
+- **只基于本次会议的实际发言**做判断，禁止编造未发生的观点或虚构数字。
+- 用老板的口吻，简洁直接。
+- 关注利润、人效、现金流，不纠结细节。
+- 每个行动项要有明确的判断标准（什么情况下叫停）。
+- 每个章节都应有具体的数据、判断逻辑和决策依据。${CITATION_NOTE_FOR_MODERATOR}`
 
 function parseKnowledgeSseChunk(buffer: string): { lines: string[]; rest: string } {
   const lines = buffer.split('\n')
@@ -92,11 +103,51 @@ function parseKnowledgeSseChunk(buffer: string): { lines: string[]; rest: string
   return { lines, rest }
 }
 
-async function streamKnowledgeRag(
+export interface PreparedRag {
+  context: string
+  sources: SourceRef[]
+  graph_context: string
+  crag_result: Record<string, unknown> | null
+}
+
+async function prepareKnowledgeRag(
   query: string,
   kbIds: string[],
+  signal: AbortSignal,
+): Promise<PreparedRag> {
+  const base = serviceBase()
+  const res = await fetch(`${base.knowledge}/api/v1/knowledge/rag/prepare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kb_ids: kbIds, query, top_k: 15 }),
+    signal,
+  })
+  if (!res.ok) {
+    const t = await res.text().catch(() => '')
+    throw new Error(t || `RAG prepare ${res.status}`)
+  }
+  const json = (await res.json()) as {
+    code?: number
+    data?: {
+      context?: string
+      sources?: SourceRef[]
+      graph_context?: string
+      crag_result?: Record<string, unknown>
+    }
+  }
+  const data = json?.data ?? {}
+  return {
+    context: data.context ?? '',
+    sources: data.sources ?? [],
+    graph_context: data.graph_context ?? '',
+    crag_result: data.crag_result ?? null,
+  }
+}
+
+async function streamKnowledgeGenerate(
+  userQuery: string,
+  prepared: PreparedRag,
   personaPrompt: string,
-  sessionId: string,
   model: string | undefined,
   provider: string | undefined,
   signal: AbortSignal,
@@ -105,34 +156,33 @@ async function streamKnowledgeRag(
 ): Promise<SourceRef[]> {
   const base = serviceBase()
   const payload: Record<string, unknown> = {
-    kb_ids: kbIds,
-    query,
-    stream: true,
-    top_k: 15,
-    session_id: sessionId,
+    query: userQuery,
+    context: prepared.context,
+    sources: prepared.sources,
+    graph_context: prepared.graph_context,
+    crag_result: prepared.crag_result,
+    persona_prompt: personaPrompt || null,
     model,
     provider,
-    persona_prompt: personaPrompt || null,
   }
   if (targetChars && targetChars > 0) payload.target_chars = targetChars
 
-  const res = await fetch(`${base.knowledge}/api/v1/knowledge/rag`, {
+  const res = await fetch(`${base.knowledge}/api/v1/knowledge/rag/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     signal,
   })
-
   if (!res.ok) {
     const t = await res.text().catch(() => '')
-    throw new Error(t || `RAG ${res.status}`)
+    throw new Error(t || `RAG generate ${res.status}`)
   }
-  if (!res.body) throw new Error('RAG 响应体为空')
+  if (!res.body) throw new Error('RAG generate 响应体为空')
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buf = ''
-  let sources: SourceRef[] = []
+  let sources: SourceRef[] = prepared.sources
 
   while (true) {
     const { done, value } = await reader.read()
@@ -221,6 +271,7 @@ async function streamAiHubChat(
 
 export class RoundtableController {
   private roundHistory = new Map<number, Map<string, string>>()
+  private prepared: PreparedRag | null = null
 
   restoreHistory(rh: RoundHistoryPayload | undefined): void {
     this.roundHistory.clear()
@@ -232,8 +283,28 @@ export class RoundtableController {
     }
   }
 
+  /** Inject a previously prepared RAG context (used by BFF cache for cross-round reuse). */
+  setPrepared(p: PreparedRag | null): void {
+    this.prepared = p
+  }
+
+  /** Read back the controller's prepared context (for caller-side cache writeback). */
+  getPrepared(): PreparedRag | null {
+    return this.prepared
+  }
+
   private idToName(participants: Persona[]): Map<string, string> {
     return new Map(participants.map((p) => [p.id, p.name]))
+  }
+
+  /**
+   * Build a clean retrieval query — just the topic, no prev-speech noise.
+   * Used for the SHARED retrieval done once per round across all personas.
+   * Avoids embedding a giant prev-round block, which would dilute the query
+   * vector and cause off-topic chunks to surface in round 2+.
+   */
+  private buildRetrievalQuery(topic: string): string {
+    return topic
   }
 
   private buildPersonaQuery(
@@ -245,12 +316,19 @@ export class RoundtableController {
   ): string {
     const names = this.idToName(participants)
     const ivs = interventions.filter((i) => i.afterRound === round - 1)
+    const otherNames = participants
+      .filter((p) => p.id !== persona.id)
+      .map((p) => p.name)
+      .join('、')
 
     if (round === 1) {
       let q =
-        `你正在参加一场多角色圆桌会议，讨论以下议题。请从你的专业视角出发，给出深入、详尽的分析和建议。\n\n` +
-        `---议题---\n${topic}\n\n` +
-        `请从你的专业角度深度分析这个议题，给出你的核心观点、关键数据/依据、以及具体建议。要求内容详实，充分展开论述。`
+        `你正在参加一场多角色圆桌会议（第 1 轮）。\n` +
+        `参会角色：${persona.name}（你）${otherNames ? `、${otherNames}` : ''}\n` +
+        `议题：${topic}\n\n` +
+        `请从【${persona.name}】的专业视角切入，重点输出**只有你这个角色才会看到、其他角色容易忽略**的观点。\n` +
+        `避免泛泛而谈用户研究/数据看板/常识结论——把通用部分让给其他角色，专注你的差异化角度。\n` +
+        `给出核心观点、关键数据/依据、可执行建议。`
       for (const iv of ivs) {
         if (iv.targetPersonaId === null || iv.targetPersonaId === persona.id) {
           q += `\n\n---用户追问---\n${iv.content}`
@@ -260,22 +338,27 @@ export class RoundtableController {
     }
 
     const prev = this.roundHistory.get(round - 1)
-    let prevSpeechesText = ''
+    let mySelfPrev = ''
+    let othersPrev = ''
     if (prev) {
       for (const [pid, content] of Array.from(prev.entries())) {
-        const label = names.get(pid) || pid
-        prevSpeechesText += `【${label}】\n${content}\n\n`
+        if (pid === persona.id) {
+          mySelfPrev = content
+        } else {
+          const label = names.get(pid) || pid
+          othersPrev += `【${label}】\n${content}\n\n`
+        }
       }
     }
 
     let query =
-      `你正在参加一场多角色圆桌会议。以下是其他参会者上一轮的发言，请结合你的专业视角深入回应：\n` +
-      `1. 审视其他角色的观点，指出你认为可能存在的盲区或风险\n` +
-      `2. 补充你的专业领域中其他角色可能忽略的要点\n` +
-      `3. 如果你认同某个观点，明确表示并说明原因\n` +
-      `4. 给出具体的数据、案例或方法论支撑你的观点\n\n` +
-      `要求内容详实，充分展开论述。\n\n` +
-      `---其他参会者上轮发言---\n${prevSpeechesText || '（暂无）'}\n` +
+      `这是圆桌会议第 ${round} 轮（共 ${participants.length} 位参会者）。\n\n` +
+      `### 你（${persona.name}）的任务\n` +
+      `- **不要重复你上一轮的观点**（见下方"你上一轮的发言"），要在原有基础上**往深推进**或**自我修正**\n` +
+      `- 针对其他角色上轮发言中你认为的盲区、误判、风险，给出反驳或补充\n` +
+      `- 必要时用具体数据、案例、方法论支撑\n\n` +
+      `---你上一轮的发言（仅供你自我对照，避免复读）---\n${mySelfPrev || '（你上一轮未发言）'}\n\n` +
+      `---其他参会者上轮发言---\n${othersPrev || '（暂无）'}\n` +
       `---议题---\n${topic}`
 
     for (const iv of ivs) {
@@ -296,6 +379,52 @@ export class RoundtableController {
   ): Promise<void> {
     const roundResponses = new Map<string, string>()
 
+    // Shared retrieval: run the heavy RAG pipeline ONCE per roundtable session
+    // (parse → embed → hybrid search → rerank → CRAG → compress). All personas
+    // AND all rounds share these chunks; only LLM generation differs per persona.
+    // Cache hit (set via setPrepared by caller) skips retrieval entirely.
+    let prepared: PreparedRag
+    try {
+      if (this.prepared) {
+        prepared = this.prepared
+      } else {
+        prepared = await prepareKnowledgeRag(
+          this.buildRetrievalQuery(params.topic),
+          params.kbIds,
+          signal,
+        )
+        this.prepared = prepared
+      }
+    } catch (err: unknown) {
+      const name = err instanceof Error ? err.name : ''
+      if (name === 'AbortError') return
+      const msg = err instanceof Error ? err.message : String(err)
+      // Bubble retrieval failure as a per-persona error so the UI surfaces it,
+      // and seed each speech with the error message so users see what happened.
+      for (const persona of params.participants) {
+        onEvent({
+          type: 'speech-start',
+          personaId: persona.id,
+          personaName: persona.name,
+          personaIcon: persona.icon,
+          round,
+        })
+        onEvent({ type: 'error', personaId: persona.id, error: msg })
+        onEvent({
+          type: 'speech-done',
+          personaId: persona.id,
+          personaName: persona.name,
+          personaIcon: persona.icon,
+          round,
+          content: `⚠ 检索失败：${msg}`,
+          sources: [],
+        })
+      }
+      this.roundHistory.set(round, roundResponses)
+      onEvent({ type: 'round-complete', round })
+      return
+    }
+
     const tasks = params.participants.map(async (persona) => {
       onEvent({
         type: 'speech-start',
@@ -305,7 +434,7 @@ export class RoundtableController {
         round,
       })
 
-      const query = this.buildPersonaQuery(
+      const userQuery = this.buildPersonaQuery(
         params.topic,
         persona,
         round,
@@ -315,11 +444,10 @@ export class RoundtableController {
       let full = ''
 
       try {
-        const sources = await streamKnowledgeRag(
-          query,
-          params.kbIds,
+        const sources = await streamKnowledgeGenerate(
+          userQuery,
+          prepared,
           persona.systemPrompt || '',
-          `roundtable-${params.topic.slice(0, 24)}-${persona.id}-r${round}`,
           params.model,
           params.provider,
           signal,
@@ -395,8 +523,25 @@ export class RoundtableController {
       }
     }
 
-    const moderatorPrompt =
+    const baseModeratorPrompt =
       params.moderatorType === 'boss' ? BOSS_MODERATOR_PROMPT : DEFAULT_MODERATOR_PROMPT
+    // 飞轮：拉取累积规则拼到末尾
+    let moderatorPrompt = baseModeratorPrompt
+    try {
+      const r = await fetch('/api/omni/prompt/render-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node_id: 'chat.roundtable_moderator',
+          scope: { moderator_type: params.moderatorType || 'default' },
+        }),
+      })
+      const j = await r.json()
+      const suffix = (j?.data?.suffix as string) || ''
+      if (suffix) moderatorPrompt = baseModeratorPrompt + suffix
+    } catch {
+      /* 非关键路径,吞掉异常 */
+    }
 
     const tgt = Math.min(Math.max(params.targetChars ?? 0, 0), 200_000)
 

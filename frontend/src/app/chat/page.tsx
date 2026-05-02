@@ -2,8 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { CitationMarkdown, SourceList } from '@/components/citation-markdown'
 import {
   BrainCircuit,
   Send,
@@ -22,6 +21,7 @@ import {
   Eye,
   X,
   Check,
+  History,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -35,8 +35,14 @@ import {
 } from '@/stores/chatStore'
 import { usePersonaStore } from '@/stores/personaStore'
 import { PersonaSelector } from '@/components/persona-selector'
+import { PromptFeedback } from '@/components/prompt-feedback'
+import { PromptNodeDrawer } from '@/components/prompt-node-drawer'
 import { RoundtableView } from '@/components/roundtable-view'
 import { Checkbox } from '@/components/ui/checkbox'
+import { BriefContextPanel } from '@/components/brief-context-panel'
+import { ChatHistoryPanel } from '@/components/chat-history-panel'
+import { appendMessageToSession } from '@/lib/chat-sessions-api'
+import { SaveToDecisionButton } from '@/components/save-to-decision-button'
 
 interface KBItem {
   id: string
@@ -234,7 +240,7 @@ async function generateImage(
     const res = await fetch('/api/omni/ai/images', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, model: 'dall-e-3', size: '1024x1024', quality: 'standard', n: 1 }),
+      body: JSON.stringify({ prompt, model: 'gpt-image-2', size: '1024x1024', quality: 'standard', n: 1 }),
     })
     const json = await res.json()
     if (!json.success) {
@@ -309,12 +315,14 @@ export default function ChatPage() {
   } = useChatStore()
 
   const selectedPersonaId = usePersonaStore((s) => s.selectedPersonaId)
+  const [drawerNode, setDrawerNode] = useState<string | null>(null)
   const personas = usePersonaStore((s) => s.personas)
   const selectedPersona = selectedPersonaId
     ? personas.find((p) => p.id === selectedPersonaId) ?? null
     : null
 
   const [chatMode, setChatMode] = useState<ChatPageMode>('single')
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const [allBases, setAllBases] = useState<KBItem[]>([])
   const [providers, setProviders] = useState<ProviderItem[]>([])
@@ -349,7 +357,35 @@ export default function ChatPage() {
         if (!cancelled && kbJson.success && kbJson.data) {
           setAllBases(kbJson.data)
           const cur = useChatStore.getState().kbIds
-          if (cur.length === 0 && kbJson.data.length > 0) {
+
+          // 若 URL 带 brief_id：自动选中该 brief 关联的 kb_id 作为上下文
+          let urlBriefKb = ''
+          try {
+            const sp = new URLSearchParams(window.location.search)
+            const briefId = sp.get('brief_id')
+            if (briefId) {
+              const r = await fetch(`/api/omni/content-studio/briefs/${briefId}`, { cache: 'no-store' })
+              if (r.ok) {
+                const brief = await r.json()
+                if (brief?.kb_doc_id) {
+                  // 从所有 KB 中找到包含该 doc 的 kb（doc_id 不直接在 kbList 上，所以走 documents API）
+                  try {
+                    const dr = await fetch(`/api/omni/knowledge/documents/${brief.kb_doc_id}`, { cache: 'no-store' })
+                    if (dr.ok) {
+                      const dj = await dr.json()
+                      const kbId = dj?.data?.kb_id || dj?.kb_id
+                      if (kbId) urlBriefKb = String(kbId)
+                    }
+                  } catch { /* tolerate */ }
+                }
+              }
+            }
+          } catch { /* tolerate */ }
+
+          if (urlBriefKb) {
+            const next = Array.from(new Set([urlBriefKb, ...cur]))
+            setKbIds(next)
+          } else if (cur.length === 0 && kbJson.data.length > 0) {
             setKbIds([kbJson.data[0].id])
           }
         }
@@ -441,6 +477,18 @@ export default function ChatPage() {
           .filter((m) => m.role === 'user' || m.role === 'assistant')
           .map((m) => ({ role: m.role, content: m.content }))
         const chatMsgs = [{ role: 'system' as const, content: sys }, ...hist]
+
+        // 无 KB 直连 AI：后端不经 knowledge-engine，我们自己把 user 先落库
+        void appendMessageToSession(sessionId, {
+          role: 'user',
+          content: q,
+          output_mode: 'text',
+          ensure_kb_ids: [],
+          ensure_provider: selectedProvider || null,
+          ensure_model: selectedModel || null,
+          ensure_persona_id: selectedPersonaId || null,
+        }).catch(() => { /* silent */ })
+
         await streamDirectChat(
           chatMsgs,
           aId,
@@ -451,6 +499,15 @@ export default function ChatPage() {
           selectedModel || undefined,
           selectedProvider || undefined,
         )
+        // 流结束后再把 assistant 落库
+        const finalMsg = useChatStore.getState().messages.find((m) => m.id === aId)
+        if (finalMsg && finalMsg.content) {
+          void appendMessageToSession(sessionId, {
+            role: 'assistant',
+            content: finalMsg.content,
+            output_mode: 'text',
+          }).catch(() => { /* silent */ })
+        }
       } else {
         await streamRAG(
           kbIds,
@@ -467,6 +524,10 @@ export default function ChatPage() {
           personaRag,
         )
       }
+      // 通知历史面板刷新（不论哪条路径，此时 PG 里应该已经有最新消息）
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('omni-chat-sessions-refresh'))
+      }
     } else if (currentMode === 'image') {
       await generateImage(q, aId, finishAssistantImage, failAssistant)
     } else if (currentMode === 'video') {
@@ -480,6 +541,7 @@ export default function ChatPage() {
     inputRef.current?.focus()
   }, [
     input, kbIds, sessionId, ragTargetChars, outputMode, streaming, selectedModel, selectedProvider,
+    selectedPersonaId,
     addUserMessage, startAssistant, appendToken,
     finishAssistant, finishAssistantImage, finishAssistantVideo,
     failAssistant, setStreaming, setAbort,
@@ -513,6 +575,16 @@ export default function ChatPage() {
       <nav className="sticky top-0 z-50 glass border-b border-gray-200/30">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setHistoryOpen(true)}
+              className="rounded-full gap-1.5"
+              title="历史对话"
+            >
+              <History className="w-4 h-4" />
+              <span className="hidden sm:inline text-xs">历史</span>
+            </Button>
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-violet-600 to-purple-500 flex items-center justify-center shadow-md shadow-purple-200/50">
                 <Sparkles className="w-4 h-4 text-white" />
@@ -722,6 +794,15 @@ export default function ChatPage() {
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-auto chat-scroll px-4 py-6">
         <div className="max-w-3xl mx-auto space-y-4">
+          <BriefContextPanel
+            getLatestAssistantContent={() => {
+              const ms = useChatStore.getState().messages
+              for (let i = ms.length - 1; i >= 0; i -= 1) {
+                if (ms[i].role === 'assistant' && ms[i].content) return ms[i].content
+              }
+              return ''
+            }}
+          />
           <div className="flex flex-col sm:flex-row sm:items-start gap-3 pb-2 border-b border-gray-100">
             <PersonaSelector />
             {selectedPersona && selectedPersona.exampleQueries.length > 0 && (
@@ -798,9 +879,7 @@ export default function ChatPage() {
                   </div>
                 ) : (
                   <div className="markdown-body text-sm prose prose-sm max-w-none prose-table:text-sm prose-th:bg-gray-100 prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5 prose-table:border prose-th:border prose-td:border">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {msg.content}
-                    </ReactMarkdown>
+                    <CitationMarkdown content={msg.content} sources={msg.sources} msgId={msg.id} />
                     {msg.loading && msg.content && (
                       <span className="cursor-blink">▊</span>
                     )}
@@ -843,26 +922,52 @@ export default function ChatPage() {
                   </div>
                 )}
 
-                {msg.sources && msg.sources.length > 0 && (
-                  <div className="mt-3 pt-2 border-t border-gray-100">
-                    <div className="text-xs font-medium text-gray-400 mb-1.5">📚 引用来源</div>
-                    <div className="space-y-1.5">
-                      {msg.sources.map((src) => (
-                        <SourceCard key={src.chunk_id} source={src} />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <SourceList sources={msg.sources} msgId={msg.id} />
 
                 {msg.role === 'assistant' && msg.content && !msg.loading && (
-                  <div className="mt-2 pt-2 border-t border-gray-100">
-                    <a
-                      href={`/content-studio?source_text=${encodeURIComponent(msg.content.slice(0, 3000))}`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-full bg-gradient-to-r from-purple-50 to-blue-50 text-purple-600 border border-purple-200/50 hover:shadow-sm transition-all"
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      用此内容生成短视频
-                    </a>
+                  <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href={(() => {
+                          const idx = messages.findIndex((m) => m.id === msg.id)
+                          const prevUser = idx > 0 ? messages.slice(0, idx).reverse().find((m) => m.role === 'user') : null
+                          const sourceText = prevUser
+                            ? `## 用户需求\n${prevUser.content}\n\n## AI 策略建议\n${msg.content}`
+                            : msg.content
+                          return `/content-studio?source_text=${encodeURIComponent(sourceText.slice(0, 4000))}`
+                        })()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full bg-gradient-to-r from-fuchsia-500 to-purple-500 text-white shadow-sm hover:shadow-md transition-all"
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        以此创建内容
+                      </a>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(msg.content)
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all"
+                      >
+                        复制回答
+                      </button>
+                      <SaveToDecisionButton
+                        source="chat"
+                        defaultTitle={(() => {
+                          const idx = messages.findIndex((m) => m.id === msg.id)
+                          const prevUser = idx > 0 ? messages.slice(0, idx).reverse().find((m) => m.role === 'user') : null
+                          return prevUser ? prevUser.content.slice(0, 60) : msg.content.slice(0, 60)
+                        })()}
+                        content={msg.content}
+                      />
+                    </div>
+                    <PromptFeedback
+                      nodeId={selectedPersonaId ? 'chat.persona' : 'chat.rag'}
+                      inputRef={{
+                        msg_id: msg.id,
+                        persona_id: selectedPersonaId || null,
+                      }}
+                      output={msg.content}
+                      onOpenDrawer={setDrawerNode}
+                    />
                   </div>
                 )}
               </div>
@@ -955,34 +1060,16 @@ export default function ChatPage() {
       </div>
         </>
       )}
+      <PromptNodeDrawer nodeId={drawerNode} onClose={() => setDrawerNode(null)} />
+      <ChatHistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onNewSession={() => {
+          clearMessages()
+          inputRef.current?.focus()
+        }}
+      />
     </div>
   )
 }
 
-/* ───── Source Card ───── */
-
-function SourceCard({ source }: { source: SourceRef }) {
-  return (
-    <Card className="p-2 bg-gray-50/80 border-gray-100 hover:bg-gray-100/80 transition-colors">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-50 text-violet-600 border-violet-200">
-              #{source.index}
-            </Badge>
-            {source.title && (
-              <span className="text-xs font-medium text-gray-700 truncate">{source.title}</span>
-            )}
-            <span className="text-[10px] text-gray-400">相关度 {(source.score * 100).toFixed(0)}%</span>
-          </div>
-          <p className="text-xs text-gray-500 mt-0.5 line-clamp-6">{source.content}</p>
-        </div>
-        {source.source_url && (
-          <a href={source.source_url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-gray-400 hover:text-violet-500 transition-colors">
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        )}
-      </div>
-    </Card>
-  )
-}

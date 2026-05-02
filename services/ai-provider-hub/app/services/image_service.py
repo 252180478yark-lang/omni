@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.config import settings
 from app.providers.base import ProviderCapability
 from app.providers.registry import ProviderRegistry
 from app.schemas.ai import ImageGenerateRequest, ImageGenerateResponse
@@ -12,18 +13,31 @@ class ImageService:
         self.fallback = fallback
 
     async def generate(self, payload: ImageGenerateRequest) -> ImageGenerateResponse:
-        providers = self.fallback.get_chain_for_capability(
-            payload.provider, self.registry, ProviderCapability.IMAGE_GENERATION,
-        )
+        if payload.provider:
+            # Explicit provider selection is used for acceptance testing. Do not
+            # silently fall back to a mock-capable provider and mask real failures.
+            providers = [payload.provider]
+        else:
+            providers = [
+                name.strip()
+                for name in settings.image_provider_chain.split(",")
+                if name.strip()
+            ]
         last_error: Exception | None = None
         for name in providers:
-            provider = self.registry.get(name)
-            model = payload.model or "gpt-image-1.5"
+            try:
+                provider = self.registry.get(name)
+            except KeyError:
+                continue
+            model = payload.model
+            if not model or model == "gpt-image-2":
+                model = provider.default_chat_model or "gpt-image-2"
             try:
                 result = await call_with_retry(
                     provider.generate_image,
                     prompt=payload.prompt, model=model,
                     size=payload.size, quality=payload.quality, n=payload.n,
+                    reference_images=payload.reference_images,
                 )
                 return ImageGenerateResponse(
                     images=result.get("images", []),

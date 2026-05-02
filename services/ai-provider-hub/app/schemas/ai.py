@@ -54,10 +54,14 @@ class EmbeddingResponse(BaseModel):
 class ImageGenerateRequest(BaseModel):
     prompt: str = Field(min_length=1)
     provider: str | None = None
-    model: str | None = Field(default="gpt-image-1.5")
+    model: str | None = Field(default="gpt-image-2")
     size: str = "1024x1024"
     quality: str = "standard"
     n: int = Field(default=1, ge=1, le=4)
+    reference_images: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Typed refs: [{url, type(character|product), weight}]",
+    )
 
 
 class ImageGenerateResponse(BaseModel):
@@ -89,7 +93,10 @@ class VideoGenerateRequest(BaseModel):
     image_url: str | None = Field(default=None, description="Single reference image (backward-compat shorthand)")
     # Seedance 2.0 multi-modal fields
     content: list[VideoContentItem] | None = Field(default=None, description="Multi-modal content array")
-    reference_images: list[str] | None = Field(default=None, description="Reference image URLs / asset IDs")
+    reference_images: list[str | dict[str, Any]] | None = Field(
+        default=None,
+        description="Reference image URLs or typed refs",
+    )
     reference_videos: list[str] | None = Field(default=None, description="Reference video URLs")
     reference_audios: list[str] | None = Field(default=None, description="Reference audio URLs")
     first_frame: str | None = Field(default=None, description="First frame image URL")

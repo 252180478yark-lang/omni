@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import settings
+from app.reverse import router as reverse_router, start_reverse_worker
 from app.services.analysis import (
     analyze_video,
     build_placeholder_report,
@@ -172,7 +173,11 @@ def on_startup() -> None:
     init_db()
     _load_persisted_settings()
     _start_worker()
+    start_reverse_worker()
     Thread(target=retry_failed_kb_pushes, daemon=True).start()
+
+
+app.include_router(reverse_router)
 
 
 def _start_worker() -> None:

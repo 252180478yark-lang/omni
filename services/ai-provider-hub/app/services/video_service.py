@@ -20,9 +20,12 @@ class VideoService:
         self.fallback = fallback
 
     async def generate(self, payload: VideoGenerateRequest) -> VideoGenerateResponse:
-        providers = self.fallback.get_chain_for_capability(
-            payload.provider, self.registry, ProviderCapability.VIDEO_GENERATION,
-        )
+        if payload.provider:
+            providers = [payload.provider]
+        else:
+            providers = self.fallback.get_chain_for_capability(
+                payload.provider, self.registry, ProviderCapability.VIDEO_GENERATION,
+            )
         if not providers:
             raise RuntimeError(
                 "No video generation provider configured. "

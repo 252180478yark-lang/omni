@@ -12,27 +12,38 @@ from app.sources.base import RawArticle
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """
-你是一个 AI 资讯分析助手。对于每篇输入的文章，请输出 JSON：
+你是一个 AI 资讯分析助手。对每篇输入文章输出结构化 JSON。
+
+## 输出格式
 {
   "articles": [
     {
       "index": 0,
-      "summary_zh": "中文摘要2-3句话，概括核心内容",
+      "summary_zh": "中文摘要 2-3 句话，概括核心内容",
       "tags": ["标签1", "标签2"],
       "relevance_score": 0.95
     }
   ]
 }
 
-标签规范: 从预定义列表中选择，包括但不限于:
-LLM, RAG, Agent, 多模态, 图像生成, 语音, 芯片/GPU,
-开源, 融资, 产品发布, 论文, 监管/政策, 应用落地,
-OpenAI, Google, Anthropic, Meta, 百度, 阿里, 字节, 深度求索
+## 纪律
+- 只基于文章标题 + 摘要作判断，**禁止编造文章中未出现的事实**（发布时间、融资金额、模型名称等）。
+- `index` 必须与输入中的 `[N]` 编号一一对应。
+- `summary_zh` 是纯中文，不包含英文原文段。
 
-相关性评分规则:
-0.8-1.0: 直接相关 (大模型、AI 产品、AI 研究)
-0.5-0.8: 间接相关 (芯片、云服务、数据隐私)
-0.0-0.5: 弱相关或无关 (泛科技、手机评测等)
+## 标签规则（tags）
+- **必须从以下清单中选择**（不在清单中的标签视为无效）：
+  `LLM` / `RAG` / `Agent` / `多模态` / `图像生成` / `语音` / `芯片/GPU` /
+  `开源` / `融资` / `产品发布` / `论文` / `监管/政策` / `应用落地` /
+  `OpenAI` / `Google` / `Anthropic` / `Meta` / `百度` / `阿里` / `字节` / `深度求索`
+- 每篇文章 1-3 个标签，按相关性从高到低排列。
+- 若无任何标签匹配，返回空数组 `[]`。
+
+## 相关性评分规则（relevance_score，0.0-1.0 浮点）
+- `[0.80, 1.00]` — 直接相关：大模型研究、AI 产品发布、AI Agent 应用
+- `[0.50, 0.80)` — 间接相关：AI 芯片、云服务、数据隐私、监管政策
+- `[0.00, 0.50)` — 弱相关或无关：泛科技、手机评测、消费电子
+- 区间端点归属：**左闭右开**，`0.80` 属于上一档。
 """.strip()
 
 
@@ -80,11 +91,29 @@ class ArticleEnricher:
                 ]
 
     async def _enrich_batch(self, batch: list[RawArticle]) -> list[EnrichedArticle]:
+        # 飞轮：累积规则拼到 SYSTEM_PROMPT 末尾
+        system_with_rules = SYSTEM_PROMPT
+        try:
+            from httpx import AsyncClient as _AC
+            ke_base = (self.settings.sp4_base_url or "").rstrip("/")
+            if ke_base:
+                async with _AC(timeout=5.0) as c:
+                    r = await c.post(
+                        f"{ke_base}/api/v1/prompt/render-rules",
+                        json={"node_id": "news.enrich", "scope": None},
+                    )
+                    if r.status_code == 200:
+                        suffix = ((r.json() or {}).get("data") or {}).get("suffix") or ""
+                        if suffix:
+                            system_with_rules = SYSTEM_PROMPT + suffix
+        except Exception:
+            pass
+
         response = await self.sp3_client.post(
             "/api/v1/ai/chat",
             json={
                 "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": system_with_rules},
                     {"role": "user", "content": self._build_user_prompt(batch)},
                 ],
                 "provider": self.settings.enricher_provider,

@@ -2,30 +2,27 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import {
-  Activity,
-  Cpu,
-  BrainCircuit,
   MessageSquare,
   Database,
-  Network,
-  ListTodo,
-  Newspaper,
-  Clapperboard,
   Download,
+  Clapperboard,
   Radio,
   LineChart,
+  Palette,
+  Newspaper,
+  Cpu,
+  ListTodo,
   ArrowRight,
   Sparkles,
-  Zap,
-  Shield,
-  Palette,
   Search,
-  TrendingUp,
+  HelpCircle,
+  Rocket,
+  CheckCircle2,
+  type LucideIcon,
 } from 'lucide-react'
 
 type HealthState = 'healthy' | 'down'
@@ -52,6 +49,125 @@ interface OverviewData {
   }
 }
 
+interface ToolCard {
+  href: string
+  icon: LucideIcon
+  label: string
+  desc: string
+  scene: string
+  color: string
+  badge: string | null
+}
+
+const QUICK_TOOLS: ToolCard[] = [
+  {
+    href: '/chat',
+    icon: MessageSquare,
+    label: '智能问答',
+    desc: '像微信一样和 AI 聊天',
+    scene: '问问题、写文案、总结资料都能用',
+    color: 'from-violet-500 to-purple-600',
+    badge: '最常用',
+  },
+  {
+    href: '/knowledge',
+    icon: Database,
+    label: '知识库',
+    desc: '把你的资料存进来给 AI 看',
+    scene: '存 PDF、Word、网页，AI 就能基于这些回答',
+    color: 'from-emerald-500 to-teal-600',
+    badge: null,
+  },
+  {
+    href: '/knowledge/harvester',
+    icon: Download,
+    label: '知识采集',
+    desc: '丢一个网址，自动抓回来存库',
+    scene: '看到好文章，复制链接进去就行',
+    color: 'from-blue-500 to-cyan-600',
+    badge: null,
+  },
+  {
+    href: '/video-analysis',
+    icon: Clapperboard,
+    label: '短视频分析',
+    desc: '上传视频，AI 给你写报告',
+    scene: '抖音爆款拖进去看为什么火',
+    color: 'from-pink-500 to-rose-600',
+    badge: null,
+  },
+  {
+    href: '/livestream-analysis',
+    icon: Radio,
+    label: '直播分析',
+    desc: '上传直播录屏自动复盘',
+    scene: '看哪段话术效果好，输出 Excel',
+    color: 'from-orange-500 to-amber-600',
+    badge: null,
+  },
+  {
+    href: '/ad-review',
+    icon: LineChart,
+    label: '投放复盘',
+    desc: '分析广告数据钱花得值不值',
+    scene: '巨量千川 CSV 拖进来即可',
+    color: 'from-indigo-500 to-blue-600',
+    badge: null,
+  },
+  {
+    href: '/content-studio',
+    icon: Palette,
+    label: '内容工坊',
+    desc: '一句话生成视频脚本+成片',
+    scene: '"写条 30 秒口播"自动出片',
+    color: 'from-fuchsia-500 to-pink-600',
+    badge: '新',
+  },
+  {
+    href: '/news',
+    icon: Newspaper,
+    label: '资讯中心',
+    desc: '帮你抓全网行业新闻',
+    scene: '每天 3 分钟刷完今天的事',
+    color: 'from-sky-500 to-blue-600',
+    badge: null,
+  },
+]
+
+interface Step {
+  num: number
+  title: string
+  desc: string
+  href: string
+}
+
+const FIRST_STEPS: Step[] = [
+  {
+    num: 1,
+    title: '配置 AI 账号',
+    desc: '把你的 AI Key 填进去（只做一次）',
+    href: '/models',
+  },
+  {
+    num: 2,
+    title: '试着聊一句',
+    desc: '问 AI 一个问题，确认能正常对话',
+    href: '/chat',
+  },
+  {
+    num: 3,
+    title: '建一个知识库',
+    desc: '上传几份你常用的 PDF / Word',
+    href: '/knowledge',
+  },
+  {
+    num: 4,
+    title: '让 AI 看着资料回答',
+    desc: '回到聊天页选中知识库再提问',
+    href: '/chat',
+  },
+]
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const m = Math.floor(diff / 60000)
@@ -62,30 +178,19 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)} 天前`
 }
 
-const QUICK_TOOLS = [
-  { href: '/chat', icon: MessageSquare, label: '智能问答', desc: 'RAG + 多模态 AI', color: 'from-violet-500 to-purple-600', badge: '热门' },
-  { href: '/knowledge', icon: Database, label: '知识库', desc: 'pgvector 向量检索', color: 'from-emerald-500 to-teal-600', badge: null },
-  { href: '/knowledge/harvester', icon: Download, label: '知识采集', desc: '网页/文档智能提取', color: 'from-blue-500 to-cyan-600', badge: null },
-  { href: '/video-analysis', icon: Clapperboard, label: '短视频分析', desc: 'AI 多模态视频解读', color: 'from-pink-500 to-rose-600', badge: null },
-  { href: '/livestream-analysis', icon: Radio, label: '直播分析', desc: '直播切片智能分析', color: 'from-orange-500 to-amber-600', badge: null },
-  { href: '/ad-review', icon: LineChart, label: '投放复盘', desc: '广告数据分析', color: 'from-indigo-500 to-blue-600', badge: null },
-  { href: '/content-studio', icon: Palette, label: '内容工坊', desc: '一键生成营销素材', color: 'from-fuchsia-500 to-pink-600', badge: '新' },
-  { href: '/news', icon: Newspaper, label: '资讯中心', desc: '行业动态聚合', color: 'from-sky-500 to-blue-600', badge: null },
-]
-
-const FEATURES = [
-  { icon: Zap, title: '极速部署', desc: '零代码配置，无环境依赖，开箱即用' },
-  { icon: BrainCircuit, title: '智能引擎', desc: '内置多模型、RAG 检索和多模态分析' },
-  { icon: Shield, title: '安全可靠', desc: '企业级安全架构，数据加密传输' },
-]
+const ONBOARD_KEY = 'omni_homepage_onboard_done_v1'
 
 export default function Home() {
   const [loading, setLoading] = useState(true)
   const [overview, setOverview] = useState<OverviewData | null>(null)
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [error, setError] = useState<string>('')
+  const [showOnboard, setShowOnboard] = useState(false)
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setShowOnboard(window.localStorage.getItem(ONBOARD_KEY) !== '1')
+    }
     const run = async () => {
       setLoading(true)
       setError('')
@@ -112,13 +217,40 @@ export default function Home() {
     void run()
   }, [])
 
-  const statCards = useMemo(() => {
-    const metrics = overview?.metrics
+  const dismissOnboard = () => {
+    setShowOnboard(false)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ONBOARD_KEY, '1')
+    }
+  }
+
+  const friendlyStats = useMemo(() => {
+    const m = overview?.metrics
     return [
-      { title: 'AI 网关', value: metrics?.aiTokenToday ?? 0, subtitle: '今日 Token 消耗', icon: BrainCircuit, color: 'text-violet-600', bg: 'bg-violet-50', ring: 'ring-violet-100' },
-      { title: '知识引擎', value: metrics?.knowledgeDocuments ?? 0, subtitle: '已入库文档', icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-100' },
-      { title: '基础设施', value: `${metrics?.infraUptime ?? 0}%`, subtitle: '服务连通率', icon: Network, color: 'text-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-100' },
-      { title: '运行任务', value: metrics?.runningTasks ?? 0, subtitle: '正在执行', icon: Activity, color: 'text-blue-600', bg: 'bg-blue-50', ring: 'ring-blue-100' },
+      {
+        title: '今天用 AI 的字数',
+        value: m?.aiTokenToday ? formatBig(m.aiTokenToday) : '0',
+        hint: '把 AI 当成员工，今天它帮你处理的字数',
+        color: 'bg-violet-50 ring-violet-100 text-violet-600',
+      },
+      {
+        title: '知识库里的资料',
+        value: `${m?.knowledgeDocuments ?? 0} 份`,
+        hint: '你已经"喂"给 AI 多少份文件',
+        color: 'bg-emerald-50 ring-emerald-100 text-emerald-600',
+      },
+      {
+        title: '系统健康度',
+        value: `${m?.infraUptime ?? 0}%`,
+        hint: '后台各项服务是不是正常工作',
+        color: 'bg-amber-50 ring-amber-100 text-amber-600',
+      },
+      {
+        title: '正在干的活',
+        value: `${m?.runningTasks ?? 0} 个`,
+        hint: '后台正在跑的任务（抓网页 / 分析视频等）',
+        color: 'bg-blue-50 ring-blue-100 text-blue-600',
+      },
     ]
   }, [overview])
 
@@ -126,62 +258,69 @@ export default function Home() {
 
   return (
     <div className="min-h-screen pb-20">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden rounded-b-3xl mb-8">
+      {/* Hero */}
+      <div className="relative overflow-hidden rounded-b-3xl mb-6">
         <div className="hero-pattern">
           <div className="relative px-6 lg:px-10 pt-8 pb-10">
             {/* Status bar */}
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-3">
-                <Badge className="bg-violet-100 text-violet-700 border-violet-200 hover:bg-violet-100 rounded-full px-3 py-1 text-xs font-medium">
-                  <div className={`w-2 h-2 rounded-full mr-2 ${healthy ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                  {healthy ? '全部服务运行正常' : loading ? '检测中...' : '部分服务异常'}
-                </Badge>
-              </div>
+            <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
+              <Badge className="bg-white text-gray-700 border-gray-200 hover:bg-white rounded-full px-3 py-1 text-xs font-medium shadow-sm">
+                <div
+                  className={`w-2 h-2 rounded-full mr-2 ${
+                    healthy ? 'bg-emerald-500 animate-pulse' : loading ? 'bg-amber-400 animate-pulse' : 'bg-red-500'
+                  }`}
+                />
+                {healthy ? '系统就绪，可以开始用了' : loading ? '正在检查系统...' : '部分功能可能用不了，请看下方提示'}
+              </Badge>
               <div className="flex items-center gap-2">
                 <Link href="/models">
                   <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-900 rounded-full text-xs gap-1.5">
                     <Cpu className="w-3.5 h-3.5" />
-                    模型配置
+                    AI 账号配置
                   </Button>
                 </Link>
                 <Link href="/tasks">
                   <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-900 rounded-full text-xs gap-1.5">
                     <ListTodo className="w-3.5 h-3.5" />
-                    任务队列
+                    后台任务
                   </Button>
                 </Link>
               </div>
             </div>
 
             {/* Hero content */}
-            <div className="flex flex-col lg:flex-row items-start gap-8 lg:gap-16">
+            <div className="flex flex-col lg:flex-row items-start gap-8 lg:gap-12">
               <div className="flex-1 min-w-0">
-                <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-gray-900 mb-4">
-                  Omni-Vibe OS
-                  <span className="bg-gradient-to-r from-violet-600 to-purple-500 bg-clip-text text-transparent ml-2">Ultra</span>
+                <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-gray-900 mb-3">
+                  你的 AI 万能小助理
                 </h1>
-                <p className="text-gray-500 text-base lg:text-lg mb-6 max-w-xl leading-relaxed">
-                  {loading ? '正在初始化系统...' : error ? '系统状态读取异常，请检查后端服务' : '自进化混合架构认知操作系统，集成 AI 问答、知识管理、多模态分析于一体'}
+                <p className="text-gray-500 text-base lg:text-lg mb-5 max-w-2xl leading-relaxed">
+                  把工作里要看的资料、要分析的视频、要回的问题、要投的广告数据都丢给它——它都能帮你做完。
+                  <span className="text-gray-400 text-sm block mt-1">
+                    不需要懂技术，不需要写代码，会用微信就会用它。
+                  </span>
                 </p>
 
-                {/* Search-like input */}
-                <Link href="/chat" className="block max-w-lg">
+                <Link href="/chat" className="block max-w-xl">
                   <div className="flex items-center gap-3 px-5 py-3.5 bg-white rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-md hover:border-violet-200 transition-all duration-300 cursor-pointer group">
                     <Search className="w-5 h-5 text-gray-300 group-hover:text-violet-400 transition-colors" />
-                    <span className="text-gray-400 text-sm flex-1">向 AI 助手提问，或搜索知识库...</span>
-                    <div className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs font-medium shadow-sm">
-                      开始对话
+                    <span className="text-gray-400 text-sm flex-1">想问 AI 什么？比如"帮我写一段产品介绍"...</span>
+                    <div className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs font-medium shadow-sm whitespace-nowrap">
+                      开始聊天
                     </div>
                   </div>
                 </Link>
+
+                <p className="text-xs text-gray-400 mt-3">
+                  💡 第一次用？右下角紫色「<span className="text-violet-600 font-medium">新手指南</span>」按钮里有完整的 3 分钟入门讲解
+                </p>
               </div>
 
-              {/* Decorative cards */}
+              {/* Decorative */}
               <div className="hidden lg:flex items-center gap-4 shrink-0">
                 <div className="animate-float">
                   <div className="w-28 h-28 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 shadow-xl shadow-purple-200/50 flex items-center justify-center">
-                    <BrainCircuit className="w-12 h-12 text-white" />
+                    <Sparkles className="w-12 h-12 text-white" />
                   </div>
                 </div>
                 <div className="flex flex-col gap-4">
@@ -192,45 +331,79 @@ export default function Home() {
                   </div>
                   <div className="animate-float">
                     <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-orange-200/50 flex items-center justify-center">
-                      <Sparkles className="w-8 h-8 text-white" />
+                      <Clapperboard className="w-8 h-8 text-white" />
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* Features strip */}
-            <div className="flex flex-wrap gap-6 mt-8 pt-8 border-t border-gray-200/50">
-              {FEATURES.map((f) => (
-                <div key={f.title} className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-violet-100 flex items-center justify-center">
-                    <f.icon className="w-4.5 h-4.5 text-violet-600" />
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900">{f.title}</div>
-                    <div className="text-xs text-gray-400">{f.desc}</div>
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         </div>
       </div>
 
       <div className="px-6 lg:px-10">
-        {/* Stats Grid */}
+        {/* Onboarding panel - shown until user dismisses */}
+        {showOnboard && (
+          <Card className="border-none shadow-md mb-6 overflow-hidden bg-gradient-to-br from-violet-50 via-purple-50/40 to-pink-50/30">
+            <CardContent className="p-6">
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-500 flex items-center justify-center shadow-lg shadow-purple-200/50">
+                    <Rocket className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-900">第一次用？跟着这 4 步走一遍</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">10 分钟内就能完整体验，每个步骤都可以直接点进去</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={dismissOnboard}
+                  className="text-xs text-gray-400 hover:text-gray-700 transition-colors px-2 py-1 rounded-md hover:bg-white/60"
+                >
+                  我已熟悉，关掉它
+                </button>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {FIRST_STEPS.map((s, i) => (
+                  <Link key={s.num} href={s.href}>
+                    <div className="group relative h-full bg-white rounded-2xl p-4 border border-violet-100/60 hover:border-violet-300 hover:shadow-md transition-all">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-600 to-purple-500 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                          {s.num}
+                        </div>
+                        {i < FIRST_STEPS.length - 1 && (
+                          <ArrowRight className="w-3 h-3 text-violet-300" />
+                        )}
+                      </div>
+                      <h4 className="font-semibold text-sm text-gray-900 mb-1">{s.title}</h4>
+                      <p className="text-xs text-gray-500 leading-relaxed">{s.desc}</p>
+                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <ArrowRight className="w-4 h-4 text-violet-500" />
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Friendly Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {statCards.map((stat, i) => (
+          {friendlyStats.map((stat, i) => (
             <Card key={i} className="border-none shadow-sm hover:shadow-md transition-all duration-300 group cursor-default overflow-hidden">
               <CardContent className="p-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-10 h-10 rounded-xl ${stat.bg} ring-1 ${stat.ring} flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
-                    <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-gray-500">{stat.title}</span>
+                  <div className="relative group/tip">
+                    <HelpCircle className="w-3.5 h-3.5 text-gray-300 hover:text-violet-500 cursor-help transition-colors" />
+                    <div className="absolute right-0 top-full mt-1.5 px-2.5 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] whitespace-nowrap opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible transition-all pointer-events-none shadow-lg z-30 max-w-[220px] whitespace-normal w-max">
+                      {stat.hint}
+                    </div>
                   </div>
-                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">{stat.title}</span>
                 </div>
                 <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-                <div className="text-xs text-gray-400 mt-1">{stat.subtitle}</div>
               </CardContent>
             </Card>
           ))}
@@ -238,35 +411,36 @@ export default function Home() {
 
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm">
-            状态读取失败：{error}
+            <span className="font-medium">系统状态读不出来：</span>{error}
+            <div className="text-xs text-red-500 mt-1">
+              通常是后台服务还没启动。如果你是开发者，请确认运行了 <code className="bg-white/60 px-1.5 py-0.5 rounded">.\dev-start.ps1</code> 或者 docker compose 容器都起来了。
+            </div>
           </div>
         )}
 
-        {/* Quick Tools Grid */}
+        {/* Tool cards */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-bold text-gray-900">智能工具</h2>
-              <p className="text-xs text-gray-400 mt-0.5">选择工具开始工作</p>
+              <h2 className="text-lg font-bold text-gray-900">我能用它做什么？</h2>
+              <p className="text-xs text-gray-500 mt-0.5">点开任意卡片即可开始使用，每张卡都有"做什么用"和"什么场景适合"</p>
             </div>
-            <div className="flex items-center gap-1.5">
-              <Badge variant="outline" className="text-[10px] rounded-full px-2 py-0.5 border-violet-200 text-violet-600 bg-violet-50">
-                {QUICK_TOOLS.length} 个可用
-              </Badge>
-            </div>
+            <Badge variant="outline" className="text-[10px] rounded-full px-2 py-0.5 border-violet-200 text-violet-600 bg-violet-50">
+              共 {QUICK_TOOLS.length} 个功能
+            </Badge>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {QUICK_TOOLS.map((tool) => (
               <Link key={tool.href} href={tool.href}>
                 <Card className="border-none shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group cursor-pointer overflow-hidden h-full">
                   <CardContent className="p-5 flex flex-col h-full">
-                    <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start justify-between mb-3">
                       <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${tool.color} shadow-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
                         <tool.icon className="w-5 h-5 text-white" />
                       </div>
                       {tool.badge && (
                         <Badge className={`text-[10px] rounded-full px-2 py-0.5 ${
-                          tool.badge === '热门' ? 'bg-red-50 text-red-600 border-red-200' :
+                          tool.badge === '最常用' ? 'bg-red-50 text-red-600 border-red-200' :
                           tool.badge === '新' ? 'bg-violet-50 text-violet-600 border-violet-200' :
                           'bg-gray-50 text-gray-500 border-gray-200'
                         }`}>
@@ -274,8 +448,11 @@ export default function Home() {
                         </Badge>
                       )}
                     </div>
-                    <h3 className="font-semibold text-sm text-gray-900 mb-1 group-hover:text-violet-700 transition-colors">{tool.label}</h3>
-                    <p className="text-xs text-gray-400 flex-1">{tool.desc}</p>
+                    <h3 className="font-semibold text-sm text-gray-900 mb-1.5 group-hover:text-violet-700 transition-colors">{tool.label}</h3>
+                    <p className="text-xs text-gray-600 leading-relaxed mb-2">{tool.desc}</p>
+                    <p className="text-[11px] text-gray-400 leading-relaxed flex-1 italic">
+                      💡 {tool.scene}
+                    </p>
                     <div className="flex items-center gap-1 mt-3 text-xs text-violet-500 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                       <span>立即使用</span>
                       <ArrowRight className="w-3 h-3" />
@@ -287,141 +464,157 @@ export default function Home() {
           </div>
         </div>
 
-        {/* System Overview Tabs */}
-        <Card className="border-none shadow-sm mb-8 overflow-hidden">
-          <Tabs defaultValue="overview" className="w-full">
-            <div className="px-6 pt-5 pb-0">
+        {/* Use cases / scenarios */}
+        <div className="mb-8">
+          <div className="mb-4">
+            <h2 className="text-lg font-bold text-gray-900">看看别人都怎么用</h2>
+            <p className="text-xs text-gray-500 mt-0.5">不知道从哪里开始？选一个最像你的场景，按推荐组合用</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <ScenarioCard
+              title="我是电商运营"
+              desc="复盘广告 + 抄爆款 + 出新素材"
+              flow={[
+                { tool: '投放复盘', href: '/ad-review', tip: '把千川数据丢进去' },
+                { tool: '短视频分析', href: '/video-analysis', tip: '把竞品爆款丢进去' },
+                { tool: '内容工坊', href: '/content-studio', tip: '生成自家新素材' },
+              ]}
+              color="from-pink-500 to-rose-600"
+            />
+            <ScenarioCard
+              title="我是内容创作者"
+              desc="抄爆款 + 写脚本 + 拍直播复盘"
+              flow={[
+                { tool: '短视频分析', href: '/video-analysis', tip: '研究爆款套路' },
+                { tool: '内容工坊', href: '/content-studio', tip: '一键出脚本和成片' },
+                { tool: '直播分析', href: '/livestream-analysis', tip: '复盘直播话术' },
+              ]}
+              color="from-fuchsia-500 to-pink-600"
+            />
+            <ScenarioCard
+              title="我只是想用 AI 帮我读资料"
+              desc="把资料喂给 AI，问什么答什么"
+              flow={[
+                { tool: '知识采集', href: '/knowledge/harvester', tip: '一键抓网页/飞书' },
+                { tool: '知识库', href: '/knowledge', tip: '上传 PDF / Word' },
+                { tool: '智能问答', href: '/chat', tip: '选中知识库再提问' },
+              ]}
+              color="from-emerald-500 to-teal-600"
+            />
+          </div>
+        </div>
+
+        {/* Recent activity */}
+        {activity.length > 0 && (
+          <Card className="border-none shadow-sm mb-8">
+            <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900">系统监控</h2>
-                <TabsList className="bg-gray-100/80 p-1 rounded-full border border-gray-200/50">
-                  <TabsTrigger value="overview" className="rounded-full px-4 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all">架构总览</TabsTrigger>
-                  <TabsTrigger value="sp3" className="rounded-full px-4 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all">AI Hub</TabsTrigger>
-                  <TabsTrigger value="sp4" className="rounded-full px-4 py-1.5 text-xs data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all">Knowledge</TabsTrigger>
-                </TabsList>
-              </div>
-            </div>
-
-            <TabsContent value="overview" className="px-6 pb-6 space-y-6 animate-in fade-in duration-500">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Architecture */}
-                <div className="lg:col-span-2">
-                  <div className="rounded-2xl bg-gradient-to-br from-gray-50 to-gray-100/50 border border-gray-100 p-6 relative overflow-x-auto overflow-y-hidden">
-                    <div className="flex flex-row items-center justify-between gap-4 min-w-[600px]">
-                      <ServiceNode icon={Newspaper} label="News" sublabel="采集与归档" gradient="from-blue-100 to-blue-50" iconColor="text-blue-600" />
-                      <ConnectorLine label="/api/v1/news" />
-                      <ServiceNode icon={BrainCircuit} label="AI Hub" sublabel="模型路由分发" gradient="from-violet-100 to-violet-50" iconColor="text-violet-600" />
-                      <ConnectorLine label="/api/v1/ai" />
-                      <ServiceNode icon={Database} label="Knowledge" sublabel="向量检索 + RAG" gradient="from-emerald-100 to-emerald-50" iconColor="text-emerald-600" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Activity feed */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-violet-500" />
-                    服务动态
-                  </h3>
-                  <div className="space-y-4">
-                    {activity.length === 0 ? (
-                      <p className="text-sm text-gray-400 text-center py-6">暂无近期活动</p>
-                    ) : activity.slice(0, 5).map((item) => {
-                      const iconMap: Record<string, { icon: React.ElementType; bg: string; color: string }> = {
-                        knowledge: { icon: Database, bg: 'bg-emerald-100', color: 'text-emerald-600' },
-                        news: { icon: Newspaper, bg: 'bg-blue-100', color: 'text-blue-600' },
-                        video: { icon: Clapperboard, bg: 'bg-pink-100', color: 'text-pink-600' },
-                        livestream: { icon: Radio, bg: 'bg-orange-100', color: 'text-orange-600' },
-                      }
-                      const { icon: Icon, bg, color } = iconMap[item.source] ?? { icon: Activity, bg: 'bg-gray-100', color: 'text-gray-600' }
-                      return (
-                        <div key={item.id} className="flex items-start gap-3">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${bg}`}>
-                            <Icon className={`w-4 h-4 ${color}`} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{item.title}</p>
-                            <p className="text-xs text-gray-400">{timeAgo(item.time)}</p>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <h2 className="text-lg font-bold text-gray-900">系统最近在忙什么</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">显示最近后台跑的任务（抓网页、分析视频之类）</p>
                 </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="sp3" className="px-6 pb-6">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-200/50">
-                    <BrainCircuit className="w-7 h-7 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900">AI 模型网关</h3>
-                    <p className="text-sm text-gray-500">OpenAI 标准协议的模型路由分发与故障降级处理</p>
-                  </div>
-                </div>
-                <Link href="/models">
-                  <Button className="w-fit mt-2 bg-gradient-to-r from-violet-600 to-purple-500 hover:from-violet-700 hover:to-purple-600 rounded-xl shadow-md">
-                    前往模型配置中心 <ArrowRight className="w-4 h-4 ml-1" />
+                <Link href="/tasks">
+                  <Button variant="ghost" size="sm" className="text-xs rounded-full text-gray-500 hover:text-violet-600">
+                    看全部任务 <ArrowRight className="w-3 h-3 ml-1" />
                   </Button>
                 </Link>
               </div>
-            </TabsContent>
-
-            <TabsContent value="sp4" className="px-6 pb-6">
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-teal-200/50">
-                    <Database className="w-7 h-7 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900">知识检索引擎</h3>
-                    <p className="text-sm text-gray-500">pgvector 向量检索 + GraphRAG 增强实体关系分析</p>
-                  </div>
-                </div>
-                <div className="flex gap-3 mt-2">
-                  <Link href="/knowledge">
-                    <Button className="bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 rounded-xl shadow-md">
-                      管理知识库
-                    </Button>
-                  </Link>
-                  <Link href="/tasks">
-                    <Button variant="outline" className="rounded-xl">查看任务队列</Button>
-                  </Link>
-                </div>
+              <div className="space-y-3">
+                {activity.slice(0, 6).map((item) => {
+                  const iconMap: Record<string, { icon: LucideIcon; bg: string; color: string; tag: string }> = {
+                    knowledge: { icon: Database, bg: 'bg-emerald-100', color: 'text-emerald-600', tag: '知识库' },
+                    news: { icon: Newspaper, bg: 'bg-blue-100', color: 'text-blue-600', tag: '资讯' },
+                    video: { icon: Clapperboard, bg: 'bg-pink-100', color: 'text-pink-600', tag: '视频' },
+                    livestream: { icon: Radio, bg: 'bg-orange-100', color: 'text-orange-600', tag: '直播' },
+                  }
+                  const meta = iconMap[item.source] ?? { icon: CheckCircle2, bg: 'bg-gray-100', color: 'text-gray-600', tag: '其他' }
+                  const Icon = meta.icon
+                  return (
+                    <div key={item.id} className="flex items-center gap-3 py-1.5">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${meta.bg}`}>
+                        <Icon className={`w-4 h-4 ${meta.color}`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate">{item.title}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 rounded-full border-gray-200 text-gray-500">
+                            {meta.tag}
+                          </Badge>
+                          <span className="text-xs text-gray-400">{timeAgo(item.time)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-            </TabsContent>
-          </Tabs>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Bottom CTA */}
+        <Card className="border-none shadow-sm overflow-hidden bg-gradient-to-br from-violet-600 to-purple-600">
+          <CardContent className="p-7 lg:p-8">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
+              <div className="text-white">
+                <h3 className="text-xl font-bold mb-1.5">还是不知道怎么开始？</h3>
+                <p className="text-sm text-violet-100 leading-relaxed max-w-xl">
+                  点页面右下角紫色「新手指南」按钮，里面有 3 分钟讲清楚：它是什么、能干什么、第一步该做什么、常见疑问都怎么解决。
+                </p>
+              </div>
+              <Link href="/chat">
+                <Button className="bg-white text-violet-700 hover:bg-violet-50 rounded-full px-6 shadow-md whitespace-nowrap">
+                  直接开始聊天 <ArrowRight className="w-4 h-4 ml-1" />
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
         </Card>
       </div>
     </div>
   )
 }
 
-function ServiceNode({ icon: Icon, label, sublabel, gradient, iconColor }: {
-  icon: React.ElementType
-  label: string
-  sublabel: string
-  gradient: string
-  iconColor: string
-}) {
-  return (
-    <div className={`bg-gradient-to-br ${gradient} p-5 rounded-2xl flex-1 text-center border border-white/50 shadow-sm hover:shadow-md transition-all duration-300`}>
-      <div className={`mx-auto w-12 h-12 bg-white rounded-xl flex items-center justify-center mb-3 shadow-sm`}>
-        <Icon className={`w-6 h-6 ${iconColor}`} />
-      </div>
-      <h4 className="font-semibold text-sm text-gray-900">{label}</h4>
-      <p className="text-xs text-gray-500 mt-1">{sublabel}</p>
-    </div>
-  )
+function formatBig(n: number): string {
+  if (n >= 100000) return `${(n / 10000).toFixed(1)} 万`
+  if (n >= 10000) return `${(n / 10000).toFixed(2)} 万`
+  return n.toLocaleString('zh-CN')
 }
 
-function ConnectorLine({ label }: { label: string }) {
+function ScenarioCard({
+  title,
+  desc,
+  flow,
+  color,
+}: {
+  title: string
+  desc: string
+  flow: { tool: string; href: string; tip: string }[]
+  color: string
+}) {
   return (
-    <div className="flex flex-col items-center shrink-0">
-      <div className="h-0.5 w-12 lg:w-16 bg-gradient-to-r from-violet-200 to-purple-200 rounded-full" />
-      <span className="text-[10px] text-gray-400 font-mono mt-1">{label}</span>
-    </div>
+    <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden h-full">
+      <CardContent className="p-5">
+        <div className={`inline-block px-3 py-1 rounded-full bg-gradient-to-r ${color} text-white text-xs font-medium mb-3`}>
+          {title}
+        </div>
+        <p className="text-sm text-gray-600 leading-relaxed mb-4">{desc}</p>
+        <div className="space-y-2">
+          {flow.map((step, i) => (
+            <Link key={i} href={step.href} className="block group">
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-gray-50 hover:bg-violet-50 transition-colors">
+                <div className="w-5 h-5 rounded-full bg-white text-gray-500 group-hover:text-violet-600 flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm">
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-gray-900 group-hover:text-violet-700 transition-colors">{step.tool}</div>
+                  <div className="text-[11px] text-gray-400 truncate">{step.tip}</div>
+                </div>
+                <ArrowRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-violet-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

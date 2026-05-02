@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { PromptFeedback } from '@/components/prompt-feedback'
+import { PromptNodeDrawer } from '@/components/prompt-node-drawer'
 
 const VIDEO_API_BASE = '/api/v1/video-analysis'
 
@@ -179,6 +181,7 @@ export default function VideoAnalysisPage() {
   const [message, setMessage] = useState('')
   const [metricsText, setMetricsText] = useState('')
   const [activeTab, setActiveTab] = useState<'scores' | 'suggestions' | 'douyin' | 'detail'>('scores')
+  const [drawerNode, setDrawerNode] = useState<string | null>(null)
 
   const currentProvider = useMemo(
     () => providers.find((p) => p.id === selectedProvider),
@@ -362,7 +365,10 @@ export default function VideoAnalysisPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <Link href="/" className="text-gray-500 hover:text-gray-900">← 返回控制台</Link>
           <div className="font-semibold text-gray-900">短视频分析（抖音特化）</div>
-          <Badge variant="outline">{selectedProvider}</Badge>
+          <div className="flex items-center gap-2">
+            <Link href="/reverse-engineer" className="text-sm text-blue-600 hover:underline">前往反向拆解</Link>
+            <Badge variant="outline">{selectedProvider}</Badge>
+          </div>
         </div>
       </nav>
 
@@ -688,8 +694,20 @@ export default function VideoAnalysisPage() {
           </>
         ) : null}
 
+        {report && videoDetail?.video?.id ? (
+          <div className="mt-2">
+            <PromptFeedback
+              nodeId="video.analyze"
+              inputRef={{ video_id: videoDetail.video.id }}
+              output={JSON.stringify(report).slice(0, 5000)}
+              onOpenDrawer={setDrawerNode}
+            />
+          </div>
+        ) : null}
+
         {message ? <div className="text-sm rounded-md border bg-white px-4 py-3">{message}</div> : null}
       </main>
+      <PromptNodeDrawer nodeId={drawerNode} onClose={() => setDrawerNode(null)} />
     </div>
   )
 }

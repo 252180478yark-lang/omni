@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     seedance_secret_key: str = ""  # legacy
     seedance_model: str = "doubao-seedance-2-0-260128"
     seedance_fast_model: str = "doubao-seedance-2-0-fast-260128"
+    seedream_model: str = "doubao-seedream-4-0-250828"
+    seedream_model_fallback: str = "doubao-seedream-3-0-t2i-250415"
     kling_api_key: str = ""
+    image_provider_chain: str = "seedream,kling,openai"
 
     # Defaults
     default_chat_provider: str = "gemini"

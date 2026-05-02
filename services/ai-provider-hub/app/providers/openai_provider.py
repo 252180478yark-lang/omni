@@ -11,10 +11,24 @@ from app.schemas.ai import ChatResponse, Message, TokenUsage
 
 _BASE_URL = "https://api.openai.com/v1"
 
+_RECOMMENDED_OPENAI_MODELS: tuple[str, ...] = (
+    # Current general-purpose/frontier choices.
+    "gpt-5.5",
+    "gpt-5.4-mini",
+    "gpt-5.4-nano",
+    # ChatGPT snapshot alias for teams that want ChatGPT-like behavior.
+    "gpt-5.2-chat-latest",
+    # Image generation/editing models.
+    "gpt-image-2",
+    "gpt-image-1.5",
+    "gpt-image-1",
+    "gpt-image-1-mini",
+)
+
 
 class OpenAIProvider(BaseProvider):
     name = "openai"
-    default_chat_model = "gpt-4o-mini"
+    default_chat_model = "gpt-5.2-chat-latest"
     default_embedding_model = "text-embedding-3-small"
     capabilities = {
         ProviderCapability.CHAT,
@@ -137,7 +151,18 @@ class OpenAIProvider(BaseProvider):
                 "usage": {"cost_usd": 0},
             }
 
-        chosen_model = model or "gpt-image-1.5"
+        refs = kwargs.get("reference_images") or []
+        ref_notes: list[str] = []
+        for i, ref in enumerate(refs):
+            if isinstance(ref, dict):
+                ref_type = ref.get("type", "reference")
+                ref_notes.append(f"图{i + 1}是{ref_type}参考图，请保持主体一致")
+            elif isinstance(ref, str):
+                ref_notes.append(f"图{i + 1}是参考图，请保持主体一致")
+        if ref_notes:
+            prompt = f"{prompt}\n\n参考约束：{'；'.join(ref_notes)}"
+
+        chosen_model = model or "gpt-image-2"
         size = kwargs.get("size", "1536x1024")
         quality = kwargs.get("quality", "auto")
 
@@ -190,21 +215,42 @@ class OpenAIProvider(BaseProvider):
     async def list_models(self, api_key: str | None = None) -> list[str]:
         key = (api_key or settings.openai_api_key or "").strip()
         if not key:
-            return [self.default_chat_model, self.default_embedding_model]
+            return list(dict.fromkeys([
+                self.default_chat_model,
+                self.default_embedding_model,
+                *_RECOMMENDED_OPENAI_MODELS,
+            ]))
         try:
             async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
                 resp = await client.get(f"{_BASE_URL}/models", headers={"Authorization": f"Bearer {key}"})
                 resp.raise_for_status()
                 data = resp.json().get("data", [])
                 ids = [item.get("id", "") for item in data if item.get("id")]
-                ranked = [m for m in ids if m.startswith("gpt-") or "embedding" in m or m.startswith("o") or "dall-e" in m]
+                ranked = [
+                    m for m in ids
+                    if (
+                        m.startswith("gpt-")
+                        or m.startswith("chatgpt-")
+                        or "embedding" in m
+                        or m.startswith("o")
+                        or "dall-e" in m
+                    )
+                ]
                 models = ranked[:80] if ranked else ids[:80]
-                for default in [self.default_chat_model, self.default_embedding_model]:
+                for default in [
+                    self.default_chat_model,
+                    self.default_embedding_model,
+                    *_RECOMMENDED_OPENAI_MODELS,
+                ]:
                     if default and default not in models:
                         models.append(default)
                 return list(dict.fromkeys(m for m in models if m))
         except Exception:
-            return [self.default_chat_model, self.default_embedding_model]
+            return list(dict.fromkeys([
+                self.default_chat_model,
+                self.default_embedding_model,
+                *_RECOMMENDED_OPENAI_MODELS,
+            ]))
 
     async def test_connection(self, api_key: str | None = None) -> tuple[bool, str, list[str]]:
         key = (api_key or settings.openai_api_key or "").strip()

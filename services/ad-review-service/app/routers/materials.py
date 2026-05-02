@@ -270,6 +270,9 @@ async def update_material(material_id: str, body: MaterialUpdate):
         scores = None
         if vid:
             scores = await _video_scores_snapshot(vid)
+        # pipeline_id 允许传空字符串明确解除关联
+        pipeline_id_to_set = body.pipeline_id
+        clear_pipeline = pipeline_id_to_set == ""
         await conn.execute(
             """
             UPDATE ad_review.materials SET
@@ -278,7 +281,12 @@ async def update_material(material_id: str, body: MaterialUpdate):
               video_analysis_scores = COALESCE($4::jsonb, video_analysis_scores),
               iteration_note = COALESCE($5, iteration_note),
               group_id = COALESCE($6::uuid, group_id),
-              change_tags = COALESCE($7::jsonb, change_tags)
+              change_tags = COALESCE($7::jsonb, change_tags),
+              pipeline_id = CASE
+                              WHEN $9 THEN NULL
+                              WHEN $8::text IS NOT NULL THEN $8::uuid
+                              ELSE pipeline_id
+                            END
             WHERE id = $1::uuid
             """,
             material_id,
@@ -288,8 +296,39 @@ async def update_material(material_id: str, body: MaterialUpdate):
             body.iteration_note,
             body.group_id,
             json.dumps(body.change_tags) if body.change_tags is not None else None,
+            pipeline_id_to_set if (pipeline_id_to_set and not clear_pipeline) else None,
+            clear_pipeline,
         )
     return {"ok": True}
+
+
+@router.get("/pipelines/list")
+async def list_pipeline_options():
+    """ad-review 上传素材时给前端用的下拉数据。
+
+    从 content_studio.pipelines 拉一份精简列表（id/title/status/brief_id/digital_human_id）。
+    跨 schema，但 ad-review 与 content_studio 同库，不需要走 HTTP。
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, title, status, brief_id, digital_human_id, created_at
+        FROM content_studio.pipelines
+        ORDER BY created_at DESC
+        LIMIT 200
+        """,
+    )
+    return {"items": [
+        {
+            "id": str(r["id"]),
+            "title": r["title"],
+            "status": r["status"],
+            "brief_id": str(r["brief_id"]) if r["brief_id"] else None,
+            "digital_human_id": str(r["digital_human_id"]) if r["digital_human_id"] else None,
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        }
+        for r in rows
+    ]}
 
 
 @router.put("/materials/{material_id}/link-video")

@@ -8,23 +8,28 @@ class PromptBuilder:
     SYSTEM_PROMPT = """你是一位专业的电商直播内容分析师，擅长从电商直播录像中提取结构化信息。
 你需要仔细观看整段视频，同时关注画面内容和语音内容，按时间轴输出分析报告。
 
-分析要求：
-1. 【细粒度分段】将直播按 30~60 秒为一段进行切分。如果一个流程阶段超过 60 秒，必须拆成多段。常见流程阶段包括：开场暖场、产品介绍、功能演示、促单逼单、互动答疑、福利发放、过渡衔接、收尾。同一阶段可以出现多段。
-2. 准确转写每个人说的话（逐字稿），不是概要而是尽量完整的原话。区分不同说话人，按角色标记（主播/助播/嘉宾/模特）。
-3. 描述每段对应的画面内容：人物动作、产品展示方式、场景布局等。
-4. 【背景元素识别】详细列出画面背景中可见的所有元素，包括但不限于：场景类型（直播间/户外/仓库等）、背景板/背景墙内容、陈列架/展示柜、灯光布局、道具摆放、品牌 Logo、产品堆头、桌面物品等。每个元素单独列出。
-5. 【贴片元素识别】详细列出画面上叠加的所有贴片/浮层元素，包括但不限于：价格标签、促销横幅、倒计时、优惠券浮窗、商品链接弹窗、二维码、字幕条、平台水印、关注引导、库存提示、直播间标题等。每个元素单独列出。
-6. 评估每段的语速（快速/中速/慢速/变速）和节奏特征（停顿、重复、情绪起伏）。
-7. 为每段打上风格标签（可多选）：叫卖型、专业讲解型、情感共鸣型、互动型、紧迫促单型。
-8. 在备注中补充你观察到的有价值信息，例如转化技巧、话术亮点、改进空间等。
+## 分段规则（硬约束，必须遵守）
+- 每段**时长 30-60 秒**。**任何一段都不得超过 60 秒**，宁可多分段也不要出现大段。
+- 若一个流程阶段自然超过 60 秒，必须拆成多段（同一阶段可以连续出现多段，phase 字段写相同值）。
+- 常见流程阶段：开场暖场、产品介绍、功能演示、促单逼单、互动答疑、福利发放、过渡衔接、收尾。
 
-重要：
-- 每段控制在 30~60 秒，宁可多分段也不要出现超过 90 秒的大段
-- 时间格式统一使用 MM:SS（如 02:30 表示 2 分 30 秒）
-- 逐字稿要尽量完整，不要省略或概括
-- 如果某段只有一个人说话，其他人物的 content 留空字符串
-- scripts 字典的 key 用 person_a、person_b、person_c
-- background_elements 和 overlay_elements 都是字符串数组，每个元素独立描述"""
+## 分析任务
+1. **逐字稿**：准确转写每个人说的话（完整原话，不是概要）。按角色区分：主播/助播/嘉宾/模特。
+2. **画面描述**：每段的人物动作、产品展示方式、场景布局。
+3. **背景元素**：场景类型（直播间/户外/仓库等）、背景板/背景墙内容、陈列架、灯光、道具、品牌 Logo、产品堆头、桌面物品。每个元素独立成项。
+4. **贴片元素**：画面叠加层——价格标签、促销横幅、倒计时、优惠券浮窗、商品链接弹窗、二维码、字幕条、平台水印、关注引导、库存提示、直播间标题。每个元素独立成项。
+5. **语速与节奏**：语速（快速/中速/慢速/变速）+ 节奏特征（停顿、重复、情绪起伏）。
+6. **风格标签**（可多选）：叫卖型、专业讲解型、情感共鸣型、互动型、紧迫促单型。
+7. **备注**：转化技巧、话术亮点、改进空间等有价值观察。
+
+## 输出字段约定
+- `time_start` / `time_end`：统一使用 `MM:SS` 格式（如 `02:30` 表示 2 分 30 秒）。
+- `scripts`：字典，key 使用 `person_a` / `person_b` / `person_c` 的**匿名编号**；value 内的 `role` 字段填具体角色（主播/助播/嘉宾/模特）。
+  - 规则：同一个具体角色在整段视频内 key 保持一致（即全片中"主播" == `person_a` 不变）。
+  - 某段只有一个人说话时，其他人物的 `content` 留空字符串（key 仍保留）。
+- `summary.person_summary[].role`：使用具体角色名（主播/助播/嘉宾/模特），与 scripts 的 role 字段对齐。
+- `background_elements` / `overlay_elements`：字符串数组，每项独立描述一个元素。
+- 逐字稿追求完整，不要主动概括或省略。"""
 
     JSON_SCHEMA = """{
   "segments": [
@@ -74,8 +79,26 @@ class PromptBuilder:
   }
 }"""
 
+    @staticmethod
+    def _flywheel_suffix() -> str:
+        """同步拉取累积规则（直播分析服务是同步调用 Gemini，此处不走 asyncio）。"""
+        try:
+            import os
+            import httpx as _hx
+            base = (os.getenv("KNOWLEDGE_ENGINE_URL", "http://knowledge-engine:8002") or "").rstrip("/")
+            r = _hx.post(
+                f"{base}/api/v1/prompt/render-rules",
+                json={"node_id": "livestream.analyze", "scope": None},
+                timeout=5.0,
+            )
+            if r.status_code == 200:
+                return ((r.json() or {}).get("data") or {}).get("suffix") or ""
+        except Exception:
+            pass
+        return ""
+
     def build_full_video_prompt(self, metadata: VideoMetadata) -> str:
-        return f"""{self.SYSTEM_PROMPT}
+        return f"""{self.SYSTEM_PROMPT}{self._flywheel_suffix()}
 
 这是一段电商直播录像，时长 {metadata.duration_formatted}，分辨率 {metadata.width}x{metadata.height}。
 请仔细观看完整视频后，严格按以下 JSON 结构输出分析结果：
@@ -85,7 +108,7 @@ class PromptBuilder:
 请现在开始分析这段直播录像，输出完整的 JSON 结果。"""
 
     def build_segment_prompt(self, segment: VideoSegment) -> str:
-        return f"""{self.SYSTEM_PROMPT}
+        return f"""{self.SYSTEM_PROMPT}{self._flywheel_suffix()}
 
 【重要上下文】这是一段较长直播录像的**第 {segment.index + 1}/{segment.total_segments} 片段**。
 此片段对应原视频的 {segment.start_formatted} ~ {segment.end_formatted} 时间段。

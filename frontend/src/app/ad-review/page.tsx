@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BarChart3, Plus, MoreHorizontal, Trash2, FileText, Users, Video, TrendingUp } from 'lucide-react'
+import { BarChart3, Plus, MoreHorizontal, RefreshCw, Trash2, FileText, Users, Video, TrendingUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -121,6 +121,12 @@ export default function AdReviewHomePage() {
             <h1 className="text-xl font-semibold text-gray-900">投放复盘</h1>
           </div>
           <div className="flex items-center gap-2">
+            <Link href="/ad-review/flywheel">
+              <Button variant="outline" size="sm" className="gap-1">
+                <RefreshCw className="w-4 h-4" />
+                飞轮仪表盘
+              </Button>
+            </Link>
             <Link href="/ad-review/analytics">
               <Button variant="outline" size="sm" className="gap-1">
                 <BarChart3 className="w-4 h-4" />

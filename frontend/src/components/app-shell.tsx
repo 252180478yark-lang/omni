@@ -3,6 +3,7 @@
 import React from 'react'
 import { usePathname } from 'next/navigation'
 import { AppSidebar } from './app-sidebar'
+import { BeginnerGuide } from './beginner-guide'
 
 const FULL_SCREEN_ROUTES = ['/chat']
 
@@ -17,6 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex-1 ml-[68px] min-h-screen">
           {children}
         </div>
+        <BeginnerGuide />
       </div>
     )
   }
@@ -27,6 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 ml-[68px] min-h-screen">
         {children}
       </main>
+      <BeginnerGuide />
     </div>
   )
 }

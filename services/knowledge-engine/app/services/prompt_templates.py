@@ -10,6 +10,12 @@ Core capabilities:
 
 from __future__ import annotations
 
+from app.services.prompt_commons import (
+    CONSISTENCY_ANCHOR_RULE,
+    JSON_OUTPUT_DISCIPLINE,
+    NO_AI_SLANG,
+)
+
 STYLE_DESCRIPTIONS: dict[str, str] = {
     "grassplanting": "种草安利风格：口语化、真实体验感、像朋友推荐一样自然，适合小红书/抖音",
     "brand": "品牌宣传风格：高端大气、电影感文案、注重品牌调性和情感共鸣",
@@ -48,18 +54,31 @@ def build_copy_prompt(source_text: str, config: dict) -> str:
 ## 运营方案
 {source_text}
 
-## 要求
+## 写作要求
 - 风格：{style_desc}
 - 语气：{tone_desc}
-- 文案长度：150-300字，适合15-30秒短视频的旁白量
-- 结构清晰：开头吸引注意力（hook）→ 中间传递核心卖点 → 结尾引导行动（CTA）
-- 语言自然流畅，适合口播朗读
-- 不要使用 Markdown 格式，直接输出纯文本文案
+- 文案长度：150-300 字，适合 15-30 秒短视频的旁白量
+- 结构：开头 3 秒 hook（痛点/反常识/利益点）→ 中段卖点 1-2 条（带具体细节或数字）→ 结尾 CTA（明确下一步动作）
+- 语言适合口播朗读：句短、节奏清晰、避免长定语
 
-请直接输出文案内容，不要加任何前缀说明。"""
+## Hook 写法参考（三选一，不要都用）
+1. 反问式："你是不是也试过 XX 都没效果？"
+2. 痛点式："XX 人群最怕的就是 XX"
+3. 场景式："早上起来头疼到不行，我才知道……"
+
+{NO_AI_SLANG}
+
+## 输出
+直接输出文案纯文本（不加前缀说明，不加 Markdown 标题/列表/代码块）。"""
 
 
-def build_script_prompt(copy_text: str, config: dict) -> str:
+def build_script_prompt(
+    copy_text: str,
+    config: dict,
+    *,
+    banned_words: list[str] | None = None,
+    voice_examples: list[str] | None = None,
+) -> str:
     pace = config.get("pace", "medium")
     pace_desc = PACE_DESCRIPTIONS.get(pace, PACE_DESCRIPTIONS["medium"])
     image_style = config.get("image_style", "lifestyle_photo")
@@ -68,24 +87,47 @@ def build_script_prompt(copy_text: str, config: dict) -> str:
     if product_desc:
         product_hint = f"\n- 产品信息：{product_desc}（产品白底图由用户单独上传，脚本中需标注哪些场景出现产品）"
 
+    banned_block = ""
+    if banned_words:
+        banned_block = (
+            "\n\n## 口播禁用词（绝对不能出现在 narration 中）\n"
+            + "、".join(banned_words)
+            + "\n命中任意词即视为不合格，请改用更口语化、有真实感的表达。"
+        )
+
+    voice_block = ""
+    if voice_examples:
+        sample = "\n".join(f"- {ex}" for ex in voice_examples[:5])
+        voice_block = (
+            "\n\n## 真人口播语料示例（请模仿语气和句长）\n" + sample
+        )
+
     return f"""你是一位专业的短视频分镜脚本编剧。请将以下营销文案拆解为结构化的短视频分镜脚本。
 
 ## 营销文案
 {copy_text}
 
-## 要求
+## 写作要求
 - 节奏：{pace_desc}
 - 画面风格：{image_style}{product_hint}
-- 总时长控制在15-30秒
-- 每个场景包含：画面描述、旁白文字、镜头运动、字幕花字
-- 画面描述要非常具体详细，包含构图、光线、色调、主体动作等
-- 如果场景中出现人物，给人物命名（如"小美"、"模特A"），并用 characters 数组列出
-- 如果场景中出现产品，设置 has_product: true
-- 镜头运动从以下选择：static, slow_push_in, slow_pull_out, pan_left, pan_right, tilt_up, tilt_down, tracking
-- 转场从以下选择：cut, fade, dissolve, wipe, zoom
+- 必须恰好输出 10 个 scenes，scene_id 必须从 1 到 10 连续编号
+- 总时长 15-30 秒；10 个场景共同覆盖 hook、痛点、卖点、演示、信任背书、CTA
+- 画面描述要具体详细：构图、光线、色调、主体动作、场景环境全都要提
+- 每个场景的 narration 适合口播朗读（句短、不带 Markdown）
 
-请严格按照以下 JSON 格式输出，不要输出任何其他内容：
+## 枚举值字典（只能从中选）
+- `camera_movement`: `static` / `slow_push_in` / `slow_pull_out` / `pan_left` / `pan_right` / `tilt_up` / `tilt_down` / `tracking`
+- `transition`: `cut` / `fade` / `dissolve` / `wipe` / `zoom`
 
+## 人物 & 产品字段
+- `characters`：**字符串数组**（人物名字符串，非对象）。如 `["小美", "模特A"]`。纯环境路人/NPC 不计入。
+- `has_product`：布尔值。场景中有产品出镜时为 `true`。
+
+{NO_AI_SLANG}
+
+{JSON_OUTPUT_DISCIPLINE}
+
+## 输出 Schema
 ```json
 {{
   "title": "视频标题",
@@ -94,40 +136,66 @@ def build_script_prompt(copy_text: str, config: dict) -> str:
     {{
       "scene_id": 1,
       "duration": "5s",
-      "visual_description": "详细的画面描述，包含构图、光线、色调、主体动作、场景环境",
-      "narration": "这个场景的旁白文字",
+      "visual_description": "详细的画面描述（构图/光线/色调/主体动作/场景环境）",
+      "narration": "本场景旁白（口播朗读的那句话）",
       "camera_movement": "slow_push_in",
-      "text_overlay": "需要叠加的字幕或花字（可为空字符串）",
+      "text_overlay": "字幕或花字（无则空字符串）",
       "transition": "fade",
       "characters": ["小美"],
       "has_product": true
     }}
   ]
 }}
-```"""
+```
+注意：上面的 scenes 示例只展示了 1 个对象，实际输出必须包含恰好 10 个 scene 对象。{banned_block}{voice_block}"""
 
 
 # ══════════════════════════════════════════════════
 # 2. Script analysis — extract characters + product map
 # ══════════════════════════════════════════════════
 
-def build_script_analysis_prompt(script_json: dict) -> str:
+def build_script_analysis_prompt(script_json: dict, avatar_guidance: str | None = None) -> str:
     """Analyze a script to extract all characters and their scene appearances."""
     import json
     script_text = json.dumps(script_json, ensure_ascii=False, indent=2)
 
-    return f"""你是一位视觉总监。请分析以下短视频脚本，提取所有出现的人物角色和产品出现信息。
+    guidance_block = ""
+    if avatar_guidance and avatar_guidance.strip():
+        guidance_block = f"""
+
+## 用户输入的人脸/数字人基础指引（必须优先参考）
+{avatar_guidance.strip()}
+
+请把这些指引合并进主要人物的 `appearance`，但不要编造与脚本明显冲突的信息。
+"""
+
+    return f"""你是一位视觉总监。请分析以下短视频脚本，提取所有主要人物角色和产品出现信息。
 
 ## 脚本
 {script_text}
+{guidance_block}
 
-## 任务
-1. 识别脚本中所有出现的**人物角色**（不包括纯环境人物如"路人"）
-2. 对每个角色给出：名称、外貌描述（性别、年龄段、发型、体型、着装风格）、出现的场景ID列表
-3. 标注哪些场景包含产品展示
+## 人物识别标准
+**纳入**：
+- 有台词 / 有特写 / 在多个场景重复出现的人物（主角、助播、模特、嘉宾）
+- 脚本中给出名字或明确身份标识的人物
 
-请严格按以下 JSON 格式输出：
+**排除**（不计入 characters）：
+- 纯背景路人、NPC、人群远景
+- 一次性出现、无台词、无特写的人物
+- 抽象概念化描述（如"现代都市人"）
 
+## 外貌字段规范（`appearance`）
+用顿号分隔的短语，按固定顺序：**发型 → 脸型 → 妆容/气质 → 服装**。
+示例："长发直发、瓜子脸、清新自然妆容、白色 T 恤 + 牛仔裤"
+
+## 产品场景标注
+- `product_scenes`：所有出现产品实物（而非口头提及）的 scene_id 数组
+- `product_description_from_script`：聚合脚本中与产品相关的视觉描述（颜色、形状、包装、使用状态），不带品牌口号
+
+{JSON_OUTPUT_DISCIPLINE}
+
+## 输出 Schema
 ```json
 {{
   "characters": [
@@ -136,12 +204,12 @@ def build_script_analysis_prompt(script_json: dict) -> str:
       "name": "小美",
       "gender": "female",
       "age_range": "20-25",
-      "appearance": "长发、瓜子脸、清新自然妆容、穿白色T恤",
+      "appearance": "长发直发、瓜子脸、清新自然妆容、白色 T 恤",
       "scene_ids": [1, 3, 5]
     }}
   ],
   "product_scenes": [2, 4, 5],
-  "product_description_from_script": "产品在脚本中的描述摘要"
+  "product_description_from_script": "产品的视觉描述摘要"
 }}
 ```"""
 
@@ -150,28 +218,42 @@ def build_script_analysis_prompt(script_json: dict) -> str:
 # 3. Character face generation prompt
 # ══════════════════════════════════════════════════
 
-def build_character_face_prompt(character: dict, image_style: str = "lifestyle_photo") -> str:
-    """Build a prompt to generate a consistent character portrait/face reference."""
-    name = character.get("name", "角色")
+def build_character_face_prompt(
+    character: dict,
+    image_style: str = "lifestyle_photo",
+    avatar_guidance: str | None = None,
+) -> str:
+    """Build a prompt to generate a consistent character portrait/face reference.
+
+    Direct image-gen prompt (not an LLM prompt). Output is English-only;
+    the `appearance` field is expected to be converted to English features
+    by the LLM pipeline upstream, or used as-is if already descriptive.
+    """
     gender = character.get("gender", "")
     age = character.get("age_range", "")
     appearance = character.get("appearance", "")
+    if avatar_guidance and avatar_guidance.strip():
+        appearance = f"{appearance}. Additional user guidance: {avatar_guidance.strip()}"
 
     gender_en = {"male": "male", "female": "female"}.get(gender, "person")
     style_hints: dict[str, str] = {
-        "lifestyle_photo": "photorealistic portrait photography, natural lighting, clean background, sharp focus on face",
-        "cinematic": "cinematic portrait, dramatic rim lighting, shallow depth of field, film grain",
+        "lifestyle_photo": "photorealistic portrait photography, natural lighting, clean neutral background, sharp focus on face, true-to-life skin texture",
+        "cinematic": "cinematic portrait, dramatic rim lighting, shallow depth of field, film grain, moody atmosphere",
         "vibrant": "vibrant commercial portrait, bold colors, studio lighting, confident expression",
         "clean_modern": "clean modern headshot, studio lighting, neutral background, professional look",
         "warm_illustration": "warm digital illustration portrait, soft pastel colors, gentle expression",
     }
     hint = style_hints.get(image_style, style_hints["lifestyle_photo"])
 
+    # Anchor physical identity first (for cross-scene consistency),
+    # then framing + style.
     return (
-        f"A {gender_en} portrait, age {age}, {appearance}. "
-        f"Front-facing bust shot, neutral expression, looking at camera. "
-        f"{hint}, high resolution, 1:1 aspect ratio, "
-        f"suitable as character reference sheet for video production"
+        f"A {gender_en} portrait, age range {age}. "
+        f"Physical features (do NOT change across scenes): {appearance}. "
+        f"Framing: front-facing bust shot, neutral relaxed expression, looking directly at camera. "
+        f"Style: {hint}. "
+        f"High resolution, 1:1 aspect ratio, character reference sheet for video production, "
+        f"no text overlays, no watermarks."
     )
 
 
@@ -225,11 +307,16 @@ def build_scene_to_image_prompt(
         for cname in characters_in_scene:
             profile = profile_map.get(cname)
             if profile:
+                ref_note = (
+                    "已有参考人像，生成时必须保持此人物外貌特征完全一致"
+                    if profile.get("face_url")
+                    else "未提供参考人像，请严格按文字外貌描述生成并保持跨场景一致"
+                )
                 char_parts.append(
                     f"  - {cname}：{profile.get('gender', '')}，"
                     f"{profile.get('age_range', '')}岁，"
                     f"{profile.get('appearance', '')}。"
-                    f"（已有参考人像，生成时必须保持此人物外貌特征完全一致）"
+                    f"（{ref_note}）"
                 )
         if char_parts:
             char_instructions = "\n## 本场景出现的人物（必须保持一致）\n" + "\n".join(char_parts)
@@ -255,15 +342,17 @@ def build_scene_to_image_prompt(
 {hint}
 
 ## 提示词编写规则
-1. 使用英文输出，长度 80-200 词
-2. 结构顺序：主体 → 动作/姿态 → 场景环境 → 光线色调 → 构图 → 画面风格
-3. 如果场景有人物，必须详细描述人物的五官、发型、肤色、表情、服装，确保与上述人物档案一致
-4. 如果场景有产品，必须详细描述产品外观（形状、颜色、logo位置、包装材质），确保与白底图一致
-5. 同一个人物在不同场景的提示词中，外貌描述用词必须完全相同（锚定一致性）
-6. 不要出现中文，不要加引号或额外说明
-7. 画面比例默认 16:9
+1. **纯英文输出**，80-200 词。**禁止出现任何中文字符**（包括标点）。
+2. 结构顺序：主体 → 动作/姿态 → 场景环境 → 光线色调 → 构图 → 画面风格。
+3. 人物描写必须具体：发型/脸型/肤色/眼神/表情/服装（短语级，不要整句），与上方人物档案精确一致。
+4. 产品描写必须具体：形状/颜色/logo 位置/材质/包装细节，与参考白底图精确一致。
+5. 画面比例默认 16:9，除非描述中明确指定竖屏。
+6. 不要加引号、前缀说明、markdown 包裹。
 
-请直接输出英文提示词，不要加任何前缀。"""
+{CONSISTENCY_ANCHOR_RULE}
+
+## 输出
+直接输出英文提示词一段文本（无引号、无前缀）。"""
 
 
 # ══════════════════════════════════════════════════
@@ -354,18 +443,19 @@ def build_scene_to_video_prompt(
 {duration}
 {ref_block}
 
-## Seedance 2.0 提示词规则
-1. 使用中文输出
-2. 通过「图片N」引用参考图片（N 是该图片在 content 中同类型素材中的序号，从1开始）
-3. 如果有人物参考图：写「图片N中的人物...」来锚定人物外貌
-4. 如果有产品参考图：写「图片N中的产品...」来锚定产品外观
-5. 明确描述运镜方式（如：{camera_zh}）
-6. 描述关键动作的时间节点（如：0-2秒做什么，2-4秒做什么）
-7. 人物口播可用「说"台词内容"」格式
-8. 产品出现时强调产品细节清晰、标签可见
-9. 不要加任何 JSON 格式或额外说明
+## Seedance 2.0 输出规则
+1. **中文**输出（Seedance 2.0 的 prompt 语言要求）。
+2. **参考图引用**：凡在"参考素材说明"中列出的「图片N」，必须用这个编号字面引用。
+   - 人物："图片N 中的人物保持外貌一致，做 XX 动作"
+   - 产品："图片N 中的产品以 XX 方式出现，细节清晰"
+3. **运镜**：明确写出（如"{camera_zh}"），不要用模糊词（如"有镜头感"）。
+4. **时间节点**：按秒级写关键动作，例如"0-2 秒 特写产品；2-4 秒 人物拿起产品并微笑"。
+5. **口播**：台词用「说"台词内容"」格式表达，不要只写"人物讲解"。
+6. **产品镜头**：强调产品细节清晰、标签可见、不变形。
+7. 不要输出 JSON、markdown、额外说明或前缀。
 
-请直接输出提示词内容。"""
+## 输出
+直接输出中文提示词（一整段文本，不加引号）。"""
 
 
 # ══════════════════════════════════════════════════
@@ -398,3 +488,34 @@ def build_video_reference_images(
         urls.append(product_images[0])
 
     return urls
+
+
+def build_typed_reference_images(
+    scene: dict,
+    *,
+    character_profiles: list[dict] | None = None,
+    product_images: list[str] | None = None,
+) -> list[dict]:
+    """Build typed refs for image/video generation.
+
+    Output protocol:
+      [{"url": "...", "type": "character|product", "weight": 1.0}]
+    """
+    refs: list[dict] = []
+    characters_in_scene = scene.get("characters", [])
+    has_product = scene.get("has_product", False)
+
+    if character_profiles:
+        profile_map = {p["name"]: p for p in character_profiles if p.get("face_url")}
+        for cname in characters_in_scene:
+            if cname in profile_map:
+                refs.append({
+                    "url": profile_map[cname]["face_url"],
+                    "type": "character",
+                    "weight": 1.0,
+                })
+
+    if has_product and product_images:
+        refs.append({"url": product_images[0], "type": "product", "weight": 1.0})
+
+    return refs

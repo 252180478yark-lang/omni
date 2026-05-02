@@ -40,11 +40,12 @@ def _gemini_high_output_floor_model(model: str) -> bool:
 
 class GeminiProvider(BaseProvider):
     name = "gemini"
-    default_chat_model = "gemini-3.1-pro-preview"
+    default_chat_model = "gemini-3-flash-preview"
     default_embedding_model = "gemini-embedding-2-preview"
     capabilities = {
         ProviderCapability.CHAT, ProviderCapability.EMBEDDING,
         ProviderCapability.VISION, ProviderCapability.IMAGE_GENERATION,
+        ProviderCapability.ANALYSIS,
     }
 
     def _key(self, **kwargs: object) -> str:
@@ -90,6 +91,103 @@ class GeminiProvider(BaseProvider):
                 if exc.response.status_code in (429, 500, 502, 503, 504) and attempt < 4:
                     last_exc = exc
                     await asyncio.sleep(min(2 ** attempt, 8))
+                else:
+                    raise
+        raise last_exc
+
+    async def analyze(
+        self,
+        content: str,
+        prompt: str,
+        model: str,
+        **kwargs: object,
+    ) -> dict:
+        """Vision/document analysis via Gemini's native multimodal API.
+
+        `content` is base64-encoded for image/video; `content_type` (kwarg) is
+        'image'/'video'/'document'. Builds a Gemini request with inline_data.
+        """
+        import asyncio
+        key = self._key(**kwargs)
+        if not key:
+            raise RuntimeError("Gemini API Key 未配置")
+
+        content_type = str(kwargs.get("content_type", "image")).lower()
+        # Default to image/png; Gemini accepts most common mime types
+        mime_map = {
+            "image": "image/png",
+            "video": "video/mp4",
+            "document": "application/pdf",
+        }
+        mime = str(kwargs.get("mime_type", "")) or mime_map.get(content_type, "image/png")
+        # If content already looks like a data URL, strip the prefix
+        if content.startswith("data:") and "," in content:
+            content = content.split(",", 1)[1]
+
+        model_id = model or self.default_chat_model
+        url = f"{_API_BASE}/models/{model_id}:generateContent"
+        body = {
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"text": prompt or "Analyze this content"},
+                    {"inline_data": {"mime_type": mime, "data": content}},
+                ],
+            }],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 4096,
+                "responseMimeType": "application/json",
+            },
+        }
+
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(connect=30.0, read=120.0, write=60.0, pool=30.0),
+                ) as client:
+                    resp = await client.post(url, params={"key": key}, json=body)
+                    if resp.status_code == 400:
+                        err = resp.json().get("error", {})
+                        raise RuntimeError(f"Gemini analyze 400: {err.get('message', resp.text[:200])}")
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                text = _extract_text(data)
+                usage = _extract_usage(data)
+
+                # Try to parse text as JSON (since responseMimeType=application/json)
+                structured: dict = {}
+                try:
+                    structured = json.loads(text) if text else {}
+                except Exception:
+                    # Fallback: find first {...} block
+                    import re
+                    m = re.search(r"\{[\s\S]*\}", text or "")
+                    if m:
+                        try:
+                            structured = json.loads(m.group(0))
+                        except Exception:
+                            structured = {}
+
+                return {
+                    "analysis": text,
+                    "structured_data": structured,
+                    "usage": {
+                        "prompt_tokens": usage.prompt_tokens,
+                        "completion_tokens": usage.completion_tokens,
+                        "total_tokens": usage.total_tokens,
+                    },
+                }
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                last_exc = exc
+                if attempt < 2:
+                    await asyncio.sleep(min(2 ** attempt, 4))
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+                    last_exc = exc
+                    await asyncio.sleep(min(2 ** attempt, 4))
                 else:
                     raise
         raise last_exc

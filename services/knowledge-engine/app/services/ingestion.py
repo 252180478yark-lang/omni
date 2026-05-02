@@ -125,7 +125,12 @@ async def list_document_chunks(document_id: str, limit: int = 100, offset: int =
     ]
 
 
-async def list_documents(kb_id: str | None = None, search: str | None = None, limit: int = 50) -> list[dict]:
+async def list_documents(
+    kb_id: str | None = None,
+    search: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
     pool = get_pool()
     clauses = []
     params: list[object] = []
@@ -141,7 +146,19 @@ async def list_documents(kb_id: str | None = None, search: str | None = None, li
         idx += 1
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+    count_params = list(params)
+    total_row = await pool.fetchrow(
+        f"SELECT COUNT(*) AS cnt FROM documents d {where}",
+        *count_params,
+    )
+    total = total_row["cnt"] if total_row else 0
+
     params.append(limit)
+    limit_idx = idx
+    idx += 1
+    params.append(offset)
+    offset_idx = idx
 
     rows = await pool.fetch(
         f"""
@@ -152,11 +169,11 @@ async def list_documents(kb_id: str | None = None, search: str | None = None, li
         {where}
         GROUP BY d.id
         ORDER BY d.created_at DESC
-        LIMIT ${idx}
+        LIMIT ${limit_idx} OFFSET ${offset_idx}
         """,
         *params,
     )
-    return [_doc_row(r) for r in rows]
+    return {"items": [_doc_row(r) for r in rows], "total": total}
 
 
 async def delete_document(document_id: str) -> bool:
@@ -175,6 +192,8 @@ async def submit_ingestion_task(
     source_url: str | None,
     source_type: str = "manual",
     filename: str = "",
+    metadata: dict | None = None,
+    skip_chunking: bool = False,
 ) -> str:
     pool = get_pool()
     task_id = str(uuid4())
@@ -185,17 +204,41 @@ async def submit_ingestion_task(
         """,
         task_id, kb_id, title, source_url, text, source_type,
     )
-    asyncio.create_task(_guarded_pipeline(task_id, kb_id, title, text, source_url, source_type, filename))
+    asyncio.create_task(
+        _guarded_pipeline(
+            task_id,
+            kb_id,
+            title,
+            text,
+            source_url,
+            source_type,
+            filename,
+            metadata=metadata,
+            skip_chunking=skip_chunking,
+        )
+    )
     return task_id
 
 
 async def _guarded_pipeline(
     task_id: str, kb_id: str, title: str, text: str,
     source_url: str | None, source_type: str, filename: str,
+    metadata: dict | None = None,
+    skip_chunking: bool = False,
 ) -> None:
     """Acquire semaphore before running pipeline so queries aren't starved."""
     async with _INGESTION_SEMAPHORE:
-        await _run_pipeline(task_id, kb_id, title, text, source_url, source_type, filename)
+        await _run_pipeline(
+            task_id,
+            kb_id,
+            title,
+            text,
+            source_url,
+            source_type,
+            filename,
+            metadata=metadata,
+            skip_chunking=skip_chunking,
+        )
 
 
 async def get_task(task_id: str) -> dict | None:
@@ -212,7 +255,7 @@ async def get_task(task_id: str) -> dict | None:
     return task
 
 
-async def list_tasks(kb_id: str | None = None, status: str | None = None, limit: int = 50) -> list[dict]:
+async def list_tasks(kb_id: str | None = None, status: str | None = None, limit: int = 50) -> dict:
     pool = get_pool()
     clauses = []
     params: list[object] = []
@@ -240,7 +283,16 @@ async def list_tasks(kb_id: str | None = None, status: str | None = None, limit:
     data = [_task_row(r) for r in rows]
     for item in data:
         item["progress"] = _status_to_progress(item["status"])
-    return data
+
+    count_where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    count_params = params[:-1]
+    count_rows = await pool.fetch(
+        f"SELECT status, COUNT(*) AS c FROM tasks {count_where} GROUP BY status",
+        *count_params,
+    )
+    counts = {row["status"]: row["c"] for row in count_rows}
+
+    return {"items": data, "counts": counts}
 
 
 async def recover_stuck_tasks() -> dict:
@@ -436,8 +488,9 @@ async def browse_kb(kb_id: str) -> dict:
     if not kb:
         return {"kb": None, "documents": [], "stats": {}}
 
-    docs = await list_documents(kb_id=kb_id, limit=100)
-    doc_count = len(docs)
+    docs_result = await list_documents(kb_id=kb_id, limit=100)
+    docs = docs_result["items"]
+    doc_count = docs_result["total"]
     chunk_total = await pool.fetchval(
         "SELECT COUNT(*) FROM knowledge_chunks WHERE kb_id = $1::uuid", kb_id,
     )
@@ -501,6 +554,8 @@ async def _run_pipeline(
     source_url: str | None,
     source_type: str = "manual",
     filename: str = "",
+    metadata: dict | None = None,
+    skip_chunking: bool = False,
 ) -> None:
     try:
         await _update_task(task_id, "running")
@@ -512,22 +567,26 @@ async def _run_pipeline(
         if not text:
             raise ValueError("Content empty after cleaning (原始内容全为噪声数据)")
 
-        strategy = auto_detect_strategy(text, filename)
-        chunk_data = split_text(text, strategy=strategy)
-
-        if not chunk_data:
-            raise ValueError("No chunks produced from input text")
-
-        chunk_data = add_contextual_headers(chunk_data, title, text)
+        if skip_chunking:
+            chunk_data = []
+        else:
+            strategy = auto_detect_strategy(text, filename)
+            chunk_data = split_text(text, strategy=strategy)
+            if not chunk_data:
+                raise ValueError("No chunks produced from input text")
+            chunk_data = add_contextual_headers(chunk_data, title, text)
 
         emb_provider = kb.get("embedding_provider") or settings.embedding_provider
         emb_model = kb["embedding_model"]
 
-        embeddings = await embed_texts(
-            [c.content for c in chunk_data],
-            model=emb_model,
-            provider=emb_provider,
-        )
+        if skip_chunking:
+            embeddings = await embed_texts([text], model=emb_model, provider=emb_provider)
+        else:
+            embeddings = await embed_texts(
+                [c.content for c in chunk_data],
+                model=emb_model,
+                provider=emb_provider,
+            )
 
         hype_embeddings: list[list[list[float]]] = []
         if settings.hype_enabled:
@@ -546,16 +605,17 @@ async def _run_pipeline(
             INSERT INTO documents (id, kb_id, title, source_url, source_type, raw_text, chunk_count)
             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
             """,
-            document_id, kb_id, title, source_url, source_type, text, len(chunk_data),
+            document_id, kb_id, title, source_url, source_type, text, (1 if skip_chunking else len(chunk_data)),
         )
 
         chunk_ids: list[str] = []
-        for idx, chunk in enumerate(chunk_data):
-            vec = embeddings[idx] if idx < len(embeddings) else [0.0] * kb["dimension"]
+        if skip_chunking:
+            vec = embeddings[0] if embeddings else [0.0] * kb["dimension"]
             np_vec = np.array(vec, dtype=np.float32)
             chunk_id = str(uuid4())
             chunk_ids.append(chunk_id)
-            segmented = segment_for_search(chunk.content)
+            single_metadata = metadata if isinstance(metadata, dict) else {}
+            segmented = segment_for_search(text)
             await pool.execute(
                 """
                 INSERT INTO knowledge_chunks
@@ -563,25 +623,52 @@ async def _run_pipeline(
                 VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::vector, $9::jsonb, $10,
                         to_tsvector('simple', $11))
                 """,
-                chunk_id, document_id, kb_id, chunk.chunk_index, title, source_url,
-                chunk.content, np_vec, json.dumps(chunk.metadata, ensure_ascii=False), source_type,
+                chunk_id,
+                document_id,
+                kb_id,
+                0,
+                title,
+                source_url,
+                text,
+                np_vec,
+                json.dumps(single_metadata, ensure_ascii=False),
+                source_type,
                 segmented,
             )
-            if (idx + 1) % _CHUNK_INSERT_BATCH == 0:
-                await asyncio.sleep(0)
+        else:
+            for idx, chunk in enumerate(chunk_data):
+                vec = embeddings[idx] if idx < len(embeddings) else [0.0] * kb["dimension"]
+                np_vec = np.array(vec, dtype=np.float32)
+                chunk_id = str(uuid4())
+                chunk_ids.append(chunk_id)
+                segmented = segment_for_search(chunk.content)
+                await pool.execute(
+                    """
+                    INSERT INTO knowledge_chunks
+                        (id, document_id, kb_id, chunk_index, title, source_url, content, embedding, metadata, source_type, tsv)
+                    VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::vector, $9::jsonb, $10,
+                            to_tsvector('simple', $11))
+                    """,
+                    chunk_id, document_id, kb_id, chunk.chunk_index, title, source_url,
+                    chunk.content, np_vec, json.dumps(chunk.metadata, ensure_ascii=False), source_type,
+                    segmented,
+                )
+                if (idx + 1) % _CHUNK_INSERT_BATCH == 0:
+                    await asyncio.sleep(0)
 
-        if hype_embeddings:
+        if hype_embeddings and not skip_chunking:
             await _store_hype_embeddings(pool, kb_id, chunk_ids, hype_embeddings)
 
         # GraphRAG: LLM entity/relation extraction per chunk
         # model/provider intentionally omitted — graph_rag.py uses its own
         # fast chat model (_GRAPH_EXTRACTION_MODEL), NOT the KB embedding model.
-        try:
-            await _extract_graph_for_document(
-                pool, kb_id, document_id, chunk_data,
-            )
-        except Exception:
-            logger.warning("Graph extraction failed, skipping", exc_info=True)
+        if not skip_chunking:
+            try:
+                await _extract_graph_for_document(
+                    pool, kb_id, document_id, chunk_data,
+                )
+            except Exception:
+                logger.warning("Graph extraction failed, skipping", exc_info=True)
 
         await _update_task(task_id, "succeeded", document_id=document_id)
         logger.info("Ingestion completed: task=%s doc=%s chunks=%d", task_id, document_id, len(chunk_data))

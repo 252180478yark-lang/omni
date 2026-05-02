@@ -18,6 +18,7 @@ interface TasksResp {
     updated_at: string
     progress: number
   }>
+  counts?: Record<string, number>
 }
 
 export async function GET(request: Request) {
@@ -25,14 +26,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const kbId = searchParams.get('kb_id')
     const status = searchParams.get('status')
-    const limit = searchParams.get('limit') || '100'
+    const limit = searchParams.get('limit') || '200'
     const params = new URLSearchParams({ limit })
     if (kbId) params.set('kb_id', kbId)
     if (status) params.set('status', status)
 
     const base = serviceBase()
     const result = await fetchJson<TasksResp>(`${base.knowledge}/api/v1/knowledge/tasks?${params.toString()}`)
-    return Response.json({ success: true, data: result.data })
+    return Response.json({ success: true, data: result.data, counts: result.counts })
   } catch (error) {
     return Response.json({ success: false, error: String(error) }, { status: 500 })
   }

@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic'
 interface DocumentsResp {
   code: number
   message: string
+  total: number
   data: Array<{
     id: string
     kb_id: string
@@ -21,15 +22,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const kbId = searchParams.get('kb_id')
     const search = searchParams.get('search')
-    const limit = searchParams.get('limit') || '100'
+    const limit = searchParams.get('limit') || '50'
+    const offset = searchParams.get('offset') || '0'
 
-    const params = new URLSearchParams({ limit })
+    const params = new URLSearchParams({ limit, offset })
     if (kbId) params.set('kb_id', kbId)
     if (search) params.set('search', search)
 
     const base = serviceBase()
     const result = await fetchJson<DocumentsResp>(`${base.knowledge}/api/v1/knowledge/documents?${params.toString()}`)
-    return Response.json({ success: true, data: result.data })
+    return Response.json({ success: true, data: result.data, total: result.total })
   } catch (error) {
     return Response.json({ success: false, error: String(error) }, { status: 500 })
   }

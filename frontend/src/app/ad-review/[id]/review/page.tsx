@@ -5,9 +5,11 @@ import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowLeft, BookOpen, Download, Edit3, Eye, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
+import { ArrowLeft, BookOpen, Check, Download, Edit3, Eye, Loader2, Palette, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { PromptFeedback } from '@/components/prompt-feedback'
+import { PromptNodeDrawer } from '@/components/prompt-node-drawer'
 import { getReview, listKnowledgeBases, saveReview, streamGenerateReview, syncKb, type SsePayload } from '@/lib/ad-review-api'
 
 /* ── Inline toast ────────────────────────────────────────────────── */
@@ -38,6 +40,7 @@ export default function AdReviewLogPage() {
   const id = String(params.id || '')
 
   const [content, setContent] = useState('')
+  const [drawerNode, setDrawerNode] = useState<string | null>(null)
   const [tags, setTags] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -46,6 +49,10 @@ export default function AdReviewLogPage() {
   const [error, setError] = useState('')
   const [kbs, setKbs] = useState<{ id: string; name: string }[]>([])
   const [selectedKbs, setSelectedKbs] = useState<Set<string>>(new Set())
+  const [kbSyncStatus, setKbSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'fail'>('idle')
+  const [kbSyncMsg, setKbSyncMsg] = useState('')
+  const [flywheelSyncStatus, setFlywheelSyncStatus] = useState<'idle' | 'done' | 'skipped' | 'fail'>('idle')
+  const [flywheelSyncMsg, setFlywheelSyncMsg] = useState('')
   const toast = useToast()
 
   /* ── Load existing review ──────────────────────────────────────── */
@@ -86,6 +93,10 @@ export default function AdReviewLogPage() {
     setError('')
     setStreaming(true)
     setContent('')
+    setKbSyncStatus('idle')
+    setKbSyncMsg('')
+    setFlywheelSyncStatus('idle')
+    setFlywheelSyncMsg('')
     try {
       await streamGenerateReview(id, replace, (e: SsePayload) => {
         if (e.type === 'chunk' && e.content) {
@@ -93,6 +104,31 @@ export default function AdReviewLogPage() {
         }
         if (e.type === 'error') {
           setError(e.content || '生成失败')
+        }
+        if (e.type === 'kb_sync_start') {
+          setKbSyncStatus('syncing')
+          setKbSyncMsg(e.content || '')
+        }
+        if (e.type === 'kb_sync_done') {
+          setKbSyncStatus('done')
+          setKbSyncMsg(e.content || '已同步')
+        }
+        if (e.type === 'kb_sync_fail') {
+          setKbSyncStatus('fail')
+          setKbSyncMsg(e.content || '同步失败')
+        }
+        if (e.type === 'flywheel_sync_done') {
+          if (e.result?.skipped || e.result?.missing_binding) {
+            setFlywheelSyncStatus('skipped')
+            setFlywheelSyncMsg(e.content || e.result?.message || '未绑定 Pipeline，无法回灌指标')
+          } else {
+            setFlywheelSyncStatus('done')
+            setFlywheelSyncMsg(e.content || '已回灌指标到 Brief / 数字人')
+          }
+        }
+        if (e.type === 'flywheel_sync_fail') {
+          setFlywheelSyncStatus('fail')
+          setFlywheelSyncMsg(e.content || '飞轮回灌失败')
         }
       }, Array.from(selectedKbs))
       toast.show('复盘报告生成完成')
@@ -218,6 +254,58 @@ export default function AdReviewLogPage() {
         </div>
       )}
 
+      {/* ── KB sync status ──────────────────────────────────────────── */}
+      {kbSyncStatus !== 'idle' && (
+        <div className="max-w-4xl mx-auto px-4 pt-2">
+          <div className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${
+            kbSyncStatus === 'syncing' ? 'text-amber-700 bg-amber-50' :
+            kbSyncStatus === 'done' ? 'text-emerald-700 bg-emerald-50' :
+            'text-red-700 bg-red-50'
+          }`}>
+            {kbSyncStatus === 'syncing' && <Loader2 className="w-4 h-4 animate-spin" />}
+            {kbSyncStatus === 'done' && <Check className="w-4 h-4" />}
+            {kbSyncStatus === 'fail' && <BookOpen className="w-4 h-4" />}
+            {kbSyncMsg}
+            {kbSyncStatus === 'done' && hasContent && (
+              <a
+                href={`/content-studio?source_text=${encodeURIComponent(content.slice(0, 3000))}`}
+                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+              >
+                <Palette className="w-3 h-3" /> 基于复盘创建内容
+              </a>
+            )}
+            {kbSyncStatus === 'fail' && (
+              <button onClick={() => void onSync()} className="ml-auto text-xs underline hover:no-underline">
+                手动重试
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Flywheel sync status ────────────────────────────────────── */}
+      {flywheelSyncStatus !== 'idle' && (
+        <div className="max-w-4xl mx-auto px-4 pt-2">
+          <div className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${
+            flywheelSyncStatus === 'done' ? 'text-emerald-700 bg-emerald-50' :
+            flywheelSyncStatus === 'skipped' ? 'text-amber-700 bg-amber-50 border border-amber-200' :
+            'text-red-700 bg-red-50'
+          }`}>
+            {flywheelSyncStatus === 'done' && <Check className="w-4 h-4" />}
+            {flywheelSyncStatus !== 'done' && <BookOpen className="w-4 h-4" />}
+            <span>{flywheelSyncMsg}</span>
+            {flywheelSyncStatus === 'skipped' && (
+              <Link
+                href={`/ad-review/${id}`}
+                className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors"
+              >
+                去批次详情补绑定 Pipeline
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── KB selector ──────────────────────────────────────────── */}
       {!streaming && (
         <div className="max-w-4xl mx-auto px-4 pt-3">
@@ -309,7 +397,20 @@ export default function AdReviewLogPage() {
             )}
           </div>
         )}
+
+        {hasContent && !edit && (
+          <div className="mt-3">
+            <PromptFeedback
+              nodeId="review.stage_b"
+              inputRef={{ campaign_id: id }}
+              output={content}
+              onOpenDrawer={setDrawerNode}
+            />
+          </div>
+        )}
       </main>
+
+      <PromptNodeDrawer nodeId={drawerNode} onClose={() => setDrawerNode(null)} />
     </div>
   )
 }

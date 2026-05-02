@@ -19,6 +19,8 @@ import {
   previewCsv, updateAudience, updateCampaign, updateMaterial,
   uploadVideoForAnalysis,
   uploadAudienceProfile, uploadAudienceTargeting,
+  listPipelineOptions, linkMaterialPipeline,
+  type PipelineOption,
 } from '@/lib/ad-review-api'
 
 type Row = Record<string, unknown>
@@ -159,6 +161,13 @@ export default function AdReviewCampaignDetailPage() {
   const [parentPick, setParentPick] = useState('')
   const [parentNote, setParentNote] = useState('')
   const [parentTags, setParentTags] = useState<string[]>([])
+
+  // Link to content_studio pipeline
+  const [pipelineLinkOpen, setPipelineLinkOpen] = useState(false)
+  const [pipelineLinkMat, setPipelineLinkMat] = useState<string | null>(null)
+  const [pipelineLinkPick, setPipelineLinkPick] = useState('')
+  const [pipelineOptions, setPipelineOptions] = useState<PipelineOption[]>([])
+  const [pipelineOptionsLoading, setPipelineOptionsLoading] = useState(false)
 
   // Group creation
   const [newGroupAud, setNewGroupAud] = useState<string | null>(null)
@@ -488,6 +497,34 @@ export default function AdReviewCampaignDetailPage() {
     catch (e) { setError(String(e)) }
   }
 
+  const openPipelineLink = async (mid: string, currentPipelineId: string | null) => {
+    setMatMenu(null)
+    setPipelineLinkMat(mid)
+    setPipelineLinkPick(currentPipelineId ?? '')
+    setPipelineLinkOpen(true)
+    setPipelineOptionsLoading(true)
+    try {
+      const items = await listPipelineOptions()
+      setPipelineOptions(items)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setPipelineOptionsLoading(false)
+    }
+  }
+
+  const confirmPipelineLink = async () => {
+    if (!pipelineLinkMat) return
+    try {
+      await linkMaterialPipeline(pipelineLinkMat, pipelineLinkPick || null)
+      setPipelineLinkOpen(false)
+      showTip(pipelineLinkPick ? '已关联到内容工坊流水线' : '已解除流水线关联')
+      void load()
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const doCreateGroup = async () => {
     if (!newGroupAud || !newGroupLabel.trim()) return
     try {
@@ -669,6 +706,11 @@ export default function AdReviewCampaignDetailPage() {
               <button className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2"
                 onClick={() => openParent(mid)}>
                 <GitBranch className="w-3 h-3" /> 标记迭代
+              </button>
+              <button className="w-full text-left px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2"
+                onClick={() => void openPipelineLink(mid, (m as { pipeline_id?: string | null }).pipeline_id ?? null)}>
+                <Layers className="w-3 h-3" />
+                {(m as { pipeline_id?: string | null }).pipeline_id ? '更换流水线' : '关联流水线'}
               </button>
               {!!m.video_analysis_id && (
                 <button className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600 flex items-center gap-2"
@@ -1759,6 +1801,43 @@ export default function AdReviewCampaignDetailPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setParentOpen(false)}>取消</Button>
             <Button onClick={() => void confirmParent()} disabled={!parentPick}>确认</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pipelineLinkOpen} onOpenChange={setPipelineLinkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>关联到内容工坊流水线</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="text-xs text-gray-500">
+              关联后，复盘完成时该素材的 CTR / CVR 会自动回灌到对应 Brief 与数字人的 perf_stats。
+            </div>
+            <select
+              className="w-full border rounded px-3 py-2 text-sm"
+              value={pipelineLinkPick}
+              onChange={(e) => setPipelineLinkPick(e.target.value)}
+              disabled={pipelineOptionsLoading}
+            >
+              <option value="">— 不关联 —</option>
+              {pipelineOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                  {p.brief_id ? ' · 含 Brief' : ''}
+                  {p.digital_human_id ? ' · 含数字人' : ''}
+                  {p.status ? ` (${p.status})` : ''}
+                </option>
+              ))}
+            </select>
+            {pipelineOptionsLoading && <div className="text-xs text-gray-400">加载流水线列表…</div>}
+            {!pipelineOptionsLoading && pipelineOptions.length === 0 && (
+              <div className="text-xs text-amber-600">暂无可关联的流水线，请先到「内容工坊」创建。</div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPipelineLinkOpen(false)}>取消</Button>
+            <Button onClick={() => void confirmPipelineLink()}>保存</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

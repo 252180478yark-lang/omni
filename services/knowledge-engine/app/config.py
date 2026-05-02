@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # AI Provider Hub
     ai_provider_hub_url: str = "http://ai-provider-hub:8001"
+    ad_review_service_url: str = "http://ad-review-service:8005"
 
     # Embedding defaults
     embedding_provider: str = "gemini"
@@ -71,6 +72,23 @@ class Settings(BaseSettings):
 
     # Legacy SQLite fallback (kept for backward compat)
     database_path: str = "/app/data/knowledge.db"
+
+    # Content Pipeline v2
+    # 兼容老配置：逗号分隔的 KB id 列表（首条作为 brief KB 写入目标）
+    content_pipeline_kb_ids: str = ""
+    # 三 KB（脚本生成阶段联合召回）
+    content_pipeline_kb_ocean_engine: str = ""
+    content_pipeline_kb_audience_report: str = ""
+    content_pipeline_kb_content_strategy: str = ""
+    # Brief KB 写入目标（默认沿用 content_pipeline_kb_ids 的第一项）
+    content_pipeline_kb_brief_writer: str = ""
+    anti_ai_corpus_kb_id: str = ""
+    content_pipeline_banned_words: str = (
+        "打开,焕新,赋能,见证,旅程,一键,邂逅,畅享,臻享,尊享,焕活,演绎,诠释,匠心,倾力,重磅,震撼,颠覆,开启"
+    )
+    avatar_promote_min_samples: int = 5
+    avatar_promote_min_ctr: float = 0.03
+    avatar_archive_consecutive_low: int = 3
 
 
 settings = Settings()

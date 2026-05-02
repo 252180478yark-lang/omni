@@ -61,27 +61,16 @@ def extract_text(data: bytes, filename: str, context: str = "人群画像") -> s
     return _llm_summarize(raw_text, context)
 
 
-def _llm_summarize(raw_text: str, context: str) -> str:
-    ai_url, model = _get_ai_config()
-    if not ai_url:
-        return raw_text
-
-    truncated = raw_text[:12000]
-
-    if "画像" in context:
-        prompt = f"""你是一位资深的巨量千川投放优化师，擅长人群画像分析。
-以下是一份人群画像相关文件的内容。请从中提取所有对投放决策有价值的信息，按以下结构整理：
-
-## 1. 核心人群特征
-- 年龄段分布（如25-35岁占比最高）
+_SECTION_AUDIENCE_PROFILE = """## 1. 核心人群特征
+- 年龄段分布（如 25-35 岁占比最高）
 - 性别比例
-- 地域分布（一二三线城市占比、TOP省市）
+- 地域分布（一二三线城市占比、TOP 省市）
 - 消费能力层级
 
 ## 2. 兴趣与行为标签
 - 主要兴趣分类（如美妆、护肤、母婴等）
-- 消费行为特征（如高频复购、价格敏感、品牌忠诚等）
-- 内容偏好（如短视频类型偏好、互动行为特征）
+- 消费行为特征（高频复购、价格敏感、品牌忠诚等）
+- 内容偏好（短视频类型偏好、互动行为特征）
 - 活跃时段
 
 ## 3. 人群规模与覆盖
@@ -92,26 +81,18 @@ def _llm_summarize(raw_text: str, context: str) -> str:
 ## 4. 对素材创作的启示
 - 这类人群最可能被什么类型的内容吸引？
 - 痛点和需求是什么？
-- 价格敏感度如何？应该怎么做价格锚点？
+- 价格敏感度如何？怎么做价格锚点？
 - 什么样的钩子和卖点最有效？
 
 ## 5. 对投放策略的启示
 - 建议的定向方式
 - 建议的投放时段
-- 预算分配建议
+- 预算分配建议"""
 
-如果某项信息文件中没有提供，写"文件未提供"，不要编造。直接输出整理后的内容。
 
-文件原文：
-{truncated}"""
-
-    elif "圈包" in context or "定向" in context:
-        prompt = f"""你是一位资深的巨量千川投放优化师，擅长DMP人群包定向策略分析。
-以下是一份圈包手法/定向策略相关文件的内容。请从中提取所有对投放决策有价值的信息，按以下结构整理：
-
-## 1. 定向策略概述
-- 使用了哪些定向方式（行为兴趣定向/DMP人群包/达人相似/智能定向等）
-- 核心定向逻辑是什么（如"竞品粉丝+品类兴趣+排除已购"）
+_SECTION_TARGETING = """## 1. 定向策略概述
+- 使用了哪些定向方式（行为兴趣定向 / DMP 人群包 / 达人相似 / 智能定向等）
+- 核心定向逻辑是什么（如"竞品粉丝 + 品类兴趣 + 排除已购"）
 
 ## 2. 人群包详情
 - 每个人群包的构成规则（包含什么标签、排除什么标签）
@@ -125,28 +106,79 @@ def _llm_summarize(raw_text: str, context: str) -> str:
 - 自定义人群条件
 
 ## 4. 历史效果数据（如有）
-- 各人群包的历史CTR、CVR、CPM表现
-- 哪个人群包效果最好/最差
+- 各人群包的历史 CTR、CVR、CPM 表现
+- 哪个人群包效果最好 / 最差
 - 历史优化调整记录
 
-## 5. 优化建议（如有）
-- 文件中提到的定向优化方向
-- 需要新增或排除的人群标签
-- 预算在不同人群包间的分配建议
+## 5. 对素材匹配与投放的启示
+- 这个人群包最匹配什么类型的素材？
+- 钩子和卖点应该怎么设计？
+- 不同人群包之间的素材分配建议、建议的定向优化方向"""
 
-如果某项信息文件中没有提供，写"文件未提供"，不要编造。直接输出整理后的内容。
 
-文件原文：
-{truncated}"""
+_SECTION_GENERIC = """## 1. 核心信息（按类别整理）
+- 人群特征（如提及）
+- 定向策略（如提及）
+- 数据亮点（如提及）
+- 优化经验（如提及）
 
+## 2. 对素材创作的启示
+- 钩子、卖点、场景方向的可参考结论
+
+## 3. 对投放策略的启示
+- 定向、人群包、匹配度调整的可参考结论"""
+
+
+_FILE_SUMMARY_DISCIPLINE = """## 纪律（必须遵守）
+1. 文件中没有明确提供的信息，写"文件未提供"。禁止编造数字、标签、指标、人群规模。
+2. 表格数据转为易读的文字描述，并指出关键发现（TOP/差异/趋势）。
+3. 直接输出整理后的内容，不加前缀说明。"""
+
+
+def _llm_summarize(raw_text: str, context: str) -> str:
+    ai_url, model = _get_ai_config()
+    if not ai_url:
+        return raw_text
+
+    truncated = raw_text[:12000]
+
+    if "画像" in context:
+        role_hint = "人群画像分析"
+        section_block = _SECTION_AUDIENCE_PROFILE
+    elif "圈包" in context or "定向" in context:
+        role_hint = "DMP 人群包定向策略分析"
+        section_block = _SECTION_TARGETING
     else:
-        prompt = f"""你是一位资深的巨量千川投放优化师。
-以下是一份与投放相关的文件内容。请提取其中所有对投放复盘和优化有价值的关键信息，分条整理输出。
-包括但不限于：人群特征、定向策略、投放数据、优化经验、素材建议等。
-如果是表格数据，请整理成易读的文字描述并指出关键发现。
+        role_hint = "投放决策支持信息提取"
+        section_block = _SECTION_GENERIC
 
-文件原文：
+    prompt = f"""你是一位资深的巨量千川投放优化师，当前任务：{role_hint}。
+
+以下是一份与「{context}」相关的文件。请提取所有对投放决策有价值的信息，按下方结构整理输出。
+
+{_FILE_SUMMARY_DISCIPLINE}
+
+## 输出结构
+{section_block}
+
+## 文件原文
 {truncated}"""
+
+    # 飞轮：同步拉取累积规则（file_parser 是同步函数,不走 asyncio.run 避免事件循环冲突）
+    try:
+        from app.config import settings as _settings
+        ke_base = _settings.knowledge_engine_url.rstrip("/")
+        rule_resp = httpx.post(
+            f"{ke_base}/api/v1/prompt/render-rules",
+            json={"node_id": "review.file_parser", "scope": {"context": context}},
+            timeout=5.0,
+        )
+        if rule_resp.status_code == 200:
+            suffix = ((rule_resp.json() or {}).get("data") or {}).get("suffix") or ""
+            if suffix:
+                prompt += suffix
+    except Exception:
+        pass
 
     try:
         resp = httpx.post(

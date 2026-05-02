@@ -442,3 +442,220 @@ def search_knowledge(query: str | None = None, day: str | None = None) -> list[d
             cur.execute(sql, params)
             rows = cur.fetchall()
             return [_row_to_dict(cur, r) for r in rows]
+
+
+def create_material(
+    *,
+    material_id: str,
+    material_type: str,
+    title: str,
+    source_url: str | None,
+    target_kb_id: str,
+    file_paths: list[str],
+) -> None:
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO video_analysis.materials
+                    (id, material_type, title, source_url, target_kb_id, status, phase, progress, progress_message, file_paths)
+                VALUES (%s::uuid, %s, %s, %s, %s::uuid, 'queued', 'queued', 0.01, '排队中', %s::jsonb)
+                """,
+                (material_id, material_type, title, source_url, target_kb_id, json.dumps(file_paths, ensure_ascii=False)),
+            )
+
+
+def update_material_status(
+    material_id: str,
+    *,
+    status: str | None = None,
+    phase: str | None = None,
+    progress: float | None = None,
+    progress_message: str | None = None,
+    error: str | None = None,
+    retries_increment: bool = False,
+    duration_sec: float | None = None,
+) -> None:
+    updates: list[str] = []
+    params: list[Any] = []
+    idx = 1
+    if status is not None:
+        updates.append(f"status = %s")
+        params.append(status)
+        idx += 1
+    if phase is not None:
+        updates.append("phase = %s")
+        params.append(phase)
+        idx += 1
+    if progress is not None:
+        updates.append("progress = %s")
+        params.append(progress)
+        idx += 1
+    if progress_message is not None:
+        updates.append("progress_message = %s")
+        params.append(progress_message)
+        idx += 1
+    if error is not None:
+        updates.append("error = %s")
+        params.append(error)
+        idx += 1
+    if retries_increment:
+        updates.append("retries = retries + 1")
+    if duration_sec is not None:
+        updates.append("duration_sec = %s")
+        params.append(duration_sec)
+        idx += 1
+    updates.append("updated_at = NOW()")
+    if not updates:
+        return
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE video_analysis.materials SET {', '.join(updates)} WHERE id = %s::uuid",
+                [*params, material_id],
+            )
+
+
+def update_material_summary(
+    material_id: str,
+    *,
+    unit_count: int,
+    narrative_model: str | None = None,
+    bgm_json: dict[str, Any] | None = None,
+    global_tone: str | None = None,
+    cost_usd: float | None = None,
+) -> None:
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE video_analysis.materials
+                SET unit_count = %s,
+                    narrative_model = %s,
+                    bgm_json = COALESCE(%s::jsonb, bgm_json),
+                    global_tone = COALESCE(%s, global_tone),
+                    cost_usd = COALESCE(%s, cost_usd),
+                    updated_at = NOW()
+                WHERE id = %s::uuid
+                """,
+                (
+                    unit_count,
+                    narrative_model,
+                    json.dumps(bgm_json, ensure_ascii=False) if bgm_json else None,
+                    global_tone,
+                    cost_usd,
+                    material_id,
+                ),
+            )
+
+
+def list_materials(material_type: str | None = None) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM video_analysis.materials"
+    params: list[Any] = []
+    if material_type:
+        sql += " WHERE material_type = %s"
+        params.append(material_type)
+    sql += " ORDER BY created_at DESC"
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            return [_row_to_dict(cur, r) for r in rows]
+
+
+def get_material(material_id: str) -> dict[str, Any] | None:
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM video_analysis.materials WHERE id = %s::uuid", (material_id,))
+            row = cur.fetchone()
+            return _row_to_dict(cur, row) if row else None
+
+
+def replace_material_units(material_id: str, units: list[dict[str, Any]]) -> None:
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM video_analysis.material_units WHERE material_id = %s::uuid", (material_id,))
+            for unit in units:
+                cur.execute(
+                    """
+                    INSERT INTO video_analysis.material_units
+                        (material_id, unit_index, unit_type, start_sec, end_sec, image_index, keyframe_paths, fields, prompt_pack, chunk_ids)
+                    VALUES (%s::uuid, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
+                    """,
+                    (
+                        material_id,
+                        unit.get("unit_index", 1),
+                        unit.get("unit_type", "shot"),
+                        unit.get("start_sec"),
+                        unit.get("end_sec"),
+                        unit.get("image_index"),
+                        json.dumps(unit.get("keyframe_paths", []), ensure_ascii=False),
+                        json.dumps(unit.get("fields", {}), ensure_ascii=False),
+                        json.dumps(unit.get("prompt_pack", {}), ensure_ascii=False),
+                        json.dumps(unit.get("chunk_ids", []), ensure_ascii=False),
+                    ),
+                )
+
+
+def list_material_units(material_id: str) -> list[dict[str, Any]]:
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM video_analysis.material_units WHERE material_id = %s::uuid ORDER BY unit_index ASC",
+                (material_id,),
+            )
+            rows = cur.fetchall()
+            return [_row_to_dict(cur, r) for r in rows]
+
+
+def replace_material_clusters(material_id: str, target_kb_id: str, clusters: list[dict[str, Any]]) -> None:
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM video_analysis.material_clusters WHERE material_ids @> %s::jsonb",
+                (json.dumps([material_id]),),
+            )
+            for index, cluster in enumerate(clusters, start=1):
+                cur.execute(
+                    """
+                    INSERT INTO video_analysis.material_clusters
+                        (cluster_index, material_ids, summary_json, target_kb_id, chunk_id)
+                    VALUES (%s, %s::jsonb, %s::jsonb, %s::uuid, %s::uuid)
+                    """,
+                    (
+                        index,
+                        json.dumps([material_id], ensure_ascii=False),
+                        json.dumps(cluster, ensure_ascii=False),
+                        target_kb_id,
+                        (cluster.get("chunk_id") or None),
+                    ),
+                )
+
+
+def list_material_clusters(target_kb_id: str | None = None) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM video_analysis.material_clusters"
+    params: list[Any] = []
+    if target_kb_id:
+        sql += " WHERE target_kb_id = %s::uuid"
+        params.append(target_kb_id)
+    sql += " ORDER BY created_at DESC"
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            return [_row_to_dict(cur, r) for r in rows]
+
+
+def delete_material(material_id: str) -> bool:
+    material = get_material(material_id)
+    if not material:
+        return False
+    with _conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM video_analysis.material_units WHERE material_id = %s::uuid", (material_id,))
+            cur.execute(
+                "DELETE FROM video_analysis.material_clusters WHERE material_ids @> %s::jsonb",
+                (json.dumps([material_id]),),
+            )
+            cur.execute("DELETE FROM video_analysis.materials WHERE id = %s::uuid", (material_id,))
+    return True

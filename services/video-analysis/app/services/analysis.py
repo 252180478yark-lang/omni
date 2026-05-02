@@ -178,53 +178,48 @@ def _set_llm_notice(
     return report
 
 
+def _get_flywheel_suffix_sync(node_id: str) -> str:
+    """在同步函数里拉取累积规则；失败/超时返回空串。"""
+    try:
+        import httpx as _hx
+        from app.config import settings as _s
+        base = (getattr(_s, "knowledge_engine_url", "") or "").rstrip("/")
+        if not base:
+            return ""
+        r = _hx.post(
+            f"{base}/api/v1/prompt/render-rules",
+            json={"node_id": node_id, "scope": None},
+            timeout=5.0,
+        )
+        if r.status_code == 200:
+            return ((r.json() or {}).get("data") or {}).get("suffix") or ""
+    except Exception:
+        pass
+    return ""
+
+
 def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any] | None = None) -> str:
     prompt = (
         "你是专业的抖音短视频分析师，精通抖音推荐算法和内容生态。\n"
-        "你的最高原则是“数据第一、证据优先”：所有结论必须来自视频内容本身或给定指标，不允许凭空补充。\n"
         "\n"
-        "【数据优先铁律】\n"
-        "1. 只允许使用两类信息：视频可观察事实 + 输入中给出的 context/metrics。\n"
-        "2. 若证据不足，必须明确写“数据不足/无法判断”，禁止猜测行业均值、用户画像、ROI、流量级别。\n"
-        "3. 每个关键判断都要可追溯到输入证据（画面、文案、音频、或具体指标字段）。\n"
-        "4. 不得使用“通常/一般/大概率”替代证据。\n"
-        "5. 输出中若出现预测类字段，必须同时给出依据；无依据则填写“数据不足”。\n"
+        "## 核心纪律（最高优先级，违反即视为不合格）\n"
+        "1. **数据纪律**：所有结论必须来自两类信息之一——① 视频画面/音频的可观察事实；② 输入中给出的 context/metrics。禁止引入行业均值、推测指标、ROI、流量级别等外部数据。\n"
+        "2. **措辞纪律**：禁止使用\"通常/一般/大概率/可能\"替代证据。预测类字段必须同时给出依据；无依据则填 null + _reason 说明。\n"
+        "3. **字段必选 vs 可选**：\n"
+        "   - **必选字段**：必须从视频画面/音频直接观察得出，不允许为 null——`summary`、`visual(全部子字段)`、`bgm_audio.beat_sync/emotion_fit`、`editing_rhythm(全部)`、`copy_logic.golden_3s/narrative_model/on_screen_text/info_density`、`scores(全部维度)`、`emotion_curve`、`visual_elements`、`douyin_specific.content_type/video_format`。\n"
+        "   - **可选字段**（允许 null）：`bgm_audio.hotness_estimate`、`business_strategy` 全部子字段、`interaction_algo.comment_inducement.comment_template_prediction`、`interaction_algo.negative_signal_risk` 全部子字段、`douyin_specific.hashtag_strategy.topic_heat_assessment` 及 `douyin_native_elements` / `traffic_pool_prediction` 全部子字段、`performance_attribution` 全部子字段。\n"
+        "   - **null 的正确写法**：值设为 null，并在**同级**添加 `{字段名}_reason` 或 `_reason` 字段说明原因。例如：`\"age_range\": null, \"age_range_reason\": \"视频无年龄线索，输入无受众数据\"`。\n"
         "\n"
-        "分析时可参考以下抖音算法背景知识（仅作分析框架，不得作为证据引用）：\n"
-        "1. 流量池机制：200→3000→1万→10万→100万，逐级突破\n"
-        "2. 核心指标权重：完播率 > 互动率 > 关注率 > 分享率\n"
-        "3. 前3秒决定70%的完播率\n"
-        "4. 评论区活跃度对流量池升级影响最大\n"
-        "5. 内容与账号标签的一致性影响推荐精准度\n"
-        "注意：以上为算法机制常识，评分和结论仍必须依据视频可观察事实，不得仅凭机制常识下判断。\n"
+        "## 抖音算法背景知识（仅作分析框架，不得作为证据引用）\n"
+        "1. 流量池机制：200 → 3000 → 1 万 → 10 万 → 100 万，逐级突破。\n"
+        "2. 核心指标权重：完播率 > 互动率 > 关注率 > 分享率。\n"
+        "3. 前 3 秒决定 70% 的完播率。\n"
+        "4. 评论区活跃度对流量池升级影响最大。\n"
+        "5. 内容与账号标签的一致性影响推荐精准度。\n"
+        "（评分和结论仍必须依据视频可观察事实，禁止仅凭机制常识下判断。）\n"
         "\n"
-        "请根据给定视频内容输出严格 JSON，不要额外文字。\n"
-        "\n"
-        "## 必选字段与可选字段规则\n"
-        "字段分为两类：\n"
-        "- 【必选】：必须从视频画面/音频中直接观察得出，不允许为 null。\n"
-        "- 【可选-需推断】：需要外部数据或主观推测才能填写。\n"
-        "  - 若证据充分 → 正常填写。\n"
-        "  - 若证据不足 → 输出 null，并在同级增加 \"_reason\": \"缺少XX数据\" 字段说明原因。\n"
-        "  - 例如：\"age_range\": null, \"age_range_reason\": \"视频中无年龄相关线索，输入中无受众数据\"\n"
-        "\n"
-        "【必选字段清单（从视频可直接观察）】：\n"
-        "summary, visual(全部子字段), bgm_audio(beat_sync/emotion_fit),\n"
-        "editing_rhythm(全部), copy_logic(golden_3s/narrative_model/on_screen_text/info_density),\n"
-        "scores(全部维度), emotion_curve, visual_elements,\n"
-        "douyin_specific(content_type/video_format)\n"
-        "\n"
-        "【可选字段清单（需推断，允许 null+reason）】：\n"
-        "bgm_audio.hotness_estimate,\n"
-        "business_strategy 全部子字段（monetization_path/trend_stage/cognitive_load/audience_persona/\n"
-        "  dou_plus_assessment/content_lifecycle_prediction/audience_detail 全部子字段）,\n"
-        "interaction_algo.comment_inducement.comment_template_prediction,\n"
-        "interaction_algo.negative_signal_risk 全部子字段,\n"
-        "douyin_specific(hashtag_strategy.topic_heat_assessment/\n"
-        "  douyin_native_elements 全部子字段/traffic_pool_prediction 全部子字段),\n"
-        "performance_attribution 全部子字段\n"
-        "\n"
-        "字段结构如下（字符串请用中文）：\n"
+        "## 输出\n"
+        "输出严格 JSON，不要额外文字、不要 markdown 包裹。字符串值请用中文。\n"
         "\n"
         "## 情绪曲线 emotion_curve 生成规则\n"
         "- 必须输出至少 30 个点（短视频）或 60 个点（长视频），t 为秒序号，v 为 0-1 之间的小数。\n"
@@ -411,6 +406,9 @@ def _build_prompt(context: dict[str, Any] | None = None, metrics: dict[str, Any]
         "  }\n"
         "}\n"
     )
+    # 飞轮：累积规则追加到 prompt 末尾（在 schema/输入数据之后，注意力最高位）
+    prompt += _get_flywheel_suffix_sync("video.analyze")
+
     if context:
         prompt += "\n以下是从视频中提取的辅助信息（可作为参考）：\n"
         prompt += json.dumps(context, ensure_ascii=False, indent=2)

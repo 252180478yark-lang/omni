@@ -20,7 +20,7 @@ class KlingProvider(BaseProvider):
     name = "kling"
     default_chat_model = ""
     default_embedding_model = ""
-    capabilities = {ProviderCapability.VIDEO_GENERATION}
+    capabilities = {ProviderCapability.VIDEO_GENERATION, ProviderCapability.IMAGE_GENERATION}
 
     def _has_key(self) -> bool:
         return is_real_api_key(settings.kling_api_key)
@@ -34,10 +34,21 @@ class KlingProvider(BaseProvider):
 
     # ── connection test ──
 
+    _KNOWN_MODELS: tuple[str, ...] = (
+        # 图像
+        "kling-kolors",
+        "kling-kolors-1-5",
+        # 视频
+        "kling-v3",
+        "kling-v3-master",
+        "kling-v2-master",
+        "kling-v1-6",
+    )
+
     async def test_connection(self, api_key: str | None = None) -> tuple[bool, str, list[str]]:
         key = (api_key or settings.kling_api_key or "").strip()
         if not is_real_api_key(key):
-            return False, "未提供 Kling API Key", []
+            return False, "未提供 Kling API Key", list(self._KNOWN_MODELS)
         try:
             headers = {
                 "Content-Type": "application/json",
@@ -50,15 +61,22 @@ class KlingProvider(BaseProvider):
                     params={"pageNum": 1, "pageSize": 1},
                 )
                 if resp.status_code == 401:
-                    return False, "API Key 无效 (401 Unauthorized)", []
+                    return False, "API Key 无效 (401 Unauthorized)", list(self._KNOWN_MODELS)
                 if resp.status_code == 403:
-                    return False, "API Key 权限不足 (403 Forbidden)", []
+                    return False, "API Key 权限不足 (403 Forbidden)", list(self._KNOWN_MODELS)
                 resp.raise_for_status()
-            return True, "Kling 连接成功", []
+            return True, "Kling 连接成功", list(self._KNOWN_MODELS)
         except httpx.HTTPStatusError as exc:
-            return False, f"连接失败 (HTTP {exc.response.status_code}): {exc.response.text[:200]}", []
+            return (
+                False,
+                f"连接失败 (HTTP {exc.response.status_code}): {exc.response.text[:200]}",
+                list(self._KNOWN_MODELS),
+            )
         except Exception as exc:
-            return False, f"连接失败: {exc}", []
+            return False, f"连接失败: {exc}", list(self._KNOWN_MODELS)
+
+    async def list_models(self, api_key: str | None = None) -> list[str]:
+        return list(self._KNOWN_MODELS)
 
     async def chat(self, messages: list[Message], model: str, **kwargs: object) -> ChatResponse:
         raise NotImplementedError("Kling does not support chat")
@@ -69,6 +87,51 @@ class KlingProvider(BaseProvider):
 
     async def embedding(self, texts: list[str], model: str, **kwargs: object) -> tuple[list[list[float]], TokenUsage]:
         raise NotImplementedError("Kling does not support embeddings")
+
+    async def generate_image(self, prompt: str, model: str, **kwargs: object) -> dict:
+        if not self._has_key():
+            return {
+                "images": [{"url": "https://placeholder.co/1024x1024?text=kling-mock"}],
+                "usage": {"cost_usd": 0},
+            }
+
+        refs = kwargs.get("reference_images") or []
+        ref_urls: list[str] = []
+        for ref in refs:
+            if isinstance(ref, str):
+                ref_urls.append(ref)
+            elif isinstance(ref, dict) and ref.get("url"):
+                ref_urls.append(str(ref["url"]))
+
+        prompt_with_refs = prompt
+        if ref_urls:
+            notes = [f"图{i + 1}为参考图，请保持主体一致" for i in range(len(ref_urls))]
+            prompt_with_refs = f"{prompt}\n\n参考约束：{'；'.join(notes)}"
+
+        payload = {
+            "model": model or "kling-kolors",
+            "prompt": prompt_with_refs,
+            "image_size": kwargs.get("size", "1024x1024"),
+        }
+        if ref_urls:
+            payload["reference_images"] = ref_urls
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{_API_BASE}/v1/images/generations",
+                headers=self._headers(),
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        out = data.get("data", data)
+        images = out.get("images", []) if isinstance(out, dict) else []
+        parsed = []
+        for item in images:
+            if isinstance(item, dict) and item.get("url"):
+                parsed.append({"url": item["url"]})
+        return {"images": parsed, "usage": {"cost_usd": 0}}
 
     async def generate_video(self, prompt: str, model: str, **kwargs: object) -> dict:
         if not self._has_key():

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app.config import settings
+from app.providers.base import ProviderCapability
 from app.runtime import (
     analyze_service,
     chat_service,
@@ -56,6 +57,8 @@ class ProviderConfigUpdateRequest(BaseModel):
 class ProviderConnectionTestRequest(BaseModel):
     provider: str
     api_key: str | None = None
+    default_chat_model: str | None = None
+    smoke_image: bool = True
 
 
 @router.post("/chat", dependencies=[Depends(_rate_limit_guard)])
@@ -160,6 +163,7 @@ async def providers() -> dict:
         "anthropic": lambda: bool(settings.anthropic_api_key),
         "deepseek": lambda: bool(settings.deepseek_api_key),
         "seedance": lambda: bool(settings.ark_api_key or settings.seedance_access_key),
+        "seedream": lambda: bool(settings.ark_api_key or settings.seedance_access_key),
         "kling": lambda: bool(settings.kling_api_key),
     }
     for name, item in data.items():
@@ -225,6 +229,7 @@ async def update_provider_config(payload: ProviderConfigUpdateRequest) -> dict:
             "anthropic": "anthropic_api_key",
             "deepseek": "deepseek_api_key",
             "seedance": "ark_api_key",
+            "seedream": "ark_api_key",
             "kling": "kling_api_key",
         }
         attr = key_setters.get(payload.provider)
@@ -232,7 +237,16 @@ async def update_provider_config(payload: ProviderConfigUpdateRequest) -> dict:
             setattr(settings, attr, value)
 
     if payload.default_chat_model and payload.default_chat_model.strip():
-        provider.default_chat_model = payload.default_chat_model.strip()
+        chosen_model = payload.default_chat_model.strip()
+        provider.default_chat_model = chosen_model
+        # 对图像/视频 provider，前端复用 default_chat_model 字段承载"默认图像/视频模型"。
+        # 这里同步到对应 settings 字段，使后续真实调用使用新选择的 Model ID。
+        media_model_target = {
+            "seedream": "seedream_model",
+            "seedance": "seedance_model",
+        }.get(payload.provider)
+        if media_model_target:
+            setattr(settings, media_model_target, chosen_model)
     if payload.default_embedding_model and payload.default_embedding_model.strip():
         provider.default_embedding_model = payload.default_embedding_model.strip()
 
@@ -249,6 +263,7 @@ async def update_provider_config(payload: ProviderConfigUpdateRequest) -> dict:
         "anthropic": "anthropic_api_key",
         "deepseek": "deepseek_api_key",
         "seedance": "ark_api_key",
+        "seedream": "ark_api_key",
         "kling": "kling_api_key",
     }
     attr = key_check.get(payload.provider)
@@ -275,7 +290,69 @@ async def test_provider_connection(payload: ProviderConnectionTestRequest) -> di
         return {"success": False, "provider": payload.provider, "message": "provider does not support connection test", "models": []}
 
     ok, message, model_list = await tester(api_key=payload.api_key)
-    return {"success": ok, "provider": payload.provider, "message": message, "models": model_list}
+    smoke_test: dict | None = None
+
+    if ok and payload.smoke_image and ProviderCapability.IMAGE_GENERATION in provider.capabilities:
+        key_attr = {
+            "openai": "openai_api_key",
+            "gemini": "gemini_api_key",
+            "kling": "kling_api_key",
+            "seedream": "ark_api_key",
+        }.get(payload.provider)
+        previous_key = getattr(settings, key_attr, None) if key_attr else None
+        if key_attr and payload.api_key is not None:
+            setattr(settings, key_attr, payload.api_key.strip())
+
+        chosen_model = (
+            (payload.default_chat_model or "").strip()
+            or provider.default_chat_model
+            or (model_list[0] if model_list else "")
+        )
+        try:
+            result = await provider.generate_image(
+                prompt=(
+                    "Smoke test image: one clean product photo of a soy sauce bottle "
+                    "on a white kitchen counter, photorealistic, no text, no watermark."
+                ),
+                model=chosen_model,
+                size="1024x1024",
+                n=1,
+                api_key=payload.api_key,
+            )
+            images = result.get("images") or []
+            url = ""
+            if images and isinstance(images[0], dict):
+                url = str(images[0].get("url") or "")
+            if not url or "placeholder.co" in url:
+                raise RuntimeError("图片生成未返回真实图片 URL")
+            smoke_test = {
+                "success": True,
+                "type": "image_generation",
+                "message": "已完成真实图片生成测试",
+                "image_url": url,
+                "model": chosen_model,
+            }
+            message = f"{message}；图片生成测试成功"
+        except Exception as exc:
+            ok = False
+            smoke_test = {
+                "success": False,
+                "type": "image_generation",
+                "message": f"图片生成测试失败: {exc}",
+                "model": chosen_model,
+            }
+            message = f"{message}；图片生成测试失败: {exc}"
+        finally:
+            if key_attr and payload.api_key is not None:
+                setattr(settings, key_attr, previous_key or "")
+
+    return {
+        "success": ok,
+        "provider": payload.provider,
+        "message": message,
+        "models": model_list,
+        "smoke_test": smoke_test,
+    }
 
 
 # ═══ Cost / Usage (MOD-07) ═══
@@ -306,6 +383,7 @@ async def provider_secrets(provider: str) -> dict:
         "anthropic": "anthropic_api_key",
         "deepseek": "deepseek_api_key",
         "seedance": "ark_api_key",
+        "seedream": "ark_api_key",
         "kling": "kling_api_key",
     }
     attr = key_map.get(provider)

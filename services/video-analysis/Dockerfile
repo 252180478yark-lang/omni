@@ -12,7 +12,7 @@ COPY pyproject.toml /app/pyproject.toml
 RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
     fastapi uvicorn[standard] pydantic pydantic-settings python-multipart httpx \
     google-generativeai matplotlib psycopg2-binary PySocks \
-    opencv-python-headless librosa faster-whisper
+    opencv-python-headless scenedetect[opencv] scipy librosa faster-whisper
 
 COPY app /app/app
 RUN mkdir -p /app/data/video-analysis

@@ -72,7 +72,13 @@ async def ingest(payload: IngestRequest) -> dict:
     if not kb:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
     task_id = await submit_ingestion_task(
-        payload.kb_id, payload.title, payload.text, payload.source_url, payload.source_type,
+        payload.kb_id,
+        payload.title,
+        payload.text,
+        payload.source_url,
+        payload.source_type,
+        metadata=payload.metadata,
+        skip_chunking=payload.skip_chunking,
     )
     return {"code": 202, "message": "accepted", "data": {"task_id": task_id}}
 
@@ -125,7 +131,8 @@ async def tasks(
     limit: int = 50,
 ) -> dict:
     safe_limit = max(1, min(limit, 200))
-    return {"code": 200, "message": "success", "data": await list_tasks(kb_id=kb_id, status=status_filter, limit=safe_limit)}
+    result = await list_tasks(kb_id=kb_id, status=status_filter, limit=safe_limit)
+    return {"code": 200, "message": "success", "data": result["items"], "counts": result["counts"]}
 
 
 @router.post("/tasks/{task_id}/retry", status_code=status.HTTP_202_ACCEPTED)
@@ -269,6 +276,257 @@ async def rag(payload: RAGRequest) -> dict:
     return {"code": 200, "message": "success", "data": result}
 
 
+# ═══ Shared retrieval + persona-only generation (for roundtable) ═══
+
+@router.post("/rag/prepare")
+async def rag_prepare(payload: dict) -> dict:
+    """Run retrieval+rerank+CRAG+compression ONCE, return chunks/sources/context.
+
+    Designed for roundtable: the controller then calls /rag/generate N times
+    with different persona prompts but shares this prepared context — saving
+    N× of query enhancement, embedding, hybrid search, rerank, and CRAG.
+    """
+    from app.services.rag_chain import prepare_rag
+
+    kb_ids = payload.get("kb_ids") or []
+    if isinstance(kb_ids, str):
+        kb_ids = [kb_ids]
+    kb_ids = [k for k in kb_ids if k]
+    if not kb_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="at least one kb_id is required")
+
+    query = (payload.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="query is required")
+
+    kbs: list[dict] = []
+    for kid in kb_ids:
+        kb = await get_kb(kid)
+        if not kb:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"knowledge base {kid} not found")
+        kbs.append(kb)
+
+    kb_embedding_map = {
+        kb["id"]: {
+            "embedding_model": kb.get("embedding_model"),
+            "embedding_provider": kb.get("embedding_provider"),
+        }
+        for kb in kbs
+    }
+
+    top_k = payload.get("top_k")
+    if top_k is not None:
+        try:
+            top_k = int(top_k)
+        except (TypeError, ValueError):
+            top_k = None
+
+    result = await prepare_rag(
+        kb_ids=kb_ids,
+        query=query,
+        top_k=top_k,
+        kb_embedding_map=kb_embedding_map,
+    )
+    return {"code": 200, "message": "success", "data": result}
+
+
+@router.post("/rag/generate")
+async def rag_generate(payload: dict):
+    """Stream LLM answer against a pre-prepared RAG context (no retrieval).
+
+    Frontends should pass the `context` / `sources` / `graph_context` /
+    `crag_result` returned from `/rag/prepare` plus `query` and an optional
+    `persona_prompt`. Streams SSE events identical in shape to /rag (stream).
+    """
+    from app.services.rag_chain import generate_with_chunks_stream
+
+    query = (payload.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="query is required")
+
+    context = payload.get("context") or ""
+    sources = payload.get("sources") or []
+    graph_context = payload.get("graph_context") or ""
+    crag_result = payload.get("crag_result") or None
+    persona_prompt = payload.get("persona_prompt")
+    model = payload.get("model")
+    provider = payload.get("provider")
+    target_chars = payload.get("target_chars")
+    continue_max_rounds = payload.get("continue_max_rounds")
+
+    async def event_gen() -> AsyncGenerator[dict[str, str], None]:
+        async for chunk in generate_with_chunks_stream(
+            query=query,
+            context=context,
+            sources=sources,
+            graph_context=graph_context,
+            crag_result=crag_result,
+            persona_prompt=persona_prompt,
+            model=model,
+            provider=provider,
+            target_chars=target_chars,
+            continue_max_rounds=continue_max_rounds,
+        ):
+            yield {"event": "message", "data": json.dumps(chunk, ensure_ascii=False)}
+
+    return EventSourceResponse(event_gen())
+
+
+# ═══ Retrieve (pure hybrid search, no LLM) ═══
+
+@router.post("/retrieve")
+async def retrieve(payload: dict) -> dict:
+    """纯检索端点：多 KB hybrid search + 三层融合（保底+过滤+上限），不走 LLM。
+
+    供 ad-review / content-studio / briefs 等跨服务模块消费。相比 /rag 省一次 LLM，
+    返回已合并/重排的 snippets，调用方直接用（配合 format_kb_snippets）。
+
+    ## 三层融合策略
+    1. **保底** (`min_per_kb`): 每个 KB 至少保留 N 条（不受 score_threshold 约束），
+       避免"高分 KB 把其他 KB 完全挤掉"丧失来源多样性。
+    2. **过滤** (`score_threshold`): 保底条目之外，低于阈值的丢弃。
+    3. **总量上限** (`total_limit`): 合并后按 score 降序截断，防止 token 爆炸。
+
+    ## Payload
+        {
+          "kb_ids": ["uuid", ...],        # 必填
+          "query": "...",                 # 必填
+          "top_k_per_kb": 4,              # 每个 KB 的候选条数上限,默认 5
+          "min_per_kb": 1,                # 每 KB 保底条数,默认 0（无保底）
+          "score_threshold": 0.0,         # 过滤阈值,默认 0
+          "total_limit": null,            # 合并后总数上限,null=不限
+          "time_decay": false,
+          "decay_days": 45.0,
+
+          # 向后兼容
+          "top_k": 5                      # 已废弃,等价于 top_k_per_kb
+        }
+
+    ## Response
+        {
+          "code": 200,
+          "data": {
+            "snippets": [
+              {"source":"<kb_name>", "kb_id":"<uuid>", "id":"<chunk_id>",
+               "score":0.87, "content":"...", "title":"..."},
+              ...
+            ],
+            "kb_resolved": [{"id":"<uuid>", "name":"<kb_name>"}, ...],
+            "stats": {
+              "total_raw": 12,            # 所有 KB 候选总数
+              "total_after_fusion": 8,    # 融合后返回数
+              "per_kb_returned": {"<uuid>": 3, ...}
+            }
+          }
+        }
+    """
+    from app.services.rag_chain import retrieve_only
+
+    kb_ids = payload.get("kb_ids") or ([payload["kb_id"]] if payload.get("kb_id") else [])
+    if not kb_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="kb_ids required")
+    query = (payload.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="query required")
+
+    # Accept both new (top_k_per_kb) and legacy (top_k) parameter names
+    top_k_per_kb = int(payload.get("top_k_per_kb") or payload.get("top_k") or 5)
+    min_per_kb = max(0, int(payload.get("min_per_kb") or 0))
+    score_threshold = float(payload.get("score_threshold") or 0)
+    raw_total_limit = payload.get("total_limit")
+    total_limit = int(raw_total_limit) if raw_total_limit else None
+    time_decay = bool(payload.get("time_decay") or False)
+    decay_days = float(payload.get("decay_days") or 45.0)
+
+    # Resolve KB id → name
+    kb_resolved: list[dict] = []
+    for kid in kb_ids:
+        kb = await get_kb(kid)
+        if not kb:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"KB {kid} not found")
+        kb_resolved.append({"id": kid, "name": kb.get("name") or kid[:8]})
+
+    # Step 1: fetch top_k_per_kb candidates from each KB (no filtering yet)
+    per_kb_hits: dict[str, list[dict]] = {}
+    total_raw = 0
+    for kb in kb_resolved:
+        try:
+            hits = await retrieve_only(
+                query, kb["id"], top_k=top_k_per_kb,
+                time_decay=time_decay, decay_days=decay_days,
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("retrieve kb=%s failed: %s", kb["id"], exc)
+            hits = []
+        # Sort each KB's hits by score desc (retrieve_only usually already sorted, but be safe)
+        hits = sorted(hits, key=lambda h: float(h.get("score") or 0), reverse=True)
+        per_kb_hits[kb["id"]] = hits
+        total_raw += len(hits)
+
+    def _mk_snippet(kb: dict, h: dict) -> dict:
+        return {
+            "source": kb["name"],
+            "kb_id": kb["id"],
+            "id": str(h.get("id") or ""),
+            "score": float(h.get("score") or 0),
+            "content": (h.get("content") or ""),
+            "title": h.get("title"),
+        }
+
+    # Step 2: build "guaranteed" pool (每 KB 保底 min_per_kb 条,不受 threshold 约束)
+    # + "candidate" pool (过滤 threshold 后的剩余)
+    guaranteed: list[dict] = []
+    candidates: list[dict] = []
+    for kb in kb_resolved:
+        hits = per_kb_hits.get(kb["id"], [])
+        for idx, h in enumerate(hits):
+            snippet = _mk_snippet(kb, h)
+            if idx < min_per_kb:
+                guaranteed.append(snippet)
+            elif snippet["score"] >= score_threshold:
+                candidates.append(snippet)
+
+    # Step 3: dedupe (same chunk id 跨 KB 理论上不会,但保险起见),然后合并
+    seen_ids: set[str] = set()
+    merged: list[dict] = []
+    for s in guaranteed + sorted(candidates, key=lambda x: x["score"], reverse=True):
+        key = f'{s["kb_id"]}:{s["id"]}'
+        if key in seen_ids:
+            continue
+        seen_ids.add(key)
+        merged.append(s)
+
+    # Step 4: total_limit 按 score 截断(但永远不会砍掉 guaranteed 部分)
+    if total_limit and len(merged) > total_limit:
+        guaranteed_count = len(guaranteed)
+        if guaranteed_count >= total_limit:
+            merged = merged[:total_limit]
+        else:
+            head = merged[:guaranteed_count]
+            tail = sorted(merged[guaranteed_count:], key=lambda x: x["score"], reverse=True)
+            merged = head + tail[: (total_limit - guaranteed_count)]
+
+    # Stats
+    per_kb_returned: dict[str, int] = {kb["id"]: 0 for kb in kb_resolved}
+    for s in merged:
+        per_kb_returned[s["kb_id"]] = per_kb_returned.get(s["kb_id"], 0) + 1
+
+    return {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "snippets": merged,
+            "kb_resolved": kb_resolved,
+            "stats": {
+                "total_raw": total_raw,
+                "total_after_fusion": len(merged),
+                "per_kb_returned": per_kb_returned,
+            },
+        },
+    }
+
+
 # ═══ RAG Evaluation ═══
 
 @router.post("/rag/evaluate")
@@ -324,10 +582,16 @@ async def document_detail(document_id: str) -> dict:
 
 
 @router.get("/documents")
-async def documents(kb_id: str | None = None, search: str | None = None, limit: int = 50) -> dict:
-    safe_limit = max(1, min(limit, 200))
-    data = await list_documents(kb_id=kb_id, search=search, limit=safe_limit)
-    return {"code": 200, "message": "success", "data": data}
+async def documents(
+    kb_id: str | None = None,
+    search: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    safe_limit = max(1, min(limit, 500))
+    safe_offset = max(0, offset)
+    result = await list_documents(kb_id=kb_id, search=search, limit=safe_limit, offset=safe_offset)
+    return {"code": 200, "message": "success", "data": result["items"], "total": result["total"]}
 
 
 @router.get("/documents/{document_id}/chunks")

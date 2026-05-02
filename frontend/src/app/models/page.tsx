@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
-import { BrainCircuit, Settings2, Save, Key, Cpu, Sparkles } from 'lucide-react'
+import { BrainCircuit, Settings2, Save, Key, Cpu, Sparkles, Image as ImageIcon, Video, MessageSquare } from 'lucide-react'
 
 interface ProviderItem {
   id: string
@@ -16,6 +16,31 @@ interface ProviderItem {
   defaultEmbeddingModel: string | null
   models: string[]
   apiKeySet?: boolean
+}
+
+interface ConnectionTestResult {
+  success: boolean
+  message: string
+  models?: string[]
+  smoke_test?: {
+    success: boolean
+    type: string
+    message: string
+    image_url?: string
+    model?: string
+  } | null
+}
+
+const CAP = {
+  CHAT: 'chat',
+  EMBEDDING: 'embedding',
+  IMAGE: 'image_generation',
+  VIDEO: 'video_generation',
+} as const
+
+function hasCap(p: ProviderItem | undefined, cap: string): boolean {
+  if (!p) return false
+  return p.capabilities?.includes(cap)
 }
 
 export default function ModelsConfig() {
@@ -32,6 +57,8 @@ export default function ModelsConfig() {
   const [testing, setTesting] = useState(false)
   const [connectionNotice, setConnectionNotice] = useState('')
   const [connectionOk, setConnectionOk] = useState<boolean | null>(null)
+  const [testImageUrl, setTestImageUrl] = useState('')
+  const [testImageMeta, setTestImageMeta] = useState('')
   const [savingKey, setSavingKey] = useState(false)
 
   const readDrafts = (): Record<string, { chatModel?: string; embeddingModel?: string }> => {
@@ -97,6 +124,13 @@ export default function ModelsConfig() {
     setSelectedChatModel(active.defaultChatModel || active.models[0] || '')
     setSelectedEmbeddingModel(active.defaultEmbeddingModel || active.models[0] || '')
   }, [active?.id, active?.defaultChatModel, active?.defaultEmbeddingModel, active?.models])
+
+  useEffect(() => {
+    setConnectionNotice('')
+    setConnectionOk(null)
+    setTestImageUrl('')
+    setTestImageMeta('')
+  }, [active?.id])
 
   const handleRefreshModels = async () => {
     setRefreshing(true)
@@ -166,6 +200,8 @@ export default function ModelsConfig() {
     setError('')
     setConnectionNotice('')
     setConnectionOk(null)
+    setTestImageUrl('')
+    setTestImageMeta('')
     try {
       const normalizedApiKey = apiKeyInput.trim()
       const outboundApiKey = normalizedApiKey.length > 0 ? normalizedApiKey : undefined
@@ -177,13 +213,14 @@ export default function ModelsConfig() {
           action: 'test-connection',
           providerId: active.id,
           apiKey: active.id === 'ollama' ? undefined : outboundApiKey,
+          defaultChatModel: selectedChatModel,
         }),
       })
       const json = (await res.json()) as {
         success: boolean
         data?: {
           providers: ProviderItem[]
-          connectionTest?: { success: boolean; message: string; models?: string[] }
+          connectionTest?: ConnectionTestResult
         }
         error?: string
       }
@@ -195,10 +232,18 @@ export default function ModelsConfig() {
       if (test) {
         setConnectionNotice(test.message || (test.success ? '连接成功' : '连接失败'))
         setConnectionOk(Boolean(test.success))
+        if (test.smoke_test?.image_url) {
+          setTestImageUrl(test.smoke_test.image_url)
+          setTestImageMeta(`${test.smoke_test.message}${test.smoke_test.model ? ` · ${test.smoke_test.model}` : ''}`)
+        } else if (test.smoke_test?.message) {
+          setTestImageMeta(test.smoke_test.message)
+        }
       }
     } catch (err) {
       setError(String(err))
       setConnectionOk(false)
+      setTestImageUrl('')
+      setTestImageMeta('')
     } finally {
       setTesting(false)
     }
@@ -324,7 +369,7 @@ export default function ModelsConfig() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">默认对话模型 (Default Chat)</label>
                 <select className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                  {providers.map((p) => (
+                  {providers.filter((p) => hasCap(p, CAP.CHAT)).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} - {p.defaultChatModel || 'N/A'}
                     </option>
@@ -334,7 +379,7 @@ export default function ModelsConfig() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-gray-700">默认向量模型 (Default Embedding)</label>
                 <select className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                  {providers.map((p) => (
+                  {providers.filter((p) => hasCap(p, CAP.EMBEDDING)).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} - {p.defaultEmbeddingModel || 'N/A'}
                     </option>
@@ -343,18 +388,39 @@ export default function ModelsConfig() {
               </div>
             </div>
 
-            <div className="mt-6 pt-6 border-t border-gray-100">
-              <label className="text-sm font-medium text-gray-700 block mb-3">自动降级策略顺序</label>
-              <div className="flex flex-wrap gap-2">
-                {providers.length === 0 ? (
-                  <Badge className="px-3 py-1 bg-gray-500 text-white font-mono text-xs">暂无 Provider</Badge>
-                ) : (
-                  providers.map((p, index) => (
-                    <Badge key={p.id} className={`px-3 py-1 text-white font-mono text-xs ${index === 0 ? 'bg-gray-900' : 'bg-gray-500'}`}>
-                      {index + 1}. {p.name}
-                    </Badge>
-                  ))
-                )}
+            <div className="mt-6 pt-6 border-t border-gray-100 space-y-3">
+              <label className="text-sm font-medium text-gray-700 block">自动降级策略顺序</label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-500 w-12 shrink-0">对话</span>
+                  <div className="flex flex-wrap gap-2">
+                    {providers.filter((p) => hasCap(p, CAP.CHAT)).map((p, i) => (
+                      <Badge key={p.id} className={`px-3 py-1 text-white font-mono text-xs ${i === 0 ? 'bg-gray-900' : 'bg-gray-500'}`}>
+                        {i + 1}. {p.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-500 w-12 shrink-0">图像</span>
+                  <div className="flex flex-wrap gap-2">
+                    {providers.filter((p) => hasCap(p, CAP.IMAGE)).map((p, i) => (
+                      <Badge key={p.id} className={`px-3 py-1 text-white font-mono text-xs ${i === 0 ? 'bg-violet-700' : 'bg-violet-400'}`}>
+                        {i + 1}. {p.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-500 w-12 shrink-0">视频</span>
+                  <div className="flex flex-wrap gap-2">
+                    {providers.filter((p) => hasCap(p, CAP.VIDEO)).map((p, i) => (
+                      <Badge key={p.id} className={`px-3 py-1 text-white font-mono text-xs ${i === 0 ? 'bg-rose-700' : 'bg-rose-400'}`}>
+                        {i + 1}. {p.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -457,51 +523,48 @@ export default function ModelsConfig() {
                       输入后点击保存，会实时更新 AI Hub 运行配置并持久化（重启后自动恢复）。
                     </p>
                     <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={testing} className="mt-2">
-                      {testing ? '测试中...' : '测试连接'}
+                      {testing ? '测试中...' : hasCap(active, CAP.IMAGE) ? '测试连接 + 生成测试图' : '测试连接'}
                     </Button>
                     {connectionNotice ? (
                       <p className={`text-xs mt-1 ${connectionOk ? 'text-green-600' : 'text-red-600'}`}>{connectionNotice}</p>
                     ) : null}
+                    {testImageMeta ? (
+                      <p className={`text-xs mt-1 ${testImageUrl ? 'text-green-600' : 'text-red-600'}`}>{testImageMeta}</p>
+                    ) : null}
+                    {testImageUrl ? (
+                      <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={testImageUrl}
+                          alt="Provider smoke test"
+                          className="h-32 w-32 rounded object-cover border bg-white"
+                        />
+                        <a
+                          href={testImageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 block text-[11px] text-green-700 underline"
+                        >
+                          打开测试图
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">默认对话模型</label>
-                      <select
-                        value={selectedChatModel}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setSelectedChatModel(value)
-                          updateActiveProviderDraft({ chatModel: value })
-                        }}
-                        className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      >
-                        {(active.models.length > 0 ? active.models : [active.defaultChatModel || '']).filter(Boolean).map((m) => (
-                          <option key={`chat-${m}`} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700">默认向量模型</label>
-                      <select
-                        value={selectedEmbeddingModel}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setSelectedEmbeddingModel(value)
-                          updateActiveProviderDraft({ embeddingModel: value })
-                        }}
-                        className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                      >
-                        {(active.models.length > 0 ? active.models : [active.defaultEmbeddingModel || '']).filter(Boolean).map((m) => (
-                          <option key={`embedding-${m}`} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                  {/* 模型选择：按 capability 动态显示对应 label */}
+                  <ProviderModelSelectors
+                    active={active}
+                    selectedChatModel={selectedChatModel}
+                    selectedEmbeddingModel={selectedEmbeddingModel}
+                    onChangeChat={(v) => {
+                      setSelectedChatModel(v)
+                      updateActiveProviderDraft({ chatModel: v })
+                    }}
+                    onChangeEmbedding={(v) => {
+                      setSelectedEmbeddingModel(v)
+                      updateActiveProviderDraft({ embeddingModel: v })
+                    }}
+                  />
 
                   <div className="space-y-3">
                     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -531,6 +594,126 @@ export default function ModelsConfig() {
           </div>
         </div>
       </main>
+    </div>
+  )
+}
+
+
+/* ── 按 provider capability 动态渲染默认模型选择器 ──
+ *  - chat → "默认对话模型"
+ *  - embedding → "默认向量模型"
+ *  - image_generation → "默认图像模型"（复用 default_chat_model 字段承载）
+ *  - video_generation → "默认视频模型"（同上）
+ *
+ *  Seedream / Seedance / Kling 这类纯媒体 provider，只会渲染图像/视频选项；
+ *  不再强行让用户面对一个永远空的"默认对话模型"。
+ */
+function ProviderModelSelectors({
+  active,
+  selectedChatModel,
+  selectedEmbeddingModel,
+  onChangeChat,
+  onChangeEmbedding,
+}: {
+  active: ProviderItem
+  selectedChatModel: string
+  selectedEmbeddingModel: string
+  onChangeChat: (v: string) => void
+  onChangeEmbedding: (v: string) => void
+}) {
+  const isChat = hasCap(active, CAP.CHAT)
+  const isEmbed = hasCap(active, CAP.EMBEDDING)
+  const isImage = hasCap(active, CAP.IMAGE)
+  const isVideo = hasCap(active, CAP.VIDEO)
+
+  // 图像/视频 provider 的"默认模型"复用 default_chat_model 字段。
+  // 同时支持图像+视频（如 kling）：用一个共享 selector 承载，因为后端只有一个 default_chat_model 字段。
+  const isMedia = !isChat && !isEmbed && (isImage || isVideo)
+
+  if (isMedia) {
+    let label = '默认模型'
+    let Icon: React.ComponentType<{ className?: string }> = Sparkles
+    if (isImage && isVideo) {
+      label = '默认模型（图像 / 视频共用）'
+    } else if (isImage) {
+      label = '默认图像模型'
+      Icon = ImageIcon
+    } else if (isVideo) {
+      label = '默认视频模型'
+      Icon = Video
+    }
+
+    const modelList = (active.models.length > 0
+      ? active.models
+      : [active.defaultChatModel || '']
+    ).filter(Boolean)
+
+    return (
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+          <Icon className="w-4 h-4 text-gray-400" />
+          {label}
+        </label>
+        <select
+          value={selectedChatModel}
+          onChange={(e) => onChangeChat(e.target.value)}
+          className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+        >
+          {modelList.length === 0 && <option value="">— 暂无可用模型，请先「测试连接」拉取 —</option>}
+          {modelList.map((m) => (
+            <option key={`media-${m}`} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+        <p className="text-[11px] text-gray-500">
+          切换后点击右上「保存当前供应商配置」，下次调用会使用新选择的 Model ID。
+        </p>
+      </div>
+    )
+  }
+
+  // 普通 chat / embedding provider
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {isChat && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-gray-400" />
+            默认对话模型
+          </label>
+          <select
+            value={selectedChatModel}
+            onChange={(e) => onChangeChat(e.target.value)}
+            className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            {(active.models.length > 0 ? active.models : [active.defaultChatModel || '']).filter(Boolean).map((m) => (
+              <option key={`chat-${m}`} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {isEmbed && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">默认向量模型</label>
+          <select
+            value={selectedEmbeddingModel}
+            onChange={(e) => onChangeEmbedding(e.target.value)}
+            className="w-full h-10 px-3 rounded-md border border-gray-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            {(active.models.length > 0 ? active.models : [active.defaultEmbeddingModel || '']).filter(Boolean).map((m) => (
+              <option key={`embedding-${m}`} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {!isChat && !isEmbed && !isImage && !isVideo && (
+        <div className="text-xs text-gray-400">该 provider 暂无可配置模型</div>
+      )}
     </div>
   )
 }

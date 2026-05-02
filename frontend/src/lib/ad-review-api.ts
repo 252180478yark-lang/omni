@@ -150,6 +150,30 @@ export async function updateMaterial(materialId: string, body: Record<string, un
   return parseJson(res)
 }
 
+export interface PipelineOption {
+  id: string
+  title: string
+  status?: string | null
+  brief_id?: string | null
+  digital_human_id?: string | null
+  created_at?: string | null
+}
+
+export async function listPipelineOptions(): Promise<PipelineOption[]> {
+  const res = await arFetch('pipelines/list')
+  const body = await parseJson<{ items: PipelineOption[] }>(res)
+  return body.items ?? []
+}
+
+export async function linkMaterialPipeline(
+  materialId: string,
+  pipelineId: string | null,
+): Promise<{ ok: boolean }> {
+  // 后端 PUT /materials/{id} 支持 pipeline_id；空字符串明确解除关联
+  return updateMaterial(materialId, { pipeline_id: pipelineId ?? '' })
+}
+
+
 export async function linkVideo(materialId: string, videoAnalysisId: string | null): Promise<{ ok: boolean }> {
   const res = await arFetch(`materials/${materialId}/link-video`, {
     method: 'PUT',
@@ -232,7 +256,21 @@ export async function getVideoDetail(videoId: string): Promise<{
   return res.json() as Promise<{ report?: { scores?: { overall?: number } }; video?: Record<string, unknown> }>
 }
 
-export type SsePayload = { type: string; content?: string; review_log_id?: string }
+export type SsePayload = {
+  type: string
+  content?: string
+  review_log_id?: string
+  kb_id?: string
+  document_id?: string | null
+  result?: {
+    skipped?: boolean
+    reason?: string
+    missing_binding?: boolean
+    message?: string
+    pipeline_ids?: string[]
+    [key: string]: unknown
+  }
+}
 
 export function parseSseDataLines(buffer: string): { events: SsePayload[]; rest: string } {
   const parts = buffer.split('\n\n')
@@ -321,5 +359,10 @@ export async function productTrend(productId: string): Promise<{ points: Record<
 
 export async function audienceCompare(cid: string): Promise<{ rows: Record<string, unknown>[] }> {
   const res = await arFetch(`analytics/audience-compare?cid=${encodeURIComponent(cid)}`)
+  return parseJson(res)
+}
+
+export async function flywheelDashboard(productId: string): Promise<{ product_id: string; rounds: Record<string, unknown>[] }> {
+  const res = await arFetch(`analytics/flywheel?product_id=${encodeURIComponent(productId)}`)
   return parseJson(res)
 }

@@ -11,6 +11,17 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.services.prompt_commons import (
+    FACTUAL_DISCIPLINE,
+    KB_AS_SUPPORT,
+    RELEASE_MODE_CONSTRAINT,
+    TRIANGLE_MATCHING_FRAMEWORK,
+    format_kb_snippets,
+)
+from app.services.prompt_flywheel_client import (
+    log_feedback as _log_feedback,
+    render_rules_suffix as _render_rules_suffix,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +103,21 @@ async def generate_review(
         campaign=campaign,
         prev_suggestions_text=prev_suggestions_text,
     )
+    # 飞轮：拼上累积规则,并留痕供反馈使用
+    stage_a_scope = {"campaign_id": str(campaign.get("id") or "")}
+    stage_a_prompt += await _render_rules_suffix("review.stage_a", stage_a_scope)
     diagnosis_json = await _call_llm_json(stage_a_prompt, n_materials=len(materials))
+    try:
+        import json as _json
+        diag_preview = _json.dumps(diagnosis_json, ensure_ascii=False)[:5000] if diagnosis_json else None
+    except Exception:
+        diag_preview = None
+    await _log_feedback(
+        "review.stage_a",
+        input_ref=stage_a_scope,
+        full_prompt=stage_a_prompt,
+        output=diag_preview,
+    )
     if diagnosis_json is None:
         logger.warning("Stage A failed to produce valid JSON, falling back to single-pass")
         fallback_prompt = _build_review_prompt(
@@ -111,6 +136,13 @@ async def generate_review(
 
     # ── Stage B: Render Markdown from diagnosis (streaming, more tokens) ──
     stage_b_prompt = _build_stage_b_prompt(diagnosis_json, data_summary)
+    stage_b_prompt += await _render_rules_suffix("review.stage_b", stage_a_scope)
+    # 留痕 stage_b 的 prompt（output 流式生成,这里无法拿完整 output,只留 prompt）
+    await _log_feedback(
+        "review.stage_b",
+        input_ref=stage_a_scope,
+        full_prompt=stage_b_prompt,
+    )
     async for chunk in _stream_llm(stage_b_prompt, temperature=0.15, max_tokens=16384):
         yield chunk
 
@@ -165,33 +197,47 @@ def _build_data_summary(
             purpose = grp.get("video_purpose", "seeding") if grp else "seeding"
             purpose_label = PURPOSE_LABELS.get(purpose, purpose)
 
-            base = (
-                f"- [{purpose_label}] {m['name']}: 消耗￥{m.get('cost') or 0}, "
-                f"展示{m.get('impressions') or 0}, CPM=￥{cpm:.2f}, "
-                f"点击率{ctr:.2%}, 完播率{cr:.2%}, 3秒率{p3:.2%}"
-            )
+            if purpose == "organic":
+                # Organic materials: focus on engagement, no billing metrics
+                p5 = float(m.get("play_5s_rate") or 0)
+                plays = int(m.get("plays") or 0)
+                likes = int(m.get("likes") or 0)
+                comments = int(m.get("comments") or 0)
+                shares = int(m.get("shares_7d") or 0)
+                base = (
+                    f"- [{purpose_label}] {m['name']}: "
+                    f"播放量{plays:,}, 3秒率{p3:.2%}, "
+                    f"5秒率{p5:.2%}, 完播率{cr:.2%}, "
+                    f"互动率{ir:.2%}, 点赞{likes:,}, 评论{comments:,}, 分享{shares:,}"
+                )
+            else:
+                base = (
+                    f"- [{purpose_label}] {m['name']}: 消耗￥{m.get('cost') or 0}, "
+                    f"展示{m.get('impressions') or 0}, CPM=￥{cpm:.2f}, "
+                    f"点击率{ctr:.2%}, 完播率{cr:.2%}, 3秒率{p3:.2%}"
+                )
 
-            if cvr > 0:
-                if purpose == "seeding":
-                    base += f", A3转化率{cvr:.2%}"
-                else:
-                    base += f", 转化率{cvr:.2%}"
-            cost_per = m.get("cost_per_result")
-            if cost_per is not None:
-                if purpose == "seeding":
-                    base += f", A3转化成本￥{float(cost_per):.2f}"
-                else:
-                    base += f", 转化成本￥{float(cost_per):.2f}"
-            if purpose == "conversion" and cvr > 0 and ctr > 0 and cpm > 0:
-                cost_per_conv = cpm / (ctr * 1000) / cvr
-                if product_price and margin_rate:
-                    roi_line = product_price * margin_rate
-                    if cost_per_conv <= roi_line:
-                        base += f" ✅保本(毛利￥{roi_line:.2f})"
+                if cvr > 0:
+                    if purpose == "seeding":
+                        base += f", A3转化率{cvr:.2%}"
                     else:
-                        base += f" ❌亏损(毛利￥{roi_line:.2f})"
-            if ir > 0:
-                base += f", 互动率{ir:.2%}"
+                        base += f", 转化率{cvr:.2%}"
+                cost_per = m.get("cost_per_result")
+                if cost_per is not None:
+                    if purpose == "seeding":
+                        base += f", A3转化成本￥{float(cost_per):.2f}"
+                    else:
+                        base += f", 转化成本￥{float(cost_per):.2f}"
+                if purpose == "conversion" and cvr > 0 and ctr > 0 and cpm > 0:
+                    cost_per_conv = cpm / (ctr * 1000) / cvr
+                    if product_price and margin_rate:
+                        roi_line = product_price * margin_rate
+                        if cost_per_conv <= roi_line:
+                            base += f" ✅保本(毛利￥{roi_line:.2f})"
+                        else:
+                            base += f" ❌亏损(毛利￥{roi_line:.2f})"
+                if ir > 0:
+                    base += f", 互动率{ir:.2%}"
 
             lines.append(base)
         lines.append("")
@@ -791,54 +837,60 @@ async def _rag_search_experience(
     query_parts.append("请提供：有效的钩子策略、素材迭代经验、人群匹配优化方法、历史复盘结论")
     query = "\n".join(p for p in query_parts if p)
 
+    # Resolve KB ids if not provided: try to find a "复盘"-named KB.
+    resolved_kb_ids: list[str] = list(kb_ids or [])
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            if not resolved_kb_ids:
+                kb_resp = await client.get(f"{KE_BASE}/api/v1/knowledge/bases")
+                if kb_resp.status_code == 200:
+                    body = kb_resp.json()
+                    kbs = body.get("data") or []
+                    review_kb = next((kb for kb in kbs if "复盘" in (kb.get("name") or "")), None)
+                    if review_kb:
+                        resolved_kb_ids = [review_kb["id"]]
+    except Exception as e:
+        logger.debug("kb resolve failed: %s", e)
+
+    if not resolved_kb_ids:
+        return format_kb_snippets([])  # renders '<kb_context empty="true" ... />'
+
+    # Pure retrieval — no nested LLM. 三层融合策略:
+    #   候选池 per KB=10（~2.5x 最终量,给 score 过滤留空间）
+    #   保底 per KB=1（防某 KB 被完全挤掉）
+    #   score threshold=0.35（历史经验要精准,弱相关干扰诊断）
+    #   total_limit=12（单次复盘参考 12 条足够,避免 token 爆炸）
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            if kb_ids:
-                results = []
-                for kb_id in kb_ids:
-                    try:
-                        rag_resp = await client.post(
-                            f"{KE_BASE}/api/v1/knowledge/rag",
-                            json={"kb_id": kb_id, "query": query, "top_k": 8, "stream": False},
-                            timeout=60.0,
-                        )
-                        if rag_resp.status_code == 200:
-                            answer = rag_resp.json().get("data", {}).get("answer", "")
-                            if answer:
-                                results.append(answer)
-                    except Exception as e:
-                        logger.warning("RAG search kb %s failed: %s", kb_id, e)
-                return "\n\n".join(results) if results else "(所选知识库无相关经验)"
-
-            kb_resp = await client.get(f"{KE_BASE}/api/v1/knowledge/bases")
-            if kb_resp.status_code != 200:
-                return "（投放复盘经验库尚无历史数据）"
-            body = kb_resp.json()
-            kbs = body.get("data") or []
-            review_kb = next((kb for kb in kbs if "复盘" in (kb.get("name") or "")), None)
-            if not review_kb:
-                return "（投放复盘经验库尚无历史数据）"
-
-            kb_id = review_kb["id"]
-            rag_resp = await client.post(
-                f"{KE_BASE}/api/v1/knowledge/rag",
+            resp = await client.post(
+                f"{KE_BASE}/api/v1/knowledge/retrieve",
                 json={
-                    "kb_id": kb_id,
+                    "kb_ids": resolved_kb_ids,
                     "query": query,
-                    "top_k": 8,
-                    "stream": False,
+                    "top_k_per_kb": 10,
+                    "min_per_kb": 1,
+                    "score_threshold": 0.35,
+                    "total_limit": 12,
+                    "time_decay": True,
+                    "decay_days": 60.0,
                 },
-                timeout=60.0,
+                timeout=30.0,
             )
-            if rag_resp.status_code != 200:
-                return "（无相关历史经验）"
-            rag_body = rag_resp.json()
-            data = rag_body.get("data") or {}
-            return data.get("answer") or "（无相关历史经验）"
+            if resp.status_code != 200:
+                logger.warning("retrieve endpoint status=%s body=%s",
+                               resp.status_code, resp.text[:200])
+                return format_kb_snippets([])
+            data = (resp.json() or {}).get("data") or {}
+            snippets = data.get("snippets") or []
+            # Trim content to control token cost: 投放经验一般前 500 字足够
+            for s in snippets:
+                c = s.get("content") or ""
+                if len(c) > 500:
+                    s["content"] = c[:500] + "..."
+            return format_kb_snippets(snippets)
     except Exception as e:
-        logger.warning("RAG search failed: %s", e)
-
-    return "（RAG检索失败，跳过历史经验）"
+        logger.warning("retrieve call failed: %s", e)
+        return format_kb_snippets([])
 
 
 # ── Stage 5.5: Suggestion Comparison ─────────────────────────────────
@@ -884,8 +936,9 @@ def _build_suggestion_comparison(prev_suggestions: list, materials: list) -> str
 
 EVIDENCE_FIELDS_WHITELIST = frozenset({
     "ctr", "cpm", "conversion_rate", "completion_rate", "play_3s_rate",
-    "interaction_rate", "a3_ratio", "new_a3", "cost", "impressions",
-    "plays", "video_score_overall",
+    "play_5s_rate", "interaction_rate", "a3_ratio", "new_a3", "cost",
+    "impressions", "plays", "likes", "comments", "shares_7d",
+    "cost_per_result", "video_score_overall",
     "video_score_hook_power", "video_score_content_value",
     "video_score_visual_quality", "video_score_editing_rhythm",
     "video_score_audio_bgm", "video_score_copy_script",
@@ -945,19 +998,15 @@ def _build_stage_a_prompt(
     if prev_suggestions_text:
         prev_section = f"\n## 上轮建议\n{prev_suggestions_text}\n"
 
-    return f"""你是一位资深的巨量千川投放优化师。
+    return f"""你是一位资深的巨量千川投放优化师，精通短视频内容策略和人群运营，按"素材×人群×目的"三角匹配模型诊断投放问题。
 
-## 数据第一原则（必须遵守）
-1. 所有结论必须直接依附于输入中的真实数据或视频分析结果，不得臆测。
-2. 禁止编造不存在的指标、行业均值、人群画像、分段留存或成本数据。
-3. 如果某项分析所需数据缺失，对应字段输出 null 并在 _reason 字段说明。
-4. 每条关键结论都必须包含 evidence_fields（指向输入数据字段名）和 confidence（高/中/低）。
-5. evidence_fields 只能从以下白名单选择：ctr, cpm, conversion_rate, completion_rate, play_3s_rate, interaction_rate, a3_ratio, new_a3, cost, impressions, plays, video_score_overall, video_score_hook_power, video_score_content_value, video_score_visual_quality, video_score_editing_rhythm, video_score_audio_bgm, video_score_copy_script, video_score_interaction_design, video_score_algorithm_friendliness, video_score_commercial_potential, conv_cost_calculated
+{FACTUAL_DISCIPLINE}
 
-## 归因三步法
-1. 对齐：同一变量组内，只改变一个因素比较
-2. 定位：数据变化定位到视频秒级变更
-3. 判定：有效/无效/不确定 + 信心等级
+{RELEASE_MODE_CONSTRAINT}
+
+{TRIANGLE_MATCHING_FRAMEWORK}
+
+{KB_AS_SUPPORT}
 {breakeven_section}
 ## 输入数据
 
@@ -976,7 +1025,7 @@ def _build_stage_a_prompt(
 ### 人群画像
 {audience_profiles}
 
-### 历史经验
+### 历史经验（知识库）
 {rag_context}
 {prev_section}
 ---
@@ -989,6 +1038,26 @@ def _build_stage_a_prompt(
     "missing_fields": ["缺失的字段名"],
     "missing_impact": "缺失对结论的影响说明"
   }},
+  "matching_diagnosis": [
+    {{
+      "material_name": "素材名",
+      "audience": "人群包名",
+      "purpose": "seeding/conversion/organic",
+      "metrics": {{"ctr": 0, "conversion_rate": 0, "cpm": 0, "cost": 0}},
+      "surface_match": {{
+        "level": "高/中/低",
+        "analysis": "素材钩子/封面的内容特征 vs 该人群的兴趣特征，为什么匹配或不匹配"
+      }},
+      "deep_match": {{
+        "level": "高/中/低",
+        "analysis": "素材的卖点表达/说服逻辑 vs 该人群的决策因素，为什么匹配或不匹配"
+      }},
+      "ecpm_diagnosis": "eCPM竞争力判断：CTR和CVR哪个在拖后腿，还是两者都有问题",
+      "optimization_direction": "改素材内容/换人群包/两者调整——一句话说明方向",
+      "evidence_fields": ["ctr", "conversion_rate"],
+      "confidence": "高/中/低"
+    }}
+  ],
   "key_findings": [
     {{
       "conclusion": "一句话结论",
@@ -1000,22 +1069,22 @@ def _build_stage_a_prompt(
   ],
   "purpose_diagnosis": {{
     "organic": {{
-      "ranking": [{{"material_name": "", "completion_rate": 0, "play_3s_rate": 0, "rank_label": "TOP1/BOTTOM1"}}],
-      "hook_issues": ["素材名: 问题描述"],
-      "retention_analysis": "数据或数据不足",
-      "retention_analysis_reason": "若为数据不足则说明原因"
+      "ranking": [{{"material_name": "", "play_3s_rate": 0, "play_5s_rate": 0, "completion_rate": 0, "plays": 0, "interaction_rate": 0, "rank_label": "TOP1/BOTTOM1"}}],
+      "hook_issues": ["素材名: 钩子问题——当前钩子是什么、为什么不吸引人"],
+      "content_engagement_analysis": "内容吸引力分析：完播率高低与内容节奏/信息密度的关系，互动数据反映的用户参与度"
     }},
     "seeding": {{
-      "cpm_ranking": [{{"material_name": "", "audience": "", "cpm": 0, "ctr": 0}}],
-      "high_ctr_traits": "高CTR共性",
-      "low_ctr_issues": "低CTR问题",
-      "a3_efficiency": "A3效率分析"
+      "efficiency_ranking": [{{"material_name": "", "audience": "", "ctr": 0, "conversion_rate": 0, "cpm": 0, "cost_per_result": 0, "ecpm_note": "eCPM竞争力：强/中/弱"}}],
+      "high_ctr_matching_traits": "高CTR素材和人群匹配的共性特征——什么类型的钩子命中了什么类型的人群兴趣",
+      "low_ctr_mismatch_analysis": "低CTR素材和人群不匹配的具体分析——钩子特征和人群兴趣的错位在哪",
+      "conversion_analysis": "A3转化率分析——深层匹配度诊断：转化率高/低的素材在说服逻辑上有什么区别",
+      "cost_efficiency": "A3成本分析：综合CTR×A3转化率后哪条素材性价比最高"
     }},
     "conversion": {{
       "breakeven_matrix": [
         {{"material_name": "", "cpm": 0, "ctr": 0, "cvr": 0, "conv_cost": 0, "margin": 0, "profitable": true}}
       ],
-      "loss_attribution": [{{"material_name": "", "bottleneck": "cpm/ctr/cvr", "detail": ""}}]
+      "loss_attribution": [{{"material_name": "", "bottleneck": "ctr/cvr", "detail": "具体是表层匹配（CTR）还是深层匹配（CVR）问题，结合视频内容说明原因"}}]
     }}
   }},
   "iteration_attribution": [
@@ -1024,41 +1093,60 @@ def _build_stage_a_prompt(
       "versions": ["v1→v2"],
       "change_tags": ["改钩子"],
       "kpi_delta": "CTR 2.1%→3.5%",
+      "matching_impact": "改动如何影响了匹配度——例如：新钩子从产品展示改为痛点提问，更贴合目标人群的焦虑心理，表层匹配度从低→中",
       "evidence_fields": ["ctr"],
       "judgment": "有效/无效/不确定",
-      "confidence": "高/中/低",
-      "repeated_validation": false
+      "confidence": "高/中/低"
     }}
   ],
   "audience_content_matrix": [
     {{
       "material_name": "",
-      "cross_pack_results": [{{"audience": "", "ctr": 0, "cpm": 0}}],
+      "cross_pack_results": [{{"audience": "", "ctr": 0, "conversion_rate": 0, "cpm": 0}}],
       "best_audience": "",
-      "conclusion": ""
+      "matching_analysis": "为什么这条素材和该人群最匹配——具体说明素材的内容调性/钩子类型/卖点表达与人群特征的契合点"
     }}
   ],
   "action_plan": {{
-    "stop_immediately": [{{"material_name": "", "reason": "", "evidence_fields": ["ctr"]}}],
-    "scale_up": [{{"material_name": "", "reason": "", "evidence_fields": ["ctr"]}}],
-    "iteration_directions": [{{"group": "", "changes": "", "target_seconds": ""}}],
-    "new_material_suggestions": [""],
-    "audience_adjustments": [""],
-    "budget_allocation": [""]
+    "stop_immediately": [{{"material_name": "", "reason": "匹配度诊断结论及数据依据", "evidence_fields": ["ctr"]}}],
+    "scale_up": [{{"material_name": "", "reason": "匹配度诊断结论及数据依据", "evidence_fields": ["ctr"]}}],
+    "material_iterations": [
+      {{
+        "material_name": "",
+        "target_audience": "这条素材的目标人群",
+        "current_mismatch": "当前不匹配的具体环节（表层/深层/两者）",
+        "changes": ["改钩子", "改文案"],
+        "specific_plan": "具体到秒级的改动方案。禁止写'优化钩子''提升转化'等空话。必须写出：第几秒改什么、改前是什么、改后建议是什么、为什么这样改能提升与目标人群的匹配度。示例：'第0-3秒：将产品全景展示改为手持近景使用画面，口播从【大家好今天推荐】改为【用了三个月终于可以说了】，制造真实体验悬念，更贴合该人群重视真实口碑的决策特征'",
+        "evidence_fields": ["ctr", "play_3s_rate"]
+      }}
+    ],
+    "audience_adjustments": [
+      {{
+        "material_name": "",
+        "current_audience": "当前投放的人群包",
+        "suggested_direction": "建议调整到什么类型的人群——基于素材内容特征推断更匹配的人群画像",
+        "reason": "为什么当前人群不匹配、为什么建议的人群更合适"
+      }}
+    ]
   }},
   "experience_tags": ["#标签1", "#标签2"],
   "next_suggestions": [
     {{
       "material_name": "",
+      "target_audience": "这条素材应该投给的人群",
+      "current_mismatch": "当前匹配问题的一句话诊断",
       "suggestions": ["改钩子"],
       "evidence_fields": ["ctr", "play_3s_rate"],
-      "detail": ""
+      "detail": "具体怎么改——必须写出改前内容、改后建议、改动理由。能直接交给编导执行，不要泛泛而谈"
     }}
   ]
 }}
 
-如果某个分类（organic/seeding/conversion）在本次投放中无对应素材，该分类输出空对象 {{}}。
-所有数值必须来自输入数据，禁止编造。
+关键字段补充说明：
+- `matching_diagnosis`：核心分析，必须对每条素材×人群包组合都给出匹配诊断（不得省略）。
+- `loss_attribution.bottleneck`：仅可取值 `"ctr"` 或 `"cvr"`，禁止写 `"cpm"`（CPM 是结果不是原因）。
+- `action_plan.material_iterations[].specific_plan`：必须写完整的秒级改动方案（改前内容 / 改后建议 / 提升匹配度的原因 / 完整口播词），禁止空话。
+- 若 organic/seeding/conversion 某分类本次无对应素材，对应字段输出空对象 `{{}}`。
 """
 
 
@@ -1119,13 +1207,13 @@ def _validate_evidence_fields(diagnosis: dict) -> dict:
                 ]
         return items
 
-    for key in ("key_findings", "iteration_attribution", "next_suggestions"):
+    for key in ("key_findings", "iteration_attribution", "next_suggestions", "matching_diagnosis"):
         if isinstance(diagnosis.get(key), list):
             _clean_list(diagnosis[key])
 
     ap = diagnosis.get("action_plan")
     if isinstance(ap, dict):
-        for sub_key in ("stop_immediately", "scale_up"):
+        for sub_key in ("stop_immediately", "scale_up", "material_iterations"):
             if isinstance(ap.get(sub_key), list):
                 _clean_list(ap[sub_key])
 
@@ -1157,20 +1245,24 @@ def _build_stage_b_prompt(diagnosis: dict, data_summary: str) -> str:
     diagnosis_text = json.dumps(diagnosis, ensure_ascii=False, indent=2)
     summary_text = _truncate_preserving_names(data_summary, max_chars=4000)
 
-    return f"""你是一位投放复盘报告的渲染专家。
+    return f"""你是投放复盘报告的 Markdown 渲染器。你不是分析师——不得添加诊断 JSON 之外的分析、数据或结论。
 
-下面是已经完成的结构化诊断 JSON（所有数据和结论已经过数据验证）。
-你的任务是将其渲染为可读性强的 Markdown 复盘报告。
+## 渲染纪律（按优先级排序，前面的约束胜过后面的）
 
-## 渲染规则
-1. 严格按照诊断 JSON 中的内容输出，不得添加 JSON 中不存在的结论或数据。
-2. 不要编造任何额外的数字、百分比、或分析。
-3. 如果 JSON 中某字段为 null 并有 _reason 说明，在报告中明确写出"数据不足"及原因。
-4. 每条关键发现必须标注【置信度】。
-5. 对于 evidence_fields，在结论旁用括号标注依据字段。
-6. 最后的"下一版素材改动建议"段落必须输出原始 JSON 代码块（```json ... ```），不要改动内容。
+**A. 忠实性（最高）**
+1. 严格按诊断 JSON 输出，禁止添加 JSON 中不存在的结论、数字、百分比、案例。
+2. 若 JSON 字段为 `null`，必须在报告中写"数据不足：[JSON 中 `_reason` 的说明]"，禁止绕过或自行补齐。
+3. 每条关键结论旁标注【置信度】+ `(依据字段: ctr, cvr, ...)`。
 
-## 原始数据摘要（供引用素材名）
+**B. 完整性（次要）**
+4. `action_plan.material_iterations` 的 `specific_plan` 字段**一字不漏地保留**（含秒级描述、完整口播词）。禁止概括、缩写、改写。
+5. `next_suggestions` 字段必须作为 JSON 代码块原样输出（```json ... ```），不要改动内容。
+
+**C. 可读性**
+6. `matching_diagnosis` 用表格呈现（素材×人群一行，展示表层/深层/eCPM 三个诊断结论）。
+7. 不匹配组合单独小节展开分析。
+
+## 原始数据摘要（仅供引用素材名，不作为额外信息源）
 {summary_text}
 
 ## 诊断 JSON
@@ -1178,30 +1270,33 @@ def _build_stage_b_prompt(diagnosis: dict, data_summary: str) -> str:
 
 ---
 
-请按以下结构输出 Markdown 报告：
+请按以下结构输出 Markdown 报告（标题必须严格对应）：
 
 ### 一、数据可用性声明
 （基于 data_availability）
 
-### 二、关键发现
+### 二、素材×人群×目的 匹配诊断
+（基于 matching_diagnosis，这是报告的核心。用表格展示每条素材的表层匹配度、深层匹配度、eCPM诊断。对不匹配的组合重点展开分析。）
+
+### 三、关键发现
 （基于 key_findings，每条标注置信度和证据字段）
 
-### 三、按视频目的分类诊断
-（基于 purpose_diagnosis，分 organic/seeding/conversion 三段）
+### 四、按投放目的分类诊断
+（基于 purpose_diagnosis，分自然流量/种草/转化三段。种草和转化部分围绕eCPM竞争力展开。）
 
-### 四、迭代归因分析
-（基于 iteration_attribution）
+### 五、迭代归因分析
+（基于 iteration_attribution，重点说明改动如何影响了匹配度）
 
-### 五、人群×内容匹配矩阵
-（基于 audience_content_matrix）
+### 六、人群×内容匹配矩阵
+（基于 audience_content_matrix，说明每条素材最适合的人群及原因）
 
-### 六、下一轮行动清单
-（基于 action_plan）
+### 七、行动清单
+（基于 action_plan：停投/加投/素材迭代方案/人群包调整。迭代方案必须保留具体到秒级的改动描述，不要概括。）
 
-### 七、经验沉淀
+### 八、经验沉淀
 （基于 experience_tags）
 
-### 八、下一版素材改动建议（JSON）
+### 九、下一版素材改动建议（JSON）
 （直接输出 next_suggestions 的 JSON 代码块）
 """
 
@@ -1263,25 +1358,51 @@ def _build_review_prompt(
 - 对于每条转化类素材，必须明确标注是否保本，亏多少或赚多少
 """
 
-    return f"""你是一位资深的巨量千川投放优化师，同时精通短视频内容分析。
-你需要按照不同视频目的（自然流量/种草/转化）使用不同的分析框架。
+    return f"""你是一位资深的巨量千川投放优化师，精通短视频内容策略和人群运营。
+你按照"素材×人群×目的"三角匹配模型诊断投放问题，理解 eCPM 竞价机制和向量匹配逻辑。
 
-## 数据第一原则（必须遵守）
-1. 所有结论必须直接依附于输入中的真实数据或视频分析结果，不得臆测。
-2. 禁止编造不存在的指标、行业均值、人群画像、分段留存或成本数据。
-3. 如果某项分析所需数据缺失，明确写“数据不足，无法判断”，并列出缺失字段。
-4. 每条关键结论都必须包含：结论 + 证据数据 + 归因判定 + 置信度（高/中/低）。
-5. 不允许使用“通常/一般/大概率”替代证据推理。
+## 核心分析框架：三角匹配模型
+
+### eCPM 竞价机制
+- eCPM = CTR × CVR × 出价 × 1000
+- 平台按 eCPM 排序决定谁获得展示机会
+- **CTR 反映表层匹配度**：素材的钩子/封面是否命中了目标人群的即时兴趣
+- **CVR 反映深层匹配度**：素材的说服逻辑是否契合目标人群的决策因素
+- **CPM 是结果不是原因**：CPM 高 = eCPM 竞争力弱 = CTR 或 CVR 拖后腿。归因时必须追溯到 CTR 还是 CVR
+
+### 向量匹配思维
+素材有"内容向量"（画面/文案/情绪/卖点/节奏），用户有"兴趣向量"（标签/消费力/行为）。
+投放效果 = 两组向量的匹配程度。优化投放本质上是调整内容向量和选择更匹配的人群向量。
+
+### 放量投放约束（重要）
+当前投放模式为放量投放，系统自动竞价，**不存在"调出价""调预算""控制成本"的操作空间**。
+所有优化只能围绕两个方向：① 素材内容迭代 ② 人群包选择与匹配。
+**禁止给出以下建议**：降低出价、提高出价、调整预算分配、控制日消耗等。
+
+### 匹配诊断逻辑
+1. CTR低 → 表层不匹配 → 素材钩子/封面与人群兴趣没对齐
+2. CVR低 → 深层不匹配 → 素材卖点/说服逻辑与人群决策因素没对齐
+3. CTR高+CVR低 → 钩子吸引了人但内容没说服，或吸引了错误人群
+4. CTR低+CVR高 → 能转化但封面不吸引人，eCPM 被 CTR 拖累
+5. 两者都低 → 投错人了，或素材质量本身有问题
+
+## 数据第一原则
+1. 所有结论必须直接依附于输入中的真实数据或视频分析结果。
+2. **重要**：以下数据已在输入中完整提供，请充分利用，不要误判为缺失：
+   - conversion_rate（种草=A3转化率，可>100%是正常的归因窗口导致）
+   - cost_per_result（种草=A3成本）
+   - 视频分析全维度（评分/钩子/画面/BGM/脚本/表演/场景/改进建议）
+3. 每条结论必须包含：结论 + 证据数据 + 归因判定 + 置信度。
 
 ## 核心分析方法论：归因三步法
 1. **对齐**：同一变量组内，只改变一个因素进行比较（如同一风格组内，改钩子的那组 vs 不改的那组）
 2. **定位**：数据变化的原因定位到具体的视频秒级变更（如"第2秒换了产品特写→3秒率提升"）
 3. **判定**：明确标注每个改动的效果——有效/无效/不确定，给出信心等级
 
-## 不同视频目的的关键指标
-- **自然流量**: 核心看完播率、3秒完播率、互动率、播放量。
-- **种草**: 核心看CPM、点击率、A3转化率（即千川导出的"转化率"）、A3转化成本（即千川导出的"转化成本"）。注意：种草计划的转化率=A3转化率，转化成本=A3成本，可能>100%是正常的（归因窗口导致）。
-- **转化**: 核心看CPM×CTR×CVR三者综合。必须计算单次转化成本并与保本线对比。
+## 不同视频目的的关键指标（三角匹配视角）
+- **种草素材**（A3人群量目标）: CTR → A3转化率 → eCPM竞争力 → A3成本。种草计划的转化率=A3转化率，转化成本=A3成本，可能>100%是正常的（归因窗口导致）。
+- **转化素材**（ROI目标 oCPM）: CTR → CVR → eCPM竞争力 → 单转化成本 vs 保本线。亏损归因只追溯到 CTR 还是 CVR。
+- **自然流量素材**（主账号发布，不走千川计费）: 3秒率 → 5秒率 → 完播率 → 播放量 → 互动率（点赞/评论/分享）。
 {breakeven_section}
 ## 一、投放数据总览
 {data_summary}
@@ -1303,11 +1424,17 @@ def _build_review_prompt(
 {prev_section}
 ---
 
-**重要输出要求：**
-1. 不限字数，必须详细充分，把每个分析点讲透
-2. 每个结论必须有具体数据支撑，引用素材名+数据
-3. 改进建议必须具体到秒级、画面级、文案级，不要泛泛而谈
-4. 对比分析必须列出前后版本的具体差异
+**重要输出要求（必须严格遵守）：**
+1. **不限字数，必须详细充分**——每个分析点写 200 字以上，把因果关系讲透
+2. **禁止泛泛而谈**——不要写"可能与钩子有关""需要进一步分析"这种废话，直接说"v1 的钩子是[具体内容]，评分 8.5/10，效果是[具体描述]；v2 改成了[具体内容]，导致 CTR 从 3.54% 降到 2.04%，原因是[具体分析]"
+3. **必须深度引用视频分析报告的具体内容**——钩子用了什么手法、画面有哪些元素、BGM 是什么风格、脚本结构怎么安排的、表演者表现如何，这些在上方"视频全维度分析"里都有，必须引用
+4. **迭代对比必须逐维度对比两版视频的具体内容差异**：
+   - v1 的钩子是什么 vs v2 的钩子改成了什么 → 对 CTR/3秒率 的影响
+   - v1 的画面元素有哪些 vs v2 变了哪些 → 对完播率的影响
+   - v1 的脚本结构 vs v2 的脚本结构 → 对转化率的影响
+   - v1 的 BGM vs v2 的 BGM → 对情绪节奏的影响
+5. **改进建议必须具体到秒级**——"第 0-3 秒把[当前内容]改成[建议内容]，因为[数据证据]"，写出完整的口播词和画面描述
+6. **如果知识库检索到了历史经验，必须在分析中引用**
 
 请按照以下结构输出复盘日志（Markdown格式）：
 
@@ -1327,16 +1454,16 @@ def _build_review_prompt(
 - 若存在分段留存数据，再输出25%/50%/75%节点衰减；否则明确“数据不足”
 
 #### 种草类素材
-- CPM效率排名（按CPM从低到高），找出最划算的人群包×素材组合
-- 点击率分析：高CTR素材的共性特征，低CTR素材的问题
-- A3转化率分析（种草的"转化率"就是A3转化率）：转化率高低的原因，结合视频内容分析
-- A3转化成本分析（种草的"转化成本"就是A3成本）：每条素材的A3成本对比，哪条最划算
-- 综合效率：CPM × CTR × A3转化率，找出综合ROI最高的素材
+- eCPM竞争力排名：CTR × A3转化率 综合排序
+- 点击率分析（表层匹配度）：高CTR素材的钩子特征 vs 低CTR素材的问题，结合人群兴趣分析匹配度
+- A3转化率分析（深层匹配度）：转化率高低的原因，素材的种草说服逻辑是否对齐人群决策因素
+- A3转化成本分析：每条素材的A3成本对比，哪条最划算
+- 匹配诊断：哪些素材×人群组合匹配度高（CTR+CVR都好）？哪些存在错配？
 
 #### 转化类素材
 - **保本矩阵**：每条素材的 CPM、CTR、CVR、单转化成本、vs保本线差距
 - 哪些素材盈利？哪些亏损？差距多大？
-- 拆解亏损原因：是CPM太高（流量贵）？CTR太低（不吸引人）？CVR太低（不转化）？
+- 亏损归因（只追溯到CTR或CVR）：CTR低=表层不匹配（钩子没命中人群兴趣）；CVR低=深层不匹配（卖点没打动人群）。**禁止归因为"CPM太高"——CPM是结果不是原因**
 
 ### 四、迭代归因分析（核心：结合视频内容差异解释数据变化）
 - 对每个有迭代链的变种，逐版本对比：
@@ -1348,72 +1475,74 @@ def _build_review_prompt(
      - 脚本结构差异（叙事顺序变了吗？新增/删除了哪些段落？）
      - BGM/音频差异（换BGM了吗？节奏变了吗？）
      - 文案差异（口播文案改了哪些？）
-  3. **归因判定**: 基于以上对比，判断数据变化的原因：
-     - 是因为钩子更吸引人→CTR提升？
-     - 是因为节奏更紧凑→完播率提升？
-     - 是因为卖点更清晰→转化率提升？
-     - 还是因为画面质量下降→CPM变贵？
+  3. **归因判定（三角匹配视角）**: 基于以上对比，判断数据变化的匹配影响：
+     - CTR变化 → 表层匹配度变了？钩子/封面是否更贴合目标人群的兴趣点？
+     - CVR变化 → 深层匹配度变了？卖点/说服逻辑是否更契合人群决策因素？
+     - 完播率变化 → 内容节奏是否更匹配人群的观看习惯？
+     - 注意：CPM变化是CTR/CVR变化的结果，不要反过来归因
   4. **信心等级**: 给出归因的信心等级（高/中/低）
 - 如果有上轮改动建议，评估哪些建议被执行了、效果如何、哪些没执行是否应该继续
 
-### 五、人群×内容×圈包手法匹配分析
-- 结合每个人群包的**圈包手法**和**人群画像**数据，分析：
-  - 当前定向策略是否精准？人群和素材内容是否匹配？
-  - 哪些人群包的CPM偏高？是定向太宽还是内容不匹配？
-  - 哪些人群包转化率好？好在哪里？（人群精准 or 内容匹配 or 两者兼有）
-- 如果有跨包素材，制作对比表
-- 给出每个人群包最适合的素材类型/风格结论
-- 圈包手法的具体调整建议（加什么兴趣标签、排除什么人群、怎么缩窄/扩大定向）
+### 五、三角匹配诊断（素材×人群×目的）
+- 对每个素材×人群包组合，诊断匹配状态：
+  - CTR高+CVR高 → 表层+深层都匹配 → 放量追加
+  - CTR高+CVR低 → 钩子吸引了人但内容没说服，或吸引了错误人群 → 改中后段内容或换人群
+  - CTR低+CVR高 → 能转化但不吸引人 → 改钩子/封面，内容方向保持
+  - CTR低+CVR低 → 彻底不匹配 → 换素材方向或换人群
+- 如果有跨包素材，制作对比表：同一素材在不同人群的CTR/CVR差异 → 判断素材更匹配哪群人
+- 结合每个人群包的**圈包手法**和**人群画像**：
+  - 素材的内容向量（卖点/场景/情绪）是否对齐人群的兴趣向量（标签/消费力/行为）？
+  - 给出每个人群包最适合的素材类型/风格结论
+  - 圈包手法的具体调整建议（加什么兴趣标签、排除什么人群）
 
 ### 六、下一轮行动清单（必须详细具体，不限字数）
 
 **不要给模糊建议。每条建议必须说清楚：改什么、怎么改、为什么改、预期效果。**
+**放量投放模式下，禁止给出出价/预算相关建议。所有优化只围绕素材内容和人群包。**
 
 1. **立即停投**:
    - 哪些素材应该暂停？列出素材名
-   - 暂停原因（具体数据支撑）
-   - 暂停后预算如何重新分配
+   - 暂停原因（具体数据支撑，用匹配诊断结论说明）
 
-2. **加大投入**:
-   - 哪些素材值得追加预算？追加多少？
-   - 为什么这条素材值得追加（数据证据）
+2. **放量追加**:
+   - 哪些素材×人群组合匹配度高，值得复制到更多人群包测试？
+   - 为什么这个组合值得追加（CTR+CVR数据证据）
 
 3. **素材迭代方向（逐条素材出详细改进方案，这是最重要的部分）**:
-   对每条需要迭代的素材，必须输出完整的改进方案（不少于200字/条）：
-   
-   **a) 钩子改进（前3秒）：**
+   对每条需要迭代的素材，必须基于匹配诊断结论输出改进方案（不少于200字/条）：
+
+   **a) 钩子改进（前3秒）——提升表层匹配度/CTR：**
    - 当前钩子是什么？效果如何？（引用视频分析数据）
+   - 当前钩子为什么没命中目标人群的兴趣点？（结合人群画像分析）
    - 建议改成什么类型的钩子？（反问式/痛点式/悬念式/利益式等）
    - 具体的开场文案建议（写出完整的口播词）
    - 画面怎么配合？（产品特写/场景/人物表情等）
-   
-   **b) 内容结构改进：**
-   - 当前脚本结构的问题在哪？（哪里流失严重？）
+
+   **b) 内容结构改进——提升深层匹配度/CVR：**
+   - 当前脚本结构的问题在哪？卖点表达是否契合目标人群的决策因素？
    - 建议的新脚本结构（按秒级拆解：0-3秒做什么、3-8秒做什么、8-15秒做什么、15秒-结尾做什么）
    - 每段的画面建议和口播文案建议
-   
+
    **c) 转化路径改进：**
-   - 当前转化率的瓶颈在哪？是不够吸引人还是信任度不够？
+   - 当前转化率的瓶颈定位（CTR低=表层不匹配，CVR低=深层不匹配）
    - CTA（行动号召）怎么改？放在第几秒？用什么话术？
    - 价格锚点、促销信息怎么植入？
-   
+
    **d) 画面和制作改进：**
    - 画面质量哪里需要提升？
    - BGM是否合适？建议换什么风格？
    - 字幕、特效、贴纸等辅助元素建议
 
 4. **新素材建议**:
-   - 基于数据和视频分析，应该新拍什么类型的素材
+   - 基于匹配诊断，应该新拍什么类型的素材来匹配哪个人群
    - 给出完整的脚本大纲（不少于100字）
    - 参考的成功案例特征
 
 5. **人群调整**:
    - 哪些人群包要调整定向？怎么调？
-   - 结合圈包手法和画像数据给出具体的定向修改建议
+   - 结合匹配诊断和人群画像给出具体的定向修改建议
    - 建议新增哪些兴趣标签、排除哪些人群
-
-6. **预算分配建议**:
-   - 下一轮各风格组的预算占比建议及理由
+   - 哪些素材更适合投给哪个人群包（素材×人群重新组合）
 
 ### 七、经验沉淀
 以 #标签 格式输出本次复盘的关键经验标签。
@@ -1421,25 +1550,30 @@ def _build_review_prompt(
 
 ### 八、下一版素材改动建议（JSON，严格数据驱动）
 针对每条需要继续迭代的素材，从以下标签中选择改动方向并输出严格JSON。
-可选标签：改钩子、改BGM、改文案、改画面、缩短时长、换演员、换场景、改字幕
-约束：只允许基于本次数据证据给建议；如证据不足，detail 必须写“数据不足，需补充X字段”。
-每条建议必须包含 evidence_fields（数组），仅可从以下字段中选择并按证据强弱排序：
+可选标签：改钩子、改BGM、改文案、改画面、缩短时长、换演员、换场景、改字幕、换人群
+约束：只允许基于本次数据证据给建议；如证据不足，detail 必须写”数据不足，需补充X字段”。
+每条建议必须包含 evidence_fields（数组）和 matching_issue（匹配诊断结论），evidence_fields 仅可从以下字段中选择并按证据强弱排序：
 - ctr
 - cpm
 - conversion_rate
 - completion_rate
 - play_3s_rate
+- play_5s_rate
 - interaction_rate
 - a3_ratio
 - new_a3
 - cost
+- cost_per_result
 - impressions
 - plays
+- likes
+- comments
+- shares_7d
 - video_score_overall
 
 请输出如下格式的JSON代码块（注意必须是合法JSON数组）：
 ```json
-[{{"material_name":"素材名","suggestions":["改钩子","改画面"],"evidence_fields":["ctr","play_3s_rate","completion_rate"],"detail":"具体怎么改的一句话说明"}}]
+[{{“material_name”:”素材名”,”suggestions”:[“改钩子”,”换人群”],”matching_issue”:”CTR高CVR低=表层匹配但深层不匹配”,”evidence_fields”:[“ctr”,”conversion_rate”,”play_3s_rate”],”detail”:”具体怎么改的一句话说明”}}]
 ```
 """
 

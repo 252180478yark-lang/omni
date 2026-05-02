@@ -13,6 +13,10 @@ from app.database import close_pool, init_pool
 from app.routers.knowledge import router as knowledge_router
 from app.routers.harvester import router as harvester_router
 from app.routers.content_studio import router as content_studio_router
+from app.routers.briefs import router as briefs_router
+from app.routers.digital_humans import router as digital_humans_router
+from app.routers.prompt_flywheel import router as prompt_flywheel_router
+from app.routers.chat_sessions import router as chat_sessions_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -48,6 +52,10 @@ app = FastAPI(title=settings.service_name, lifespan=lifespan)
 app.include_router(knowledge_router)
 app.include_router(harvester_router)
 app.include_router(content_studio_router)
+app.include_router(briefs_router)
+app.include_router(digital_humans_router)
+app.include_router(prompt_flywheel_router)
+app.include_router(chat_sessions_router)
 
 
 @app.get("/health")

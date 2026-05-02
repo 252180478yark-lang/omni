@@ -2332,13 +2332,37 @@ _LOCAL_IMG_RE = re.compile(
 )
 
 AI_HUB_URL = "http://omni-ai-provider-hub:8001"
-_IMAGE_ANALYSIS_PROMPT = (
-    "请用中文详细描述这张图片的内容。"
-    "如果是产品界面截图，请描述界面上的关键元素、按钮、数据和操作流程。"
-    "如果包含图表或数据，请提取关键数字和趋势。"
-    "如果是流程图或架构图，请描述节点和连线关系。"
-    "输出纯文本描述，不超过300字。"
+_IMAGE_ANALYSIS_PROMPT_BASE = (
+    "请用中文详细描述这张图片的内容，供知识库后续检索使用。\n"
+    "\n"
+    "描述要点（按图片类型适用性选择，可多项组合）：\n"
+    "- 产品界面截图：界面关键元素、按钮、数据、操作流程\n"
+    "- 图表/数据可视化：核心指标、趋势、异常值、坐标轴含义\n"
+    "- 流程图/架构图：节点含义、连线关系、流向\n"
+    "- 表格：列标题、关键行的数值、行列之间的关系\n"
+    "- 照片/插图：主体、场景、关键物件、文字水印\n"
+    "\n"
+    "纪律：\n"
+    "- 只描述图中可见内容，禁止编造图外信息。\n"
+    "- 图中有文字时优先完整转录关键文字。\n"
+    "- 输出纯文本（不用 Markdown 标题/列表），100-300 字。"
 )
+
+
+async def _image_prompt_with_flywheel_async() -> str:
+    """在 async 环境下获取带飞轮规则的图片解读 prompt。"""
+    try:
+        from app.services.prompt_rules import render_rules_suffix
+        suffix = await render_rules_suffix("harvester.image", None)
+        if suffix:
+            return _IMAGE_ANALYSIS_PROMPT_BASE + suffix
+    except Exception:
+        pass
+    return _IMAGE_ANALYSIS_PROMPT_BASE
+
+
+# Back-compat: 模块级常量仍可导入（无飞轮规则版）
+_IMAGE_ANALYSIS_PROMPT = _IMAGE_ANALYSIS_PROMPT_BASE
 
 
 def list_job_images(job_id: str) -> list[dict]:
@@ -2391,13 +2415,8 @@ async def analyze_images(
     import base64
 
     img_dir = IMAGE_DIR / job_id
-    default_prompt = (
-        "请用中文详细描述这张图片的内容。"
-        "如果是产品界面截图，请描述界面上的关键元素、按钮、数据和操作流程。"
-        "如果包含图表或数据，请提取关键数字和趋势。"
-        "输出纯文本描述，不超过300字。"
-    )
-    analysis_prompt = prompt or default_prompt
+    # 飞轮：用户规则拼到默认 prompt 末尾（自定义 prompt 不追加）
+    analysis_prompt = prompt if prompt else await _image_prompt_with_flywheel_async()
     results: list[dict] = []
 
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -2658,6 +2677,9 @@ async def _auto_analyze_and_merge(
     if n_unique < n_img:
         logger.info("Image dedup: %d occurrences -> %d unique images", n_img, n_unique)
 
+    # 飞轮：本批次图片解读共用一份 prompt（拉取一次规则）
+    image_prompt = await _image_prompt_with_flywheel_async()
+
     async with httpx.AsyncClient(timeout=120.0) as client:
         unique_idx = 0
         for i, match in enumerate(matches):
@@ -2698,7 +2720,7 @@ async def _auto_analyze_and_merge(
                     f"{ai_hub_url}/api/v1/ai/chat",
                     json={
                         "messages": [{"role": "user", "content": [
-                            {"type": "text", "text": _IMAGE_ANALYSIS_PROMPT},
+                            {"type": "text", "text": image_prompt},
                             {"type": "image_url", "image_url": {"url": data_uri}},
                         ]}],
                         "temperature": 0.3,

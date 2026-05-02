@@ -37,6 +37,7 @@ from app.services.ingestion import browse_kb
 from app.services.query_enhancer import enhance_query
 from app.services.reranker import cross_encoder_rerank
 from app.services.session_store import append_turn, get_history
+from app.services import chat_sessions as _chat_sessions
 
 # Patterns indicating the user wants to continue a previous response
 _CONTINUE_RE = re.compile(
@@ -46,33 +47,66 @@ _CONTINUE_RE = re.compile(
 
 logger = logging.getLogger(__name__)
 
-RAG_SYSTEM_PROMPT = """你是 Omni-Vibe OS 的智能助手。基于以下参考资料和知识图谱关系回答用户问题。
+# ── RAG System Prompt: standalone (no persona) ──
+RAG_SYSTEM_PROMPT = """你是 Omni-Vibe OS 的智能助手。基于以下参考资料回答用户问题。
 如果参考资料不足以回答，请明确说明，并尽你所知给出建议。
 
 ---参考资料---
 {context}
+{graph_section}
+请综合以上资料给出准确、有条理、详尽的回答。
 
----知识图谱关系---
-{graph_context}
-
-请综合参考资料和知识图谱关系给出准确、有条理、详尽的回答。
-- 当实体关系有助于解释跨文档联系或全局脉络时，请优先利用图谱关系进行推理。
+引用规则：
 - 在适当位置标注引用来源编号 [1] [2] 等。
-- 如果知识图谱关系为空，仅基于参考资料回答即可。
 - 如果多条参考资料包含互补信息，请综合整理后给出完整回答，不要遗漏要点。
 - 对于复杂问题，请使用清晰的结构（如标题、列表、分段）组织回答。
 
-准确性与知识库结合（重要）：
+准确性（重要）：
 - 产品功能名、操作路径、指标口径、政策规则等可核对信息，须优先严格依据「参考资料」表述；引用对应编号。勿编造参考资料中未出现的具体参数、链接或官方表述。
 - 若某一部分在参考资料中无直接依据，须明确标注为「知识库未直接覆盖，以下为通用经验/推断」，并与有据内容分开写。
+- 若多条参考资料对同一事实给出互相矛盾的结论，请**列出两种说法并各自标注来源编号**，请用户确认，不要自行仲裁。
 
 输出长度（重要）：
-- 不要以「单次回答字数上限」「物理限制」「无法生成一万五千字」等理由拒绝用户的合理长文需求；在模型与接口允许的最大输出范围内，尽量完整、分章节撰写。
-- 若用户需求远超单次可生成规模，先输出大纲与第一部分正文，并明确提示用户可再发「继续」以承接下一部分，且后续内容仍须与参考资料一致并继续标注引用。"""
+- 不要以「单次回答字数上限」等理由拒绝用户的合理长文需求；在模型与接口允许的最大输出范围内，尽量完整、分章节撰写。
+- 若用户需求远超单次可生成规模，先输出大纲与第一部分正文，并明确提示用户可再发「继续」以承接下一部分。"""
 
-_CRAG_AUGMENT_PROMPT = """（注意：检索系统认为以上参考资料可能不完全覆盖问题，请结合你的知识谨慎补充。
-检索系统备注：{reason}）
+# ── RAG Persona Prompt: used WITH a persona (no identity statement, concise rules) ──
+_RAG_PERSONA_PROMPT = """## 知识库参考资料
+
+以下内容检索自知识库，请结合你的角色专业视角使用这些资料回答用户问题。
+
+---参考资料---
+{context}
+{graph_section}
+### 参考资料使用规则
+- 引用资料时标注来源编号 [1] [2] 等
+- 可核对的事实信息（指标口径、平台规则、操作路径等）须严格依据参考资料表述，不得编造
+- 若参考资料不足以回答某部分，标注「知识库未直接覆盖，以下为专业经验判断」，与有据内容分开写
+- 多条资料包含互补信息时，综合整理后给出完整回答
+- 若多条资料对同一事实给出互相矛盾的结论，**列出两种说法并各自标注来源编号**，请用户确认，不要自行仲裁
+- 若你的角色框架中有"知识库使用规则"，以角色规则为准"""
+
+_CRAG_AUGMENT_PROMPT = """
+
+---
+
+**⚠️ 检索质量提示**：检索系统判定以上参考资料**可能不足以完全回答本问题**（原因：{reason}）。
+
+你必须在回答中：
+1. 明确标注哪些部分"有参考资料支撑"、哪些部分"知识库未覆盖，以下为专业经验推断"。
+2. 对缺少依据的部分，不要编造具体数字、政策、官方表述。
+3. 若问题需要的核心事实完全缺失，直接告诉用户"知识库中没有直接依据"并建议用户补充资料。
 """
+
+
+def _build_graph_section(graph_ctx: str) -> str:
+    """Only include graph section if graph context is non-empty."""
+    if not graph_ctx or graph_ctx == "（无图谱数据）":
+        return ""
+    return (
+        f"\n---知识图谱关系---\n{graph_ctx}\n\n"
+        "（当实体关系有助于解释跨文档联系或全局脉络时，请优先利用图谱关系进行推理。）\n"
+    )
 
 # ═══ Persona Sandwich Helper ═══
 
@@ -108,20 +142,22 @@ def _build_persona_system_prompt(
     When persona contains the RAG_INSERT marker the prompt is structured as:
         [Identity & Core Principles]
         ---
-        [RAG reference material]
+        [RAG reference material + concise usage rules]
         ---
         [Detailed methodology & role-specific instructions]
 
     This exploits the primacy effect (identity anchored first) and recency
     effect (detailed instructions closest to generation) while keeping factual
     RAG content in the high-attention middle zone.
+
+    The RAG section uses _RAG_PERSONA_PROMPT (no identity statement) to avoid
+    conflicting with the persona's identity declaration.
     """
     identity, framework = _split_persona_prompt(persona_prompt)
     if framework:
         return (
             f"{identity}\n\n"
             f"---\n\n"
-            f"以下是你在回答时需要参考的资料和规则：\n\n"
             f"{rag_prompt}\n\n"
             f"---\n\n"
             f"{framework}"
@@ -130,7 +166,6 @@ def _build_persona_system_prompt(
     return (
         f"{identity}\n\n"
         f"---\n\n"
-        f"以下是你在回答时需要参考的资料和规则：\n\n"
         f"{rag_prompt}"
     )
 
@@ -254,6 +289,153 @@ def _embedding_for_kb(state: RAGState, kb_id: str) -> list[float]:
     key = f"{p}/{m}"
     embeddings = state.get("query_embeddings") or {}
     return embeddings.get(key, state.get("query_embedding", []))
+
+
+async def retrieve_only(
+    query: str,
+    kb_id: str,
+    *,
+    top_k: int = 5,
+    embedding_model: str | None = None,
+    embedding_provider: str | None = None,
+    time_decay: bool = False,
+    decay_days: float = 45.0,
+) -> list[dict]:
+    """轻量入口：只做单 KB 的 hybrid retrieval，不走 LLM、不重写 query、不做 CRAG。
+
+    供外部模块（content_studio.generate_script、briefs.generate_draft 等）做"参考资料注入"用。
+    时间衰减开启时按 ``score *= exp(-days_old / decay_days)`` 重新排序。
+    """
+    if not kb_id or not query:
+        return []
+
+    model = embedding_model or settings.embedding_model
+    provider = embedding_provider or settings.embedding_provider
+
+    try:
+        vecs = await embed_texts([query], model=model, provider=provider)
+    except Exception as exc:
+        logger.warning("retrieve_only embedding failed (%s/%s): %s", provider, model, exc)
+        return []
+
+    if not vecs or not vecs[0]:
+        return []
+
+    try:
+        hits = await hybrid_search(
+            kb_id, query, vecs[0], top_k=max(top_k * 2, top_k),
+        )
+    except Exception as exc:
+        logger.warning("retrieve_only hybrid_search failed (kb=%s): %s", kb_id, exc)
+        return []
+
+    if time_decay and hits:
+        import math
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        for h in hits:
+            ts = h.get("created_at")
+            if not ts:
+                continue
+            try:
+                if isinstance(ts, str):
+                    ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                days = max((now - ts).total_seconds() / 86400.0, 0.0)
+                h["score"] = float(h.get("score", 0)) * math.exp(-days / max(decay_days, 1.0))
+            except Exception:
+                continue
+        hits.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+    return hits[:top_k]
+
+
+async def retrieve_multi_kb(
+    query: str,
+    kb_ids: list[str],
+    *,
+    top_k_per_kb: int = 5,
+    min_per_kb: int = 0,
+    score_threshold: float = 0.0,
+    total_limit: int | None = None,
+    time_decay: bool = False,
+    decay_days: float = 45.0,
+    kb_name_map: dict[str, str] | None = None,
+) -> list[dict]:
+    """多 KB 检索 + 三层融合（保底 + 过滤 + 总量上限）。
+
+    返回已合并/重排的 snippets，每个 dict 含:
+        source / kb_id / id / score / content / title
+    直接可喂给 format_kb_snippets()。
+
+    融合策略（与 /api/v1/knowledge/retrieve 端点一致，供内部 Python 调用复用）：
+      1. 每 KB 先取 top_k_per_kb 候选
+      2. 每 KB 前 min_per_kb 条不受 threshold 约束（保底）
+      3. 其余按 score >= threshold 过滤
+      4. 合并后按 score 降序，超出 total_limit 截断（但永不砍掉保底）
+    """
+    kb_ids = [k for k in (kb_ids or []) if k]
+    if not kb_ids or not query:
+        return []
+
+    per_kb_hits: dict[str, list[dict]] = {}
+    for kid in kb_ids:
+        try:
+            hits = await retrieve_only(
+                query, kid, top_k=top_k_per_kb,
+                time_decay=time_decay, decay_days=decay_days,
+            )
+        except Exception as exc:
+            logger.warning("retrieve_multi_kb kb=%s failed: %s", kid, exc)
+            hits = []
+        hits = sorted(hits, key=lambda h: float(h.get("score") or 0), reverse=True)
+        per_kb_hits[kid] = hits
+
+    def _name(kid: str) -> str:
+        if kb_name_map and kid in kb_name_map:
+            return kb_name_map[kid]
+        return kid[:8]
+
+    def _mk(kid: str, h: dict) -> dict:
+        return {
+            "source": _name(kid),
+            "kb_id": kid,
+            "id": str(h.get("id") or ""),
+            "score": float(h.get("score") or 0),
+            "content": (h.get("content") or ""),
+            "title": h.get("title"),
+        }
+
+    guaranteed: list[dict] = []
+    candidates: list[dict] = []
+    for kid in kb_ids:
+        for idx, h in enumerate(per_kb_hits.get(kid, [])):
+            s = _mk(kid, h)
+            if idx < min_per_kb:
+                guaranteed.append(s)
+            elif s["score"] >= score_threshold:
+                candidates.append(s)
+
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for s in guaranteed + sorted(candidates, key=lambda x: x["score"], reverse=True):
+        key = f'{s["kb_id"]}:{s["id"]}'
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(s)
+
+    if total_limit and len(merged) > total_limit:
+        g_count = len(guaranteed)
+        if g_count >= total_limit:
+            merged = merged[:total_limit]
+        else:
+            head = merged[:g_count]
+            tail = sorted(merged[g_count:], key=lambda x: x["score"], reverse=True)
+            merged = head + tail[: (total_limit - g_count)]
+
+    return merged
 
 
 async def retrieve(state: RAGState) -> dict:
@@ -405,16 +587,35 @@ async def assemble_context(state: RAGState) -> dict:
     if crag.get("verdict") in ("AMBIGUOUS", "INCORRECT"):
         crag_note = _CRAG_AUGMENT_PROMPT.format(reason=crag.get("reason", ""))
 
-    rag_prompt = RAG_SYSTEM_PROMPT.format(
-        context=context,
-        graph_context=graph_ctx or "（无图谱数据）",
-    ) + crag_note
+    graph_section = _build_graph_section(graph_ctx)
 
     persona_prompt = (state.get("persona_prompt") or "").strip()
     if persona_prompt:
+        # Use concise persona-aware RAG prompt (no identity statement)
+        rag_prompt = _RAG_PERSONA_PROMPT.format(
+            context=context,
+            graph_section=graph_section,
+        ) + crag_note
         system_prompt = _build_persona_system_prompt(persona_prompt, rag_prompt)
     else:
+        # Standalone: use full RAG prompt with identity
+        rag_prompt = RAG_SYSTEM_PROMPT.format(
+            context=context,
+            graph_section=graph_section,
+        ) + crag_note
         system_prompt = rag_prompt
+
+    # 飞轮：追加累积规则到 system prompt 末尾
+    # chat.rag 节点无 persona / chat.persona 节点有 persona
+    try:
+        from app.services.prompt_rules import render_rules_suffix as _rrs
+        node_id = "chat.persona" if persona_prompt else "chat.rag"
+        scope = {"session_id": state.get("session_id") or ""}
+        suffix = await _rrs(node_id, scope)
+        if suffix:
+            system_prompt += suffix
+    except Exception:
+        pass
 
     return {"context": context, "system_prompt": system_prompt, "graph_context": graph_ctx}
 
@@ -450,6 +651,18 @@ async def generate(state: RAGState) -> dict:
         model=state.get("model"), provider=state.get("provider"),
         history=state.get("chat_history", []),
     )
+    # 飞轮留痕（非关键路径,异常吞掉）
+    try:
+        from app.services.prompt_rules import log_feedback as _lf
+        node_id = "chat.persona" if (state.get("persona_prompt") or "").strip() else "chat.rag"
+        await _lf(
+            node_id,
+            input_ref={"session_id": state.get("session_id") or "", "query": state["query"][:200]},
+            full_prompt=state["system_prompt"],
+            output=answer,
+        )
+    except Exception:
+        pass
     return {"answer": answer, "sources": sources}
 
 
@@ -601,6 +814,10 @@ async def rag_query(
         history = await get_history(session_id)
         if history:
             await append_turn(session_id, "user", query)
+            await _pg_persist_user(
+                session_id, query,
+                kb_ids=kb_ids, model=model, provider=provider, persona_prompt=persona_prompt,
+            )
             continue_prompt = (
                 "请直接接续上文输出，不要重复已写内容。"
                 "继续依据系统提示中的参考资料使用 [1][2] 等引用。"
@@ -611,6 +828,7 @@ async def rag_query(
             messages.append({"role": "user", "content": "继续"})
             answer = await _call_llm_messages(messages, model=model, provider=provider)
             await append_turn(session_id, "assistant", answer)
+            await _pg_persist_assistant(session_id, answer)
             return {
                 "answer": answer,
                 "sources": [],
@@ -624,6 +842,10 @@ async def rag_query(
     history = await get_history(session_id) if session_id else []
     if session_id:
         await append_turn(session_id, "user", query)
+    await _pg_persist_user(
+        session_id, query,
+        kb_ids=kb_ids, model=model, provider=provider, persona_prompt=persona_prompt,
+    )
 
     if intent == "browse":
         overview = await browse_kb(kb_ids[0])
@@ -631,6 +853,7 @@ async def rag_query(
         sources = _build_browse_sources(overview.get("documents", []))
         if session_id:
             await append_turn(session_id, "assistant", answer)
+        await _pg_persist_assistant(session_id, answer, sources=sources)
         return {
             "answer": answer,
             "sources": sources,
@@ -686,9 +909,20 @@ async def rag_query(
     if session_id:
         await append_turn(session_id, "assistant", answer)
 
+    _final_sources = result.get("sources", [])
+    _retrieval_meta = {
+        "graph_rag_used": bool(graph_ctx),
+        "graph_context_preview": graph_ctx[:300] if graph_ctx else "",
+        "kb_count": len(kb_ids),
+        "crag_verdict": crag.get("verdict", ""),
+    }
+    await _pg_persist_assistant(
+        session_id, answer, sources=_final_sources, retrieval=_retrieval_meta,
+    )
+
     return {
         "answer": answer,
-        "sources": result.get("sources", []),
+        "sources": _final_sources,
         "model": model or "",
         "intent": "generate",
         "graph_rag_used": bool(graph_ctx),
@@ -698,6 +932,54 @@ async def rag_query(
         "continue_rounds_used": rounds_used,
         "target_chars": tgt,
     }
+
+
+async def _pg_persist_user(
+    session_id: str | None,
+    query: str,
+    *,
+    kb_ids: list[str] | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+    persona_prompt: str | None = None,
+) -> None:
+    """Upsert session then persist user message. Silently tolerates failures (非关键路径)."""
+    if not session_id:
+        return
+    try:
+        await _chat_sessions.ensure_session(
+            session_id,
+            kb_ids=kb_ids or [],
+            provider=provider,
+            model=model,
+            persona_id=("persona" if (persona_prompt or "").strip() else None),
+        )
+        await _chat_sessions.append_message(session_id, role="user", content=query, output_mode="text")
+        await _chat_sessions.maybe_auto_title(session_id, query)
+    except Exception:  # noqa: BLE001
+        logger.debug("pg persist user failed", exc_info=True)
+
+
+async def _pg_persist_assistant(
+    session_id: str | None,
+    content: str,
+    *,
+    sources: list | None = None,
+    retrieval: dict | None = None,
+) -> None:
+    if not session_id:
+        return
+    try:
+        await _chat_sessions.append_message(
+            session_id,
+            role="assistant",
+            content=content,
+            output_mode="text",
+            sources=sources,
+            retrieval=retrieval,
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("pg persist assistant failed", exc_info=True)
 
 
 async def rag_stream(
@@ -718,6 +1000,10 @@ async def rag_stream(
         history = await get_history(session_id)
         if history:
             await append_turn(session_id, "user", query)
+            await _pg_persist_user(
+                session_id, query,
+                kb_ids=kb_ids, model=model, provider=provider, persona_prompt=persona_prompt,
+            )
             continue_prompt = (
                 "请直接接续上文输出，不要重复已写内容。"
                 "继续依据系统提示中的参考资料使用 [1][2] 等引用。"
@@ -730,7 +1016,9 @@ async def rag_stream(
             async for token in _stream_llm_messages(messages, model=model, provider=provider):
                 collected.append(token)
                 yield {"type": "text", "content": token}
-            await append_turn(session_id, "assistant", "".join(collected))
+            assistant_text = "".join(collected)
+            await append_turn(session_id, "assistant", assistant_text)
+            await _pg_persist_assistant(session_id, assistant_text)
             yield {"type": "done", "sources": [], "intent": "continue", "continue_rounds_used": 1, "target_chars": 0}
             return
 
@@ -741,6 +1029,10 @@ async def rag_stream(
 
     if session_id:
         await append_turn(session_id, "user", query)
+    await _pg_persist_user(
+        session_id, query,
+        kb_ids=kb_ids, model=model, provider=provider, persona_prompt=persona_prompt,
+    )
 
     if intent == "browse":
         overview = await browse_kb(kb_ids[0])
@@ -750,6 +1042,7 @@ async def rag_stream(
         yield {"type": "done", "sources": sources}
         if session_id:
             await append_turn(session_id, "assistant", answer)
+        await _pg_persist_assistant(session_id, answer, sources=sources)
         return
 
     state: RAGState = {
@@ -795,8 +1088,12 @@ async def rag_stream(
             ):
                 collected_nb.append(token)
                 yield {"type": "text", "content": token}
+            assistant_text = "".join(collected_nb)
             if session_id:
-                await append_turn(session_id, "assistant", "".join(collected_nb))
+                await append_turn(session_id, "assistant", assistant_text)
+            await _pg_persist_assistant(
+                session_id, assistant_text, sources=[], retrieval=retrieval_meta,
+            )
             yield {
                 "type": "done",
                 "sources": [],
@@ -810,6 +1107,7 @@ async def rag_stream(
         yield {"type": "done", "sources": [], **retrieval_meta}
         if session_id:
             await append_turn(session_id, "assistant", no_result)
+        await _pg_persist_assistant(session_id, no_result, sources=[], retrieval=retrieval_meta)
         return
 
     tgt = _clamp_rag_target_chars(target_chars)
@@ -848,12 +1146,17 @@ async def rag_stream(
             if r > 0 and len(piece.strip()) < 40:
                 break
 
+    final_answer = "".join(collected_answer)
+    final_sources = _build_sources(chunks)
     if session_id:
-        await append_turn(session_id, "assistant", "".join(collected_answer))
+        await append_turn(session_id, "assistant", final_answer)
+    await _pg_persist_assistant(
+        session_id, final_answer, sources=final_sources, retrieval=retrieval_meta,
+    )
 
     done_payload = {
         "type": "done",
-        "sources": _build_sources(chunks),
+        "sources": final_sources,
         **retrieval_meta,
         "continue_rounds_used": rounds_used,
         "target_chars": tgt,
@@ -964,3 +1267,178 @@ async def _stream_llm(
     messages = _messages_single_turn(system_prompt, history, user_query)
     async for token in _stream_llm_messages(messages, model=model, provider=provider):
         yield token
+
+
+# ═══ Shared retrieval / persona-only generation (for roundtable etc.) ═══
+
+async def prepare_rag(
+    kb_ids: list[str],
+    query: str,
+    top_k: int | None = None,
+    kb_embedding_map: dict[str, dict] | None = None,
+) -> dict:
+    """Run the full retrieval pipeline ONCE (parse_query → retrieve → rerank →
+    CRAG → context compression) and return the chunks + sources + graph_context.
+
+    Used by roundtable: a single retrieval is shared across N persona generations,
+    avoiding N× of the LLM-heavy steps (query enhance, CRAG self-check, rerank).
+    """
+    if not kb_ids or not query:
+        return {
+            "chunks": [],
+            "sources": [],
+            "graph_context": "",
+            "crag_result": {"verdict": "CORRECT", "confidence": 1.0, "reason": "", "suggested_keywords": []},
+            "context": "",
+        }
+
+    state: RAGState = {
+        "query": query,
+        "kb_id": kb_ids[0],
+        "kb_ids": kb_ids,
+        "kb_embedding_map": kb_embedding_map or {},
+        "top_k": top_k or settings.rag_top_k,
+    }
+    s: dict = dict(state)
+    s.update(await parse_query(s))
+
+    if s.get("intent") == "browse":
+        return {
+            "chunks": [],
+            "sources": [],
+            "graph_context": "",
+            "crag_result": {"verdict": "CORRECT", "confidence": 1.0, "reason": "", "suggested_keywords": []},
+            "context": "",
+            "intent": "browse",
+        }
+
+    s.update(await retrieve(s))
+    s.update(await rerank(s))
+
+    chunks = s.get("reranked_chunks", []) or []
+    graph_ctx = s.get("graph_context", "") or ""
+    crag = s.get("crag_result", {}) or {}
+
+    # Compress once against the shared query — every persona reads the same context
+    compressed = await compress_chunks(query, chunks)
+    context = _build_context(compressed)
+    sources = _build_sources(compressed)
+
+    return {
+        "chunks": compressed,
+        "sources": sources,
+        "graph_context": graph_ctx,
+        "crag_result": crag,
+        "context": context,
+        "intent": "generate",
+    }
+
+
+def _build_system_prompt_from_context(
+    context: str,
+    graph_context: str,
+    crag_result: dict | None,
+    persona_prompt: str | None,
+) -> str:
+    """Re-create a system prompt from a pre-built context (sibling of assemble_context)."""
+    crag = crag_result or {}
+    crag_note = ""
+    if crag.get("verdict") in ("AMBIGUOUS", "INCORRECT"):
+        crag_note = _CRAG_AUGMENT_PROMPT.format(reason=crag.get("reason", ""))
+
+    graph_section = _build_graph_section(graph_context or "")
+    persona_p = (persona_prompt or "").strip()
+    if persona_p:
+        rag_prompt = _RAG_PERSONA_PROMPT.format(
+            context=context,
+            graph_section=graph_section,
+        ) + crag_note
+        return _build_persona_system_prompt(persona_p, rag_prompt)
+    rag_prompt = RAG_SYSTEM_PROMPT.format(
+        context=context,
+        graph_section=graph_section,
+    ) + crag_note
+    return rag_prompt
+
+
+async def generate_with_chunks_stream(
+    *,
+    query: str,
+    context: str,
+    sources: list[dict],
+    graph_context: str = "",
+    crag_result: dict | None = None,
+    persona_prompt: str | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+    target_chars: int | None = None,
+    continue_max_rounds: int | None = None,
+) -> AsyncIterator[dict]:
+    """Stream LLM generation against a pre-prepared context (no retrieval).
+
+    Mirrors the SSE event shape of rag_stream so frontend code can be reused.
+    """
+    if not context and not (persona_prompt or "").strip():
+        # No KB hits AND no persona — fall back to a simple no-result message
+        no_result = "抱歉，在知识库中没有找到与您问题相关的内容。"
+        yield {"type": "text", "content": no_result}
+        yield {"type": "done", "sources": []}
+        return
+
+    if not context:
+        # Persona present, but retrieval was empty — no-result persona path
+        sys_p = _build_persona_no_result_prompt((persona_prompt or "").strip())
+        async for token in _stream_llm(
+            query, sys_p, model=model, provider=provider, history=None,
+        ):
+            yield {"type": "text", "content": token}
+        yield {"type": "done", "sources": []}
+        return
+
+    system_prompt = _build_system_prompt_from_context(
+        context=context,
+        graph_context=graph_context,
+        crag_result=crag_result,
+        persona_prompt=persona_prompt,
+    )
+
+    tgt = _clamp_rag_target_chars(target_chars)
+    max_rounds = continue_max_rounds or settings.rag_continue_max_rounds
+    ratio = settings.rag_continue_target_ratio
+
+    if tgt <= 0:
+        async for token in _stream_llm(
+            query, system_prompt, model=model, provider=provider, history=None,
+        ):
+            yield {"type": "text", "content": token}
+        yield {"type": "done", "sources": sources}
+        return
+
+    # Auto-continuation loop
+    local: list[dict[str, str]] = []
+    written = 0
+    rounds_used = 0
+    for r in range(max_rounds):
+        rounds_used = r + 1
+        u = _first_round_user_with_target(query, tgt) if r == 0 else _continue_round_user_message(tgt, written, r + 1)
+        messages = _messages_from_thread(system_prompt, None, local, u)
+        piece_parts: list[str] = []
+        async for token in _stream_llm_messages(messages, model=model, provider=provider):
+            piece_parts.append(token)
+            yield {"type": "text", "content": token}
+        piece = "".join(piece_parts)
+        local.append({"role": "user", "content": u})
+        local.append({"role": "assistant", "content": piece})
+        written += len(piece)
+        yield {"type": "continue_meta", "round": rounds_used, "chars_so_far": written, "target": tgt}
+        if written >= tgt * ratio:
+            break
+        if r > 0 and len(piece.strip()) < 40:
+            break
+
+    yield {
+        "type": "done",
+        "sources": sources,
+        "continue_rounds_used": rounds_used,
+        "target_chars": tgt,
+    }

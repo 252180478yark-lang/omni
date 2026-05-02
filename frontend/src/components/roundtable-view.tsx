@@ -1,8 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { CitationMarkdown, SourceList } from '@/components/citation-markdown'
 import { Loader2, Play, Square, ChevronDown, ChevronRight, FileDown, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -20,6 +19,7 @@ import { useRoundtableStore, type RoundtableSpeech } from '@/stores/roundtableSt
 import { PRESET_PERSONA_IDS } from '@/lib/personas/preset-personas'
 import type { SourceRef } from '@/stores/chatStore'
 import { captureElementToPdf } from '@/lib/capture-element-to-pdf'
+import { SaveToDecisionButton } from '@/components/save-to-decision-button'
 
 interface KBItem {
   id: string
@@ -258,6 +258,7 @@ export function RoundtableView({
       const tc = parseTargetChars()
       const body: Record<string, unknown> = {
         action: 'run-round',
+        roundtableId: st.id,
         topic: st.topic,
         participants: parts,
         moderatorType: st.moderatorType,
@@ -293,6 +294,7 @@ export function RoundtableView({
       const tc = parseTargetChars()
       const body: Record<string, unknown> = {
         action: 'run-summary',
+        roundtableId: st.id,
         topic: st.topic,
         participants: parts,
         moderatorType: st.moderatorType,
@@ -704,8 +706,9 @@ export function RoundtableView({
                           )}
                         </div>
                         <div className="markdown-body text-sm prose prose-sm max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{sp.content || '…'}</ReactMarkdown>
+                          <CitationMarkdown content={sp.content || '…'} sources={sp.sources} msgId={sp.id} />
                         </div>
+                        <SourceList sources={sp.sources} msgId={sp.id} />
                         {sp.error && <p className="text-xs text-red-500 mt-1">{sp.error}</p>}
                       </div>
                     ))}
@@ -723,10 +726,10 @@ export function RoundtableView({
             {session.summary.loading && <Loader2 className="w-4 h-4 animate-spin" />}
           </div>
           <div className="markdown-body text-sm prose prose-sm max-w-none bg-white rounded-lg p-3 border border-purple-100">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{session.summary.content}</ReactMarkdown>
+            <CitationMarkdown content={session.summary.content} msgId={`summary-${session.id}`} />
           </div>
           {!session.summary.loading && session.status === 'completed' && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 items-center">
               <Button variant="outline" className="gap-2" onClick={() => void exportPdf()} disabled={pdfExporting}>
                 {pdfExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                 {pdfExporting ? '正在导出…' : '📄 导出 PDF'}
@@ -735,6 +738,14 @@ export function RoundtableView({
                 <MessageSquare className="w-4 h-4" />
                 切回单人问答继续深聊
               </Button>
+              <SaveToDecisionButton
+                source="roundtable"
+                sourceRunId={session.id}
+                defaultTitle={session.topic.slice(0, 60)}
+                content={session.summary.content}
+                summary={`【圆桌总结】${session.topic}`}
+                defaultType="diagnosis"
+              />
             </div>
           )}
         </div>

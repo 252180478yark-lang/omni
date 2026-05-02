@@ -79,6 +79,7 @@ class MaterialUpdate(BaseModel):
     iteration_note: str | None = None
     group_id: str | None = None
     change_tags: list[str] | None = None
+    pipeline_id: str | None = None  # 关联到 content_studio.pipelines.id
 
 
 class MaterialBatchGroup(BaseModel):

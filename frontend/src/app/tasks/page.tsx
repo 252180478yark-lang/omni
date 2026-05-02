@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { ListTodo, CheckCircle2, Clock, RotateCw, AlertCircle, PlayCircle, Loader2, Trash2, X } from 'lucide-react'
+import { ListTodo, CheckCircle2, Clock, RotateCw, AlertCircle, PlayCircle, Loader2, Trash2, X, CheckSquare, Square, MinusSquare } from 'lucide-react'
 
 interface TaskItem {
   id: string
@@ -22,19 +22,51 @@ interface TaskItem {
 
 export default function TaskProgress() {
   const [tasks, setTasks] = useState<TaskItem[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false)
+  const [batchDeleting, setBatchDeleting] = useState(false)
+
+  const selectableTaskIds = useMemo(
+    () => tasks.filter(t => t.status !== 'running').map(t => t.id),
+    [tasks],
+  )
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleSelectAll = useCallback(() => {
+    setSelected(prev => {
+      if (prev.size >= selectableTaskIds.length) return new Set()
+      return new Set(selectableTaskIds)
+    })
+  }, [selectableTaskIds])
 
   const loadTasks = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch('/api/omni/knowledge/tasks?limit=100', { cache: 'no-store' })
-      const json = (await res.json()) as { success: boolean; data?: TaskItem[]; error?: string }
+      const res = await fetch('/api/omni/knowledge/tasks?limit=200', { cache: 'no-store' })
+      const json = (await res.json()) as { success: boolean; data?: TaskItem[]; counts?: Record<string, number>; error?: string }
       if (!json.success || !json.data) {
         throw new Error(json.error || '任务加载失败')
       }
       setTasks(json.data)
+      if (json.counts) setCounts(json.counts)
+      setSelected(prev => {
+        const validIds = new Set(json.data!.map(t => t.id))
+        const next = new Set<string>()
+        prev.forEach(id => { if (validIds.has(id)) next.add(id) })
+        return next
+      })
     } catch (err) {
       setError(String(err))
     } finally {
@@ -61,7 +93,10 @@ export default function TaskProgress() {
     const res = await fetch(`/api/omni/knowledge/tasks/${taskId}`, { method: 'DELETE' })
     const json = (await res.json()) as { success: boolean; error?: string }
     if (!json.success) setError(json.error || '删除失败')
-    else setTasks(prev => prev.filter(t => t.id !== taskId))
+    else {
+      setTasks(prev => prev.filter(t => t.id !== taskId))
+      setSelected(prev => { const next = new Set(prev); next.delete(taskId); return next })
+    }
   }, [])
 
   const batchDelete = useCallback(async (statusFilter: string) => {
@@ -75,18 +110,35 @@ export default function TaskProgress() {
     else await loadTasks()
   }, [loadTasks])
 
+  const batchDeleteSelected = useCallback(async () => {
+    if (selected.size === 0) return
+    setBatchDeleting(true)
+    try {
+      const res = await fetch('/api/omni/knowledge/tasks/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_ids: Array.from(selected) }),
+      })
+      const json = (await res.json()) as { success: boolean; data?: { deleted: number }; error?: string }
+      if (!json.success) setError(json.error || '批量删除失败')
+      else {
+        setSelected(new Set())
+        setConfirmDeleteSelected(false)
+        await loadTasks()
+      }
+    } finally {
+      setBatchDeleting(false)
+    }
+  }, [selected, loadTasks])
+
   const [confirmBatchDelete, setConfirmBatchDelete] = useState<string | null>(null)
 
-  const counts = useMemo(() => {
-    const by = { queued: 0, running: 0, succeeded: 0, failed: 0 }
-    for (const task of tasks) {
-      if (task.status === 'queued') by.queued += 1
-      else if (task.status === 'running') by.running += 1
-      else if (task.status === 'succeeded') by.succeeded += 1
-      else if (task.status === 'failed') by.failed += 1
-    }
-    return by
-  }, [tasks])
+  const statusCounts = useMemo(() => ({
+    queued: counts.queued || 0,
+    running: counts.running || 0,
+    succeeded: counts.succeeded || 0,
+    failed: counts.failed || 0,
+  }), [counts])
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -141,16 +193,16 @@ export default function TaskProgress() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card className="apple-card border-none shadow-sm md:col-span-1 bg-white">
             <CardContent className="p-6 space-y-2 text-sm text-gray-700">
-              <div className="flex justify-between"><span>排队中</span><span>{counts.queued}</span></div>
-              <div className="flex justify-between"><span>运行中</span><span>{counts.running}</span></div>
-              <div className="flex justify-between"><span>已成功</span><span>{counts.succeeded}</span></div>
-              <div className="flex justify-between"><span>失败</span><span>{counts.failed}</span></div>
+              <div className="flex justify-between"><span>排队中</span><span>{statusCounts.queued}</span></div>
+              <div className="flex justify-between"><span>运行中</span><span>{statusCounts.running}</span></div>
+              <div className="flex justify-between"><span>已成功</span><span>{statusCounts.succeeded}</span></div>
+              <div className="flex justify-between"><span>失败</span><span>{statusCounts.failed}</span></div>
               <div className="border-t border-gray-100 pt-3 mt-3 space-y-2">
-                {counts.succeeded > 0 && (
+                {statusCounts.succeeded > 0 && (
                   confirmBatchDelete === 'succeeded' ? (
                     <div className="flex items-center gap-1">
                       <Button variant="destructive" size="sm" className="h-7 text-xs flex-1" onClick={() => { void batchDelete('succeeded'); setConfirmBatchDelete(null) }}>
-                        确认删除 {counts.succeeded} 条
+                        确认删除 {statusCounts.succeeded} 条
                       </Button>
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setConfirmBatchDelete(null)}>
                         <X className="w-3 h-3" />
@@ -162,11 +214,11 @@ export default function TaskProgress() {
                     </Button>
                   )
                 )}
-                {counts.failed > 0 && (
+                {statusCounts.failed > 0 && (
                   confirmBatchDelete === 'failed' ? (
                     <div className="flex items-center gap-1">
                       <Button variant="destructive" size="sm" className="h-7 text-xs flex-1" onClick={() => { void batchDelete('failed'); setConfirmBatchDelete(null) }}>
-                        确认删除 {counts.failed} 条
+                        确认删除 {statusCounts.failed} 条
                       </Button>
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setConfirmBatchDelete(null)}>
                         <X className="w-3 h-3" />
@@ -184,16 +236,86 @@ export default function TaskProgress() {
 
           <Card className="apple-card border-none shadow-sm md:col-span-3">
             <CardHeader className="border-b border-gray-100">
-              <CardTitle className="text-lg">最近任务</CardTitle>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {tasks.length > 0 && (
+                    <button
+                      onClick={toggleSelectAll}
+                      className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+                      title={selected.size >= selectableTaskIds.length ? '取消全选' : '全选'}
+                    >
+                      {selected.size === 0 ? (
+                        <Square className="w-5 h-5" />
+                      ) : selected.size >= selectableTaskIds.length ? (
+                        <CheckSquare className="w-5 h-5 text-blue-600" />
+                      ) : (
+                        <MinusSquare className="w-5 h-5 text-blue-600" />
+                      )}
+                    </button>
+                  )}
+                  <CardTitle className="text-lg">最近任务</CardTitle>
+                </div>
+                {selected.size > 0 && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-500">已选 <span className="font-semibold text-gray-900">{selected.size}</span> 条</span>
+                    {confirmDeleteSelected ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-8 text-xs"
+                          disabled={batchDeleting}
+                          onClick={() => void batchDeleteSelected()}
+                        >
+                          {batchDeleting ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Trash2 className="w-3 h-3 mr-1" />}
+                          确认删除 {selected.size} 条
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setConfirmDeleteSelected(false)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={() => setConfirmDeleteSelected(true)}
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" /> 删除选中
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="sm" className="h-8 text-xs text-gray-500" onClick={() => { setSelected(new Set()); setConfirmDeleteSelected(false) }}>
+                      取消选择
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {error ? <div className="p-4 text-sm text-red-600">{error}</div> : null}
               <div className="divide-y divide-gray-100">
                 {tasks.map((task) => (
-                  <div key={task.id} className="p-4 md:p-6 hover:bg-gray-50/50 transition-colors">
+                  <div
+                    key={task.id}
+                    className={`p-4 md:p-6 transition-colors cursor-pointer ${selected.has(task.id) ? 'bg-blue-50/60 hover:bg-blue-50' : 'hover:bg-gray-50/50'}`}
+                    onClick={() => { if (task.status !== 'running') toggleSelect(task.id) }}
+                  >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div className="flex items-start gap-4 flex-1">
-                        <div className="mt-1 flex-shrink-0">{getStatusIcon(task.status)}</div>
+                        {task.status !== 'running' ? (
+                          <button
+                            className="mt-1 flex-shrink-0 text-gray-400 hover:text-blue-600 transition-colors"
+                            onClick={(e) => { e.stopPropagation(); toggleSelect(task.id) }}
+                          >
+                            {selected.has(task.id) ? (
+                              <CheckSquare className="w-5 h-5 text-blue-600" />
+                            ) : (
+                              <Square className="w-5 h-5" />
+                            )}
+                          </button>
+                        ) : (
+                          <div className="mt-1 flex-shrink-0">{getStatusIcon(task.status)}</div>
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-3 mb-1">
                             <span className="text-sm font-semibold text-gray-900 truncate">{task.title || '(未命名文档)'}</span>
@@ -227,7 +349,7 @@ export default function TaskProgress() {
                             style={{ width: `${task.progress}%` }}
                           />
                         </div>
-                        <div className="flex justify-end mt-1 gap-3">
+                        <div className="flex justify-end mt-1 gap-3" onClick={(e) => e.stopPropagation()}>
                           {task.status === 'failed' && (
                             <button
                               className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"

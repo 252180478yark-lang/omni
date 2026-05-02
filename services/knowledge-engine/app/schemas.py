@@ -19,6 +19,8 @@ class IngestRequest(BaseModel):
     text: str = Field(min_length=1)
     source_url: str | None = None
     source_type: str = "manual"
+    metadata: dict = Field(default_factory=dict)
+    skip_chunking: bool = False
 
 
 # ═══ Query / Search ═══

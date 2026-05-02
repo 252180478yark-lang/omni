@@ -56,10 +56,19 @@ class SeedanceProvider(BaseProvider):
 
     # ── connection test ──
 
+    _KNOWN_MODELS: tuple[str, ...] = (
+        "doubao-seedance-2-0-260128",
+        "doubao-seedance-2-0-fast-260128",
+        "doubao-seedance-1-0-pro-250528",
+        "doubao-seedance-1-0-pro-260104",
+        "doubao-seedance-1-0-lite-i2v-250428",
+        "doubao-seedance-1-0-lite-t2v-250428",
+    )
+
     async def test_connection(self, api_key: str | None = None) -> tuple[bool, str, list[str]]:
         key = (api_key or self._get_api_key() or "").strip()
         if not is_real_api_key(key):
-            return False, "未提供 Seedance (火山方舟) API Key", []
+            return False, "未提供 Seedance (火山方舟) API Key", list(self._KNOWN_MODELS)
         try:
             headers = {
                 "Content-Type": "application/json",
@@ -71,11 +80,29 @@ class SeedanceProvider(BaseProvider):
                     headers=headers,
                 )
                 resp.raise_for_status()
-            return True, "Seedance (火山方舟) 连接成功", []
+            return True, "Seedance (火山方舟) 连接成功", await self.list_models(api_key=key)
         except httpx.HTTPStatusError as exc:
-            return False, f"连接失败 (HTTP {exc.response.status_code}): {exc.response.text[:200]}", []
+            return (
+                False,
+                f"连接失败 (HTTP {exc.response.status_code}): {exc.response.text[:200]}",
+                list(self._KNOWN_MODELS),
+            )
         except Exception as exc:
-            return False, f"连接失败: {exc}", []
+            return False, f"连接失败: {exc}", list(self._KNOWN_MODELS)
+
+    async def list_models(self, api_key: str | None = None) -> list[str]:
+        """返回 Seedance 可用 Model ID 列表（含当前 settings 配置 + 已知系列）。"""
+        configured = [
+            (settings.seedance_model or "").strip(),
+            (settings.seedance_fast_model or "").strip(),
+        ]
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for m in [*configured, *self._KNOWN_MODELS]:
+            if m and m not in seen:
+                seen.add(m)
+                ordered.append(m)
+        return ordered
 
     # ── unsupported methods ──
 
@@ -146,7 +173,13 @@ class SeedanceProvider(BaseProvider):
                 "role": "last_frame",
             })
 
-        for url in (reference_images or []):
+        for raw in (reference_images or []):
+            if isinstance(raw, dict):
+                url = str(raw.get("url", ""))
+            else:
+                url = str(raw)
+            if not url:
+                continue
             result.append({
                 "type": "image_url",
                 "image_url": {"url": url},
@@ -225,7 +258,7 @@ class SeedanceProvider(BaseProvider):
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
-                    f"{_ARK_API_BASE}/content_generation/tasks",
+                    f"{_ARK_API_BASE}/contents/generations/tasks",
                     headers=self._headers(),
                     json=payload,
                 )
@@ -259,7 +292,7 @@ class SeedanceProvider(BaseProvider):
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.get(
-                    f"{_ARK_API_BASE}/content_generation/tasks/{task_id}",
+                    f"{_ARK_API_BASE}/contents/generations/tasks/{task_id}",
                     headers=self._headers(),
                 )
                 resp.raise_for_status()

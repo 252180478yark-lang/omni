@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
+import re
+import uuid as uuid_lib
+from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -14,13 +18,36 @@ from app.services import content_studio as svc
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/content-studio", tags=["content-studio"])
 
+UPLOAD_ROOT = Path("/app/data/content-studio")  # 与 svc.DATA_ROOT 一致
+ALLOWED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+MAX_UPLOAD_BYTES = 12 * 1024 * 1024  # 12 MB / 张
+
 
 # ──── Request / Response schemas ────
 
 class CreatePipelineRequest(BaseModel):
     title: str = Field(min_length=1)
-    source_text: str = Field(min_length=1)
+    source_text: str = ""
+    product_id: str | None = None
+    brief_id: str | None = None
+    digital_human_id: str | None = None
+    audience_package: dict | None = None
+    extra_reference_images: list[dict] = Field(default_factory=list)
     config: dict = Field(default_factory=dict)
+
+
+class ExtraRefsRequest(BaseModel):
+    reference_images: list[dict] = Field(
+        default_factory=list,
+        description="[{url, type:character|product, weight}]",
+    )
+
+
+class CharacterAvatarMapRequest(BaseModel):
+    mapping: dict[str, str] = Field(
+        default_factory=dict,
+        description="character_name -> digital_human_id (uuid)",
+    )
 
 class UpdatePipelineRequest(BaseModel):
     copy_result: str | None = None
@@ -32,6 +59,24 @@ class RegenerateSceneRequest(BaseModel):
     prompt_override: str | None = Field(
         default=None,
         description="If provided, skip LLM prompt transformation and use this prompt directly",
+    )
+
+class BatchStoryboardRequest(BaseModel):
+    scene_ids: list[int] = Field(min_length=1, max_length=20)
+    prompt_override: str | None = Field(
+        default=None,
+        description="Optional shared override prompt. Usually leave empty for per-scene prompts.",
+    )
+
+class BatchVideoRequest(BaseModel):
+    scene_ids: list[int] = Field(min_length=1, max_length=20)
+    prompt_override: str | None = Field(
+        default=None,
+        description="Optional shared override prompt. Usually leave empty for per-scene prompts.",
+    )
+    use_next_scene_as_last_frame: bool = Field(
+        default=False,
+        description="Use the next storyboard image as the last frame for each selected scene when available.",
     )
 
 class PresetCreateRequest(BaseModel):
@@ -48,6 +93,7 @@ class ProductImagesRequest(BaseModel):
 
 class ImportScriptRequest(BaseModel):
     script: dict = Field(...)
+    copy_result: str | None = None
 
 class UpdateCharacterRequest(BaseModel):
     character_id: str
@@ -66,8 +112,122 @@ class AutoRunRequest(BaseModel):
 
 @router.post("/pipelines")
 async def create_pipeline(req: CreatePipelineRequest):
-    pipe = await svc.create_pipeline(req.title, req.source_text, req.config)
+    pipe = await svc.create_pipeline(
+        req.title,
+        req.source_text,
+        req.config,
+        product_id=req.product_id,
+        brief_id=req.brief_id,
+        digital_human_id=req.digital_human_id,
+        audience_package=req.audience_package,
+        extra_reference_images=req.extra_reference_images,
+    )
     return _serialize(pipe)
+
+
+@router.put("/pipeline/{pipeline_id}/extra-refs")
+async def set_extra_refs(pipeline_id: str, req: ExtraRefsRequest):
+    """覆盖 pipeline 的临时上传参考图（不污染 Avatar/产品库）。"""
+    try:
+        pipe = await svc.set_extra_reference_images(pipeline_id, req.reference_images)
+        return _serialize(pipe)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.put("/pipeline/{pipeline_id}/character-avatar-map")
+async def set_character_avatar_map(pipeline_id: str, req: CharacterAvatarMapRequest):
+    """覆盖 pipeline.character_avatar_map：scene 角色名 → digital_human_id。"""
+    try:
+        pipe = await svc.set_character_avatar_map(pipeline_id, req.mapping)
+        return _serialize(pipe)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+# ──── 临时参考图：multipart 上传 + 静态读取 ────
+
+def _safe_filename(name: str) -> str:
+    """剥离路径分隔符，截断长度，仅保留 [\\w.-]，统一小写后缀。"""
+    base = Path(name).name
+    base = re.sub(r"[^\w.\-]+", "_", base)[:80] or "upload"
+    p = Path(base)
+    suffix = p.suffix.lower()
+    stem = p.stem or "upload"
+    if not suffix:
+        suffix = ".png"
+    return f"{stem}{suffix}"
+
+
+@router.post("/pipeline/{pipeline_id}/extra-refs/upload")
+async def upload_extra_ref(
+    pipeline_id: str,
+    ref_type: str = Query("character", regex="^(character|product|scene|style)$"),
+    file: UploadFile = File(...),
+):
+    """临时参考图文件上传：写入卷下 extra-refs/，返回可被前端 / 模型直接 GET 的 URL。
+
+    URL 形如 ``/api/v1/content-studio/uploads/{pipeline_id}/{filename}``，
+    与现有 download 端点同源同 nginx 转发规则，**无需改 nginx 配置**。
+    """
+    try:
+        uuid_lib.UUID(pipeline_id)
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid pipeline_id") from exc
+
+    pipe = await svc.get_pipeline(pipeline_id)
+    if not pipe:
+        raise HTTPException(404, "Pipeline not found")
+
+    safe_name = _safe_filename(file.filename or "upload.png")
+    ext = Path(safe_name).suffix.lower()
+    if ext not in ALLOWED_EXT:
+        raise HTTPException(400, f"Unsupported file type: {ext}")
+
+    # 防重名
+    target_dir = UPLOAD_ROOT / pipeline_id / "extra-refs"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    final_name = f"{uuid_lib.uuid4().hex[:10]}_{safe_name}"
+    target_path = target_dir / final_name
+
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"File too large (>{MAX_UPLOAD_BYTES // (1024*1024)} MB)")
+    target_path.write_bytes(data)
+
+    public_url = f"/api/v1/content-studio/uploads/{pipeline_id}/{final_name}"
+
+    # 追加到 pipeline.extra_reference_images（去重）
+    existing = pipe.get("extra_reference_images") or []
+    if isinstance(existing, str):
+        existing = json.loads(existing)
+    if not any((r.get("url") == public_url) for r in existing):
+        existing.append({
+            "url": public_url,
+            "type": ref_type,
+            "weight": 1.0 if ref_type in ("product",) else 0.8,
+        })
+    await svc.set_extra_reference_images(pipeline_id, existing)
+
+    return {
+        "url": public_url,
+        "type": ref_type,
+        "filename": final_name,
+        "size": len(data),
+    }
+
+
+@router.get("/uploads/{pipeline_id}/{filename}")
+async def serve_upload(pipeline_id: str, filename: str):
+    """读取临时上传的参考图（前端 <img>、火山方舟模型 fetch 都用这个 URL）。"""
+    safe = Path(filename).name
+    if safe != filename or "/" in filename or "\\" in filename:
+        raise HTTPException(400, "Invalid filename")
+    target = UPLOAD_ROOT / pipeline_id / "extra-refs" / safe
+    if not target.exists() or not target.is_file():
+        raise HTTPException(404, "Upload not found")
+    media, _ = mimetypes.guess_type(str(target))
+    return FileResponse(str(target), media_type=media or "application/octet-stream")
 
 
 @router.get("/pipelines")
@@ -125,7 +285,7 @@ async def set_product_images(pipeline_id: str, req: ProductImagesRequest):
 async def import_script(pipeline_id: str = Query(...), req: ImportScriptRequest = ...):
     """Import a script generated externally (e.g. from knowledge Q&A module)."""
     try:
-        pipe = await svc.import_script(pipeline_id, req.script)
+        pipe = await svc.import_script(pipeline_id, req.script, copy_result=req.copy_result)
         return _serialize(pipe)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -257,6 +417,19 @@ async def regenerate_storyboard(pipeline_id: str = Query(...), req: RegenerateSc
         raise HTTPException(400, str(exc)) from exc
 
 
+@router.post("/storyboard/batch-regenerate")
+async def batch_regenerate_storyboard(pipeline_id: str = Query(...), req: BatchStoryboardRequest = ...):
+    try:
+        pipe = await svc.regenerate_storyboard_scenes(
+            pipeline_id,
+            req.scene_ids,
+            prompt_override=req.prompt_override,
+        )
+        return _serialize(pipe)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/video")
 async def step_video(pipeline_id: str = Query(...)):
     try:
@@ -271,6 +444,20 @@ async def regenerate_video(pipeline_id: str = Query(...), req: RegenerateSceneRe
     try:
         pipe = await svc.regenerate_video_scene(
             pipeline_id, req.scene_id, prompt_override=req.prompt_override,
+        )
+        return _serialize(pipe)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/video/batch-regenerate")
+async def batch_regenerate_video(pipeline_id: str = Query(...), req: BatchVideoRequest = ...):
+    try:
+        pipe = await svc.regenerate_video_scenes(
+            pipeline_id,
+            req.scene_ids,
+            prompt_override=req.prompt_override,
+            use_next_scene_as_last_frame=req.use_next_scene_as_last_frame,
         )
         return _serialize(pipe)
     except ValueError as exc:

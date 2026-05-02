@@ -64,6 +64,161 @@ async def _wait_task_document(client: httpx.AsyncClient, task_id: str, timeout: 
     return None
 
 
+def _avg_metric(materials: list[dict[str, Any]], key: str) -> float | None:
+    values: list[float] = []
+    for m in materials or []:
+        v = m.get(key)
+        if v is None:
+            continue
+        try:
+            values.append(float(v))
+        except (TypeError, ValueError):
+            continue
+    if not values:
+        return None
+    return sum(values) / len(values)
+
+
+async def _resolve_pipeline_targets(
+    pipeline_id: str,
+    client: httpx.AsyncClient,
+) -> tuple[str | None, str | None]:
+    """通过 knowledge-engine 查 pipeline，提取 brief_id / digital_human_id。"""
+    try:
+        r = await client.get(
+            f"{KE_BASE}/api/v1/content-studio/pipeline/{pipeline_id}",
+        )
+        if r.status_code != 200:
+            return None, None
+        data = r.json()
+        return (
+            data.get("brief_id") or None,
+            data.get("digital_human_id") or None,
+        )
+    except Exception:
+        return None, None
+
+
+async def sync_review_to_brief_and_avatar(
+    campaign: dict[str, Any],
+    materials: list[dict[str, Any]],
+    review_summary: str,
+) -> dict[str, Any]:
+    """复盘完成后将 ctr/cvr 回灌到 brief / digital_human。
+
+    回灌路径优先级：
+      1) campaign.brief_id / campaign.digital_human_id（显式挂载）
+      2) materials[i].pipeline_id → 通过 ke 反查 pipeline.brief_id / pipeline.digital_human_id
+         按 pipeline 聚合该 pipeline 内素材的 ctr/cvr 后回灌
+    任一路径都没目标则返回 skipped，前端据此提示用户补绑定。
+    """
+    cmp_brief_id = campaign.get("brief_id")
+    cmp_dh_id = campaign.get("digital_human_id")
+    summary_clipped = (review_summary or "")[:1000]
+
+    # 按 material 聚合到 pipeline（去重 pipeline_id）
+    by_pipeline: dict[str, list[dict[str, Any]]] = {}
+    for m in materials or []:
+        pid = m.get("pipeline_id")
+        if not pid:
+            continue
+        by_pipeline.setdefault(str(pid), []).append(m)
+
+    if not (cmp_brief_id or cmp_dh_id or by_pipeline):
+        return {
+            "skipped": True,
+            "reason": "no_pipeline_binding",
+            "missing_binding": True,
+            "message": "当前批次没有绑定 Brief / Avatar，也没有素材绑定 Pipeline，无法回灌 CTR/CVR。请在批次详情为素材补绑定 Pipeline。",
+        }
+
+    result: dict[str, Any] = {}
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # ── 路径 1：campaign 级 ──
+        if cmp_brief_id or cmp_dh_id:
+            ctr = _avg_metric(materials, "ctr")
+            cvr = _avg_metric(materials, "conversion_rate")
+            samples = sum(1 for m in materials or [] if m.get("ctr") is not None)
+            result["campaign_level"] = {
+                "ctr": ctr, "cvr": cvr, "samples": samples,
+                "brief_id": cmp_brief_id, "digital_human_id": cmp_dh_id,
+            }
+            if cmp_brief_id:
+                try:
+                    r = await client.patch(
+                        f"{KE_BASE}/api/v1/content-studio/briefs/{cmp_brief_id}/metrics",
+                        json={"ctr": ctr, "cvr": cvr, "samples": samples, "review_summary": summary_clipped},
+                    )
+                    result["campaign_level"]["brief_status"] = r.status_code
+                except Exception as exc:
+                    logger.warning("brief metrics sync (campaign) failed: %s", exc)
+                    result["campaign_level"]["brief_status"] = "error"
+            if cmp_dh_id:
+                try:
+                    r = await client.patch(
+                        f"{KE_BASE}/api/v1/content-studio/digital-humans/{cmp_dh_id}/metrics",
+                        json={"ctr": ctr, "cvr": cvr, "samples": max(samples, 1)},
+                    )
+                    result["campaign_level"]["dh_status"] = r.status_code
+                except Exception as exc:
+                    logger.warning("dh metrics sync (campaign) failed: %s", exc)
+                    result["campaign_level"]["dh_status"] = "error"
+
+        # ── 路径 2：material → pipeline → brief/avatar ──
+        material_results: list[dict[str, Any]] = []
+        unresolved_pipelines: list[str] = []
+        for pid, mats in by_pipeline.items():
+            brief_id, dh_id = await _resolve_pipeline_targets(pid, client)
+            if not (brief_id or dh_id):
+                unresolved_pipelines.append(pid)
+                continue
+            ctr_p = _avg_metric(mats, "ctr")
+            cvr_p = _avg_metric(mats, "conversion_rate")
+            samples_p = sum(1 for m in mats if m.get("ctr") is not None)
+            entry: dict[str, Any] = {
+                "pipeline_id": pid, "brief_id": brief_id, "digital_human_id": dh_id,
+                "ctr": ctr_p, "cvr": cvr_p, "samples": samples_p,
+            }
+            # 跳过已经在 campaign 级别灌过的同一目标，避免重复
+            if brief_id and brief_id != cmp_brief_id:
+                try:
+                    r = await client.patch(
+                        f"{KE_BASE}/api/v1/content-studio/briefs/{brief_id}/metrics",
+                        json={"ctr": ctr_p, "cvr": cvr_p, "samples": samples_p, "review_summary": summary_clipped},
+                    )
+                    entry["brief_status"] = r.status_code
+                except Exception as exc:
+                    logger.warning("brief metrics sync (material) failed: %s", exc)
+                    entry["brief_status"] = "error"
+            if dh_id and dh_id != cmp_dh_id:
+                try:
+                    r = await client.patch(
+                        f"{KE_BASE}/api/v1/content-studio/digital-humans/{dh_id}/metrics",
+                        json={"ctr": ctr_p, "cvr": cvr_p, "samples": max(samples_p, 1)},
+                    )
+                    entry["dh_status"] = r.status_code
+                except Exception as exc:
+                    logger.warning("dh metrics sync (material) failed: %s", exc)
+                    entry["dh_status"] = "error"
+            material_results.append(entry)
+
+        if material_results:
+            result["material_level"] = material_results
+        if unresolved_pipelines and ("campaign_level" in result or material_results):
+            result["unresolved_pipelines"] = unresolved_pipelines
+
+    if "campaign_level" in result or "material_level" in result:
+        return result
+    return {
+        "skipped": True,
+        "reason": "pipeline_without_brief_or_avatar",
+        "missing_binding": True,
+        "message": "素材已绑定 Pipeline，但这些 Pipeline 没有关联 Brief / Avatar，无法回灌指标。请回到内容工坊或新建向导补齐绑定。",
+        "pipeline_ids": list(by_pipeline.keys()),
+    }
+
+
 async def sync_review_to_kb(
     review_log: dict[str, Any],
     campaign: dict[str, Any],

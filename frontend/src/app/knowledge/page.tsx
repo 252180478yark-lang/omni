@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Link from 'next/link'
-import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2, File, X, CheckCircle, Loader2, Globe, ChevronDown, ChevronRight, Eye, BarChart3 } from 'lucide-react'
+import { Database, Plus, Search, FileText, Upload, MoreHorizontal, Trash2, File, X, CheckCircle, Loader2, Globe, ChevronDown, ChevronRight, ChevronLeft, Eye, BarChart3 } from 'lucide-react'
 
 interface KnowledgeBaseItem {
   id: string
@@ -56,6 +56,9 @@ export default function KnowledgeBaseConfig() {
   const [expandedDocId, setExpandedDocId] = useState('')
   const [docChunks, setDocChunks] = useState<ChunkItem[]>([])
   const [chunksLoading, setChunksLoading] = useState(false)
+  const [docTotal, setDocTotal] = useState(0)
+  const [docPage, setDocPage] = useState(1)
+  const DOC_PAGE_SIZE = 50
 
   const loadBases = useCallback(async () => {
     setLoading(true)
@@ -81,24 +84,32 @@ export default function KnowledgeBaseConfig() {
     void loadBases()
   }, [loadBases])
 
-  const loadDocuments = useCallback(async () => {
+  const loadDocuments = useCallback(async (page: number = 1) => {
     if (!selectedKb) {
       setDocuments([])
+      setDocTotal(0)
       return
     }
     setDocLoading(true)
     setDocError('')
     try {
-      const params = new URLSearchParams({ kb_id: selectedKb, limit: '100' })
+      const offset = (page - 1) * DOC_PAGE_SIZE
+      const params = new URLSearchParams({
+        kb_id: selectedKb,
+        limit: String(DOC_PAGE_SIZE),
+        offset: String(offset),
+      })
       if (docSearch.trim()) {
         params.set('search', docSearch.trim())
       }
       const res = await fetch(`/api/omni/knowledge/documents?${params.toString()}`, { cache: 'no-store' })
-      const json = (await res.json()) as { success: boolean; data?: DocumentItem[]; error?: string }
+      const json = (await res.json()) as { success: boolean; data?: DocumentItem[]; total?: number; error?: string }
       if (!json.success || !json.data) {
         throw new Error(json.error || '文档加载失败')
       }
       setDocuments(json.data)
+      setDocTotal(json.total ?? json.data.length)
+      setDocPage(page)
     } catch (err) {
       setDocError(String(err))
     } finally {
@@ -344,7 +355,7 @@ export default function KnowledgeBaseConfig() {
             {selectedKb || '未选择'}
           </Badge>
           <span className="text-gray-400">|</span>
-          <span>文档数：{documents.length}</span>
+          <span>文档数：{docTotal}</span>
         </div>
 
         <Card className="apple-card border-none shadow-sm">
@@ -677,6 +688,40 @@ export default function KnowledgeBaseConfig() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Pagination */}
+              {docTotal > DOC_PAGE_SIZE && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+                  <span className="text-sm text-gray-500">
+                    第 {(docPage - 1) * DOC_PAGE_SIZE + 1}–{Math.min(docPage * DOC_PAGE_SIZE, docTotal)} 条，共 {docTotal} 条
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={docPage <= 1 || docLoading}
+                      onClick={() => void loadDocuments(docPage - 1)}
+                      className="h-8 px-3"
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-1" />
+                      上一页
+                    </Button>
+                    <span className="text-sm text-gray-600 min-w-[80px] text-center">
+                      {docPage} / {Math.ceil(docTotal / DOC_PAGE_SIZE)}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={docPage >= Math.ceil(docTotal / DOC_PAGE_SIZE) || docLoading}
+                      onClick={() => void loadDocuments(docPage + 1)}
+                      className="h-8 px-3"
+                    >
+                      下一页
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>

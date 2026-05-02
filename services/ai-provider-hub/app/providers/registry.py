@@ -27,11 +27,20 @@ class ProviderRegistry:
         return self.get(settings.default_embedding_provider)
 
     def list_providers(self) -> dict[str, dict[str, object]]:
+        # 媒体类 provider 没有传统的 chat 模型；用 settings 里的实际默认模型回填
+        # default_chat_model 字段，前端 UI 会按 capabilities 改成"默认图像/视频模型"显示。
+        media_default_overrides = {
+            "seedream": (settings.seedream_model or "").strip(),
+            "seedance": (settings.seedance_model or "").strip(),
+        }
         data: dict[str, dict[str, object]] = {}
         for name, provider in self._providers.items():
+            chat_default = provider.default_chat_model
+            if not chat_default:
+                chat_default = media_default_overrides.get(name, "") or ""
             data[name] = {
                 "capabilities": sorted([cap.value for cap in provider.capabilities]),
-                "default_chat_model": provider.default_chat_model,
+                "default_chat_model": chat_default,
                 "default_embedding_model": provider.default_embedding_model,
             }
         return data

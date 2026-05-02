@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { PromptFeedback } from '@/components/prompt-feedback'
+import { PromptNodeDrawer } from '@/components/prompt-node-drawer'
 
 const API = '/api/v1/livestream-analysis'
 const UPLOAD_API = 'http://127.0.0.1:8007/api/v1/livestream-analysis'
@@ -152,6 +154,7 @@ export default function LivestreamAnalysisPage() {
   const [taskTab, setTaskTab] = useState<'active' | 'done'>('active')
   const [fullReport, setFullReport] = useState<FullReport | null>(null)
   const [loadingReport, setLoadingReport] = useState(false)
+  const [drawerNode, setDrawerNode] = useState<string | null>(null)
   const [expandedSegIdx, setExpandedSegIdx] = useState<number | null>(null)
   const [showNewKbInput, setShowNewKbInput] = useState(false)
   const [newKbName, setNewKbName] = useState('')
@@ -877,8 +880,20 @@ export default function LivestreamAnalysisPage() {
           </CardContent>
         </Card>
 
+        {fullReport && fullReport.segments && fullReport.segments.length > 0 && (
+          <div>
+            <PromptFeedback
+              nodeId="livestream.analyze"
+              inputRef={{ segments_count: fullReport.segments.length }}
+              output={JSON.stringify(fullReport).slice(0, 5000)}
+              onOpenDrawer={setDrawerNode}
+            />
+          </div>
+        )}
+
         {message && <div className="text-sm rounded-lg border bg-white px-4 py-3 shadow-sm">{message}</div>}
       </main>
+      <PromptNodeDrawer nodeId={drawerNode} onClose={() => setDrawerNode(null)} />
     </div>
   )
 }

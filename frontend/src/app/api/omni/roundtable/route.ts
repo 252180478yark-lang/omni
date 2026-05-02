@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { RoundtableController } from '@/server/roundtable/roundtable-controller'
 import type { Persona } from '@/lib/personas/types'
 import type { InterventionPayload, RoundHistoryPayload } from '@/server/roundtable/roundtable-controller'
+import { deletePrepared, getPrepared, setPrepared } from '@/server/roundtable/prepared-cache'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,6 +20,8 @@ interface RoundtableBody {
   roundHistory?: RoundHistoryPayload
   interventions?: InterventionPayload[]
   targetChars?: number
+  /** Frontend-generated roundtable session id; used to share retrieval across rounds. */
+  roundtableId?: string
 }
 
 export async function POST(req: NextRequest) {
@@ -42,6 +45,7 @@ export async function POST(req: NextRequest) {
     roundHistory,
     interventions = [],
     targetChars,
+    roundtableId,
   } = body
 
   if (!topic || !participants?.length || !kbIds?.length) {
@@ -51,6 +55,12 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder()
   const controller = new RoundtableController()
   controller.restoreHistory(roundHistory)
+
+  // Cross-round prepared-context cache: hydrate before runRound, persist after.
+  if (action === 'run-round' && roundtableId) {
+    const cached = getPrepared(roundtableId)
+    if (cached) controller.setPrepared(cached)
+  }
 
   const stream = new ReadableStream({
     async start(streamController) {
@@ -76,6 +86,12 @@ export async function POST(req: NextRequest) {
             sendEvent,
             req.signal,
           )
+          // Writeback: persist whatever prepared context the controller ended up with
+          // (either freshly built or the injected cached one — set() refreshes the TTL).
+          if (roundtableId) {
+            const prepared = controller.getPrepared()
+            if (prepared) setPrepared(roundtableId, prepared)
+          }
         } else if (action === 'run-summary') {
           await controller.runSummary(
             {
@@ -92,6 +108,8 @@ export async function POST(req: NextRequest) {
             sendEvent,
             req.signal,
           )
+          // Summary is the terminal action — release cache eagerly.
+          if (roundtableId) deletePrepared(roundtableId)
         } else {
           sendEvent({ type: 'error', error: '未知 action' })
         }

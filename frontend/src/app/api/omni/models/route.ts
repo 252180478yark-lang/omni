@@ -33,6 +33,19 @@ interface ProviderItem {
   apiKeySet?: boolean
 }
 
+const MODEL_HINTS: Record<string, string[]> = {
+  openai: [
+    'gpt-5.5',
+    'gpt-5.4-mini',
+    'gpt-5.4-nano',
+    'gpt-5.2-chat-latest',
+    'gpt-image-2',
+    'gpt-image-1.5',
+    'gpt-image-1',
+    'gpt-image-1-mini',
+  ],
+}
+
 function mergeProviderModels(
   providers: ProviderItem[],
   providerId?: string,
@@ -61,7 +74,7 @@ async function readProvidersSnapshot(base: ReturnType<typeof serviceBase>): Prom
     capabilities: info.capabilities,
     defaultChatModel: info.default_chat_model,
     defaultEmbeddingModel: info.default_embedding_model,
-    models: modelMap.get(name) || [],
+    models: Array.from(new Set([...(modelMap.get(name) || []), ...(MODEL_HINTS[name] || [])])),
     apiKeySet: info.api_key_set,
   }))
 }
@@ -120,10 +133,24 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           provider: body.providerId,
           api_key: body.apiKey,
+          default_chat_model: body.defaultChatModel,
+          smoke_image: true,
         }),
         cache: 'no-store',
       })
-      const testJson = (await testResp.json()) as { success: boolean; provider: string; message: string; models?: string[] }
+      const testJson = (await testResp.json()) as {
+        success: boolean
+        provider: string
+        message: string
+        models?: string[]
+        smoke_test?: {
+          success: boolean
+          type: string
+          message: string
+          image_url?: string
+          model?: string
+        } | null
+      }
       let providers = await readProvidersSnapshot(base)
       providers = mergeProviderModels(providers, body.providerId, testJson.models)
       return Response.json({
