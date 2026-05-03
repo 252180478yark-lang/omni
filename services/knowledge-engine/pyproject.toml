@@ -28,6 +28,8 @@ dependencies = [
   "python-docx>=1.1.0",
   "trafilatura>=1.12.0",
   "pysrt>=1.1.2",
+  # MCP server (Anthropic Model Context Protocol)
+  "fastmcp>=2.13.0",
 ]
 
 [project.optional-dependencies]
