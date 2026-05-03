@@ -93,8 +93,16 @@ export function SkuContextPanel() {
     )
   }
 
-  const sellingPoints: string[] = (sku.owner_selling_points || [])
-    .map((sp) => (typeof sp === 'string' ? sp : (sp?.text || '')))
+  // 防御性 parse：旧版后端无 JSONB codec 时可能返回字符串
+  const rawSP: unknown = typeof sku.owner_selling_points === 'string'
+    ? (() => { try { return JSON.parse(sku.owner_selling_points as string) } catch { return [] } })()
+    : sku.owner_selling_points
+  const sellingPoints: string[] = (Array.isArray(rawSP) ? rawSP : [])
+    .map((sp: unknown) => {
+      if (typeof sp === 'string') return sp
+      if (sp && typeof sp === 'object' && 'text' in sp) return String((sp as { text?: unknown }).text || '')
+      return ''
+    })
     .filter((t) => t.trim())
     .slice(0, 3)
 

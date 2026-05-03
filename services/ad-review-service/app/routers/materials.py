@@ -43,6 +43,40 @@ async def _refresh_campaign_total_cost(conn, campaign_id: str) -> None:
     )
 
 
+@router.get("/materials")
+async def list_materials_by_sku_or_brief(
+    sku_id: str | None = None,
+    brief_id: str | None = None,
+    pipeline_id: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+):
+    """按 SKU/brief/pipeline 维度拉投放素材回传——SKU 工作台、brief 复盘的数据源。"""
+    if not (sku_id or brief_id or pipeline_id):
+        raise HTTPException(status_code=400, detail="需要至少一个过滤条件: sku_id / brief_id / pipeline_id")
+    where: list[str] = []
+    args: list = []
+    if sku_id:
+        args.append(sku_id)
+        where.append(f"sku_id = ${len(args)}")
+    if brief_id:
+        args.append(uuid.UUID(brief_id))
+        where.append(f"brief_id = ${len(args)}")
+    if pipeline_id:
+        args.append(uuid.UUID(pipeline_id))
+        where.append(f"pipeline_id = ${len(args)}")
+    args.extend([limit, offset])
+    sql = (
+        "SELECT * FROM ad_review.materials WHERE "
+        + " AND ".join(where)
+        + f" ORDER BY created_at DESC LIMIT ${len(args) - 1} OFFSET ${len(args)}"
+    )
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(sql, *args)
+    return {"items": [dict(r) for r in rows]}
+
+
 @router.get("/campaigns/{campaign_id}/materials")
 async def list_materials(campaign_id: str, audience_pack_id: str | None = None):
     pool = await get_pool()

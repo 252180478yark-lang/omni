@@ -53,34 +53,20 @@ export function ApplyAsBriefButton({
     setWorking(true)
     setErr(null)
     try {
-      if (skuId) {
-        const r = await fetch('/api/omni/content-studio/sku-orchestrations', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            sku_id: skuId,
-            title: `[${topic.slice(0, 40)}] 来自智能问答/圆桌`.slice(0, 100),
-            target_purpose: null,
-          }),
-        })
-        if (!r.ok) throw new Error(`orch ${r.status}`)
-        const data = await r.json()
-        setResult({ kind: 'orch', id: data.id })
-      } else {
-        const r = await fetch('/api/omni/content-studio/briefs/generate', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            title: topic.slice(0, 80) || 'AI 对话生成草稿',
-            hints: {
-              usp_hint: content.slice(0, 4000),
-            },
-          }),
-        })
-        if (!r.ok) throw new Error(`brief ${r.status}`)
-        const data = await r.json()
-        setResult({ kind: 'brief', id: data.id })
+      // 统一走 briefs/generate；带 sku_id 时后端会读 mvp_sku 把老板手填卖点喂给 LLM
+      const body: Record<string, unknown> = {
+        title: topic.slice(0, 80) || 'AI 对话生成草稿',
+        hints: { usp_hint: content.slice(0, 4000) },
       }
+      if (skuId) body.sku_id = skuId
+      const r = await fetch('/api/omni/content-studio/briefs/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!r.ok) throw new Error(`brief ${r.status}`)
+      const data = await r.json()
+      setResult({ kind: 'brief', id: data.id })
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -93,25 +79,16 @@ export function ApplyAsBriefButton({
     : 'gap-2'
 
   if (result) {
-    if (result.kind === 'orch') {
-      return (
-        <Link href={`/sku/${skuId}?tab=content`}>
-          <Button variant="outline" className={`${sizeClass} border-emerald-300 text-emerald-700 bg-emerald-50/50`}>
-            ✓ 已起编排，去 SKU 工作台 →
-          </Button>
-        </Link>
-      )
-    }
     return (
       <Link href={`/content-studio/briefs/${result.id}`}>
         <Button variant="outline" className={`${sizeClass} border-emerald-300 text-emerald-700 bg-emerald-50/50`}>
-          ✓ 已生成 Brief，去查看 →
+          ✓ 已生成 Brief{skuId ? '（已绑当前 SKU）' : ''}，去查看 →
         </Button>
       </Link>
     )
   }
 
-  const fallbackLabel = skuId ? '应用为 SKU 内容编排' : '应用为 Brief 草稿'
+  const fallbackLabel = skuId ? '为当前 SKU 应用为 Brief' : '应用为 Brief 草稿'
 
   return (
     <Button

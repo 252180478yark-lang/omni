@@ -205,6 +205,7 @@ async def _fetch_sku(sku_id: str) -> dict:
         """
         SELECT id, name, category, status, push_tier,
                owner_selling_points, owner_notes, price_min, price_max,
+               specifications,
                total_stock, growth_class, douyin_product_id, douyin_url
         FROM public.mvp_sku WHERE id = $1
         """,
@@ -281,6 +282,7 @@ async def step_selling_points(orch_id: str) -> dict:
 - 名称：{sku.get('name', '')}
 - 品类：{sku.get('category', '')}
 - 价格区间：{price_text or '未提供'}
+- 规格：{sku.get('specifications') or '未提供'}
 - 平台状态：{sku.get('status', '')}
 - 增长分类：{sku.get('growth_class', '')}
 - 老板备注：{sku.get('owner_notes') or '（无）'}

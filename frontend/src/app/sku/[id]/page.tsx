@@ -16,6 +16,7 @@ import {
   ReferenceLine, ResponsiveContainer, Legend,
 } from 'recharts'
 import { ChangeEventForm } from '@/components/change-event-form'
+import { VideoFeedbackButton } from '@/components/video-feedback-button'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -37,26 +38,7 @@ interface SkuDetail {
   owner_notes?: string | null
   price_min?: number | null
   price_max?: number | null
-}
-
-interface Orchestration {
-  id: string
-  sku_id: string
-  title: string | null
-  status: 'in_progress' | 'paused' | 'completed' | 'failed'
-  current_step: string
-  target_purpose: 'awareness' | 'planting' | 'conversion' | null
-  selling_points_result: Record<string, unknown> | null
-  matched_audience_result: Record<string, unknown> | null
-  audience_profile_result: Record<string, unknown> | null
-  dmp_sop_result: string | null
-  audience_content_pref_result: Record<string, unknown> | null
-  script_result: { brief_id?: string; title?: string } | null
-  linked_brief_id: string | null
-  linked_pipeline_id: string | null
-  error_message: string | null
-  created_at: string
-  updated_at: string
+  specifications?: string | null
 }
 
 interface Metric {
@@ -258,17 +240,17 @@ export default function SkuDetailPage() {
         </div>
       </div>
 
-      {tab === 'overview' && <OverviewTab metrics={metrics} loading={loading} sku={sku} assets5a={assets5a} brandMind={brandMind} events={events} anomalies={anomalies} />}
+      {tab === 'overview' && <OverviewTab metrics={metrics} loading={loading} sku={sku} assets5a={assets5a} brandMind={brandMind} events={events} anomalies={anomalies} skuId={skuId} onSkuRefresh={(s) => setSku(s)} />}
       {tab === 'actions' && <ActionsTab events={events} loading={loading} />}
       {tab === 'diagnosis' && <DiagnosisTab decisions={decisions} loading={loading} skuId={skuId} onJumpToContent={() => setTab('content')} />}
-      {tab === 'content' && <ContentTab skuId={skuId} sku={sku} onSkuRefresh={(s) => setSku(s)} />}
+      {tab === 'content' && <ContentTab skuId={skuId} />}
     </div>
   )
 }
 
 // ── Overview Tab ───────────────────────────────────────────────────────────────
 
-function OverviewTab({ metrics, loading, sku, assets5a, brandMind, events, anomalies }: {
+function OverviewTab({ metrics, loading, sku, assets5a, brandMind, events, anomalies, skuId, onSkuRefresh }: {
   metrics: Metric[]
   loading: boolean
   sku: SkuDetail | null
@@ -276,6 +258,8 @@ function OverviewTab({ metrics, loading, sku, assets5a, brandMind, events, anoma
   brandMind: BrandMind[]
   events: ChangeEvent[]
   anomalies: Anomaly[]
+  skuId: string
+  onSkuRefresh: (s: SkuDetail) => void
 }) {
   const [visibleLines, setVisibleLines] = useState<Record<string, boolean>>({
     gmv_paid: true, uv: true, ctr: true, cvr: true,
@@ -307,6 +291,9 @@ function OverviewTab({ metrics, loading, sku, assets5a, brandMind, events, anoma
 
   return (
     <div className="space-y-5">
+      {/* 老板视角输入：卖点 / 规格 / 价格 / 备注（编排器的种子素材） */}
+      <OwnerSellingPointsEditor skuId={skuId} sku={sku} onSaved={onSkuRefresh} />
+
       {/* Z3: 抖店后台 SKU 主数据 */}
       {sku && (sku.platform_status || sku.total_stock != null || sku.growth_class) && (
         <Card>
@@ -1148,176 +1135,188 @@ function LoadingCard() {
 
 
 // ── Content Tab ────────────────────────────────────────────────────────────────
-// SKU 内容工作台：把 17 步链路（卖点 → 人群 → 画像 → 圈包 → 偏好 → 目的 → Brief → Pipeline）
-// 在 SKU 详情页内骨架化呈现，每步可单点重跑。
+// SKU 内容工作台：内容生成全部走 chat 推进；这里只做产物索引（brief 历史 + 投放回传）
 
-const STEP_LABELS: Record<string, { label: string; hint: string }> = {
-  selling_points: { label: '1. 三类卖点', hint: '基于老板视角 + 大模型分析显性/隐性/独特' },
-  audience_match: { label: '2. 匹配人群', hint: '基于卖点 + 人群报告 KB 找可期待人群' },
-  audience_profile: { label: '3. 人群画像', hint: '深挖动机/犹豫/语言风格/触达渠道' },
-  dmp_sop: { label: '4. 圈包策略', hint: '生成可直接照做的 DMP 圈包 SOP' },
-  content_preference: { label: '5. 偏好内容', hint: '该人群喜欢看什么话题/形式/钩子' },
-  purpose_routing: { label: '6. 目的分流', hint: '曝光 / 种草 / 收割 三选一（可手动指定）' },
-  script_brief: { label: '7. 落地 Brief', hint: '把上面所有产物拼成短视频 Brief 草稿' },
-  pipeline_linked: { label: '8. 进入工坊', hint: '用 brief_id 起一个内容工坊 pipeline 准备做分镜' },
-  completed: { label: '✓ 完成', hint: '可去内容工坊继续做分镜与视频' },
+interface BriefSummary {
+  id: string
+  title: string | null
+  sku_id: string | null
+  target_purpose: string | null
+  created_at: string
+  status: string | null
 }
 
-const PURPOSE_LABELS: Record<string, { label: string; desc: string; color: string }> = {
-  awareness: { label: '曝光', desc: '泛人群第一次认识，A1 级别', color: 'bg-sky-50 text-sky-700 border-sky-200' },
-  planting: { label: '种草', desc: '建立兴趣与好感，A2-A3 级别', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  conversion: { label: '收割', desc: '高意向人群临门一脚，A4 级别', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+interface MaterialSummary {
+  id: string
+  name: string
+  brief_id: string | null
+  pipeline_id: string | null
+  cpm: number | null
+  ctr: number | null
+  play_3s_rate: number | null
+  cost_per_result: number | null
+  created_at: string
 }
 
-function ContentTab({ skuId, sku, onSkuRefresh }: {
-  skuId: string
-  sku: SkuDetail | null
-  onSkuRefresh: (s: SkuDetail) => void
-}) {
-  const [orchestrations, setOrchestrations] = useState<Orchestration[]>([])
+const PURPOSE_BADGE: Record<string, { label: string; color: string }> = {
+  awareness: { label: '曝光', color: 'bg-sky-50 text-sky-700 border-sky-200' },
+  planting: { label: '种草', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  conversion: { label: '收割', color: 'bg-rose-50 text-rose-700 border-rose-200' },
+}
+
+function ContentTab({ skuId }: { skuId: string }) {
+  const [briefs, setBriefs] = useState<BriefSummary[]>([])
+  const [materials, setMaterials] = useState<MaterialSummary[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
-
-  const fetchList = async () => {
-    setLoading(true)
-    try {
-      const r = await fetch(`/api/omni/content-studio/sku-orchestrations?sku_id=${skuId}`)
-      if (r.ok) {
-        const data = await r.json()
-        const items = data.items || []
-        setOrchestrations(items)
-        if (!activeId && items.length > 0) {
-          setActiveId(items[0].id)
-        }
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
 
   useEffect(() => {
-    if (skuId) fetchList()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!skuId) return
+    setLoading(true)
+    Promise.all([
+      fetch(`/api/omni/content-studio/briefs?sku_id=${skuId}&limit=20`).then((r) => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+      fetch(`/api/omni/ad-review/materials?sku_id=${skuId}&limit=20`).then((r) => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+    ]).then(([b, m]) => {
+      setBriefs(b.items || b || [])
+      setMaterials(m.items || m || [])
+    }).finally(() => setLoading(false))
   }, [skuId])
-
-  const active = useMemo(
-    () => orchestrations.find((o) => o.id === activeId) || null,
-    [orchestrations, activeId],
-  )
-
-  const refreshActive = async () => {
-    if (!activeId) return
-    const r = await fetch(`/api/omni/content-studio/sku-orchestrations/${activeId}`)
-    if (r.ok) {
-      const o = await r.json()
-      setOrchestrations((prev) => prev.map((x) => (x.id === o.id ? o : x)))
-    }
-  }
-
-  const createOrchestration = async (target_purpose: string | null) => {
-    setCreating(true)
-    try {
-      const r = await fetch('/api/omni/content-studio/sku-orchestrations', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          sku_id: skuId,
-          title: `${sku?.name || skuId}·${target_purpose ? PURPOSE_LABELS[target_purpose].label : '智能推荐'}`,
-          target_purpose,
-        }),
-      })
-      if (r.ok) {
-        const o = await r.json()
-        setActiveId(o.id)
-        await fetchList()
-      }
-    } finally {
-      setCreating(false)
-    }
-  }
 
   return (
     <div className="space-y-4">
-      {/* 老板卖点编辑器 */}
-      <OwnerSellingPointsEditor
-        skuId={skuId}
-        sku={sku}
-        onSaved={onSkuRefresh}
-      />
+      {/* 1. 主入口：跳 chat */}
+      <Card className="border-violet-200">
+        <CardContent className="p-5 bg-gradient-to-br from-violet-50/50 to-purple-50/50">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <Brain className="w-5 h-5 text-violet-600" />
+                用 AI 问答推进内容生成
+              </h3>
+              <p className="text-xs text-gray-700 mt-1.5">
+                跟 AI 一步步讨论：<span className="text-violet-700 font-medium">卖点 → 人群 → 圈包 SOP → 画像 → 内容场景 → 短视频脚本</span>
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                关键 AI 回复底部点 <span className="font-medium text-violet-700">「应用为 Brief」</span> 即可沉淀（自动绑当前 SKU），下方就能看到。
+              </p>
+            </div>
+            <Link href={`/chat?sku_id=${skuId}`}>
+              <Button className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white">
+                去 AI 问答 <ChevronRight className="w-4 h-4" />
+              </Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* 创建编排 */}
+      {/* 2. 本 SKU 的 Brief 历史 */}
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
               <Wand2 className="w-4 h-4 text-violet-600" />
-              新建内容编排
+              本 SKU 的 Brief 历史
+              {briefs.length > 0 && <span className="text-[11px] text-gray-400 font-normal">（{briefs.length}）</span>}
             </h3>
-            <span className="text-[11px] text-gray-400">从 SKU 起步，自动跑完 8 步链路</span>
           </div>
-          <div className="grid grid-cols-4 gap-2">
-            {(['awareness', 'planting', 'conversion'] as const).map((p) => (
-              <button
-                key={p}
-                disabled={creating}
-                onClick={() => createOrchestration(p)}
-                className={`p-3 border-2 rounded-lg text-left transition-all hover:shadow-sm hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed ${PURPOSE_LABELS[p].color}`}
-              >
-                <div className="font-semibold text-sm">{PURPOSE_LABELS[p].label}</div>
-                <div className="text-[11px] mt-0.5 opacity-80">{PURPOSE_LABELS[p].desc}</div>
-              </button>
-            ))}
-            <button
-              disabled={creating}
-              onClick={() => createOrchestration(null)}
-              className="p-3 border-2 border-dashed border-gray-200 rounded-lg text-left transition-all hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50"
-            >
-              <div className="font-semibold text-sm text-gray-700">让 AI 推荐</div>
-              <div className="text-[11px] mt-0.5 text-gray-500">基于 SKU 状态智能选择</div>
-            </button>
-          </div>
+          {loading ? (
+            <div className="text-center text-xs text-gray-400 py-6">加载中…</div>
+          ) : briefs.length === 0 ? (
+            <div className="text-center py-8">
+              <Wand2 className="w-8 h-8 mx-auto text-gray-200 mb-2" />
+              <p className="text-xs text-gray-400 mb-1">还没有 Brief</p>
+              <p className="text-[11px] text-gray-400">去 AI 问答里聊出一份，自动沉淀到这里</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {briefs.map((b) => <BriefRow key={b.id} brief={b} />)}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* 编排列表 */}
-      {loading ? (
-        <LoadingCard />
-      ) : orchestrations.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center text-sm text-gray-400">
-            <Film className="w-10 h-10 mx-auto text-gray-200 mb-3" />
-            <p className="mb-1">还没有内容编排</p>
-            <p className="text-xs text-gray-400">点上方任一目的卡片开始</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-12 gap-4">
-          {/* 左：编排列表 */}
-          <div className="col-span-4 space-y-2">
-            {orchestrations.map((o) => (
-              <OrchestrationListItem
-                key={o.id}
-                orch={o}
-                active={o.id === activeId}
-                onClick={() => setActiveId(o.id)}
-              />
-            ))}
+      {/* 3. 投放回传（绑 brief / sku） */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              本 SKU 的投放回传
+              {materials.length > 0 && <span className="text-[11px] text-gray-400 font-normal">（{materials.length}）</span>}
+            </h3>
+            <Link href="/ad-review">
+              <Button size="sm" variant="ghost" className="text-[11px] h-6">
+                去投放复盘 <ChevronRight className="w-3 h-3" />
+              </Button>
+            </Link>
           </div>
-          {/* 右：编排详情 + 步骤面板 */}
-          <div className="col-span-8">
-            {active ? (
-              <OrchestrationDetail orch={active} onRefresh={refreshActive} />
-            ) : (
-              <Card>
-                <CardContent className="p-12 text-center text-sm text-gray-400">
-                  选一个编排查看详情
-                </CardContent>
-              </Card>
+          {loading ? (
+            <div className="text-center text-xs text-gray-400 py-6">加载中…</div>
+          ) : materials.length === 0 ? (
+            <div className="text-center py-8">
+              <TrendingUp className="w-8 h-8 mx-auto text-gray-200 mb-2" />
+              <p className="text-xs text-gray-400 mb-1">暂无投放回传</p>
+              <p className="text-[11px] text-gray-400">在投放复盘上传素材时绑定 brief，数据会聚合到这里</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {materials.map((m) => <MaterialRow key={m.id} material={m} />)}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function BriefRow({ brief }: { brief: BriefSummary }) {
+  const purpose = brief.target_purpose ? PURPOSE_BADGE[brief.target_purpose] : null
+  return (
+    <div className="border border-gray-200 rounded-lg hover:border-violet-200 hover:bg-violet-50/30 transition-colors">
+      <div className="flex items-center justify-between gap-3 p-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5">
+            {purpose && (
+              <span className={`text-[10px] px-1.5 py-0.5 border rounded ${purpose.color}`}>{purpose.label}</span>
             )}
+            <span className="text-sm font-medium text-gray-900 truncate">{brief.title || brief.id.slice(0, 8)}</span>
           </div>
+          <div className="text-[11px] text-gray-400">{new Date(brief.created_at).toLocaleString('zh-CN')}</div>
         </div>
-      )}
+        <div className="flex gap-1.5 shrink-0 items-center">
+          <VideoFeedbackButton
+            nodeId="briefs.draft"
+            inputRef={{ brief_id: brief.id, sku_id: brief.sku_id || undefined }}
+            label="反馈"
+          />
+          <Link href={`/content-studio/briefs/${brief.id}`}>
+            <Button size="sm" variant="ghost" className="h-7 text-[11px]">打开 Brief</Button>
+          </Link>
+          <Link href={`/content-studio?brief_id=${brief.id}`}>
+            <Button size="sm" variant="outline" className="h-7 text-[11px]">
+              <Film className="w-3 h-3 mr-1" /> 去工坊
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function MaterialRow({ material }: { material: MaterialSummary }) {
+  return (
+    <div className="flex items-center justify-between gap-3 p-3 border border-gray-200 rounded-lg hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-gray-900 truncate mb-1">{material.name}</div>
+        <div className="flex items-center gap-3 text-[11px] text-gray-500 flex-wrap">
+          {material.cpm != null && <span>CPM: <span className="text-gray-900 font-medium">{material.cpm.toFixed(2)}</span></span>}
+          {material.ctr != null && <span>CTR: <span className="text-gray-900 font-medium">{(material.ctr * 100).toFixed(2)}%</span></span>}
+          {material.play_3s_rate != null && <span>3s完播: <span className="text-gray-900 font-medium">{(material.play_3s_rate * 100).toFixed(1)}%</span></span>}
+          {material.cost_per_result != null && <span>转化成本: <span className="text-gray-900 font-medium">{material.cost_per_result.toFixed(2)}</span></span>}
+          {material.brief_id && (
+            <Link href={`/content-studio/briefs/${material.brief_id}`} className="text-violet-700 hover:underline">↗ 回链 Brief</Link>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -1328,19 +1327,30 @@ function OwnerSellingPointsEditor({ skuId, sku, onSaved }: {
   onSaved: (s: SkuDetail) => void
 }) {
   const [editing, setEditing] = useState(false)
+  // 防御性解析：后端旧版/未注册 JSONB codec 时可能返回字符串，需要 parse 成 array
+  const parseSellingPoints = (raw: unknown): Array<{ text: string }> => {
+    let v: unknown = raw
+    if (typeof v === 'string') {
+      try { v = JSON.parse(v) } catch { v = [] }
+    }
+    if (!Array.isArray(v)) return []
+    return v.map((s) => ({ text: typeof s === 'string' ? s : (s?.text || '') }))
+  }
   const [items, setItems] = useState<Array<{ text: string }>>(
-    (sku?.owner_selling_points || []).map((s) => ({ text: typeof s === 'string' ? s : (s?.text || '') })),
+    parseSellingPoints(sku?.owner_selling_points),
   )
   const [notes, setNotes] = useState(sku?.owner_notes || '')
   const [priceMin, setPriceMin] = useState<string>(sku?.price_min != null ? String(sku.price_min) : '')
   const [priceMax, setPriceMax] = useState<string>(sku?.price_max != null ? String(sku.price_max) : '')
+  const [specs, setSpecs] = useState(sku?.specifications || '')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    setItems((sku?.owner_selling_points || []).map((s) => ({ text: typeof s === 'string' ? s : (s?.text || '') })))
+    setItems(parseSellingPoints(sku?.owner_selling_points))
     setNotes(sku?.owner_notes || '')
     setPriceMin(sku?.price_min != null ? String(sku.price_min) : '')
     setPriceMax(sku?.price_max != null ? String(sku.price_max) : '')
+    setSpecs(sku?.specifications || '')
   }, [sku])
 
   const save = async () => {
@@ -1350,6 +1360,7 @@ function OwnerSellingPointsEditor({ skuId, sku, onSaved }: {
       const body: Record<string, unknown> = {
         owner_selling_points: cleaned,
         owner_notes: notes,
+        specifications: specs,
       }
       if (priceMin) body.price_min = parseFloat(priceMin)
       if (priceMax) body.price_max = parseFloat(priceMax)
@@ -1419,6 +1430,12 @@ function OwnerSellingPointsEditor({ skuId, sku, onSaved }: {
                 价格区间：<span className="text-gray-700">{priceMin || '?'} - {priceMax || '?'}</span>
               </div>
             )}
+            {specs && (
+              <div>
+                <div className="text-gray-500 mb-1">规格</div>
+                <div className="text-gray-700 whitespace-pre-wrap">{specs}</div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -1429,6 +1446,15 @@ function OwnerSellingPointsEditor({ skuId, sku, onSaved }: {
                 placeholder="例：&#10;0添加生抽&#10;180 天纯酿工艺&#10;江浙妈妈复购第一名"
                 value={items.map((it) => it.text).join('\n')}
                 onChange={(e) => setItems(e.target.value.split('\n').map((t) => ({ text: t })))}
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-gray-500 mb-1 block">规格（每行一种，可写多种）</label>
+              <textarea
+                className="w-full text-xs border rounded px-2 py-1.5 min-h-[60px] font-mono"
+                placeholder="例：&#10;500ml*2瓶 送200ml*2瓶（家庭装）&#10;200ml 试吃装&#10;外卖小包 10ml*10"
+                value={specs}
+                onChange={(e) => setSpecs(e.target.value)}
               />
             </div>
             <div>
@@ -1467,168 +1493,3 @@ function OwnerSellingPointsEditor({ skuId, sku, onSaved }: {
   )
 }
 
-function OrchestrationListItem({ orch, active, onClick }: {
-  orch: Orchestration
-  active: boolean
-  onClick: () => void
-}) {
-  const purpose = orch.target_purpose
-  const purposeBadge = purpose ? PURPOSE_LABELS[purpose] : null
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full text-left p-3 border rounded-lg transition-all ${active ? 'border-violet-300 bg-violet-50/50 shadow-sm' : 'border-gray-200 hover:border-gray-300'}`}
-    >
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-gray-900 line-clamp-1">{orch.title || orch.id.slice(0, 8)}</span>
-        {orch.status === 'completed' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
-        {orch.status === 'failed' && <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />}
-        {orch.status === 'in_progress' && <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />}
-      </div>
-      <div className="flex items-center gap-1.5">
-        {purposeBadge && (
-          <span className={`text-[10px] px-1.5 py-0.5 border rounded ${purposeBadge.color}`}>{purposeBadge.label}</span>
-        )}
-        <span className="text-[10px] text-gray-500">{STEP_LABELS[orch.current_step]?.label || orch.current_step}</span>
-      </div>
-    </button>
-  )
-}
-
-function OrchestrationDetail({ orch, onRefresh }: {
-  orch: Orchestration
-  onRefresh: () => Promise<void>
-}) {
-  const [running, setRunning] = useState<string | null>(null)
-  const steps = ['selling_points', 'audience_match', 'audience_profile', 'dmp_sop', 'content_preference', 'purpose_routing', 'script_brief', 'pipeline_linked']
-  const currentIdx = steps.indexOf(orch.current_step)
-
-  const runStep = async (step?: string) => {
-    setRunning(step || 'current')
-    try {
-      const url = step
-        ? `/api/omni/content-studio/sku-orchestrations/${orch.id}/run/${step}`
-        : `/api/omni/content-studio/sku-orchestrations/${orch.id}/run`
-      await fetch(url, { method: 'POST' })
-      await onRefresh()
-    } finally {
-      setRunning(null)
-    }
-  }
-
-  const advance = async () => {
-    setRunning('advance')
-    try {
-      await fetch(`/api/omni/content-studio/sku-orchestrations/${orch.id}/advance`, { method: 'POST' })
-      await onRefresh()
-    } finally {
-      setRunning(null)
-    }
-  }
-
-  return (
-    <Card>
-      <CardContent className="p-4">
-        {/* 头部 */}
-        <div className="flex items-center justify-between mb-3 pb-3 border-b">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">{orch.title}</h3>
-            <p className="text-[11px] text-gray-400 mt-0.5">
-              {orch.target_purpose && PURPOSE_LABELS[orch.target_purpose] && (
-                <span className={`text-[10px] px-1.5 py-0.5 border rounded mr-2 ${PURPOSE_LABELS[orch.target_purpose].color}`}>
-                  {PURPOSE_LABELS[orch.target_purpose].label}
-                </span>
-              )}
-              创建于 {new Date(orch.created_at).toLocaleString('zh-CN')}
-            </p>
-          </div>
-          <div className="flex gap-1.5">
-            {orch.status !== 'completed' && (
-              <Button size="sm" onClick={advance} disabled={running !== null}>
-                {running === 'advance' ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Sparkles className="w-3.5 h-3.5 mr-1" />}
-                一键跑到完
-              </Button>
-            )}
-            {orch.linked_pipeline_id && (
-              <Link href={`/content-studio?pipeline_id=${orch.linked_pipeline_id}`}>
-                <Button size="sm" variant="outline">
-                  去内容工坊 <ChevronRight className="w-3.5 h-3.5" />
-                </Button>
-              </Link>
-            )}
-          </div>
-        </div>
-
-        {/* 错误提示 */}
-        {orch.status === 'failed' && orch.error_message && (
-          <div className="mb-3 p-2.5 bg-rose-50 border border-rose-200 rounded text-xs text-rose-700 flex gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <div>
-              <div className="font-medium">失败：</div>
-              <div className="font-mono mt-0.5">{orch.error_message}</div>
-            </div>
-          </div>
-        )}
-
-        {/* 步骤进度 */}
-        <div className="space-y-2">
-          {steps.map((s, i) => {
-            const isPast = i < currentIdx || orch.status === 'completed'
-            const isCurrent = i === currentIdx && orch.status !== 'completed'
-            const meta = STEP_LABELS[s]
-            const result = (orch as Record<string, unknown>)[`${s}_result`] || (s === 'pipeline_linked' ? orch.linked_pipeline_id : null)
-            return (
-              <div key={s} className={`p-2.5 border rounded-lg ${isCurrent ? 'border-violet-300 bg-violet-50/30' : isPast ? 'border-emerald-200 bg-emerald-50/20' : 'border-gray-200 bg-white'}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-1.5">
-                    {isPast && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                    {isCurrent && (running ? <Loader2 className="w-3.5 h-3.5 text-violet-500 animate-spin" /> : <Clock className="w-3.5 h-3.5 text-violet-500" />)}
-                    {!isPast && !isCurrent && <div className="w-3.5 h-3.5 rounded-full border-2 border-gray-200" />}
-                    <span className={`text-xs font-medium ${isCurrent ? 'text-violet-700' : isPast ? 'text-emerald-700' : 'text-gray-500'}`}>{meta?.label || s}</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-[10px]"
-                    onClick={() => runStep(s)}
-                    disabled={running !== null}
-                  >
-                    {running === s ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                    <span className="ml-1">{isPast ? '重跑' : isCurrent ? '执行' : '跳到此步'}</span>
-                  </Button>
-                </div>
-                <div className="text-[11px] text-gray-500 mb-1.5">{meta?.hint}</div>
-                {result && isPast && (
-                  <pre className="text-[10px] text-gray-600 bg-gray-50 border border-gray-100 rounded p-2 overflow-auto max-h-24 font-mono">
-                    {typeof result === 'string' ? result.slice(0, 400) : JSON.stringify(result, null, 2).slice(0, 400)}
-                    {(typeof result === 'string' ? result.length > 400 : JSON.stringify(result).length > 400) && '...'}
-                  </pre>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* 完成态：跳转 brief & pipeline */}
-        {orch.status === 'completed' && (
-          <div className="mt-3 pt-3 border-t flex gap-2">
-            {orch.linked_brief_id && (
-              <Link href={`/content-studio/briefs/${orch.linked_brief_id}`} className="flex-1">
-                <Button variant="outline" className="w-full" size="sm">
-                  查看生成的 Brief <ChevronRight className="w-3.5 h-3.5" />
-                </Button>
-              </Link>
-            )}
-            {orch.linked_pipeline_id && (
-              <Link href={`/content-studio?pipeline_id=${orch.linked_pipeline_id}`} className="flex-1">
-                <Button className="w-full" size="sm">
-                  去内容工坊做分镜 <ChevronRight className="w-3.5 h-3.5" />
-                </Button>
-              </Link>
-            )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}

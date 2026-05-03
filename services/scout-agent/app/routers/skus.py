@@ -87,7 +87,7 @@ async def get_sku_metrics(sku_id: str, days: int = 14, metric_names: Optional[st
             SELECT date, metric_name, value, source_runbook
             FROM mvp_daily_metric
             WHERE sku_id = $1
-              AND date >= CURRENT_DATE - $2
+              AND date >= CURRENT_DATE - ($2::int * INTERVAL '1 day')
               {name_filter}
             ORDER BY date DESC, metric_name
             """,
@@ -114,16 +114,17 @@ async def lock_sku(sku_id: str, body: SkuLockRequest):
 
 
 class SkuOwnerInfoRequest(BaseModel):
-    """老板视角字段：手填卖点 / 备注 / 价格区间。"""
+    """老板视角字段：手填卖点 / 备注 / 价格区间 / 规格。"""
     owner_selling_points: Optional[list] = None  # [{text, category, priority}]
     owner_notes: Optional[str] = None
     price_min: Optional[float] = None
     price_max: Optional[float] = None
+    specifications: Optional[str] = None  # 自由文本：500ml*2 / 外卖小包 10ml*10 ...
 
 
 @router.patch("/skus/{sku_id}/owner-info")
 async def update_owner_info(sku_id: str, body: SkuOwnerInfoRequest):
-    """老板手填的卖点/备注/价格区间——给内容编排器作为输入种子。"""
+    """老板手填的卖点/备注/价格区间/规格——给内容编排器作为输入种子。"""
     import json as _json
     sets: list[str] = []
     vals: list = [sku_id]
@@ -139,6 +140,9 @@ async def update_owner_info(sku_id: str, body: SkuOwnerInfoRequest):
     if body.price_max is not None:
         vals.append(body.price_max)
         sets.append(f"price_max = ${len(vals)}")
+    if body.specifications is not None:
+        vals.append(body.specifications)
+        sets.append(f"specifications = ${len(vals)}")
     if not sets:
         raise HTTPException(status_code=400, detail="empty payload")
     sets.append("updated_at = NOW()")
@@ -174,14 +178,14 @@ async def list_change_events(
     limit: int = 50,
 ):
     pool = await get_pool()
-    wheres = ["merge_status != 'discarded'"]
+    wheres = ["ce.merge_status != 'discarded'"]
     params: list = []
     if sku_id:
         params.append(sku_id)
-        wheres.append(f"sku_id = ${len(params)}")
+        wheres.append(f"ce.sku_id = ${len(params)}")
     if source:
         params.append(source)
-        wheres.append(f"source = ${len(params)}")
+        wheres.append(f"ce.source = ${len(params)}")
     params.append(limit)
     where_clause = "WHERE " + " AND ".join(wheres)
     async with pool.acquire() as conn:
