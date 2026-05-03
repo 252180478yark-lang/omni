@@ -105,3 +105,22 @@ async def test_search_kb_role_filter_resolves_kb_ids():
     # _no_such_role_ 不在 CHECK 约束允许列表，list_kbs 也查不到 → 空 hits
     assert out["ok"] is True
     assert out["hits"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_briefs_smoke(seed_sku):
+    """seed_sku 存在但通常没 brief，验证返回 ok=True + 空数组也是合法。"""
+    from app.mcp.tools.briefs import list_briefs
+    out = await list_briefs(sku_id=seed_sku)
+    assert out["ok"] is True
+    assert isinstance(out["briefs"], list)
+    assert out["count"] == len(out["briefs"])
+
+
+@pytest.mark.asyncio
+async def test_list_briefs_status_filter():
+    from app.mcp.tools.briefs import list_briefs
+    out = await list_briefs(status="active")
+    assert out["ok"] is True
+    for b in out["briefs"]:
+        assert b["status"] == "active"
