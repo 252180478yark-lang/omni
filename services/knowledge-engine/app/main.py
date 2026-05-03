@@ -18,6 +18,7 @@ from app.routers.digital_humans import router as digital_humans_router
 from app.routers.prompt_flywheel import router as prompt_flywheel_router
 from app.routers.chat_sessions import router as chat_sessions_router
 from app.routers.sku_orchestrations import router as sku_orchestrations_router
+from app.routers.accounting import router as accounting_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -58,6 +59,7 @@ app.include_router(digital_humans_router)
 app.include_router(prompt_flywheel_router)
 app.include_router(chat_sessions_router)
 app.include_router(sku_orchestrations_router)
+app.include_router(accounting_router)
 
 
 @app.get("/health")

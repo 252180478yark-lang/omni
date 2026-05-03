@@ -29,6 +29,7 @@ import {
   ScanSearch,
   ClipboardCheck,
   CalendarDays,
+  Calculator,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -116,6 +117,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/livestream-analysis', icon: Radio, label: '直播分析', hint: '上传直播录屏，自动复盘出 Excel' },
 
   { kind: 'section', label: '投放与复盘' },
+  { href: '/cost', icon: Calculator, label: '成本算账', hint: '结构化录入成本，精确算净利率（不走 RAG）' },
   { href: '/ad-review', icon: LineChart, label: '投放复盘', hint: '广告 CSV + 素材报告，生成复盘建议' },
   { href: '/ad-review/flywheel', icon: RefreshCw, label: '飞轮仪表盘', hint: '看多轮投放迭代有没有变好' },
   { href: '/decisions', icon: ClipboardCheck, label: '决策日志', hint: 'AI 给的所有建议都存这里，跟踪命中率' },
