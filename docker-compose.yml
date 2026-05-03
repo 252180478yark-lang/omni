@@ -212,6 +212,9 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     expose:
       - "8002"
+    ports:
+      # Dev: host 直通访问（Claude Code MCP / 直接 curl 调试）
+      - "127.0.0.1:8002:8002"
     volumes:
       - knowledge_data:/app/data
       # Dev: bind-mount 源码 + 测试 + 配置，便于热改 / pytest 不需 docker cp
