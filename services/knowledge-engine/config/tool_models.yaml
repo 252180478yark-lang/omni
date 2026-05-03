@@ -1,0 +1,7 @@
+# tool → 模型映射（design doc §2.5）
+# W1：仅 __default__ 起作用（W1 五个 tool 都不调 LLM）
+# W2 起按 tool 名增加覆盖
+__default__:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  temperature: 0.3
