@@ -19,6 +19,8 @@ from app.routers.prompt_flywheel import router as prompt_flywheel_router
 from app.routers.chat_sessions import router as chat_sessions_router
 from app.routers.sku_orchestrations import router as sku_orchestrations_router
 from app.routers.accounting import router as accounting_router
+from contextlib import AsyncExitStack
+from app.mcp.server import mcp_http_app
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -45,7 +47,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Task recovery failed, continuing startup", exc_info=True)
 
-    yield
+    # 启动 MCP session manager（FastMCP 3.x：StarletteWithLifespan 自带 lifespan）
+    async with mcp_http_app.lifespan(app):
+        logger.info("MCP server lifespan entered")
+        yield
+
     logger.info("Shutting down — closing database pool...")
     await close_pool()
 
@@ -60,6 +66,9 @@ app.include_router(prompt_flywheel_router)
 app.include_router(chat_sessions_router)
 app.include_router(sku_orchestrations_router)
 app.include_router(accounting_router)
+
+# 挂载 MCP HTTP 子应用（在所有 router 之后）
+app.mount("/mcp", mcp_http_app)
 
 
 @app.get("/health")
