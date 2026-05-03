@@ -7,6 +7,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.schemas import (
     IngestRequest,
     KnowledgeBaseCreateRequest,
+    KnowledgeBaseUpdateRequest,
     QueryRequest,
     RAGRequest,
     SearchRequest,
@@ -31,6 +32,7 @@ from app.services.ingestion import (
     retry_task,
     search_chunks,
     submit_ingestion_task,
+    update_kb_role,
 )
 from app.services.document_parser import extract_text, SUPPORTED_EXTENSIONS
 
@@ -47,6 +49,7 @@ async def create_base(payload: KnowledgeBaseCreateRequest) -> dict:
         embedding_provider=payload.embedding_provider,
         embedding_model=payload.embedding_model,
         dimension=payload.dimension,
+        kb_role=payload.kb_role,
     )
     return {"code": 200, "message": "success", "data": kb}
 
@@ -54,6 +57,17 @@ async def create_base(payload: KnowledgeBaseCreateRequest) -> dict:
 @router.get("/bases")
 async def list_bases() -> dict:
     return {"code": 200, "message": "success", "data": await list_kbs()}
+
+
+@router.patch("/bases/{kb_id}")
+async def update_base(kb_id: str, payload: KnowledgeBaseUpdateRequest) -> dict:
+    try:
+        kb = await update_kb_role(kb_id, payload.kb_role)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    if not kb:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
+    return {"code": 200, "message": "success", "data": kb}
 
 
 @router.delete("/bases/{kb_id}")
@@ -239,6 +253,7 @@ async def rag(payload: RAGRequest) -> dict:
         kb["id"]: {
             "embedding_model": kb.get("embedding_model"),
             "embedding_provider": kb.get("embedding_provider"),
+            "kb_role": kb.get("kb_role") or "general",
         }
         for kb in kbs
     }
@@ -310,6 +325,7 @@ async def rag_prepare(payload: dict) -> dict:
         kb["id"]: {
             "embedding_model": kb.get("embedding_model"),
             "embedding_provider": kb.get("embedding_provider"),
+            "kb_role": kb.get("kb_role") or "general",
         }
         for kb in kbs
     }
@@ -353,6 +369,7 @@ async def rag_generate(payload: dict):
     provider = payload.get("provider")
     target_chars = payload.get("target_chars")
     continue_max_rounds = payload.get("continue_max_rounds")
+    role_rules = payload.get("role_rules") or ""
 
     async def event_gen() -> AsyncGenerator[dict[str, str], None]:
         async for chunk in generate_with_chunks_stream(
@@ -366,6 +383,7 @@ async def rag_generate(payload: dict):
             provider=provider,
             target_chars=target_chars,
             continue_max_rounds=continue_max_rounds,
+            role_rules=role_rules,
         ):
             yield {"event": "message", "data": json.dumps(chunk, ensure_ascii=False)}
 
@@ -553,6 +571,7 @@ async def rag_evaluate(payload: dict) -> dict:
         kb["id"]: {
             "embedding_model": kb.get("embedding_model"),
             "embedding_provider": kb.get("embedding_provider"),
+            "kb_role": kb.get("kb_role") or "general",
         }
         for kb in kbs
     }

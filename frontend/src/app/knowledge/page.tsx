@@ -14,7 +14,34 @@ interface KnowledgeBaseItem {
   embedding_provider?: string
   embedding_model: string
   dimension: number
+  kb_role?: string
   created_at: string
+}
+
+const KB_ROLE_OPTIONS = [
+  { value: 'general', label: '通用', desc: '兜底，不做特殊处理' },
+  { value: 'authoritative', label: '官方文档', desc: '严格引用、事实底线（千川/云图/抖加/京东/天猫）' },
+  { value: 'methodology', label: '方法论', desc: '借框架不引事实（管理/心理/易经/营销理论）' },
+  { value: 'personal_log', label: '个人录音', desc: '摘要式入库（面试/员工/客户/谈判转写）' },
+  { value: 'template', label: '素材模板', desc: '按结构标签检索（爆款拆解/话术结构）' },
+  { value: 'private_doc', label: '公司文档', desc: '标准 RAG（公司历史/奖项/产品介绍）' },
+] as const
+
+const ROLE_BADGE_STYLES: Record<string, string> = {
+  general: 'bg-gray-50 text-gray-600 border-gray-200',
+  authoritative: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  methodology: 'bg-purple-50 text-purple-700 border-purple-200',
+  personal_log: 'bg-pink-50 text-pink-700 border-pink-200',
+  template: 'bg-orange-50 text-orange-700 border-orange-200',
+  private_doc: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+}
+
+function roleLabel(role?: string): string {
+  return KB_ROLE_OPTIONS.find((r) => r.value === role)?.label || '通用'
+}
+
+function roleStyle(role?: string): string {
+  return ROLE_BADGE_STYLES[role || 'general'] || ROLE_BADGE_STYLES.general
 }
 
 interface DocumentItem {
@@ -52,7 +79,11 @@ export default function KnowledgeBaseConfig() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newKbName, setNewKbName] = useState('')
   const [newKbDesc, setNewKbDesc] = useState('')
+  const [newKbRole, setNewKbRole] = useState<string>('general')
   const [creating, setCreating] = useState(false)
+  const [editingRoleKbId, setEditingRoleKbId] = useState<string>('')
+  const [editingRoleValue, setEditingRoleValue] = useState<string>('general')
+  const [updatingRole, setUpdatingRole] = useState(false)
   const [expandedDocId, setExpandedDocId] = useState('')
   const [docChunks, setDocChunks] = useState<ChunkItem[]>([])
   const [chunksLoading, setChunksLoading] = useState(false)
@@ -133,6 +164,7 @@ export default function KnowledgeBaseConfig() {
           name: newKbName.trim(),
           description: newKbDesc.trim(),
           dimension: 1536,
+          kb_role: newKbRole,
         }),
       })
       const json = (await res.json()) as { success: boolean; data?: KnowledgeBaseItem; error?: string }
@@ -140,6 +172,7 @@ export default function KnowledgeBaseConfig() {
       setShowCreateModal(false)
       setNewKbName('')
       setNewKbDesc('')
+      setNewKbRole('general')
       await loadBases()
       if (json.data?.id) setSelectedKb(json.data.id)
     } catch (err) {
@@ -147,7 +180,33 @@ export default function KnowledgeBaseConfig() {
     } finally {
       setCreating(false)
     }
-  }, [newKbName, newKbDesc, loadBases])
+  }, [newKbName, newKbDesc, newKbRole, loadBases])
+
+  const openRoleEditor = useCallback((kb: KnowledgeBaseItem) => {
+    setEditingRoleKbId(kb.id)
+    setEditingRoleValue(kb.kb_role || 'general')
+  }, [])
+
+  const submitRoleUpdate = useCallback(async () => {
+    if (!editingRoleKbId) return
+    setUpdatingRole(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/omni/knowledge/bases/${editingRoleKbId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kb_role: editingRoleValue }),
+      })
+      const json = (await res.json()) as { success: boolean; error?: string }
+      if (!json.success) throw new Error(json.error || '更新失败')
+      setEditingRoleKbId('')
+      await loadBases()
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setUpdatingRole(false)
+    }
+  }, [editingRoleKbId, editingRoleValue, loadBases])
 
   const submitIngest = useCallback(async () => {
     if (!selectedKb || !title.trim() || !text.trim()) {
@@ -381,6 +440,7 @@ export default function KnowledgeBaseConfig() {
                 <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100 uppercase">
                   <tr>
                     <th className="px-6 py-4 font-medium">知识库名称 & ID</th>
+                    <th className="px-6 py-4 font-medium">类型</th>
                     <th className="px-6 py-4 font-medium">状态</th>
                     <th className="px-6 py-4 font-medium">向量配置</th>
                     <th className="px-6 py-4 font-medium">维度</th>
@@ -401,6 +461,15 @@ export default function KnowledgeBaseConfig() {
                             <p className="text-xs text-gray-400 font-mono mt-0.5">{kb.id}</p>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => openRoleEditor(kb)}
+                          className={`text-xs px-2.5 py-1 rounded-full border font-medium hover:shadow-sm transition-all ${roleStyle(kb.kb_role)}`}
+                          title="点击修改类型"
+                        >
+                          {roleLabel(kb.kb_role)}
+                        </button>
                       </td>
                       <td className="px-6 py-4">
                         <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50/50">已就绪</Badge>
@@ -760,6 +829,21 @@ export default function KnowledgeBaseConfig() {
                   className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-300 resize-none"
                 />
               </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-gray-700">知识库类型 <span className="text-gray-400">(决定检索分区与 prompt 渲染)</span></label>
+                <select
+                  value={newKbRole}
+                  onChange={(e) => setNewKbRole(e.target.value)}
+                  className="w-full h-10 px-3 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-300"
+                >
+                  {KB_ROLE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label} — {opt.desc}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-gray-400">建后可改；不影响已 embedding 的内容</p>
+              </div>
               <div className="bg-gray-50 rounded-lg p-3 space-y-1.5">
                 <div className="text-xs font-medium text-gray-500">向量配置（自动）</div>
                 <div className="flex items-center gap-4 text-sm">
@@ -770,7 +854,7 @@ export default function KnowledgeBaseConfig() {
               </div>
             </div>
             <div className="px-6 py-4 mt-2 flex justify-end gap-3 border-t border-gray-100">
-              <Button variant="outline" onClick={() => { setShowCreateModal(false); setNewKbName(''); setNewKbDesc('') }} className="rounded-lg">
+              <Button variant="outline" onClick={() => { setShowCreateModal(false); setNewKbName(''); setNewKbDesc(''); setNewKbRole('general') }} className="rounded-lg">
                 取消
               </Button>
               <Button
@@ -779,6 +863,57 @@ export default function KnowledgeBaseConfig() {
                 disabled={creating || !newKbName.trim()}
               >
                 {creating ? '创建中...' : '创建知识库'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Edit KB Role Modal ═══ */}
+      {editingRoleKbId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setEditingRoleKbId('')}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 pt-6 pb-4">
+              <h3 className="text-lg font-semibold text-gray-900">修改知识库类型</h3>
+              <p className="text-sm text-gray-500 mt-1">类型决定检索分区、配额权重和 prompt 渲染规则；不影响已 embedding 的内容</p>
+            </div>
+            <div className="px-6 space-y-2.5">
+              {KB_ROLE_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    editingRoleValue === opt.value ? 'border-green-500 bg-green-50/50 shadow-sm' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="kb-role"
+                    value={opt.value}
+                    checked={editingRoleValue === opt.value}
+                    onChange={(e) => setEditingRoleValue(e.target.value)}
+                    className="mt-1"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${roleStyle(opt.value)}`}>
+                        {opt.label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">{opt.desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="px-6 py-4 mt-2 flex justify-end gap-3 border-t border-gray-100">
+              <Button variant="outline" onClick={() => setEditingRoleKbId('')} className="rounded-lg" disabled={updatingRole}>
+                取消
+              </Button>
+              <Button
+                className="bg-green-600 hover:bg-green-700 rounded-lg"
+                onClick={() => void submitRoleUpdate()}
+                disabled={updatingRole}
+              >
+                {updatingRole ? '保存中...' : '保存'}
               </Button>
             </div>
           </div>

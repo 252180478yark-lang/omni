@@ -31,6 +31,16 @@ _CHUNK_INSERT_BATCH = 10
 # ═══ Knowledge Base CRUD ═══
 
 
+_VALID_KB_ROLES = {
+    "authoritative",
+    "methodology",
+    "personal_log",
+    "template",
+    "private_doc",
+    "general",
+}
+
+
 async def create_kb_with_profile(
     *,
     name: str,
@@ -38,6 +48,7 @@ async def create_kb_with_profile(
     embedding_provider: str | None = None,
     embedding_model: str | None = None,
     dimension: int | None = None,
+    kb_role: str = "general",
 ) -> dict:
     resolved_provider, resolved_model = await resolve_embedding_profile(
         preferred_provider=embedding_provider,
@@ -49,21 +60,25 @@ async def create_kb_with_profile(
         embedding_provider=resolved_provider,
         embedding_model=resolved_model,
         dimension=dimension or 1536,
+        kb_role=kb_role,
     )
 
 
 async def create_kb(
     name: str, description: str, embedding_provider: str, embedding_model: str, dimension: int,
+    kb_role: str = "general",
 ) -> dict:
+    if kb_role not in _VALID_KB_ROLES:
+        raise ValueError(f"invalid kb_role: {kb_role}")
     pool = get_pool()
     kb_id = str(uuid4())
     row = await pool.fetchrow(
         """
-        INSERT INTO knowledge_bases (id, name, description, embedding_provider, embedding_model, dimension)
-        VALUES ($1::uuid, $2, $3, $4, $5, $6)
-        RETURNING id, name, description, embedding_provider, embedding_model, dimension, created_at
+        INSERT INTO knowledge_bases (id, name, description, embedding_provider, embedding_model, dimension, kb_role)
+        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
+        RETURNING id, name, description, embedding_provider, embedding_model, dimension, kb_role, created_at
         """,
-        kb_id, name, description, embedding_provider, embedding_model, dimension,
+        kb_id, name, description, embedding_provider, embedding_model, dimension, kb_role,
     )
     return _kb_row(row)
 
@@ -71,7 +86,7 @@ async def create_kb(
 async def list_kbs() -> list[dict]:
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, name, description, embedding_provider, embedding_model, dimension, created_at "
+        "SELECT id, name, description, embedding_provider, embedding_model, dimension, kb_role, created_at "
         "FROM knowledge_bases ORDER BY created_at DESC"
     )
     return [_kb_row(r) for r in rows]
@@ -80,9 +95,24 @@ async def list_kbs() -> list[dict]:
 async def get_kb(kb_id: str) -> dict | None:
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT id, name, description, embedding_provider, embedding_model, dimension, created_at "
+        "SELECT id, name, description, embedding_provider, embedding_model, dimension, kb_role, created_at "
         "FROM knowledge_bases WHERE id = $1::uuid",
         kb_id,
+    )
+    return _kb_row(row) if row else None
+
+
+async def update_kb_role(kb_id: str, kb_role: str) -> dict | None:
+    if kb_role not in _VALID_KB_ROLES:
+        raise ValueError(f"invalid kb_role: {kb_role}")
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        UPDATE knowledge_bases SET kb_role = $1
+        WHERE id = $2::uuid
+        RETURNING id, name, description, embedding_provider, embedding_model, dimension, kb_role, created_at
+        """,
+        kb_role, kb_id,
     )
     return _kb_row(row) if row else None
 
@@ -569,6 +599,17 @@ async def _run_pipeline(
 
         if skip_chunking:
             chunk_data = []
+        elif kb.get("kb_role") == "personal_log":
+            # 录音/转写专用：按主题切分 + 摘要 + 引语提取
+            # 落库 chunk = 摘要+引语（不是原文片段）；原文仍在 documents.raw_text
+            from app.services.recording_ingestion import summarize_and_chunk
+            chunk_data = await summarize_and_chunk(text, title=title)
+            if not chunk_data:
+                raise ValueError("No chunks produced from recording summarizer")
+            logger.info(
+                "Recording summarizer produced %d topic chunks for kb=%s",
+                len(chunk_data), kb_id,
+            )
         else:
             strategy = auto_detect_strategy(text, filename)
             chunk_data = split_text(text, strategy=strategy)
@@ -766,6 +807,7 @@ def _kb_row(row) -> dict:
         "embedding_provider": row["embedding_provider"],
         "embedding_model": row["embedding_model"],
         "dimension": row["dimension"],
+        "kb_role": row["kb_role"] if "kb_role" in row.keys() else "general",
         "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
     }
 

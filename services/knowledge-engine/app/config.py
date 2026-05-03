@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # RAG
     rag_top_k: int = 15
     rag_score_threshold: float = 0.25
+    # 多 KB 检索时每个 KB 至少保留的 chunk 数（避免高分 KB 完全挤掉其他 KB）
+    rag_min_per_kb: int = 2
     # 单次响应中「引用来源」每条 content 的最大字符数（前端展示 / 自复制等）
     rag_source_snippet_max_chars: int = 2000
     # RAG 生成阶段传给对话模型的 max_tokens（受各云厂商实际上限约束，可在环境变量调大/调小）

@@ -10,6 +10,7 @@ interface KnowledgeBaseItem {
   embedding_provider?: string
   embedding_model: string
   dimension: number
+  kb_role?: string
   created_at: string
 }
 
@@ -31,6 +32,7 @@ interface CreateKbBody {
   embedding_provider?: string
   embedding_model?: string
   dimension?: number
+  kb_role?: string
 }
 
 export async function GET() {
@@ -55,6 +57,7 @@ export async function POST(request: Request) {
         embedding_provider: payload.embedding_provider,
         embedding_model: payload.embedding_model,
         dimension: payload.dimension,
+        kb_role: payload.kb_role || 'general',
       }),
     })
     return Response.json({ success: true, data: result.data })

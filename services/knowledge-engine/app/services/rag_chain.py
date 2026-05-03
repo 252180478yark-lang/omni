@@ -47,6 +47,60 @@ _CONTINUE_RE = re.compile(
 
 logger = logging.getLogger(__name__)
 
+# ── 角色分区元数据（kb_role） ──
+# 优先级数字越小越靠前；用于决定分区渲染顺序
+_ROLE_PRIORITY: dict[str, int] = {
+    "authoritative": 0,
+    "private_doc": 1,
+    "methodology": 2,
+    "template": 3,
+    "personal_log": 4,
+    "general": 5,
+}
+# 每个角色的分区标题 + 单行使用规则
+_ROLE_META: dict[str, tuple[str, str]] = {
+    "authoritative": (
+        "【官方文档 / 事实依据】",
+        "事实底线：指标口径、平台规则、操作路径以此为准，严格引用，不得编造或改写",
+    ),
+    "private_doc": (
+        "【公司文档 / 内部资料】",
+        "公司内部资料，作为有据信息使用，可直接引用",
+    ),
+    "methodology": (
+        "【方法论 / 框架】",
+        "提供分析框架与思维模型；**只借框架不引事实**，其中举例不可当具体事实输出",
+    ),
+    "template": (
+        "【素材模板 / 结构示例】",
+        "结构与话术模板，按结构借用启发表达，不照搬具体内容",
+    ),
+    "personal_log": (
+        "【个人记录 / 录音摘要】",
+        "用户自身经验与历史记录摘要，可佐证用户观点，但不作权威事实引用",
+    ),
+    "general": (
+        "【通用参考】",
+        "通用资料，正常引用",
+    ),
+}
+
+
+def _build_role_rules_section(roles_present: list[str]) -> str:
+    """根据当前出现的角色，动态生成『分区使用规则』段落."""
+    if not roles_present:
+        return ""
+    ordered = sorted(set(roles_present), key=lambda r: _ROLE_PRIORITY.get(r, 99))
+    lines = ["### 分区使用规则（不同类型资料权重不同）"]
+    for r in ordered:
+        title, rule = _ROLE_META.get(r, _ROLE_META["general"])
+        lines.append(f"- {title}：{rule}")
+    lines.append(
+        "- 多分区冲突时按优先级仲裁：官方文档 > 公司文档 > 方法论/模板/个人记录"
+    )
+    return "\n".join(lines) + "\n"
+
+
 # ── RAG System Prompt: standalone (no persona) ──
 RAG_SYSTEM_PROMPT = """你是 Omni-Vibe OS 的智能助手。基于以下参考资料回答用户问题。
 如果参考资料不足以回答，请明确说明，并尽你所知给出建议。
@@ -54,6 +108,7 @@ RAG_SYSTEM_PROMPT = """你是 Omni-Vibe OS 的智能助手。基于以下参考�
 ---参考资料---
 {context}
 {graph_section}
+{role_rules}
 请综合以上资料给出准确、有条理、详尽的回答。
 
 引用规则：
@@ -78,6 +133,7 @@ _RAG_PERSONA_PROMPT = """## 知识库参考资料
 ---参考资料---
 {context}
 {graph_section}
+{role_rules}
 ### 参考资料使用规则
 - 引用资料时标注来源编号 [1] [2] 等
 - 可核对的事实信息（指标口径、平台规则、操作路径等）须严格依据参考资料表述，不得编造
@@ -291,6 +347,13 @@ def _embedding_for_kb(state: RAGState, kb_id: str) -> list[float]:
     return embeddings.get(key, state.get("query_embedding", []))
 
 
+def _role_for_kb(state: RAGState, kb_id: str) -> str:
+    """从 kb_embedding_map 取出 kb_role，缺省 general."""
+    kb_emb_map: dict[str, dict] = state.get("kb_embedding_map") or {}
+    info = kb_emb_map.get(kb_id, {})
+    return info.get("kb_role") or "general"
+
+
 async def retrieve_only(
     query: str,
     kb_id: str,
@@ -450,6 +513,7 @@ async def retrieve(state: RAGState) -> dict:
 
     tasks: list = []
     task_labels: list[str] = []
+    task_kbs: list[str] = []
 
     for kid in kb_ids:
         emb = _embedding_for_kb(state, kid)
@@ -459,13 +523,16 @@ async def retrieve(state: RAGState) -> dict:
             search_emb = hyde_emb if hyde_emb else emb
             tasks.append(hybrid_search(kid, sq, search_emb, top_k=top_k * 3))
             task_labels.append(f"hybrid:{kid[:8]}")
+            task_kbs.append(kid)
 
         if hyde_emb and hyde_emb != emb:
             tasks.append(hybrid_search(kid, state["query"], emb, top_k=top_k * 2))
             task_labels.append(f"hybrid-orig:{kid[:8]}")
+            task_kbs.append(kid)
 
         tasks.append(graph_search(kid, state["query"]))
         task_labels.append(f"graph:{kid[:8]}")
+        task_kbs.append(kid)
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -477,6 +544,7 @@ async def retrieve(state: RAGState) -> dict:
 
     for i, res in enumerate(results):
         label = task_labels[i]
+        kid = task_kbs[i]
         if isinstance(res, BaseException):
             logger.error("%s failed: %s", label, res)
             continue
@@ -485,7 +553,11 @@ async def retrieve(state: RAGState) -> dict:
         else:
             graph_entities_total += len(res.get("entities", []))
             graph_relations_total += len(res.get("relations", []))
-            graph_chunks_total.extend(res.get("graph_chunks", []))
+            # graph_chunks 在 SQL 里没 SELECT kb_id，这里补上来源 kid，
+            # 方便下游按 role 分组
+            for gc in res.get("graph_chunks", []):
+                gc.setdefault("kb_id", kid)
+                graph_chunks_total.append(gc)
             ctx = res.get("graph_context", "")
             if ctx:
                 all_graph_contexts.append(ctx)
@@ -511,10 +583,42 @@ async def retrieve(state: RAGState) -> dict:
             seen_fp.add(fp)
             deduped.append(c)
 
+    # Tag every chunk with its kb_role (decided by source kb_id) for downstream
+    # partition rendering and prompt assembly.
+    for c in deduped:
+        kid = str(c.get("kb_id") or "")
+        c["_kb_role"] = _role_for_kb(state, kid) if kid else "general"
+
+    # Per-KB 配额融合：每个 KB 至少保留 min_per_kb 条（不受 score 阈值约束），
+    # 避免高分 KB 完全挤掉其他 KB 丧失多样性。其余按 score 降序保留。
+    min_per_kb = settings.rag_min_per_kb if hasattr(settings, "rag_min_per_kb") else 2
+    threshold = settings.rag_score_threshold or 0
+    by_kb: dict[str, list[dict]] = {}
+    for c in deduped:
+        by_kb.setdefault(str(c.get("kb_id") or ""), []).append(c)
+
+    guaranteed: list[dict] = []
+    candidates: list[dict] = []
+    for kid, hits in by_kb.items():
+        hits = sorted(hits, key=lambda h: float(h.get("score") or 0), reverse=True)
+        for idx, h in enumerate(hits):
+            if idx < min_per_kb:
+                guaranteed.append(h)
+            elif float(h.get("score") or 0) >= threshold:
+                candidates.append(h)
+
+    quota_fused = guaranteed + sorted(
+        candidates, key=lambda h: float(h.get("score") or 0), reverse=True,
+    )
+    logger.info(
+        "Quota fusion: %d KBs, %d total → %d guaranteed + %d candidates = %d",
+        len(by_kb), len(deduped), len(guaranteed), len(candidates), len(quota_fused),
+    )
+
     merged_graph_context = "\n\n".join(all_graph_contexts) if all_graph_contexts else ""
 
     return {
-        "retrieved_chunks": deduped,
+        "retrieved_chunks": quota_fused,
         "graph_context": merged_graph_context,
     }
 
@@ -588,6 +692,7 @@ async def assemble_context(state: RAGState) -> dict:
         crag_note = _CRAG_AUGMENT_PROMPT.format(reason=crag.get("reason", ""))
 
     graph_section = _build_graph_section(graph_ctx)
+    role_rules = _build_role_rules_section(_roles_in_chunks(compressed))
 
     persona_prompt = (state.get("persona_prompt") or "").strip()
     if persona_prompt:
@@ -595,6 +700,7 @@ async def assemble_context(state: RAGState) -> dict:
         rag_prompt = _RAG_PERSONA_PROMPT.format(
             context=context,
             graph_section=graph_section,
+            role_rules=role_rules,
         ) + crag_note
         system_prompt = _build_persona_system_prompt(persona_prompt, rag_prompt)
     else:
@@ -602,6 +708,7 @@ async def assemble_context(state: RAGState) -> dict:
         rag_prompt = RAG_SYSTEM_PROMPT.format(
             context=context,
             graph_section=graph_section,
+            role_rules=role_rules,
         ) + crag_note
         system_prompt = rag_prompt
 
@@ -1167,11 +1274,42 @@ async def rag_stream(
 # ═══ Helpers ═══
 
 def _build_context(chunks: list[dict]) -> str:
-    parts: list[str] = []
+    """按 kb_role 分组渲染参考资料，每组前加分区标题。
+
+    分组顺序遵循 _ROLE_PRIORITY（authoritative > private_doc > methodology >
+    template > personal_log > general），让 LLM 优先看到事实底线类资料。
+    引用编号 [1][2]... 保持全局连续，跨分区不重置，便于在回答里 cite。
+    """
+    if not chunks:
+        return ""
+
+    by_role: dict[str, list[tuple[int, dict]]] = {}
     for i, chunk in enumerate(chunks, start=1):
-        source = chunk.get("title") or chunk.get("source_url") or "unknown"
-        parts.append(f"[{i}] {chunk['content']}\n    (来源: {source})")
+        role = chunk.get("_kb_role") or "general"
+        by_role.setdefault(role, []).append((i, chunk))
+
+    parts: list[str] = []
+    ordered_roles = sorted(by_role.keys(), key=lambda r: _ROLE_PRIORITY.get(r, 99))
+    for role in ordered_roles:
+        title, _rule = _ROLE_META.get(role, _ROLE_META["general"])
+        # 分区标题 + 内部条目
+        section_lines = [f"### {title}"]
+        for global_idx, chunk in by_role[role]:
+            source = chunk.get("title") or chunk.get("source_url") or "unknown"
+            section_lines.append(
+                f"[{global_idx}] {chunk['content']}\n    (来源: {source})"
+            )
+        parts.append("\n\n".join(section_lines))
     return "\n\n".join(parts)
+
+
+def _roles_in_chunks(chunks: list[dict]) -> list[str]:
+    seen: list[str] = []
+    for c in chunks:
+        r = c.get("_kb_role") or "general"
+        if r not in seen:
+            seen.append(r)
+    return seen
 
 
 def _build_sources(chunks: list[dict]) -> list[dict]:
@@ -1323,6 +1461,7 @@ async def prepare_rag(
     compressed = await compress_chunks(query, chunks)
     context = _build_context(compressed)
     sources = _build_sources(compressed)
+    role_rules = _build_role_rules_section(_roles_in_chunks(compressed))
 
     return {
         "chunks": compressed,
@@ -1330,6 +1469,7 @@ async def prepare_rag(
         "graph_context": graph_ctx,
         "crag_result": crag,
         "context": context,
+        "role_rules": role_rules,
         "intent": "generate",
     }
 
@@ -1339,6 +1479,7 @@ def _build_system_prompt_from_context(
     graph_context: str,
     crag_result: dict | None,
     persona_prompt: str | None,
+    role_rules: str = "",
 ) -> str:
     """Re-create a system prompt from a pre-built context (sibling of assemble_context)."""
     crag = crag_result or {}
@@ -1352,11 +1493,13 @@ def _build_system_prompt_from_context(
         rag_prompt = _RAG_PERSONA_PROMPT.format(
             context=context,
             graph_section=graph_section,
+            role_rules=role_rules or "",
         ) + crag_note
         return _build_persona_system_prompt(persona_p, rag_prompt)
     rag_prompt = RAG_SYSTEM_PROMPT.format(
         context=context,
         graph_section=graph_section,
+        role_rules=role_rules or "",
     ) + crag_note
     return rag_prompt
 
@@ -1373,6 +1516,7 @@ async def generate_with_chunks_stream(
     provider: str | None = None,
     target_chars: int | None = None,
     continue_max_rounds: int | None = None,
+    role_rules: str = "",
 ) -> AsyncIterator[dict]:
     """Stream LLM generation against a pre-prepared context (no retrieval).
 
@@ -1400,6 +1544,7 @@ async def generate_with_chunks_stream(
         graph_context=graph_context,
         crag_result=crag_result,
         persona_prompt=persona_prompt,
+        role_rules=role_rules,
     )
 
     tgt = _clamp_rag_target_chars(target_chars)
