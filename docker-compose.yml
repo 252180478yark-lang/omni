@@ -186,6 +186,9 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
     expose:
       - "8001"
+    ports:
+      # Dev: host 直通访问（frontend / verify scripts / 直接 curl 调试）
+      - "127.0.0.1:8001:8001"
     volumes:
       - ai_hub_data:/app/data
     depends_on:

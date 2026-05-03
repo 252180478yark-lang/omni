@@ -137,7 +137,17 @@
       "Bash(findstr \"doctor\")",
       "Bash(Start-Sleep -Seconds 10)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(list\\(d.keys\\(\\)\\)\\)\")",
-      "PowerShell(curl.exe -s -o NUL -w \"POST /mcp/ status: %{http_code}`n\" -X POST http://localhost:8002/mcp/ -H \"Content-Type: application/json\" -H \"Accept: application/json, text/event-stream\" --data-raw '{\\\\\"jsonrpc\\\\\":\\\\\"2.0\\\\\",\\\\\"id\\\\\":1,\\\\\"method\\\\\":\\\\\"initialize\\\\\",\\\\\"params\\\\\":{\\\\\"protocolVersion\\\\\":\\\\\"2024-11-05\\\\\",\\\\\"capabilities\\\\\":{},\\\\\"clientInfo\\\\\":{\\\\\"name\\\\\":\\\\\"smoke\\\\\",\\\\\"version\\\\\":\\\\\"0.0\\\\\"}}}' --max-time 8)"
+      "PowerShell(curl.exe -s -o NUL -w \"POST /mcp/ status: %{http_code}`n\" -X POST http://localhost:8002/mcp/ -H \"Content-Type: application/json\" -H \"Accept: application/json, text/event-stream\" --data-raw '{\\\\\"jsonrpc\\\\\":\\\\\"2.0\\\\\",\\\\\"id\\\\\":1,\\\\\"method\\\\\":\\\\\"initialize\\\\\",\\\\\"params\\\\\":{\\\\\"protocolVersion\\\\\":\\\\\"2024-11-05\\\\\",\\\\\"capabilities\\\\\":{},\\\\\"clientInfo\\\\\":{\\\\\"name\\\\\":\\\\\"smoke\\\\\",\\\\\"version\\\\\":\\\\\"0.0\\\\\"}}}' --max-time 8)",
+      "mcp__omni__list_kbs",
+      "mcp__omni__search_kb",
+      "Bash(grep -nB 2 -A 10 \"_FAST_MODEL\" \"E:/agent/omni/services/knowledge-engine/app/services/query_enhancer.py\")",
+      "PowerShell(docker network inspect omni-network --format \"Containers: {{range .Containers}}{{.Name}} {{end}}\"; Write-Host \"---\"; docker exec omni-knowledge-engine getent hosts ai-provider-hub 2>&1; Write-Host \"--- recreate KE on omni-network ---\"; docker compose -f \"E:\\\\agent\\\\omni\\\\docker-compose.yml\" up -d knowledge-engine 2>&1 | Select-Object -Last 5; Start-Sleep -Seconds 6; Write-Host \"--- DNS check after restart ---\"; docker exec omni-knowledge-engine getent hosts ai-provider-hub 2>&1; Write-Host \"--- doctor全绿确认 ---\"; docker exec omni-knowledge-engine python -m app.mcp.doctor 2>&1 | Select-Object -Last 8)",
+      "PowerShell(netstat *)",
+      "Bash(grep -nB 1 -A 8 \"proxy-env\" \"E:/agent/omni/docker-compose.yml\")"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "omni"
+  ]
 }
