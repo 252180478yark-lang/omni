@@ -35,3 +35,18 @@ def test_model_config_explicit_override():
     cfg = get_model_for_tool("_test_tool", _override_yaml=raw)
     assert cfg["provider"] == "x"
     assert cfg["model"] == "y"
+
+
+def test_anti_ai_human_voice_contains_three_pillars():
+    """常量必须三块都齐：说人话 / 反幻觉 / 去 AI 化。"""
+    from app.mcp.prompt_constraints import ANTI_AI_HUMAN_VOICE
+    assert "说人话" in ANTI_AI_HUMAN_VOICE
+    assert "反幻觉" in ANTI_AI_HUMAN_VOICE
+    assert "去 AI 化" in ANTI_AI_HUMAN_VOICE
+
+
+def test_anti_ai_human_voice_lists_specific_bans():
+    """关键禁词样本必须出现，否则 prompt 失效。"""
+    from app.mcp.prompt_constraints import ANTI_AI_HUMAN_VOICE
+    for word in ["作为 AI", "希望对您有帮助", "综上", "以下是"]:
+        assert word in ANTI_AI_HUMAN_VOICE, f"missing forbidden phrase: {word}"
