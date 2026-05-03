@@ -50,3 +50,13 @@ def test_anti_ai_human_voice_lists_specific_bans():
     from app.mcp.prompt_constraints import ANTI_AI_HUMAN_VOICE
     for word in ["作为 AI", "希望对您有帮助", "综上", "以下是"]:
         assert word in ANTI_AI_HUMAN_VOICE, f"missing forbidden phrase: {word}"
+
+
+def test_ai_hub_client_importable():
+    from app.services.ai_hub_client import AIHubClient
+    c = AIHubClient(base_url="http://example.invalid")
+    # 三个核心方法都存在
+    assert callable(c.chat)
+    assert callable(c.generate_image)
+    assert callable(c.generate_video)
+    assert c.base_url == "http://example.invalid"
