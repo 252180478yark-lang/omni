@@ -2,6 +2,7 @@
 
 不依赖 DB，纯模块测试。
 """
+import pytest
 from app.mcp.types import ToolSuccess, ToolError
 
 
@@ -60,3 +61,16 @@ def test_ai_hub_client_importable():
     assert callable(c.generate_image)
     assert callable(c.generate_video)
     assert c.base_url == "http://example.invalid"
+
+
+@pytest.mark.asyncio
+async def test_human_gate_stub_raises_not_implemented():
+    from app.mcp.human_gate import request_approval
+    with pytest.raises(NotImplementedError) as exc_info:
+        await request_approval(
+            tool_call_id="00000000-0000-0000-0000-000000000000",
+            summary="dry-run",
+            timeout_seconds=3600,
+        )
+    # 错误信息必须提示 W2 才实现
+    assert "W2" in str(exc_info.value) or "Human Gate" in str(exc_info.value)
