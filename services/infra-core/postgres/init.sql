@@ -24,8 +24,14 @@ CREATE TABLE IF NOT EXISTS knowledge.knowledge_bases (
     embedding_provider VARCHAR(100) NOT NULL DEFAULT 'gemini',
     embedding_model VARCHAR(100) NOT NULL DEFAULT 'gemini-embedding-2-preview',
     dimension INTEGER NOT NULL DEFAULT 1536,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    -- migration 014: 知识库角色化
+    -- authoritative/methodology/personal_log/template/private_doc/general
+    kb_role TEXT NOT NULL DEFAULT 'general',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT knowledge_bases_kb_role_check
+        CHECK (kb_role IN ('authoritative','methodology','personal_log','template','private_doc','general'))
 );
+CREATE INDEX IF NOT EXISTS idx_kb_role ON knowledge.knowledge_bases (kb_role);
 
 CREATE TABLE IF NOT EXISTS knowledge.documents (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -600,4 +606,53 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_sku_orch_touch ON content_studio.sku_orchestrations;
 CREATE TRIGGER trg_sku_orch_touch
     BEFORE UPDATE ON content_studio.sku_orchestrations
+    FOR EACH ROW EXECUTE FUNCTION content_studio.touch_updated_at();
+
+-- ═══════════════════════════════════════════════════════════════════
+-- Accounting (migration 015) — 成本项结构化表
+-- 把"公司成本/价格/物流/合作方报价"从 KB 迁出，走结构化查询
+-- 配套 accounting_tool：净利率精确计算（不再 RAG 模糊匹配）
+-- ═══════════════════════════════════════════════════════════════════
+CREATE SCHEMA IF NOT EXISTS accounting;
+COMMENT ON SCHEMA accounting IS 'Accounting data: cost items, margin logs, partner quotes';
+
+CREATE TABLE IF NOT EXISTS accounting.cost_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sku_id VARCHAR(64),
+    category TEXT NOT NULL,                              -- product / logistics / partner_quote
+    item_name TEXT NOT NULL,
+    unit_cost NUMERIC(12,4) NOT NULL,
+    currency CHAR(3) NOT NULL DEFAULT 'CNY',
+    unit TEXT NOT NULL DEFAULT '件',
+    quantity_per_unit NUMERIC(12,4) NOT NULL DEFAULT 1,  -- 一箱 24 瓶 → 24
+    vendor TEXT,
+    valid_from DATE NOT NULL DEFAULT CURRENT_DATE,
+    valid_to DATE,                                       -- NULL = 当前有效
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT cost_items_category_check
+        CHECK (category IN ('product', 'logistics', 'partner_quote')),
+    CONSTRAINT cost_items_unit_cost_nonneg
+        CHECK (unit_cost >= 0),
+    CONSTRAINT cost_items_quantity_pos
+        CHECK (quantity_per_unit > 0),
+    CONSTRAINT cost_items_valid_range
+        CHECK (valid_to IS NULL OR valid_to >= valid_from)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cost_items_sku
+    ON accounting.cost_items (sku_id) WHERE sku_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_cost_items_category
+    ON accounting.cost_items (category);
+CREATE INDEX IF NOT EXISTS idx_cost_items_valid_from
+    ON accounting.cost_items (valid_from DESC);
+CREATE INDEX IF NOT EXISTS idx_cost_items_active
+    ON accounting.cost_items (is_active) WHERE is_active = TRUE;
+
+DROP TRIGGER IF EXISTS trg_cost_items_touch ON accounting.cost_items;
+CREATE TRIGGER trg_cost_items_touch
+    BEFORE UPDATE ON accounting.cost_items
     FOR EACH ROW EXECUTE FUNCTION content_studio.touch_updated_at();

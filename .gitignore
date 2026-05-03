@@ -96,3 +96,6 @@ import_yuntu_report.json
 
 # 调度任务锁文件（运行时产生）
 .claude/scheduled_tasks.lock
+
+# 调试笔记（本地截图/草稿）
+docs/调试问题/
