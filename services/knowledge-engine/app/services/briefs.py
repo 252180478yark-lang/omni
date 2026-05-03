@@ -291,6 +291,7 @@ async def list_briefs(
     offset: int = 0,
     *,
     product_id: str | None = None,
+    sku_id: str | None = None,
     status: str | None = None,
 ) -> list[dict]:
     pool = get_pool()
@@ -302,6 +303,9 @@ async def list_briefs(
             where.append(f"product_id = ${len(args)}")
         except ValueError:
             pass
+    if sku_id:
+        args.append(sku_id)
+        where.append(f"sku_id = ${len(args)}")
     if status:
         args.append(status)
         where.append(f"status = ${len(args)}")

@@ -99,9 +99,12 @@ async def list_briefs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     product_id: str | None = None,
+    sku_id: str | None = None,
     status: str | None = None,
 ):
-    items = await svc.list_briefs(limit, offset, product_id=product_id, status=status)
+    items = await svc.list_briefs(
+        limit, offset, product_id=product_id, sku_id=sku_id, status=status,
+    )
     return {"items": items}
 
 
