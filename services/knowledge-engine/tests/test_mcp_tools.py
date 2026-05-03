@@ -62,3 +62,46 @@ async def test_get_sku_not_found_returns_tool_error():
     assert out["ok"] is False
     assert out["error"] == "sku_not_found"
     assert "list_skus" in out["hint"]
+
+
+@pytest.mark.asyncio
+async def test_list_kbs_basic():
+    from app.mcp.tools.kb import list_kbs
+    out = await list_kbs()
+    assert out["ok"] is True
+    assert "count" in out
+    assert isinstance(out["kbs"], list)
+    # 每条至少含 id / name / kb_role
+    if out["kbs"]:
+        kb0 = out["kbs"][0]
+        for k in ("id", "name", "kb_role"):
+            assert k in kb0
+
+
+@pytest.mark.asyncio
+async def test_list_kbs_filter_by_role():
+    from app.mcp.tools.kb import list_kbs
+    out = await list_kbs(role="general")
+    assert out["ok"] is True
+    for kb in out["kbs"]:
+        assert kb["kb_role"] == "general"
+
+
+@pytest.mark.asyncio
+async def test_search_kb_no_kb_ids_returns_empty():
+    """无任何 KB 时（或显式 kb_ids=[]）返回 ok=True + 空 hits，不抛错。"""
+    from app.mcp.tools.kb import search_kb
+    out = await search_kb(query="测试", kb_ids=[])
+    assert out["ok"] is True
+    assert out["hits"] == []
+    assert out["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_search_kb_role_filter_resolves_kb_ids():
+    """传 kb_roles 时应自动解析为 kb_ids；无匹配 KB 时返回空。"""
+    from app.mcp.tools.kb import search_kb
+    out = await search_kb(query="测试", kb_roles=["_no_such_role_"])
+    # _no_such_role_ 不在 CHECK 约束允许列表，list_kbs 也查不到 → 空 hits
+    assert out["ok"] is True
+    assert out["hits"] == []
