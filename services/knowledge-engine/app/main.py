@@ -50,6 +50,11 @@ async def lifespan(app: FastAPI):
     # 启动 MCP session manager（FastMCP 3.x：StarletteWithLifespan 自带 lifespan）
     async with mcp_http_app.lifespan(app):
         logger.info("MCP server lifespan entered")
+
+        # 启动期自检（不阻断）
+        from app.mcp.doctor import run_at_startup
+        await run_at_startup()
+
         yield
 
     logger.info("Shutting down — closing database pool...")
