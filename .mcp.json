@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "omni": {
+      "type": "http",
+      "url": "http://localhost:8002/mcp"
+    }
+  }
+}
