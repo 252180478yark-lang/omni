@@ -1,7 +1,32 @@
 # tool → 模型映射（design doc §2.5）
-# W1：仅 __default__ 起作用（W1 五个 tool 都不调 LLM）
-# W2 起按 tool 名增加覆盖
+# W1：仅 __default__ 起作用
+# W2：4 个 LLM tool 各自 keyed override（独立切模型）
+
 __default__:
-  provider: anthropic
-  model: claude-sonnet-4-6
+  provider: gemini
+  model: gemini-3-flash-preview
   temperature: 0.3
+
+# W2 keyed override
+# 注意：老板的 Anthropic 是 Claude Code Max 订阅（主大脑用），不是 API key →
+# hub 端 tool 内部 LLM **不能用 anthropic**。chat 走 gemini-3-flash-preview。
+# image: openai/gpt-image-2；video: seedance/seedance-2-0（老板填 SEEDANCE_API_KEY）。
+
+compute_margin:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.1   # 解读类，要稳
+
+generate_brief:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.5   # 文案要发挥
+
+generate_image:
+  provider: openai
+  model: gpt-image-2
+
+generate_video:
+  provider: seedance
+  model: seedance-2-0
+  duration: 8
