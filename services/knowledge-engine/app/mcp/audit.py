@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -100,10 +101,16 @@ def tool_with_audit(
 
             try:
                 result = await fn(*args, **kwargs)
-            except Exception as exc:
+            except asyncio.CancelledError:
+                # cancel 不吞：标 cancelled 后 re-raise，不破坏 task 取消语义
+                await _finalize_error(pool, tool_call_id, "cancelled", start)
+                raise
+            except BaseException as exc:  # 含 KeyboardInterrupt / SystemExit
                 logger.exception("tool %s raised", tool_name)
                 err_msg = f"{type(exc).__name__}: {exc}"
                 await _finalize_error(pool, tool_call_id, err_msg, start)
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
                 return {"ok": False, "error": err_msg, "hint": "tool 内部异常，看 server 日志定位"}
 
             duration_ms = int((time.perf_counter() - start) * 1000)

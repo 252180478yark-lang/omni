@@ -32,6 +32,13 @@ async def lifespan(app: FastAPI):
     await init_pool()
     logger.info("PostgreSQL connection pool ready")
 
+    # W2 T1：启动期孤儿清理（把上次跑挂时停在 pending 的 tool_calls 标 orphaned）
+    from app.mcp.orphan import mark_orphans
+    try:
+        await mark_orphans(threshold_minutes=5)
+    except Exception:
+        logger.exception("startup orphan cleanup failed (continuing)")
+
     # Migrate tsv column from GENERATED to regular for Chinese search support
     from app.database import get_pool
     try:
