@@ -34,7 +34,7 @@ async def test_smoke_mark_orphans_marks_old_pending():
     )
 
     n = await mark_orphans(threshold_minutes=5)
-    assert n >= 1
+    assert n == 1
 
     rows = await pool.fetch(
         "SELECT id, status FROM mcp.tool_calls WHERE id = ANY($1)", [old_id, new_id]

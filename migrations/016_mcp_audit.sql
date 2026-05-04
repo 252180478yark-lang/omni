@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS mcp.tool_calls (
     tool_name TEXT NOT NULL,
     args JSONB NOT NULL,
     result JSONB,
-    status TEXT NOT NULL,            -- pending|approved|rejected|completed|error
+    status TEXT NOT NULL,            -- pending|approved|rejected|completed|error|orphaned
     require_approval BOOLEAN NOT NULL DEFAULT FALSE,
     duration_ms INT,
     error TEXT,
