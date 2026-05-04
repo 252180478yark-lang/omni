@@ -28,6 +28,7 @@ mcp = FastMCP("omni")
 from app.mcp.tools import sku as _sku  # noqa: E402, F401
 from app.mcp.tools import kb as _kb    # noqa: E402, F401
 from app.mcp.tools import briefs as _briefs  # noqa: E402, F401
+from app.mcp.tools import accounting as _accounting  # noqa: E402, F401
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
 # path="/" 使子应用内路由为 "/"，挂载到 /mcp 后完整路径即 /mcp
