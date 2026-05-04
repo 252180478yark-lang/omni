@@ -260,3 +260,93 @@ async def generate_image(
             f"~¥15/段 × {len(segments_hint)} 段）"
         ),
     )
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_video(
+    segments: list[dict],
+    face_refs: list[str] | None = None,
+    product_refs: list[str] | None = None,
+    aspect_ratio: str = "9:16",
+) -> dict:
+    """多段分镜视频，并发跑 Seedance；不自动拼接（老板下载多段交剪辑）。
+
+    Args:
+        segments: [{prompt, first_frame?, last_frame?, duration_s?}, ...]
+        face_refs / product_refs: 全段共用的人脸 / 产品参考
+        aspect_ratio: 画幅
+
+    Returns:
+        {ok, result: {segments: [{prompt, video_url, duration} | {prompt, error}, ...]},
+         trace, next_step_hint(None — 链路终点)}
+    """
+    model_cfg = get_model_for_tool("generate_video")
+    provider = model_cfg.get("provider", "seedance")
+    model = model_cfg.get("model", "seedance-2-0")
+    client = AIHubClient()
+
+    async def _one(seg: dict):
+        try:
+            start_resp = await client.generate_video_v2(
+                prompt=seg["prompt"],
+                first_frame=seg.get("first_frame"),
+                last_frame=seg.get("last_frame"),
+                duration_sec=int(seg.get("duration_s", 8)),
+                face_refs=face_refs,
+                product_refs=product_refs,
+                aspect=aspect_ratio,
+                model=model,
+                provider=provider,
+            )
+            task_id = (
+                start_resp.get("task_id")
+                or (start_resp.get("data") or {}).get("task_id")
+            )
+            if not task_id:
+                # 同步返结果（少见）
+                url = start_resp.get("video_url") or (start_resp.get("data") or {}).get("video_url")
+                return {"prompt": seg["prompt"], "video_url": url,
+                        "duration": seg.get("duration_s", 8)}
+            done = await client.wait_for_video(task_id, max_seconds=600, poll=5.0)
+            data = done.get("data") or done
+            url = data.get("video_url") or data.get("url")
+            if data.get("status") in ("failed", "error"):
+                return {"prompt": seg["prompt"],
+                        "error": f"seedance {data.get('status')}: "
+                                  f"{data.get('error') or data.get('message') or ''}"}
+            return {"prompt": seg["prompt"], "video_url": url,
+                    "duration": seg.get("duration_s", 8), "task_id": task_id}
+        except Exception as exc:
+            return {"prompt": seg["prompt"], "error": f"{type(exc).__name__}: {exc}"}
+
+    out = await asyncio.gather(*(_one(s) for s in segments))
+
+    cost_per = "¥15" if provider == "seedance" else "未知"
+    cost_estimate = f"~{len(segments)} × {cost_per}"
+
+    result = {
+        "ok": True,
+        "result": {"segments": out, "count": len(out)},
+        "trace": build_trace(
+            provider=provider,
+            model=model,
+            prompt="\n---\n".join(s["prompt"] for s in segments),
+            params={
+                "aspect_ratio": aspect_ratio,
+                "segment_count": len(segments),
+                "face_refs": face_refs or [],
+                "product_refs": product_refs or [],
+                "first_last_frames": [
+                    {"first": s.get("first_frame"), "last": s.get("last_frame")}
+                    for s in segments
+                ],
+            },
+            cost_estimate=cost_estimate,
+        ),
+    }
+    return attach_next_step(
+        result,
+        suggested_tool=None,
+        suggested_args={},
+        human_text="全链路完成。下载各段视频自己交剪辑（不自动拼接）。",
+    )

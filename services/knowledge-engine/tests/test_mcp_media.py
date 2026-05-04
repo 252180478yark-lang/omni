@@ -195,3 +195,59 @@ async def test_smoke_generate_image_partial_failure_returns_error_marker():
     assert len(images) == 3
     err_idx = [i for i, x in enumerate(images) if x.get("error")]
     assert err_idx == [1]
+
+
+# ── T9：generate_video tool（多 segment 并发 + 首尾帧 + Seedance polling）────
+
+
+from app.mcp.tools.media import generate_video
+
+
+@pytest.mark.asyncio
+async def test_smoke_generate_video_runs_segments_concurrently():
+    async def fake_v2(prompt, **kw):
+        return {"task_id": f"t-{prompt[:5]}", "status": "pending"}
+
+    async def fake_wait(task_id, **kw):
+        return {"status": "succeeded", "task_id": task_id,
+                "data": {"video_url": f"https://fake/{task_id}.mp4"}}
+
+    with patch("app.mcp.tools.media.AIHubClient") as MC:
+        MC.return_value.generate_video_v2 = AsyncMock(side_effect=fake_v2)
+        MC.return_value.wait_for_video = AsyncMock(side_effect=fake_wait)
+        segments = [
+            {"prompt": "段 1 慢推镜", "first_frame": "https://x/a.png",
+             "last_frame": "https://x/b.png", "duration_s": 8},
+            {"prompt": "段 2 横移", "first_frame": "https://x/b.png",
+             "last_frame": "https://x/c.png", "duration_s": 8},
+        ]
+        r = await generate_video(segments=segments, face_refs=None,
+                                  product_refs=["https://prod.png"])
+    assert r["ok"] is True
+    out = r["result"]["segments"]
+    assert len(out) == 2
+    assert all("video_url" in s or s.get("error") for s in out)
+    # 链路终点
+    assert r["next_step_hint"]["suggested_tool"] is None
+
+
+@pytest.mark.asyncio
+async def test_smoke_generate_video_handles_seg_failure():
+    async def fake_v2(prompt, **kw):
+        if "fail" in prompt:
+            raise RuntimeError("seedance 5xx")
+        return {"task_id": "t-1"}
+
+    async def fake_wait(task_id, **kw):
+        return {"status": "succeeded", "data": {"video_url": "https://ok.mp4"}}
+
+    with patch("app.mcp.tools.media.AIHubClient") as MC:
+        MC.return_value.generate_video_v2 = AsyncMock(side_effect=fake_v2)
+        MC.return_value.wait_for_video = AsyncMock(side_effect=fake_wait)
+        r = await generate_video(segments=[
+            {"prompt": "ok 段"}, {"prompt": "fail 段"},
+        ])
+    out = r["result"]["segments"]
+    assert len(out) == 2
+    assert sum(1 for s in out if s.get("error")) == 1
+    assert sum(1 for s in out if s.get("video_url")) == 1
