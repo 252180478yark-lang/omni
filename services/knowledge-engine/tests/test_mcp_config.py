@@ -22,8 +22,10 @@ def test_tool_error_minimal():
 def test_model_config_default_lookup():
     from app.mcp.model_config import get_model_for_tool
     cfg = get_model_for_tool("any_unknown_tool")
-    assert cfg["provider"] == "anthropic"
-    assert cfg["model"] == "claude-sonnet-4-6"
+    # W2 T3：default 从 anthropic/claude-sonnet-4-6 切到 gemini/gemini-3-flash-preview
+    # 因为老板 Anthropic 是 Max 订阅 ≠ API key，hub 端调不到 anthropic
+    assert cfg["provider"] == "gemini"
+    assert cfg["model"] == "gemini-3-flash-preview"
     assert cfg["temperature"] == 0.3
 
 
