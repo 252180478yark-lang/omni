@@ -117,12 +117,14 @@ async def compute_margin(
             "line_cost": str(line.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)),
         })
 
-    # 2. 拿售价（如未给）
+    # 2. 拿售价（如未给）。mvp_sku 实际 schema：PK=id，价格列是 price_min/price_max
+    # （不是 plan 字面写的 sku_id/sale_price）。默认用 price_min（最低档），
+    # 老板想算其他档位可显式传 sale_price="..."。
     if sale_price is None:
         srow = await pool.fetchrow(
-            "SELECT sale_price FROM mvp_sku WHERE sku_id = $1", sku_id
+            "SELECT price_min FROM mvp_sku WHERE id = $1", sku_id
         )
-        sale_price = str(srow["sale_price"]) if srow and srow["sale_price"] else "0"
+        sale_price = str(srow["price_min"]) if srow and srow["price_min"] else "0"
 
     sale_dec = _to_dec(sale_price)
     qty_dec = _to_dec(qty)
