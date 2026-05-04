@@ -179,7 +179,10 @@ services:
       context: ./services/ai-provider-hub
     container_name: omni-ai-provider-hub
     env_file:
+      # 先读 .env.example（模板，入 git 的占位）→ 再读 .env（gitignored，真 key）
+      # 后者 override 前者；老板填的 key 走 .env，不会泄密
       - ./services/ai-provider-hub/.env.example
+      - ./services/ai-provider-hub/.env
     environment:
       <<: *proxy-env
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/0"
