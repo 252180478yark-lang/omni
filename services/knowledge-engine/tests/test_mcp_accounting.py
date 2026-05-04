@@ -70,3 +70,63 @@ async def test_smoke_query_costs_inactive_excluded():
         assert "_smoke 已停" not in names
     finally:
         await pool.execute("DELETE FROM accounting.cost_items WHERE item_name='_smoke 已停'")
+
+
+from app.mcp.tools.accounting import compute_margin
+
+
+# 复用 _seed_data fixture 的 _smoke_sku_001（成本：瓶身 0.80 + 标签 0.15 + 物流 4.50 = 5.45）
+
+@pytest.mark.asyncio
+async def test_smoke_compute_margin_basic_math():
+    """sale_price=29.9 / cost=5.45 → margin=24.45 / margin_pct ≈ 0.818。
+
+    LLM 解读字段允许波动；但数字字段必须是确定性。
+    """
+    r = await compute_margin(
+        sku_id="_smoke_sku_001",
+        channel="douyin",
+        sale_price="29.90",
+        qty=1,
+        channel_fee_rate="0.05",   # 抖音典型扣点
+        skip_llm=True,             # 仅算账，跳过 LLM 写解读（测试隔离）
+    )
+    assert r["ok"] is True
+    breakdown = r["result"]["breakdown"]
+    # cost 总和
+    assert breakdown["cost_total"] == "5.45"
+    # gmv = sale_price * qty
+    assert breakdown["gmv"] == "29.90"
+    # channel_fee = gmv * channel_fee_rate = 29.90 * 0.05 = 1.495
+    assert breakdown["channel_fee"] == "1.4950"
+    # net_profit = gmv - cost_total - channel_fee = 29.90 - 5.45 - 1.495 = 22.955
+    assert breakdown["net_profit"] == "22.9550"
+    # margin_pct = net_profit / gmv ≈ 0.7677
+    assert breakdown["margin_pct"].startswith("0.76")
+
+
+@pytest.mark.asyncio
+async def test_smoke_compute_margin_no_costs_returns_warning():
+    r = await compute_margin(
+        sku_id="_smoke_sku_does_not_exist_999",
+        channel="douyin",
+        sale_price="9.99",
+        qty=1,
+        skip_llm=True,
+    )
+    assert r["ok"] is True
+    # cost_total 至少含共享成本物流 4.50；如全无，breakdown 仍要返
+    assert "cost_total" in r["result"]["breakdown"]
+
+
+@pytest.mark.asyncio
+async def test_smoke_compute_margin_trace_fields_present():
+    r = await compute_margin(
+        sku_id="_smoke_sku_001", channel="douyin",
+        sale_price="29.90", qty=1, skip_llm=True,
+    )
+    # 即使 skip_llm，trace 也要有（写"skipped"）
+    assert "trace" in r
+    assert r["trace"]["model"]
+    # next_step_hint 链路终点：margin 后建议 generate_brief
+    assert r["next_step_hint"]["suggested_tool"] == "generate_brief"
