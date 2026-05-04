@@ -141,3 +141,57 @@ async def test_smoke_generate_video_v2_passes_first_last_frame():
     flat = json.dumps(captured["body"], ensure_ascii=False)
     assert "x/a.png" in flat
     assert "x/b.png" in flat
+
+
+# ── T8：generate_image tool（多 prompt 并发 + 4 类 refs）──────────────────
+
+
+from app.mcp.tools.media import generate_image
+
+
+@pytest.mark.asyncio
+async def test_smoke_generate_image_runs_multiple_prompts_concurrently():
+    """3 个 prompt 一次返 3 张图。"""
+    fake_responses = [
+        {"images": [{"url": f"https://fake/img{i}.png"}]} for i in range(3)
+    ]
+
+    async def fake_v2(prompt, **kw):
+        # 用 prompt 末位匹配返回
+        for i in range(3):
+            if str(i) in prompt:
+                return fake_responses[i]
+        return fake_responses[0]
+
+    with patch("app.mcp.tools.media.AIHubClient") as MC:
+        MC.return_value.generate_image_v2 = AsyncMock(side_effect=fake_v2)
+        r = await generate_image(
+            prompts=["分镜 0", "分镜 1", "分镜 2"],
+            face_refs=None,
+            product_refs=["https://prod.png"],
+            style_refs=None,
+        )
+    assert r["ok"] is True
+    images = r["result"]["images"]
+    assert len(images) == 3
+    urls = [i["url"] for i in images]
+    assert all("fake/img" in u for u in urls)
+    assert r["next_step_hint"]["suggested_tool"] == "generate_video"
+
+
+@pytest.mark.asyncio
+async def test_smoke_generate_image_partial_failure_returns_error_marker():
+    async def fake_v2(prompt, **kw):
+        if "fail" in prompt:
+            raise RuntimeError("hub 5xx")
+        return {"images": [{"url": "https://ok.png"}]}
+
+    with patch("app.mcp.tools.media.AIHubClient") as MC:
+        MC.return_value.generate_image_v2 = AsyncMock(side_effect=fake_v2)
+        r = await generate_image(prompts=["ok 1", "fail 2", "ok 3"])
+
+    assert r["ok"] is True   # 整体不挂；逐 prompt 看
+    images = r["result"]["images"]
+    assert len(images) == 3
+    err_idx = [i for i, x in enumerate(images) if x.get("error")]
+    assert err_idx == [1]

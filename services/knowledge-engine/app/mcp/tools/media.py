@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+
 from app.database import get_pool
 from app.mcp.audit import tool_with_audit
 from app.mcp.model_config import get_model_for_tool
@@ -151,5 +153,110 @@ async def generate_brief(
         human_text=(
             "出 3 张分镜图（gpt-image-2，~¥1.5 / 3 张）；"
             "如要保产品一致，product_refs 填 sku 主图 url"
+        ),
+    )
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_image(
+    prompts: list[str],
+    face_refs: list[str] | None = None,
+    product_refs: list[str] | None = None,
+    style_refs: list[str] | None = None,
+    aspect_ratio: str = "9:16",
+    n_per_prompt: int = 1,
+) -> dict:
+    """多 prompt 并发出多张图（gpt-image-2）。
+
+    Args:
+        prompts: prompt 列表（典型 3 张分镜）
+        face_refs / product_refs / style_refs: 三类参考图 url 列表
+        aspect_ratio: 画幅（默认 9:16 抖音竖版）
+        n_per_prompt: 每个 prompt 出几张（默认 1）
+
+    Returns:
+        {ok, result: {images: [{prompt, url} | {prompt, error}, ...]},
+         trace, next_step_hint(generate_video)}
+    """
+    model_cfg = get_model_for_tool("generate_image")
+    client = AIHubClient()
+
+    async def _one(prompt: str):
+        try:
+            resp = await client.generate_image_v2(
+                prompt=prompt,
+                face_refs=face_refs,
+                product_refs=product_refs,
+                style_refs=style_refs,
+                aspect=aspect_ratio,
+                n=n_per_prompt,
+                model=model_cfg.get("model", "gpt-image-2"),
+                provider=model_cfg.get("provider", "openai"),
+            )
+            urls = []
+            for img in resp.get("images") or resp.get("data") or []:
+                urls.append(img.get("url") or img.get("image_url") or "")
+            return {"prompt": prompt, "urls": [u for u in urls if u]}
+        except Exception as exc:
+            return {"prompt": prompt, "error": f"{type(exc).__name__}: {exc}"}
+
+    results = await asyncio.gather(*(_one(p) for p in prompts))
+
+    # flatten 用 url（前端展示）；保留 prompt 关联
+    images = []
+    for r in results:
+        if r.get("error"):
+            images.append({"prompt": r["prompt"], "error": r["error"]})
+        else:
+            for u in r["urls"]:
+                images.append({"prompt": r["prompt"], "url": u})
+            if not r["urls"]:
+                images.append({"prompt": r["prompt"], "error": "hub 无返回 url"})
+
+    cost_per = "¥0.5" if model_cfg.get("provider") == "openai" else "未知"
+    cost_estimate = f"~{len(prompts) * n_per_prompt} × {cost_per}"
+
+    result = {
+        "ok": True,
+        "result": {"images": images, "count": len(images)},
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "openai"),
+            model=model_cfg.get("model", "gpt-image-2"),
+            prompt="\n---\n".join(prompts),
+            params={
+                "aspect_ratio": aspect_ratio,
+                "n_per_prompt": n_per_prompt,
+                "face_refs": face_refs or [],
+                "product_refs": product_refs or [],
+                "style_refs": style_refs or [],
+            },
+            cost_estimate=cost_estimate,
+        ),
+    }
+
+    # next_step_hint：用刚出的图作为下一段视频的 first_frame
+    valid_urls = [i["url"] for i in images if "url" in i]
+    segments_hint = []
+    for i, url in enumerate(valid_urls[:3]):
+        nxt = valid_urls[i + 1] if i + 1 < len(valid_urls[:3]) else None
+        segments_hint.append({
+            "prompt": f"段 {i+1}：从这张图运镜 8 秒",
+            "first_frame": url,
+            "last_frame": nxt,
+            "duration_s": 8,
+        })
+
+    return attach_next_step(
+        result,
+        suggested_tool="generate_video",
+        suggested_args={
+            "segments": segments_hint,
+            "face_refs": face_refs or [],
+            "product_refs": product_refs or [],
+            "aspect_ratio": aspect_ratio,
+        },
+        human_text=(
+            f"用这 {len(valid_urls)} 张图做底跑分镜视频（Seedance 2.0，"
+            f"~¥15/段 × {len(segments_hint)} 段）"
         ),
     )
