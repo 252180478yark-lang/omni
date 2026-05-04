@@ -86,15 +86,23 @@ async def _check_tools_registered(report: DoctorReport) -> None:
     try:
         from app.mcp.server import mcp
         tools = await mcp.list_tools()
-        wanted = {"list_skus", "get_sku", "search_kb", "list_kbs", "list_briefs"}
+        # W1 5 + W2 5 = 10
+        wanted = {
+            # W1
+            "list_skus", "get_sku", "search_kb", "list_kbs", "list_briefs",
+            # W2
+            "query_costs", "compute_margin",
+            "generate_brief", "generate_image", "generate_video",
+        }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names
+        n = len(wanted)
         report.checks.append(CheckResult(
-            "5 tools registered", not missing,
-            f"missing={sorted(missing)}" if missing else "all 5 ok",
+            f"{n} tools registered", not missing,
+            f"missing={sorted(missing)}" if missing else f"all {n} ok",
         ))
     except Exception as exc:
-        report.checks.append(CheckResult("5 tools registered", False, str(exc)))
+        report.checks.append(CheckResult("tools registered", False, str(exc)))
 
 
 async def _check_mcp_http(report: DoctorReport) -> None:
