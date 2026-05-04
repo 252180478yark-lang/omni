@@ -1,11 +1,13 @@
-"""T6/T8/T9：media tools 集成测。"""
+"""T6/T8/T9：media tools 集成测。T7：ai_hub_client v2 mock 测。"""
 import asyncio
-from unittest.mock import AsyncMock, patch
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from app.database import get_pool, init_pool, close_pool
 from app.mcp.tools.media import generate_brief
+from app.services.ai_hub_client import AIHubClient
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -66,3 +68,76 @@ async def test_smoke_generate_brief_handles_hub_failure():
     # tool_with_audit 的 BaseException 路径会接住 → ok=False
     assert r["ok"] is False
     assert "hub down" in r["error"]
+
+
+# ── T7：ai_hub_client v2 mock 测 ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_smoke_generate_image_v2_passes_face_and_product_refs():
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self): return None
+        def json(self): return {"images": [{"url": "https://fake/1.png"}]}
+
+    class FakeClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return None
+        async def post(self, url, json=None, **kw):
+            captured["url"] = url
+            captured["body"] = json
+            return FakeResp()
+
+    with patch("app.services.ai_hub_client.httpx.AsyncClient", return_value=FakeClient()):
+        client = AIHubClient()
+        r = await client.generate_image_v2(
+            prompt="产品图",
+            face_refs=["https://face/a.png"],
+            product_refs=["https://prod/b.png"],
+            style_refs=None,
+            aspect="9:16",
+            n=1,
+            model="gpt-image-2",
+            provider="openai",
+        )
+    assert r["images"][0]["url"] == "https://fake/1.png"
+    body = captured["body"]
+    # face / product 都要在 body 里某种形式表达
+    flat = json.dumps(body, ensure_ascii=False)
+    assert "face/a.png" in flat
+    assert "prod/b.png" in flat
+
+
+@pytest.mark.asyncio
+async def test_smoke_generate_video_v2_passes_first_last_frame():
+    captured = {}
+
+    class FakeResp:
+        def raise_for_status(self): return None
+        def json(self): return {"task_id": "t-001", "status": "pending"}
+
+    class FakeClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return None
+        async def post(self, url, json=None, **kw):
+            captured["body"] = json
+            return FakeResp()
+
+    with patch("app.services.ai_hub_client.httpx.AsyncClient", return_value=FakeClient()):
+        client = AIHubClient()
+        r = await client.generate_video_v2(
+            prompt="慢镜头",
+            first_frame="https://x/a.png",
+            last_frame="https://x/b.png",
+            duration_sec=8,
+            face_refs=["https://face/m.png"],
+            product_refs=None,
+            aspect="9:16",
+            model="seedance-2-0",
+            provider="seedance",
+        )
+    assert r["task_id"] == "t-001"
+    flat = json.dumps(captured["body"], ensure_ascii=False)
+    assert "x/a.png" in flat
+    assert "x/b.png" in flat
