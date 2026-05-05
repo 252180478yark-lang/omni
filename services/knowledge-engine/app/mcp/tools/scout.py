@@ -27,9 +27,12 @@ def _parse_date(date_str: str | None) -> date_cls | None:
     return date_cls.fromisoformat(date_str)
 
 
+_SHOP_SENTINEL = "_SHOP_"  # scout-agent runbook_executor 约定的全店行 sku_id sentinel
+
+
 @tool_with_audit(mcp, require_approval=False)
 async def fetch_compass_store_daily(date: str | None = None) -> dict:
-    """读罗盘全店日报最近一天数据（source_runbook LIKE 'compass/%' AND sku_id='')。
+    """读罗盘全店日报最近一天数据（source_runbook LIKE 'compass/%' AND sku_id='_SHOP_'）。
 
     Args:
         date: ISO 日期（"2026-05-03"）。None = DB 中最近一天有数据的日期。
@@ -51,8 +54,9 @@ async def fetch_compass_store_daily(date: str | None = None) -> dict:
         latest = await pool.fetchval(
             """
             SELECT MAX(date) FROM mvp_daily_metric
-            WHERE source_runbook LIKE 'compass/%' AND sku_id = ''
-            """
+            WHERE source_runbook LIKE 'compass/%' AND sku_id = $1
+            """,
+            _SHOP_SENTINEL,
         )
         if latest is None:
             return {
@@ -66,9 +70,10 @@ async def fetch_compass_store_daily(date: str | None = None) -> dict:
         """
         SELECT metric_name, value, source_runbook
         FROM mvp_daily_metric
-        WHERE source_runbook LIKE 'compass/%' AND sku_id = '' AND date = $1
+        WHERE source_runbook LIKE 'compass/%' AND sku_id = $1 AND date = $2
         ORDER BY source_runbook, metric_name
         """,
+        _SHOP_SENTINEL,
         target_date,
     )
     if not rows:
@@ -94,7 +99,7 @@ async def fetch_compass_store_daily(date: str | None = None) -> dict:
             "count": len(metrics),
         },
         "trace": {
-            "db_query": "mvp_daily_metric WHERE source_runbook LIKE 'compass/%' AND sku_id=''",
+            "db_query": "mvp_daily_metric WHERE source_runbook LIKE 'compass/%' AND sku_id='_SHOP_'",
             "row_count": len(metrics),
         },
     }
@@ -243,7 +248,7 @@ async def fetch_compass_search_traffic(date: str | None = None) -> dict:
 
     metrics = [
         {
-            "sku_id": r["sku_id"] or None,
+            "sku_id": None if (r["sku_id"] in ("", _SHOP_SENTINEL)) else r["sku_id"],
             "metric_name": r["metric_name"],
             "value": str(r["value"]) if r["value"] is not None else None,
             "source_runbook": r["source_runbook"],

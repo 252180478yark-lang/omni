@@ -33,18 +33,18 @@ async def setup_pool():
         "DELETE FROM mvp_daily_metric WHERE source_run_id LIKE $1",
         SMOKE_PREFIX + "%",
     )
-    # 先插全店日报数据（sku_id='', source_run_id 用 _smoke_W3b_run1）
+    # 先插全店日报数据（sku_id='_SHOP_'，scout-agent 约定的 sentinel）
     await pool.execute(
         """
         INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('', $1, 'gmv_paid', 12345.6, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb)
+        VALUES ('_SHOP_', $1, 'gmv_paid', 12345.6, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb)
         """,
         YESTERDAY,
     )
     await pool.execute(
         """
         INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('', $1, 'visit_uv', 8765, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb)
+        VALUES ('_SHOP_', $1, 'visit_uv', 8765, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb)
         """,
         YESTERDAY,
     )
@@ -66,14 +66,14 @@ async def setup_pool():
     await pool.execute(
         """
         INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('', $1, 'search_uv', 1234, 'compass/search-drainage-terms', '_smoke_W3b_run1', '{}'::jsonb)
+        VALUES ('_SHOP_', $1, 'search_uv', 1234, 'compass/search-drainage-terms', '_smoke_W3b_run1', '{}'::jsonb)
         """,
         YESTERDAY,
     )
     await pool.execute(
         """
         INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('', $1, 'paid_clicks', 567, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb)
+        VALUES ('_SHOP_', $1, 'paid_clicks', 567, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb)
         """,
         YESTERDAY,
     )
