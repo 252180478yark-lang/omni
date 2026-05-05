@@ -112,7 +112,10 @@ async def summarize_text(
 
 import os  # noqa: E402
 
+from app.services import ingestion  # noqa: E402
 from app.services.document_parser import detect_content_type, extract_text  # noqa: E402
+from app.services.embedding_client import embed_texts  # noqa: E402
+from app.services.hybrid_search import hybrid_search  # noqa: E402
 
 
 @tool_with_audit(mcp, require_approval=False)
@@ -237,4 +240,137 @@ async def parse_long_doc_with_gemini(
             "truncated": truncated,
         },
         "trace": trace,
+    }
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def query_template_chunks(
+    query: str,
+    kb_id: str | None = None,
+    source_type: str | None = "livestream-analysis",
+    top_k: int = 10,
+) -> dict:
+    """从模板 KB 检索素材 chunks。
+
+    默认行为：找所有 kb_role='template' 的 KB，按 query 走 hybrid_search，
+    post-filter source_type='livestream-analysis'，返 top_k。
+
+    Args:
+        query: 自然语言查询
+        kb_id: 显式指定 KB id（跳过 role 解析）
+        source_type: 过滤 source_type；None = 不限
+        top_k: 返回数量上限
+
+    Returns:
+        {ok, result: {hits, count}, trace}
+    """
+    query = (query or "").strip()
+    if not query:
+        return {
+            "ok": False,
+            "error": "invalid_query",
+            "hint": "query 不能为空",
+        }
+
+    # 解析 kb_ids
+    if kb_id:
+        kb = await ingestion.get_kb(kb_id)
+        if not kb:
+            return {
+                "ok": False,
+                "error": "kb_not_found",
+                "hint": f"kb_id={kb_id} 不存在；用 list_kbs 查可用",
+            }
+        target_kbs = [kb]
+    else:
+        all_kbs = await ingestion.list_kbs()
+        target_kbs = [k for k in all_kbs if k.get("kb_role") == "template"]
+        if not target_kbs:
+            return {
+                "ok": False,
+                "error": "no_template_kbs",
+                "hint": "系统中没有 kb_role='template' 的 KB；用 kb_set_role 改一个，或显式传 kb_id",
+            }
+
+    # 对每个 KB 跑 hybrid_search，融合结果
+    all_hits: list[dict] = []
+    over_fetch = top_k * 3  # 留余量给 post-filter
+    for kb in target_kbs:
+        kb_id_str = str(kb["id"])
+        embedding_model = kb.get("embedding_model") or "gemini-embedding-2-preview"
+        embedding_provider = kb.get("embedding_provider") or "gemini"
+        try:
+            vectors = await embed_texts(
+                [query], model=embedding_model, provider=embedding_provider
+            )
+        except Exception as exc:
+            logger.warning(
+                "query_template_chunks embed failed for kb=%s: %s",
+                kb_id_str[:8],
+                exc,
+            )
+            continue
+        if not vectors:
+            continue
+        try:
+            hits = await hybrid_search(
+                kb_id=kb_id_str,
+                query=query,
+                query_embedding=vectors[0],
+                top_k=over_fetch,
+            )
+        except Exception as exc:
+            logger.warning(
+                "query_template_chunks hybrid_search failed for kb=%s: %s",
+                kb_id_str[:8],
+                exc,
+            )
+            continue
+        for h in hits:
+            h["kb_id"] = kb_id_str
+            h["kb_name"] = kb.get("name")
+            all_hits.append(h)
+
+    # post-filter source_type
+    if source_type:
+        all_hits = [h for h in all_hits if h.get("source_type") == source_type]
+
+    # 按 score 降序，截 top_k
+    all_hits.sort(key=lambda h: float(h.get("score") or 0), reverse=True)
+    all_hits = all_hits[:top_k]
+
+    # 整形 hits
+    hits_out = [
+        {
+            "kb_id": h["kb_id"],
+            "kb_name": h["kb_name"],
+            "chunk_id": str(h.get("id")) if h.get("id") else None,
+            "title": h.get("title"),
+            "content": h.get("content"),
+            "source_type": h.get("source_type"),
+            "metadata": h.get("metadata") or {},
+            "score": float(h.get("score") or 0),
+        }
+        for h in all_hits
+    ]
+
+    return {
+        "ok": True,
+        "result": {
+            "hits": hits_out,
+            "count": len(hits_out),
+        },
+        "trace": build_trace(
+            provider="db",
+            model="hybrid_search",
+            prompt="",
+            params={
+                "kb_count": len(target_kbs),
+                "query": query[:200],
+                "source_type_filter": source_type,
+                "top_k": top_k,
+                "over_fetch": over_fetch,
+            },
+            cost_estimate="0 (DB query only)",
+        ),
     }

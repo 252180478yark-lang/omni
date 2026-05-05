@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 
 from app.database import init_pool, close_pool
-from app.mcp.tools.general import summarize_text, parse_long_doc_with_gemini
+from app.mcp.tools.general import summarize_text, parse_long_doc_with_gemini, query_template_chunks
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -132,3 +132,74 @@ async def test_parse_long_doc_with_instruction():
         assert len(result["result"]["markdown_outline"]) > 0
     finally:
         os.unlink(tmp)
+
+
+@pytest.mark.asyncio
+async def test_query_template_chunks_empty_query():
+    """空 query → invalid_query。"""
+    result = await query_template_chunks(query="")
+    assert result["ok"] is False
+    assert result["error"] == "invalid_query"
+
+
+@pytest.mark.asyncio
+async def test_query_template_chunks_basic():
+    """基础查询应返回 hits（toplogy 取决于真实数据）。"""
+    result = await query_template_chunks(
+        query="直播开场怎么吸引观众",
+        top_k=5,
+    )
+    assert result["ok"] is True
+    res = result["result"]
+    assert "hits" in res
+    assert isinstance(res["hits"], list)
+    assert res["count"] >= 1
+    assert res["count"] <= 5
+    for h in res["hits"]:
+        assert h["source_type"] == "livestream-analysis"
+        assert "content" in h
+        assert "score" in h
+        assert "kb_id" in h
+
+
+@pytest.mark.asyncio
+async def test_query_template_chunks_no_source_type_filter():
+    """source_type=None 不限制，应返回所有命中。"""
+    result = await query_template_chunks(
+        query="直播",
+        source_type=None,
+        top_k=20,
+    )
+    assert result["ok"] is True
+    assert result["result"]["count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_query_template_chunks_invalid_kb_id():
+    """指定不存在的 kb_id → kb_not_found。"""
+    import uuid
+    fake = str(uuid.uuid4())
+    result = await query_template_chunks(query="any", kb_id=fake)
+    assert result["ok"] is False
+    assert result["error"] == "kb_not_found"
+
+
+@pytest.mark.asyncio
+async def test_query_template_chunks_no_template_kbs():
+    """当系统真没 kb_role='template' KB 时返 no_template_kbs（用 monkeypatch 模拟）。"""
+    from app.services import ingestion as _ingestion
+
+    original = _ingestion.list_kbs
+
+    async def mock_no_template():
+        kbs = await original()
+        return [k for k in kbs if k.get("kb_role") != "template"]
+
+    _ingestion.list_kbs = mock_no_template
+    try:
+        result = await query_template_chunks(query="any")
+    finally:
+        _ingestion.list_kbs = original
+
+    assert result["ok"] is False
+    assert result["error"] == "no_template_kbs"
