@@ -262,3 +262,92 @@ async def fetch_compass_search_traffic(date: str | None = None) -> dict:
             "row_count": len(metrics),
         },
     }
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def fetch_yuntu_5a(date: str | None = None) -> dict:
+    """读云图 5A 资产最近一天。
+
+    返回每个 (brand_id, sku_id) 组合一行，含 O/A1-A5/total 数值
+    + 行业平均（industry_avg 子对象）。
+
+    Args:
+        date: ISO 日期，None = 最近一天
+
+    Returns:
+        {ok, result: {date, rows: [{brand_id, sku_id, o_count, a1_aware, ..., industry_avg}], count}, trace}
+    """
+    try:
+        target_date = _parse_date(date)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_date",
+            "hint": f"date 必须是 ISO 格式: {exc}",
+        }
+
+    pool = get_pool()
+    if target_date is None:
+        latest = await pool.fetchval("SELECT MAX(date) FROM mvp_5a_asset_daily")
+        if latest is None:
+            return {
+                "ok": False,
+                "error": "no_data",
+                "hint": "mvp_5a_asset_daily 表无数据；先去 scout-agent 跑 yuntu/spu-5a runbook",
+            }
+        target_date = latest
+
+    rows_db = await pool.fetch(
+        """
+        SELECT date, brand_id, sku_id,
+               o_count, a1_aware, a2_appeal, a3_ask, a4_act, a5_advocate, total_5a,
+               o_industry_avg, a1_industry_avg, a2_industry_avg, a3_industry_avg,
+               a4_industry_avg, a5_industry_avg, total_industry_avg
+        FROM mvp_5a_asset_daily
+        WHERE date = $1
+        ORDER BY brand_id, sku_id
+        """,
+        target_date,
+    )
+    if not rows_db:
+        return {
+            "ok": False,
+            "error": "no_data",
+            "hint": f"mvp_5a_asset_daily 在 date={target_date.isoformat()} 无数据",
+        }
+
+    rows = [
+        {
+            "brand_id": r["brand_id"],
+            "sku_id": r["sku_id"] or None,
+            "o_count": r["o_count"],
+            "a1_aware": r["a1_aware"],
+            "a2_appeal": r["a2_appeal"],
+            "a3_ask": r["a3_ask"],
+            "a4_act": r["a4_act"],
+            "a5_advocate": r["a5_advocate"],
+            "total_5a": r["total_5a"],
+            "industry_avg": {
+                "o_industry_avg": r["o_industry_avg"],
+                "a1_industry_avg": r["a1_industry_avg"],
+                "a2_industry_avg": r["a2_industry_avg"],
+                "a3_industry_avg": r["a3_industry_avg"],
+                "a4_industry_avg": r["a4_industry_avg"],
+                "a5_industry_avg": r["a5_industry_avg"],
+                "total_industry_avg": r["total_industry_avg"],
+            },
+        }
+        for r in rows_db
+    ]
+    return {
+        "ok": True,
+        "result": {
+            "date": target_date.isoformat(),
+            "rows": rows,
+            "count": len(rows),
+        },
+        "trace": {
+            "db_query": "mvp_5a_asset_daily WHERE date=$1",
+            "row_count": len(rows),
+        },
+    }
