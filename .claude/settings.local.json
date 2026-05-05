@@ -150,7 +150,8 @@
       "Bash(findstr LISTENING)",
       "Bash(findstr -E \":80\\(0[0-9]|1[0-9]|2[0-9]|3[0-9]\\)\")",
       "Bash(docker restart *)",
-      "Bash(findstr \"omni-\")"
+      "Bash(findstr \"omni-\")",
+      "Bash(findstr /R \"test_mcp_prompts test_mcp_media\")"
     ]
   },
   "enableAllProjectMcpServers": true,
