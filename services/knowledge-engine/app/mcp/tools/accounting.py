@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from app.database import get_pool
+from app.mcp import prompts
 from app.mcp.audit import tool_with_audit
 from app.mcp.server import mcp
 from app.mcp.utils import decimal_to_jsonable
@@ -158,14 +159,11 @@ async def compute_margin(
     cost_estimate = "skipped"
 
     if not skip_llm:
-        sys_msg = (
-            "你是调味品工厂老板的财务助理。下面给你一组已算好的成本/利润数字"
-            "（精确,不要重算）。用 2-3 句话写解读：(a) 净利率落在什么档位"
-            "（健康/边缘/亏本）；(b) 成本结构里最大的占比是什么；"
-            "(c) 如果想提净利 5 个点,最现实的杠杆点是什么。"
-            "说人话,不要废话,不要复述数字。"
+        sys_msg = prompts.render("compute_margin.system")
+        user_msg = prompts.render(
+            "compute_margin.user",
+            breakdown_json=json.dumps(breakdown, ensure_ascii=False, indent=2),
         )
-        user_msg = "数据:\n" + json.dumps(breakdown, ensure_ascii=False, indent=2)
         final_prompt = sys_msg + "\n\n" + user_msg
         client = AIHubClient()
         try:
