@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 
 from app.database import init_pool, close_pool, get_pool
-from app.mcp.tools.kb import kb_upload_doc
+from app.mcp.tools.kb import kb_upload_doc, kb_set_role
 from app.mcp import human_gate
 
 SMOKE_PREFIX = "_smoke_W3b_kb_"
@@ -133,3 +133,89 @@ async def test_kb_upload_doc_invalid_kb(setup_pool):
         assert result["error"] == "kb_not_found"
     finally:
         os.unlink(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_kb_set_role_approved(setup_pool):
+    kb_id = setup_pool
+    original_request = human_gate.request_approval
+
+    async def mock_approved(**kwargs):
+        return {"decision": "approved"}
+
+    human_gate.request_approval = mock_approved
+    try:
+        result = await kb_set_role(kb_id=kb_id, kb_role="template")
+    finally:
+        human_gate.request_approval = original_request
+
+    assert result["ok"] is True
+    assert result["result"]["kb_role"] == "template"
+
+    # 验证 DB 真写入
+    pool = get_pool()
+    role = await pool.fetchval(
+        "SELECT kb_role FROM knowledge.knowledge_bases WHERE id = $1::uuid",
+        kb_id,
+    )
+    assert role == "template"
+
+    # 改回 general 让后续测试稳定
+    await pool.execute(
+        "UPDATE knowledge.knowledge_bases SET kb_role = 'general' WHERE id = $1::uuid",
+        kb_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_kb_set_role_invalid_role(setup_pool):
+    kb_id = setup_pool
+    original_request = human_gate.request_approval
+
+    async def mock_approved(**kwargs):
+        return {"decision": "approved"}
+
+    human_gate.request_approval = mock_approved
+    try:
+        result = await kb_set_role(kb_id=kb_id, kb_role="not_a_real_role")
+    finally:
+        human_gate.request_approval = original_request
+
+    assert result["ok"] is False
+    assert result["error"] == "invalid_kb_role"
+
+
+@pytest.mark.asyncio
+async def test_kb_set_role_kb_not_found(setup_pool):
+    fake_kb = str(uuid.uuid4())
+    original_request = human_gate.request_approval
+
+    async def mock_approved(**kwargs):
+        return {"decision": "approved"}
+
+    human_gate.request_approval = mock_approved
+    try:
+        result = await kb_set_role(kb_id=fake_kb, kb_role="general")
+    finally:
+        human_gate.request_approval = original_request
+
+    assert result["ok"] is False
+    assert result["error"] == "kb_not_found"
+
+
+@pytest.mark.asyncio
+async def test_kb_set_role_rejected(setup_pool):
+    kb_id = setup_pool
+    original_request = human_gate.request_approval
+
+    async def mock_rejected(**kwargs):
+        return {"decision": "rejected", "decision_note": "test reject"}
+
+    human_gate.request_approval = mock_rejected
+    try:
+        result = await kb_set_role(kb_id=kb_id, kb_role="template")
+    finally:
+        human_gate.request_approval = original_request
+
+    assert result["ok"] is False
+    assert result["error"] == "rejected_by_user"

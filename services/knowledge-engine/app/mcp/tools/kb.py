@@ -1,5 +1,6 @@
 """W1: search_kb, list_kbs（design doc §3.2 W1 行 3-4）。
 W3b T6: kb_upload_doc（require_approval=True，Gate 批后才调 ingestion）。
+W3b T7: kb_set_role（require_approval=True，Gate 批后改 KB 角色）。
 
 list_kbs：thin wrapper over services.ingestion.list_kbs，可选按 kb_role 过滤。
 search_kb：thin wrapper over services.rag_chain.retrieve_multi_kb；支持
@@ -14,6 +15,7 @@ import os
 from app.mcp.audit import tool_with_audit
 from app.mcp.server import mcp
 from app.services import ingestion, rag_chain
+from app.services.ingestion import _VALID_KB_ROLES
 
 
 @tool_with_audit(mcp, require_approval=False)
@@ -171,5 +173,71 @@ async def kb_upload_doc(
         "trace": {
             "ingestion_task_id": task_id,
             "submit_via": "ingestion.submit_ingestion_task",
+        },
+    }
+
+
+def _kb_set_role_summary(args: dict) -> str:
+    """Gate 卡片摘要：改 KB=X → role=Y"""
+    kb = str(args.get("kb_id", "?"))[:8]
+    role = args.get("kb_role", "?")
+    return f"改 KB={kb} → role={role}"
+
+
+@tool_with_audit(
+    mcp,
+    require_approval=True,
+    summary_fn=_kb_set_role_summary,
+    timeout_seconds=3600,
+)
+async def kb_set_role(kb_id: str, kb_role: str) -> dict:
+    """改 KB 角色（require_approval=True）。
+
+    合法角色：authoritative / methodology / personal_log /
+    template / private_doc / general
+
+    Args:
+        kb_id: KB id（uuid str）
+        kb_role: 新角色
+
+    Returns:
+        {ok, result: {kb_id, kb_role, name, old_kb_role}, trace}
+    """
+    if kb_role not in _VALID_KB_ROLES:
+        return {
+            "ok": False,
+            "error": "invalid_kb_role",
+            "hint": f"kb_role 必须是 {sorted(_VALID_KB_ROLES)} 之一，给的是 {kb_role!r}",
+        }
+
+    # 校验 KB 存在
+    existing = await ingestion.get_kb(kb_id)
+    if not existing:
+        return {
+            "ok": False,
+            "error": "kb_not_found",
+            "hint": f"kb_id={kb_id} 不存在；用 list_kbs 查可用 id",
+        }
+
+    updated = await ingestion.update_kb_role(kb_id, kb_role)
+    if not updated:
+        return {
+            "ok": False,
+            "error": "update_failed",
+            "hint": "ingestion.update_kb_role 返回 None；DB 写入失败",
+        }
+
+    return {
+        "ok": True,
+        "result": {
+            "kb_id": kb_id,
+            "kb_role": kb_role,
+            "name": updated.get("name"),
+            "old_kb_role": existing.get("kb_role"),
+        },
+        "trace": {
+            "db_query": "UPDATE knowledge.knowledge_bases SET kb_role=$1 WHERE id=$2",
+            "old_role": existing.get("kb_role"),
+            "new_role": kb_role,
         },
     }
