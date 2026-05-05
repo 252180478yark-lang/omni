@@ -183,9 +183,9 @@ async def _update_step(
     *,
     step: str | None = None,
     status: str | None = None,
-    error_message: str | None = None,
     **field_updates: Any,
 ) -> dict:
+    # error_message 走 **field_updates 通用路径，None 时 SET NULL（成功路径清掉旧错）。
     pool = get_pool()
     sets: list[str] = []
     vals: list[Any] = []
@@ -194,8 +194,6 @@ async def _update_step(
         sets.append(f"current_step = ${idx}"); idx += 1; vals.append(step)
     if status is not None:
         sets.append(f"status = ${idx}"); idx += 1; vals.append(status)
-    if error_message is not None:
-        sets.append(f"error_message = ${idx}"); idx += 1; vals.append(error_message)
     for key, val in field_updates.items():
         if isinstance(val, (dict, list)):
             sets.append(f"{key} = ${idx}::jsonb"); idx += 1
