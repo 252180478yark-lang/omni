@@ -1413,9 +1413,13 @@ async def generate_videos(pipeline_id: str) -> dict:
         script_prov, script_mdl = _stage_model(pipe, "script")
         video_prov, video_mdl = _stage_model(pipe, "video")
         video_tasks = []
-        for scene in scenes:
+        # 分镜图按 scene 顺序就是首尾帧——scene N 的 first_frame=storyboard[N]，
+        # last_frame=storyboard[N+1]（最后一段不传 last_frame）。
+        for i, scene in enumerate(scenes):
             sb = sb_map.get(scene["scene_id"], {})
             storyboard_url = sb.get("image_url", "")
+            next_sb = sb_map.get(scenes[i + 1]["scene_id"], {}) if i + 1 < len(scenes) else {}
+            last_frame_url = next_sb.get("image_url", "")
             dur = int(scene.get("duration", "5s").replace("s", ""))
 
             if use_enhanced:
@@ -1423,6 +1427,7 @@ async def generate_videos(pipeline_id: str) -> dict:
                     scene["scene_id"],
                     _generate_video_with_transform(
                         scene, storyboard_url, dur,
+                        last_frame_url=last_frame_url or None,
                         product_images=product_images,
                         character_profiles=character_profiles,
                         generate_audio=generate_audio,
@@ -1442,6 +1447,7 @@ async def generate_videos(pipeline_id: str) -> dict:
                     _call_video(
                         prompt, storyboard_url or None, dur,
                         provider=video_prov, model=video_mdl,
+                        last_frame=last_frame_url or None,
                         generate_audio=generate_audio,
                         ratio=video_ratio,
                         quality=video_quality,
