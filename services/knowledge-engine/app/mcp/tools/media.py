@@ -35,13 +35,15 @@ async def generate_brief(
     sku_id: str,
     channel: str,
     extra_context: str | None = None,
+    kb_context: str | None = None,
 ) -> dict:
-    """出渠道 brief（markdown）。基于 sku metadata + 渠道 profile + 可选 extra context。
+    """出渠道 brief（markdown）。基于 sku metadata + 渠道 profile + 可选 KB 上下文 + 可选 extra_context。
 
     Args:
         sku_id: SKU id
         channel: 渠道（douyin / tmall / jd / ...）
         extra_context: 额外提示（如"主推健康"/"对标 X 品牌"）
+        kb_context: 已检索好的 KB 上下文（建议由 gather_brief_context tool 出）
 
     Returns:
         {ok, result: {brief_md}, trace, next_step_hint(generate_image)}
@@ -75,19 +77,14 @@ async def generate_brief(
         f"- 规格：{sku['specifications'] or '（无）'}\n"
     )
 
-    sys_msg = (
-        "你是调味品工厂老板的渠道运营。给一只 SKU 写一份渠道 brief。"
-        "brief 用 markdown 格式，含：核心卖点（3 条）/ 目标人群 / "
-        "主场景 / 文案钩子（1 句）/ 拍摄分镜建议（3 个分镜的 1 句话描述）。"
-        "说人话，不要废话，不要“亲”“家人们”等套话。"
+    sys_msg = prompts.render("generate_brief.system")
+    user_msg = prompts.render(
+        "generate_brief.user",
+        sku_md=sku_md,
+        channel_profile=_channel_profile(channel),
+        kb_context=kb_context.strip() if kb_context else "（未提供 KB 上下文）",
+        extra_context=extra_context.strip() if extra_context else "（无）",
     )
-    user_msg = (
-        f"## SKU\n{sku_md}\n"
-        f"## 渠道\n{_channel_profile(channel)}\n"
-    )
-    if extra_context:
-        user_msg += f"\n## 额外要求\n{extra_context}\n"
-
     final_prompt = sys_msg + "\n\n" + user_msg
 
     model_cfg = get_model_for_tool("generate_brief")

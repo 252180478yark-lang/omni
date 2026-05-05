@@ -1,6 +1,7 @@
 # tool → 模型映射（design doc §2.5）
 # W1：仅 __default__ 起作用
 # W2：4 个 LLM tool 各自 keyed override（独立切模型）
+# W3a：chat 类 tool 加 prompts 路径，prompt 外置到 config/prompts/*.md
 
 __default__:
   provider: gemini
@@ -16,11 +17,17 @@ compute_margin:
   provider: gemini
   model: gemini-3-flash-preview
   temperature: 0.1   # 解读类，要稳
+  prompts:
+    system: compute_margin.system
+    user: compute_margin.user
 
 generate_brief:
   provider: gemini
   model: gemini-3-flash-preview
   temperature: 0.5   # 文案要发挥
+  prompts:
+    system: generate_brief.system
+    user: generate_brief.user
 
 generate_image:
   provider: gemini
