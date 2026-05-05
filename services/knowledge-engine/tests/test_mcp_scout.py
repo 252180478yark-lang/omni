@@ -14,6 +14,7 @@ from app.database import init_pool, close_pool, get_pool
 from app.mcp.tools.scout import (
     fetch_compass_store_daily,
     fetch_compass_sku_detail,
+    fetch_compass_search_traffic,
 )
 
 SMOKE_PREFIX = "_smoke_W3b_"
@@ -57,6 +58,20 @@ async def setup_pool():
         """
         INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
         VALUES ('_smoke_W3b_sku_X', $1, 'sku_visit', 88, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb)
+        """,
+        YESTERDAY,
+    )
+    await pool.execute(
+        """
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
+        VALUES ('', $1, 'search_uv', 1234, 'compass/search-drainage-terms', '_smoke_W3b_run1', '{}'::jsonb)
+        """,
+        YESTERDAY,
+    )
+    await pool.execute(
+        """
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
+        VALUES ('', $1, 'paid_clicks', 567, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb)
         """,
         YESTERDAY,
     )
@@ -136,5 +151,27 @@ async def test_fetch_compass_sku_detail_no_data_for_sku():
 @pytest.mark.asyncio
 async def test_fetch_compass_sku_detail_default_latest():
     result = await fetch_compass_sku_detail(sku_id="_smoke_W3b_sku_X")
+    assert result["ok"] is True
+    assert result["result"]["count"] >= 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_compass_search_traffic_returns():
+    result = await fetch_compass_search_traffic(date=YESTERDAY.isoformat())
+    assert result["ok"] is True
+    res = result["result"]
+    metric_names = {m["metric_name"] for m in res["metrics"]}
+    assert "search_uv" in metric_names
+    assert "paid_clicks" in metric_names
+    sources = {m["source_runbook"] for m in res["metrics"]}
+    assert all(
+        s.startswith("compass/search") or s.startswith("compass/business")
+        for s in sources
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_compass_search_traffic_default_latest():
+    result = await fetch_compass_search_traffic()
     assert result["ok"] is True
     assert result["result"]["count"] >= 2

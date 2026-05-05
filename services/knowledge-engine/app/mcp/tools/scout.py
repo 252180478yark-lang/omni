@@ -100,6 +100,9 @@ async def fetch_compass_store_daily(date: str | None = None) -> dict:
     }
 
 
+_SEARCH_TRAFFIC_PREFIXES = ("compass/search", "compass/business")
+
+
 @tool_with_audit(mcp, require_approval=False)
 async def fetch_compass_sku_detail(sku_id: str, date: str | None = None) -> dict:
     """读指定 SKU 的罗盘最近一天数据。
@@ -178,6 +181,84 @@ async def fetch_compass_sku_detail(sku_id: str, date: str | None = None) -> dict
         },
         "trace": {
             "db_query": "mvp_daily_metric WHERE source_runbook LIKE 'compass/%' AND sku_id=$1",
+            "row_count": len(metrics),
+        },
+    }
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def fetch_compass_search_traffic(date: str | None = None) -> dict:
+    """读罗盘搜索/流量/营销相关数据最近一天。
+
+    覆盖 source_runbook：compass/search-* + compass/business-*
+    （搜索词、流量分版、广告/营销类，按入库 source_runbook 名筛选）
+
+    Args:
+        date: ISO 日期，None = 最近一天
+
+    Returns:
+        {ok, result: {date, metrics, count}, trace}
+    """
+    try:
+        target_date = _parse_date(date)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_date",
+            "hint": f"date 必须是 ISO 格式: {exc}",
+        }
+
+    pool = get_pool()
+    where_runbook = " OR ".join(
+        f"source_runbook LIKE '{prefix}%'" for prefix in _SEARCH_TRAFFIC_PREFIXES
+    )
+
+    if target_date is None:
+        latest = await pool.fetchval(
+            f"SELECT MAX(date) FROM mvp_daily_metric WHERE ({where_runbook})"
+        )
+        if latest is None:
+            return {
+                "ok": False,
+                "error": "no_data",
+                "hint": "mvp_daily_metric 中无 compass search/business 数据",
+            }
+        target_date = latest
+
+    rows = await pool.fetch(
+        f"""
+        SELECT sku_id, metric_name, value, source_runbook
+        FROM mvp_daily_metric
+        WHERE ({where_runbook}) AND date = $1
+        ORDER BY source_runbook, sku_id, metric_name
+        """,
+        target_date,
+    )
+    if not rows:
+        return {
+            "ok": False,
+            "error": "no_data",
+            "hint": f"date={target_date.isoformat()} 无 compass search/business 数据",
+        }
+
+    metrics = [
+        {
+            "sku_id": r["sku_id"] or None,
+            "metric_name": r["metric_name"],
+            "value": str(r["value"]) if r["value"] is not None else None,
+            "source_runbook": r["source_runbook"],
+        }
+        for r in rows
+    ]
+    return {
+        "ok": True,
+        "result": {
+            "date": target_date.isoformat(),
+            "metrics": metrics,
+            "count": len(metrics),
+        },
+        "trace": {
+            "db_query": f"mvp_daily_metric WHERE ({where_runbook})",
             "row_count": len(metrics),
         },
     }
