@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 
 from app.database import get_pool
+from app.mcp import prompts
 from app.mcp.audit import tool_with_audit
 from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
@@ -18,15 +19,15 @@ from app.mcp.trace import attach_next_step, build_trace
 from app.services.ai_hub_client import AIHubClient
 
 
-_CHANNEL_PROFILES = {
-    "douyin": "抖音电商：竖版 9:16，前 3 秒强钩子，价格锚点 + 痛点切入；忌过长 brief（≤300 字）",
-    "tmall": "天猫店铺：详情页长图文，强调品质 + 资质 + 用户证言；2-4 段，每段含一个购买理由",
-    "jd": "京东自营：物流 + 售后承诺为主；强调正品 / 配送 / 服务",
-}
-
-
 def _channel_profile(channel: str) -> str:
-    return _CHANNEL_PROFILES.get(channel, f"渠道 {channel}（未配 profile，按通用电商写）")
+    """从 config/prompts/channel_profiles/<channel>.md 加载渠道画像。
+
+    未配 profile 文件时返回 fallback 文案（不报错，让 brief 仍能出）。
+    """
+    try:
+        return prompts.load(f"channel_profiles/{channel}").strip()
+    except FileNotFoundError:
+        return f"渠道 {channel}（未配 profile，按通用电商写）"
 
 
 @tool_with_audit(mcp, require_approval=False)
