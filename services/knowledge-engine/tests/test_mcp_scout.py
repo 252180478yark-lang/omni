@@ -13,6 +13,7 @@ import pytest_asyncio
 from app.database import init_pool, close_pool, get_pool
 from app.mcp.tools.scout import (
     fetch_compass_store_daily,
+    fetch_compass_sku_detail,
 )
 
 SMOKE_PREFIX = "_smoke_W3b_"
@@ -26,8 +27,7 @@ async def setup_pool():
     pool = get_pool()
     # 清理可能残留的 _smoke_ 行
     await pool.execute(
-        "DELETE FROM mvp_daily_metric WHERE sku_id LIKE $1 OR source_run_id LIKE $2",
-        SMOKE_PREFIX + "%",
+        "DELETE FROM mvp_daily_metric WHERE source_run_id LIKE $1",
         SMOKE_PREFIX + "%",
     )
     # 先插全店日报数据（sku_id='', source_run_id 用 _smoke_W3b_run1）
@@ -42,6 +42,21 @@ async def setup_pool():
         """
         INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
         VALUES ('', $1, 'visit_uv', 8765, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb)
+        """,
+        YESTERDAY,
+    )
+    # SKU 级数据（sku_id='_smoke_W3b_sku_X', source_run_id 用 _smoke_W3b_run1）
+    await pool.execute(
+        """
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
+        VALUES ('_smoke_W3b_sku_X', $1, 'sku_gmv', 999.99, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb)
+        """,
+        YESTERDAY,
+    )
+    await pool.execute(
+        """
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
+        VALUES ('_smoke_W3b_sku_X', $1, 'sku_visit', 88, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb)
         """,
         YESTERDAY,
     )
@@ -74,6 +89,7 @@ async def test_fetch_compass_store_daily_default_latest():
     assert result["ok"] is True
     # 应该至少返回我们插的 _smoke 数据
     assert result["result"]["count"] >= 2
+    assert result["result"]["date"] == YESTERDAY.isoformat()
 
 
 @pytest.mark.asyncio
@@ -90,3 +106,35 @@ async def test_fetch_compass_store_daily_invalid_date():
     result = await fetch_compass_store_daily(date="not-a-date")
     assert result["ok"] is False
     assert result["error"] == "invalid_date"
+
+
+@pytest.mark.asyncio
+async def test_fetch_compass_sku_detail_returns_sku():
+    result = await fetch_compass_sku_detail(
+        sku_id="_smoke_W3b_sku_X",
+        date=YESTERDAY.isoformat(),
+    )
+    assert result["ok"] is True
+    res = result["result"]
+    assert res["sku_id"] == "_smoke_W3b_sku_X"
+    assert res["date"] == YESTERDAY.isoformat()
+    metric_names = {m["metric_name"] for m in res["metrics"]}
+    assert "sku_gmv" in metric_names
+    assert "sku_visit" in metric_names
+
+
+@pytest.mark.asyncio
+async def test_fetch_compass_sku_detail_no_data_for_sku():
+    result = await fetch_compass_sku_detail(
+        sku_id="_smoke_W3b_nonexistent_sku",
+        date=YESTERDAY.isoformat(),
+    )
+    assert result["ok"] is False
+    assert result["error"] == "no_data"
+
+
+@pytest.mark.asyncio
+async def test_fetch_compass_sku_detail_default_latest():
+    result = await fetch_compass_sku_detail(sku_id="_smoke_W3b_sku_X")
+    assert result["ok"] is True
+    assert result["result"]["count"] >= 2

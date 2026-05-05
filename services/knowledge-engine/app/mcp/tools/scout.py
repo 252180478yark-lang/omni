@@ -98,3 +98,86 @@ async def fetch_compass_store_daily(date: str | None = None) -> dict:
             "row_count": len(metrics),
         },
     }
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def fetch_compass_sku_detail(sku_id: str, date: str | None = None) -> dict:
+    """读指定 SKU 的罗盘最近一天数据。
+
+    Args:
+        sku_id: SKU id（必填，如 'SKU-367991-0002'）
+        date: ISO 日期，None = 最近一天
+
+    Returns:
+        {ok, result: {sku_id, date, metrics, count}, trace}
+    """
+    if not sku_id or not sku_id.strip():
+        return {
+            "ok": False,
+            "error": "invalid_sku_id",
+            "hint": "sku_id 不能为空",
+        }
+    try:
+        target_date = _parse_date(date)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_date",
+            "hint": f"date 必须是 ISO 格式: {exc}",
+        }
+
+    pool = get_pool()
+    if target_date is None:
+        latest = await pool.fetchval(
+            """
+            SELECT MAX(date) FROM mvp_daily_metric
+            WHERE source_runbook LIKE 'compass/%' AND sku_id = $1
+            """,
+            sku_id,
+        )
+        if latest is None:
+            return {
+                "ok": False,
+                "error": "no_data",
+                "hint": f"mvp_daily_metric 中无 sku_id={sku_id} 的 compass 数据",
+            }
+        target_date = latest
+
+    rows = await pool.fetch(
+        """
+        SELECT metric_name, value, source_runbook
+        FROM mvp_daily_metric
+        WHERE source_runbook LIKE 'compass/%' AND sku_id = $1 AND date = $2
+        ORDER BY source_runbook, metric_name
+        """,
+        sku_id,
+        target_date,
+    )
+    if not rows:
+        return {
+            "ok": False,
+            "error": "no_data",
+            "hint": f"sku_id={sku_id} date={target_date.isoformat()} 无 compass 数据",
+        }
+
+    metrics = [
+        {
+            "metric_name": r["metric_name"],
+            "value": str(r["value"]) if r["value"] is not None else None,
+            "source_runbook": r["source_runbook"],
+        }
+        for r in rows
+    ]
+    return {
+        "ok": True,
+        "result": {
+            "sku_id": sku_id,
+            "date": target_date.isoformat(),
+            "metrics": metrics,
+            "count": len(metrics),
+        },
+        "trace": {
+            "db_query": "mvp_daily_metric WHERE source_runbook LIKE 'compass/%' AND sku_id=$1",
+            "row_count": len(metrics),
+        },
+    }
