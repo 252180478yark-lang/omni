@@ -820,6 +820,26 @@ async def generate_copy(pipeline_id: str) -> dict:
 
     config = pipe["config"] if isinstance(pipe["config"], dict) else json.loads(pipe["config"] or "{}")
     prompt = build_copy_prompt(pipe["source_text"], config)
+
+    # tri-KB 联合召回（基于 brief）+ 反 AI 语料样本——跟 generate_script 看齐，
+    # 防裸 LLM 自由发挥，让文案基于真实素材 + 真人语感样本
+    brief: dict | None = None
+    if pipe.get("brief_id"):
+        try:
+            from app.services import briefs as briefs_svc
+            brief = await briefs_svc.get_brief(str(pipe["brief_id"]))
+        except Exception as exc:
+            logger.debug("brief fetch failed: %s", exc)
+    kb_snippets, voice_examples = await _retrieve_tri_kb_context(brief)
+    kb_block = format_kb_snippets(kb_snippets)
+    prompt += (
+        f"\n\n{KB_AS_CREATIVE_MATERIAL}\n\n"
+        f"## 知识库召回（三 KB：ocean_engine / audience_report / content_strategy + history）\n"
+        f"{kb_block}"
+    )
+    if voice_examples:
+        prompt += f"\n\n{KB_AS_STYLE_SAMPLE}\n\n{format_style_samples(voice_examples)}"
+
     # 飞轮：按 copy_style 细分 scope
     copy_scope = {"copy_style": config.get("copy_style", "grassplanting"), "pipeline_id": pipeline_id}
     prompt += await render_rules_suffix("content.copy", copy_scope)
