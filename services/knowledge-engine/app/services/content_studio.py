@@ -840,6 +840,15 @@ async def generate_copy(pipeline_id: str) -> dict:
     if voice_examples:
         prompt += f"\n\n{KB_AS_STYLE_SAMPLE}\n\n{format_style_samples(voice_examples)}"
 
+    # 输出最终约束（防 LLM 把 KB 块看成需要复述的元信息）
+    prompt += (
+        "\n\n## 输出最终约束（最高优先级）\n"
+        "- KB 召回片段只供你参考事实和语感，**绝对不要复述、不要标引用来源**\n"
+        "- 不要在末尾或任何地方加 'evidence:' / '参考来自' / '依据：' / '推断' 等元信息段\n"
+        "- 不要解释你用了哪些 KB / 哪些 USP / 哪些场景\n"
+        "- 输出 = 直接发给粉丝看的文案纯文本，开头 hook → 中段卖点 → 结尾 CTA，**无任何标记或脚注**"
+    )
+
     # 飞轮：按 copy_style 细分 scope
     copy_scope = {"copy_style": config.get("copy_style", "grassplanting"), "pipeline_id": pipeline_id}
     prompt += await render_rules_suffix("content.copy", copy_scope)
