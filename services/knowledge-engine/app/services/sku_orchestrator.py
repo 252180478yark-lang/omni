@@ -436,6 +436,8 @@ async def step_selling_points(orch_id: str) -> dict:
       "evidence": "为什么选它而不选另一条候选",
       "priority": 1,
       "selection_reason": "...",
+      "matched_scenario": "这条主打 USP 最能放大效果的具体可视化场景一句话（不写人群）",
+      "match_reason": "为什么这场景最能放大该主打 USP（举例对比品类共性）",
       "tags": ["#USP", "#排他性_成立"]
     }}
   ],
@@ -583,14 +585,29 @@ async def step_audience_match(orch_id: str) -> dict:
     {{
       "name": "人群标签（如 25-35 居家烹饪精致妈妈）",
       "size_estimate": "粗估规模（如 大/中/小 或 100w 量级）",
+      "match_score": 5,
+      "match_score_reason": "评分理由 ≥15 字（综合卖点匹配深度/规模/复购潜力/转化阻力）",
       "match_reason": "为什么这个 SKU 适配（≥30 字）",
-      "matched_selling_points": ["命中的卖点 1", "命中的卖点 2"],
+      "triggered_usp": ["命中的具体卖点 1（要写卖点全名）", "命中的具体卖点 2"],
+      "mini_profile": {{
+        "age": "如 25-35",
+        "gender": "F|M|不限",
+        "tier": "一线|新一线|二线|三四线|不限",
+        "consumption_level": "如 A2-A3",
+        "core_motivation": "一句话核心动机",
+        "core_objection": "一句话核心顾虑"
+      }},
       "priority": 1
     }}
   ],
   "primary_audience": "首选人群名（candidates 中之一）"
 }}
 ```
+
+## 评分约束
+- `match_score` 1-5 整数；5=核心人群必抢；3=可投放但非主战场；1=不建议投。
+- `triggered_usp` 必须写卖点全名（如"氨基酸态氮 0.9g/100ml"），不写抽象词（"高品质"）。
+- `mini_profile` 即使候选人群 2、3 也必须有，让老板判断是否值得"次推"。
 """
     try:
         result = await _llm_json(prompt, temperature=0.4)
