@@ -1,0 +1,9 @@
+sku_id,category,item_name,unit_cost,currency,unit,quantity_per_unit,vendor,valid_from,valid_to,notes
+,logistics,顺丰华东,5.5,CNY,次,1,顺丰,2026-01-01,,
+,logistics,京东专线,3.8,CNY,次,1,京东物流,2026-01-01,,
+SKU-367991-0001,product,瓶身,0.45,CNY,件,24,某玻璃厂,2026-01-01,,一箱 24 瓶
+SKU-367991-0001,product,瓶盖,0.08,CNY,件,24,,2026-01-01,,
+SKU-367991-0001,product,标签,0.05,CNY,件,1,,2026-01-01,,
+SKU-367991-0001,product,主料,4.2,CNY,瓶,1,,2026-01-01,,
+SKU-367991-0001,product,包装箱,1.8,CNY,箱,24,,2026-01-01,,
+SKU-367991-0001,product,人工,0.3,CNY,瓶,1,,2026-01-01,,

@@ -227,6 +227,7 @@ services:
       - ./services/knowledge-engine/app:/app/app
       - ./services/knowledge-engine/tests:/app/tests
       - ./services/knowledge-engine/config:/app/config
+      - ./services/knowledge-engine/scripts:/app/scripts:rw
     depends_on:
       postgres:
         condition: service_healthy
