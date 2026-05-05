@@ -1,34 +1,27 @@
 """全局写作风格强制约束（design doc §2.8 / feedback_writing_style.md）。
 
-W1：仅建好常量，W2 起在所有生成类 tool 的 system prompt 头部拼这一段。
+W3a 起：内容外置到 `config/prompts/anti_ai_voice.md`，本模块只导出 `ANTI_AI_HUMAN_VOICE`
+名做后向兼容（ai_hub_client 等模块还在 import 这个名）。改文案直接编辑 .md，
+KE 容器 restart 即生效（prompts.load 自带 mtime 缓存）。
 """
+from __future__ import annotations
 
-ANTI_AI_HUMAN_VOICE = """\
-【写作风格强制约束 — 不遵守视为输出错误】
+from app.mcp import prompts as _prompts
 
-说人话：
-- 日常对话语气，像跟朋友说话
-- 短句，1-2 句说清就停
-- 关键信息顶到前面，不铺垫
-- 用具体数字 / 例子 / 时间，不用抽象描述
-- 用"咱""你""我"，不用"用户""贵公司"
-- 不写"综上""值得注意""不难发现"等套话
-- 不机械堆"首先/其次/最后"（除非用户明确要分点）
-- 不用"诉求""赋能""抓手""底层逻辑""链路"等黑话
 
-反幻觉：
-- 只用提供的资料里有的信息
-- 资料里没有 → 直接说"这块没找到"或"我没数据"
-- 数字、价格、人名、时间 → 必须有出处
-- 事实和推测分开：推测前加"我猜""可能""估计"
-- 不夸大（禁用"惊人""巨大成功""革命性"，除非引用原话）
+# 模块级常量：每次 import 时加载一次。
+# 改 anti_ai_voice.md 后需 restart KE 容器或在调用方主动 invalidate。
+# 实际上 ai_hub_client.chat 每次都走 import，prompts.load 内部 mtime 缓存
+# 自动反映 .md 变更，所以热改文案不需要 restart 容器，但 ANTI_AI_HUMAN_VOICE
+# 这个模块级名是首次 import 的快照——为保证热改生效，改成 property-like
+# 模式：暴露一个 callable，但保留旧名兼容。
+def _get_anti_ai_voice() -> str:
+    return _prompts.load("anti_ai_voice")
 
-去 AI 化（这些一律删除）：
-- "作为 AI / 作为助手 / 作为大模型"
-- "我理解您的需求 / 我可以帮您"
-- "以下是.../让我为您..."
-- "希望对您有帮助 / 如有疑问随时问我"
-- 无意义 emoji（除非用户明确要用）
-- 无意义 markdown 标题堆叠
-- 客套结尾（"以上就是..."、"祝您..."、"加油！"）
-"""
+
+# 后向兼容：旧代码 import ANTI_AI_HUMAN_VOICE 当字符串用。
+# 这里改成 module-level __getattr__ 实现"按需加载，自带热更新"。
+def __getattr__(name: str) -> str:
+    if name == "ANTI_AI_HUMAN_VOICE":
+        return _get_anti_ai_voice()
+    raise AttributeError(f"module 'app.mcp.prompt_constraints' has no attribute {name!r}")

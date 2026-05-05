@@ -91,3 +91,15 @@ def test_invalidate_clears_cache(tmp_path, monkeypatch):
     f.write_text("b", encoding="utf-8")
     P.invalidate()
     assert P.load("_smoke4") == "b"
+
+
+def test_anti_ai_voice_loaded_from_md():
+    """prompt_constraints.ANTI_AI_HUMAN_VOICE 应从 .md 文件加载（不是字面量）。"""
+    from app.mcp import prompt_constraints
+
+    # 内容应该完整含三段标题
+    assert "说人话" in prompt_constraints.ANTI_AI_HUMAN_VOICE
+    assert "反幻觉" in prompt_constraints.ANTI_AI_HUMAN_VOICE
+    assert "去 AI 化" in prompt_constraints.ANTI_AI_HUMAN_VOICE
+    # 与直接 prompts.load 加载结果一致
+    assert prompt_constraints.ANTI_AI_HUMAN_VOICE == P.load("anti_ai_voice")
