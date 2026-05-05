@@ -86,7 +86,7 @@ async def _check_tools_registered(report: DoctorReport) -> None:
     try:
         from app.mcp.server import mcp
         tools = await mcp.list_tools()
-        # W1 5 + W2 5 + W3a 3 = 13
+        # W1 5 + W2 5 + W3a 3 + W3b 7 = 20
         wanted = {
             # W1
             "list_skus", "get_sku", "search_kb", "list_kbs", "list_briefs",
@@ -95,6 +95,11 @@ async def _check_tools_registered(report: DoctorReport) -> None:
             "generate_brief", "generate_image", "generate_video",
             # W3a
             "record_cost", "disable_cost_item", "gather_brief_context",
+            # W3b
+            "fetch_compass_store_daily", "fetch_compass_sku_detail",
+            "fetch_compass_search_traffic",
+            "fetch_yuntu_5a", "fetch_yuntu_brand_mind",
+            "kb_upload_doc", "kb_set_role",
         }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names
