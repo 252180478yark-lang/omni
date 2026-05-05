@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 
 from app.database import init_pool, close_pool
-from app.mcp.tools.general import summarize_text
+from app.mcp.tools.general import summarize_text, parse_long_doc_with_gemini
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -75,3 +75,60 @@ async def test_summarize_text_truncation():
     assert result["ok"] is True
     assert result["result"]["truncated"] is True
     assert result["result"]["length_in"] == len(long_text)
+
+
+@pytest.mark.asyncio
+async def test_parse_long_doc_file_not_found():
+    """文件不存在 → file_not_found。"""
+    result = await parse_long_doc_with_gemini(file_path="/nonexistent/path.pdf")
+    assert result["ok"] is False
+    assert result["error"] == "file_not_found"
+
+
+@pytest.mark.asyncio
+async def test_parse_long_doc_is_directory():
+    """传目录 → is_directory。"""
+    result = await parse_long_doc_with_gemini(file_path="/tmp")
+    assert result["ok"] is False
+    assert result["error"] == "is_directory"
+
+
+@pytest.mark.asyncio
+async def test_parse_long_doc_basic_txt():
+    """普通 .txt 文件应解析成功。"""
+    with tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w", encoding="utf-8") as f:
+        f.write(
+            "## 第一章 产品概况\n这是一段产品描述。营收 1000 万。\n\n"
+            "## 第二章 用户画像\n核心用户 25-35 岁女性。\n"
+        )
+        tmp = f.name
+
+    try:
+        result = await parse_long_doc_with_gemini(file_path=tmp)
+        assert result["ok"] is True
+        outline = result["result"]["markdown_outline"]
+        assert isinstance(outline, str)
+        assert len(outline) > 0
+        assert result["result"]["source_type"] == "text"
+        assert result["result"]["truncated"] is False
+        assert "model" in result["trace"]
+    finally:
+        os.unlink(tmp)
+
+
+@pytest.mark.asyncio
+async def test_parse_long_doc_with_instruction():
+    """带 instruction 应正常返回（不验内容，仅验流程跑通）。"""
+    with tempfile.NamedTemporaryFile(suffix=".md", delete=False, mode="w", encoding="utf-8") as f:
+        f.write("# 标题\n卖点 1: 价格便宜\n卖点 2: 质量好\n卖点 3: 配送快\n")
+        tmp = f.name
+
+    try:
+        result = await parse_long_doc_with_gemini(
+            file_path=tmp,
+            instruction="只抽取卖点列表",
+        )
+        assert result["ok"] is True
+        assert len(result["result"]["markdown_outline"]) > 0
+    finally:
+        os.unlink(tmp)
