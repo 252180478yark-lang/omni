@@ -33,6 +33,7 @@ from app.mcp.tools import media as _media_tools  # noqa: E402, F401
 from app.mcp.tools import cost_admin as _cost_admin  # noqa: E402, F401  # W3a T8
 from app.mcp.tools import sop as _sop  # noqa: E402, F401  # W3a T10
 from app.mcp.tools import scout as _scout  # noqa: E402, F401  # W3b T1+
+from app.mcp.tools import general as _general  # noqa: E402, F401  # W3c T1+
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
 # path="/" 使子应用内路由为 "/"，挂载到 /mcp 后完整路径即 /mcp
