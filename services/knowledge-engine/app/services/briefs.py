@@ -43,6 +43,32 @@ def _hub_chat_url() -> str:
     return f"{settings.ai_provider_hub_url.rstrip('/')}/api/v1/ai/chat"
 
 
+def _coerce_jsonb_dict(v) -> dict:
+    if isinstance(v, dict):
+        return v
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {}
+
+
+def _coerce_jsonb_list(v) -> list:
+    if isinstance(v, list):
+        return v
+    if isinstance(v, str):
+        try:
+            parsed = json.loads(v)
+            if isinstance(parsed, list):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return []
+
+
 def _ad_review_base() -> str:
     return settings.ad_review_service_url.rstrip("/")
 
@@ -261,17 +287,17 @@ async def create_brief(payload: dict) -> dict:
         uuid.UUID(payload["parent_brief_id"]) if payload.get("parent_brief_id") else None,
         payload["title"],
         payload["usp"],
-        json.dumps(payload.get("scenarios") or [], ensure_ascii=False),
-        json.dumps(payload.get("audience_profile") or {}, ensure_ascii=False),
-        json.dumps(payload.get("tone_style") or {}, ensure_ascii=False),
+        json.dumps(_coerce_jsonb_list(payload.get("scenarios")), ensure_ascii=False),
+        json.dumps(_coerce_jsonb_dict(payload.get("audience_profile")), ensure_ascii=False),
+        json.dumps(_coerce_jsonb_dict(payload.get("tone_style")), ensure_ascii=False),
         payload.get("source_notes"),
         payload.get("dmp_sop"),
         payload.get("target_purpose"),
-        json.dumps(payload.get("usp_explicit") or [], ensure_ascii=False),
-        json.dumps(payload.get("usp_implicit") or [], ensure_ascii=False),
-        json.dumps(payload.get("usp_unique") or [], ensure_ascii=False),
-        json.dumps(payload.get("audience_content_preference") or {}, ensure_ascii=False),
-        json.dumps(payload.get("extra") or {}, ensure_ascii=False),
+        json.dumps(_coerce_jsonb_list(payload.get("usp_explicit")), ensure_ascii=False),
+        json.dumps(_coerce_jsonb_list(payload.get("usp_implicit")), ensure_ascii=False),
+        json.dumps(_coerce_jsonb_list(payload.get("usp_unique")), ensure_ascii=False),
+        json.dumps(_coerce_jsonb_dict(payload.get("audience_content_preference")), ensure_ascii=False),
+        json.dumps(_coerce_jsonb_dict(payload.get("extra")), ensure_ascii=False),
     )
     brief = dict(row)
 
@@ -336,21 +362,21 @@ async def update_brief(brief_id: str, payload: dict) -> dict | None:
     merged = {
         "title": payload.get("title", brief["title"]),
         "usp": payload.get("usp", brief["usp"]),
-        "scenarios": payload.get("scenarios", brief.get("scenarios") or []),
-        "audience_profile": payload.get("audience_profile", brief.get("audience_profile") or {}),
-        "tone_style": payload.get("tone_style", brief.get("tone_style") or {}),
+        "scenarios": _coerce_jsonb_list(payload.get("scenarios", brief.get("scenarios"))),
+        "audience_profile": _coerce_jsonb_dict(payload.get("audience_profile", brief.get("audience_profile"))),
+        "tone_style": _coerce_jsonb_dict(payload.get("tone_style", brief.get("tone_style"))),
         "source_notes": payload.get("source_notes", brief.get("source_notes")),
         "dmp_sop": payload.get("dmp_sop", brief.get("dmp_sop")),
         "status": payload.get("status", brief.get("status")),
         "target_purpose": payload.get("target_purpose", brief.get("target_purpose")),
-        "usp_explicit": payload.get("usp_explicit", brief.get("usp_explicit") or []),
-        "usp_implicit": payload.get("usp_implicit", brief.get("usp_implicit") or []),
-        "usp_unique": payload.get("usp_unique", brief.get("usp_unique") or []),
-        "audience_content_preference": payload.get(
-            "audience_content_preference", brief.get("audience_content_preference") or {}
+        "usp_explicit": _coerce_jsonb_list(payload.get("usp_explicit", brief.get("usp_explicit"))),
+        "usp_implicit": _coerce_jsonb_list(payload.get("usp_implicit", brief.get("usp_implicit"))),
+        "usp_unique": _coerce_jsonb_list(payload.get("usp_unique", brief.get("usp_unique"))),
+        "audience_content_preference": _coerce_jsonb_dict(
+            payload.get("audience_content_preference", brief.get("audience_content_preference"))
         ),
         "sku_id": payload.get("sku_id", brief.get("sku_id")),
-        "extra": payload.get("extra", brief.get("extra") or {}),
+        "extra": _coerce_jsonb_dict(payload.get("extra", brief.get("extra"))),
     }
     row = await pool.fetchrow(
         """

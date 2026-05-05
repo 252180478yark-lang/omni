@@ -86,11 +86,8 @@ async def create_pipeline(
             # 自动带入 audience_package：若调用方未显式传入，则从 brief.audience_profile 提取
             if not resolved_audience_pkg:
                 ap = brief.get("audience_profile") or {}
-                if isinstance(ap, str):
-                    try:
-                        ap = json.loads(ap)
-                    except Exception:
-                        ap = {}
+                if not isinstance(ap, dict):
+                    ap = {}
                 pkg_id = ap.get("dmp_package_id")
                 if pkg_id:
                     resolved_audience_pkg = {
