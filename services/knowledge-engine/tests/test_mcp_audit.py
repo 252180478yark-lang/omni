@@ -79,9 +79,16 @@ async def test_audit_writes_error_row_on_exception(mcp):
 
 
 @pytest.mark.asyncio
-async def test_audit_returns_tool_error_when_approval_required_in_w1(mcp):
-    """W1 暂未实现 human_gate；require_approval=True 应 graceful 返回 ToolError，
-    而不是 hard crash。"""
+async def test_audit_returns_rejected_by_user_when_gate_rejects(mcp, monkeypatch):
+    """W3a T6 起 human_gate 真实现：rejected 应 graceful 返回 ToolError，
+    且 tool body 不应被调用。"""
+    body_called = False
+
+    async def _fake_request_approval(**kwargs):
+        return {"decision": "rejected", "decision_note": "boss says no"}
+
+    from app.mcp import audit as audit_mod
+    monkeypatch.setattr(audit_mod.human_gate, "request_approval", _fake_request_approval)
 
     @tool_with_audit(
         mcp,
@@ -89,8 +96,49 @@ async def test_audit_returns_tool_error_when_approval_required_in_w1(mcp):
         summary_fn=lambda args: f"smoke gated {args}",
     )
     async def _smoke_gated() -> dict:
+        nonlocal body_called
+        body_called = True
         return {"ok": True}
 
     result = await _smoke_gated()
     assert result["ok"] is False
-    assert result["error"] in {"human_gate_unavailable", "not_implemented"}
+    assert result["error"] == "rejected_by_user"
+    assert result["note"] == "boss says no"
+    assert body_called is False  # gate 驳了就不该跑 body
+
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT status, error FROM mcp.tool_calls"
+        " WHERE tool_name='_smoke_gated' ORDER BY created_at DESC LIMIT 1",
+    )
+    assert row["status"] == "error"
+    assert row["error"] == "rejected_by_user"
+
+
+@pytest.mark.asyncio
+async def test_audit_runs_body_when_gate_approves(mcp, monkeypatch):
+    """gate approved → body 跑，写 completed 行。"""
+
+    async def _fake_request_approval(**kwargs):
+        return {"decision": "approved", "decision_note": "go"}
+
+    from app.mcp import audit as audit_mod
+    monkeypatch.setattr(audit_mod.human_gate, "request_approval", _fake_request_approval)
+
+    @tool_with_audit(
+        mcp,
+        require_approval=True,
+        summary_fn=lambda args: f"smoke approved {args}",
+    )
+    async def _smoke_gated_ok() -> dict:
+        return {"ok": True, "ran": True}
+
+    result = await _smoke_gated_ok()
+    assert result == {"ok": True, "ran": True}
+
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "SELECT status FROM mcp.tool_calls"
+        " WHERE tool_name='_smoke_gated_ok' ORDER BY created_at DESC LIMIT 1",
+    )
+    assert row["status"] == "completed"

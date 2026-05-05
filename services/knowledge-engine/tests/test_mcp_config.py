@@ -65,14 +65,21 @@ def test_ai_hub_client_importable():
     assert c.base_url == "http://example.invalid"
 
 
-@pytest.mark.asyncio
-async def test_human_gate_stub_raises_not_implemented():
-    from app.mcp.human_gate import request_approval
-    with pytest.raises(NotImplementedError) as exc_info:
-        await request_approval(
-            tool_call_id="00000000-0000-0000-0000-000000000000",
-            summary="dry-run",
-            timeout_seconds=3600,
-        )
-    # 错误信息必须提示 W2 才实现
-    assert "W2" in str(exc_info.value) or "Human Gate" in str(exc_info.value)
+def test_human_gate_real_impl_exposes_request_and_helpers():
+    """W3a T6：human_gate 已升级为真实现，模块级别接口齐全。
+
+    DB 行为放在 tests/test_mcp_human_gate.py（集成测）。
+    """
+    import inspect
+    from app.mcp import human_gate
+
+    # 4 个公开接口都得在
+    assert callable(human_gate.request_approval)
+    assert callable(human_gate.list_pending)
+    assert callable(human_gate.approve)
+    assert callable(human_gate.reject)
+    # request_approval 必须是 async + 接受 poll_interval_seconds（T6 新增）
+    assert inspect.iscoroutinefunction(human_gate.request_approval)
+    sig = inspect.signature(human_gate.request_approval)
+    assert "poll_interval_seconds" in sig.parameters
+    assert "timeout_seconds" in sig.parameters

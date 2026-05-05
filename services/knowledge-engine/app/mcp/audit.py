@@ -3,8 +3,8 @@
 职责：
 1. 审计：每次调用前插 mcp.tool_calls(status='pending')，结束后 update
    result/status/duration/error。
-2. Human Gate（W2 起）：require_approval=True 时调 human_gate.request_approval；
-   W1 当前为 stub，stub 抛出时 graceful 返回 `ToolError`，避免 LLM 拿到 500。
+2. Human Gate（W3a T6 起真实现）：require_approval=True 时调
+   human_gate.request_approval；DB poll 等批/驳/超时；超时记 rejected。
 
 调用方式：
     from fastmcp import FastMCP
@@ -48,8 +48,8 @@ def tool_with_audit(
 
     Args:
         mcp: FastMCP 实例
-        require_approval: 设 True 时在调函数前进 Human Gate（W1 stub 抛 NotImplementedError）
-        summary_fn: 给人看的摘要生成函数（用于 /inbox 卡片）；W1 暂存表里
+        require_approval: 设 True 时在调函数前进 Human Gate（W3a T6 起为 DB poll 真实现）
+        summary_fn: 给人看的摘要生成函数（用于 CLI list / 未来 /inbox 卡片）
         timeout_seconds: Gate 等批超时（None = 默认 3600）
         **mcp_kwargs: 透传给 `mcp.tool(...)`（如 description override 等）
     """
@@ -76,27 +76,18 @@ def tool_with_audit(
             )
 
             if require_approval:
-                try:
-                    summary = summary_fn(args_dict) if summary_fn else f"{tool_name}({args_dict})"
-                    decision = await human_gate.request_approval(
-                        tool_call_id=tool_call_id,
-                        summary=summary,
-                        timeout_seconds=timeout_seconds or 3600,
-                    )
-                    if decision["decision"] != "approved":
-                        await _finalize_error(pool, tool_call_id, "rejected_by_user", start)
-                        return {
-                            "ok": False,
-                            "error": "rejected_by_user",
-                            "note": decision.get("decision_note"),
-                        }
-                except NotImplementedError as exc:
-                    logger.warning("Human Gate stub hit (W1): %s", exc)
-                    await _finalize_error(pool, tool_call_id, "human_gate_unavailable", start)
+                summary = summary_fn(args_dict) if summary_fn else f"{tool_name}({args_dict})"
+                decision = await human_gate.request_approval(
+                    tool_call_id=tool_call_id,
+                    summary=summary,
+                    timeout_seconds=timeout_seconds or 3600,
+                )
+                if decision["decision"] != "approved":
+                    await _finalize_error(pool, tool_call_id, "rejected_by_user", start)
                     return {
                         "ok": False,
-                        "error": "human_gate_unavailable",
-                        "hint": "Human Gate 在 W1 未启用，所有 W1 tool 必须 require_approval=False",
+                        "error": "rejected_by_user",
+                        "note": decision.get("decision_note"),
                     }
 
             try:
