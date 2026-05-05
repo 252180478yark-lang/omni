@@ -180,6 +180,13 @@ async def list_pipelines(limit: int = 50, offset: int = 0) -> list[dict]:
 
 
 async def update_pipeline(pipeline_id: str, **fields: object) -> dict | None:
+    # 状态切到非失败态时若 caller 未管 error_message，自动清掉残留旧错
+    # （否则上一次 failed 留的 error_message 会一直残留）
+    if (
+        fields.get("status") in ("paused", "running", "completed")
+        and "error_message" not in fields
+    ):
+        fields["error_message"] = None
     pool = get_pool()
     sets = []
     vals = []
@@ -1413,12 +1420,12 @@ async def generate_videos(pipeline_id: str) -> dict:
         script_prov, script_mdl = _stage_model(pipe, "script")
         video_prov, video_mdl = _stage_model(pipe, "video")
         video_tasks = []
-        # 分镜图按 scene 顺序就是首尾帧——scene N 的 first_frame=storyboard[N]，
-        # last_frame=storyboard[N+1]（最后一段不传 last_frame）。
-        for i, scene in enumerate(scenes):
+        # N 张分镜图 → N-1 段视频。段 i 的 first=storyboard[i]，last=storyboard[i+1]。
+        # 最后一个 scene 的图只作上一段的 last_frame，不再单独出视频。
+        for i, scene in enumerate(scenes[:-1]):
             sb = sb_map.get(scene["scene_id"], {})
             storyboard_url = sb.get("image_url", "")
-            next_sb = sb_map.get(scenes[i + 1]["scene_id"], {}) if i + 1 < len(scenes) else {}
+            next_sb = sb_map.get(scenes[i + 1]["scene_id"], {})
             last_frame_url = next_sb.get("image_url", "")
             dur = int(scene.get("duration", "5s").replace("s", ""))
 

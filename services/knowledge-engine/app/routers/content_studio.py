@@ -70,6 +70,10 @@ class RegenerateSceneRequest(BaseModel):
         default=None,
         description="老板对上一版的修改意见（中文），会作为硬要求附加到 prompt",
     )
+    last_frame_scene_id: int | None = Field(
+        default=None,
+        description="last_frame 用哪个 scene 的 storyboard 图。一般是 scene_id+1（相邻分镜串视频）。仅 video/regenerate 用。",
+    )
 
 class BatchStoryboardRequest(BaseModel):
     scene_ids: list[int] = Field(min_length=1, max_length=20)
@@ -462,6 +466,7 @@ async def regenerate_video(pipeline_id: str = Query(...), req: RegenerateSceneRe
             pipeline_id, req.scene_id,
             prompt_override=req.prompt_override,
             user_hint=req.user_hint,
+            last_frame_scene_id=req.last_frame_scene_id,
         )
         return _serialize(pipe)
     except ValueError as exc:
