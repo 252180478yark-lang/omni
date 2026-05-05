@@ -23,8 +23,8 @@ generate_brief:
   temperature: 0.5   # 文案要发挥
 
 generate_image:
-  provider: openai
-  model: gpt-image-2
+  provider: gemini
+  model: gemini-3.1-flash-image-preview
 
 generate_video:
   provider: seedance
