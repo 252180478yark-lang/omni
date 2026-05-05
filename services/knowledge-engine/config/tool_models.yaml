@@ -37,3 +37,15 @@ generate_video:
   provider: seedance
   model: seedance-2-0
   duration: 8
+
+summarize_text:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.3
+  max_tokens: 2048
+
+parse_long_doc_with_gemini:
+  provider: gemini
+  model: gemini-2.5-flash
+  temperature: 0.2
+  max_tokens: 8192
