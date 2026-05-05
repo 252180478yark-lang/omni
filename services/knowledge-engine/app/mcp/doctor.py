@@ -86,13 +86,15 @@ async def _check_tools_registered(report: DoctorReport) -> None:
     try:
         from app.mcp.server import mcp
         tools = await mcp.list_tools()
-        # W1 5 + W2 5 = 10
+        # W1 5 + W2 5 + W3a 3 = 13
         wanted = {
             # W1
             "list_skus", "get_sku", "search_kb", "list_kbs", "list_briefs",
             # W2
             "query_costs", "compute_margin",
             "generate_brief", "generate_image", "generate_video",
+            # W3a
+            "record_cost", "disable_cost_item", "gather_brief_context",
         }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names
@@ -103,6 +105,29 @@ async def _check_tools_registered(report: DoctorReport) -> None:
         ))
     except Exception as exc:
         report.checks.append(CheckResult("tools registered", False, str(exc)))
+
+
+def _check_prompts(report: DoctorReport) -> None:
+    """W3a：检 config/prompts/ 关键模板都在。"""
+    try:
+        from app.mcp import prompts as _p
+        existing = set(_p.list_templates())
+        wanted = {
+            "anti_ai_voice",
+            "generate_brief.system", "generate_brief.user",
+            "compute_margin.system", "compute_margin.user",
+            "channel_profiles/douyin",
+            "channel_profiles/tmall",
+            "channel_profiles/jd",
+        }
+        missing = wanted - existing
+        report.checks.append(CheckResult(
+            "prompt templates",
+            not missing,
+            f"missing={sorted(missing)}" if missing else f"all {len(wanted)} ok",
+        ))
+    except Exception as exc:
+        report.checks.append(CheckResult("prompt templates", False, str(exc)))
 
 
 async def _check_mcp_http(report: DoctorReport) -> None:
@@ -133,6 +158,7 @@ async def run(*, skip_http: bool = False) -> DoctorReport:
     await _check_db_pool(report)
     await _check_mcp_schema(report)
     _check_yaml(report)
+    _check_prompts(report)
     await _check_tools_registered(report)
     if not skip_http:
         await _check_mcp_http(report)
