@@ -185,7 +185,12 @@ class OpenAIProvider(BaseProvider):
             resp.raise_for_status()
             data = resp.json()
 
-        images = [{"url": img.get("url", ""), "revised_prompt": img.get("revised_prompt", "")} for img in data.get("data", [])]
+        images = []
+        for img in data.get("data", []):
+            url = img.get("url") or ""
+            if not url and img.get("b64_json"):
+                url = f"data:image/png;base64,{img['b64_json']}"
+            images.append({"url": url, "revised_prompt": img.get("revised_prompt", "")})
         return {"images": images, "usage": {"cost_usd": 0.04 * len(images)}}
 
     # ── Analysis (Vision) ──
