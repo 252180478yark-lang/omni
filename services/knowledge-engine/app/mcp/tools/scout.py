@@ -351,3 +351,83 @@ async def fetch_yuntu_5a(date: str | None = None) -> dict:
             "row_count": len(rows),
         },
     }
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def fetch_yuntu_brand_mind(date: str | None = None) -> dict:
+    """读云图品牌心智最近一天数据。
+
+    返回每个 (brand_id, sku_id) 一行：品牌资产关联数 + 行业份额 + 行业排名 +
+    品牌心智 3 指标（reputation 美誉度 / preference 偏好度 / connection 联结度）+
+    停留 / 渗透 / 增长。
+
+    Args:
+        date: ISO 日期，None = 最近一天
+
+    Returns:
+        {ok, result: {date, rows, count}, trace}
+    """
+    try:
+        target_date = _parse_date(date)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": "invalid_date",
+            "hint": f"date 必须是 ISO 格式: {exc}",
+        }
+
+    pool = get_pool()
+    if target_date is None:
+        latest = await pool.fetchval("SELECT MAX(date) FROM mvp_brand_mind_daily")
+        if latest is None:
+            return {
+                "ok": False,
+                "error": "no_data",
+                "hint": "mvp_brand_mind_daily 表无数据；先去 scout-agent 跑 yuntu brand-mind runbook",
+            }
+        target_date = latest
+
+    rows_db = await pool.fetch(
+        """
+        SELECT brand_id, sku_id, brand_assoc_count, industry_share,
+               industry_rank, reputation, preference, dwell, connection, increase
+        FROM mvp_brand_mind_daily
+        WHERE date = $1
+        ORDER BY brand_id, sku_id
+        """,
+        target_date,
+    )
+    if not rows_db:
+        return {
+            "ok": False,
+            "error": "no_data",
+            "hint": f"mvp_brand_mind_daily 在 date={target_date.isoformat()} 无数据",
+        }
+
+    rows = [
+        {
+            "brand_id": r["brand_id"],
+            "sku_id": r["sku_id"] or None,
+            "brand_assoc_count": r["brand_assoc_count"],
+            "industry_share": str(r["industry_share"]) if r["industry_share"] is not None else None,
+            "industry_rank": r["industry_rank"],
+            "reputation": str(r["reputation"]) if r["reputation"] is not None else None,
+            "preference": str(r["preference"]) if r["preference"] is not None else None,
+            "dwell": r["dwell"],
+            "connection": r["connection"],
+            "increase": r["increase"],
+        }
+        for r in rows_db
+    ]
+    return {
+        "ok": True,
+        "result": {
+            "date": target_date.isoformat(),
+            "rows": rows,
+            "count": len(rows),
+        },
+        "trace": {
+            "db_query": "mvp_brand_mind_daily WHERE date=$1",
+            "row_count": len(rows),
+        },
+    }

@@ -16,6 +16,7 @@ from app.mcp.tools.scout import (
     fetch_compass_sku_detail,
     fetch_compass_search_traffic,
     fetch_yuntu_5a,
+    fetch_yuntu_brand_mind,
 )
 
 SMOKE_PREFIX = "_smoke_W3b_"
@@ -76,6 +77,20 @@ async def setup_pool():
         """,
         YESTERDAY,
     )
+    # brand_mind 数据先清后插
+    await pool.execute(
+        "DELETE FROM mvp_brand_mind_daily WHERE brand_id = '_smoke_W3b_brand'",
+    )
+    await pool.execute(
+        """
+        INSERT INTO mvp_brand_mind_daily
+            (date, brand_id, sku_id, brand_assoc_count, industry_share,
+             industry_rank, reputation, preference, dwell, connection, increase)
+        VALUES ($1, '_smoke_W3b_brand', '', 555, 0.123456, 7, 0.85, 0.72,
+                300, 150, 50)
+        """,
+        YESTERDAY,
+    )
     # 5A 数据先清后插（不用 _smoke_W3b_run1，因为 mvp_5a_asset_daily 没 source_run_id 列）
     await pool.execute(
         "DELETE FROM mvp_5a_asset_daily WHERE brand_id = '_smoke_W3b_brand'",
@@ -99,6 +114,9 @@ async def setup_pool():
     )
     await pool.execute(
         "DELETE FROM mvp_5a_asset_daily WHERE brand_id = '_smoke_W3b_brand'",
+    )
+    await pool.execute(
+        "DELETE FROM mvp_brand_mind_daily WHERE brand_id = '_smoke_W3b_brand'",
     )
     await close_pool()
 
@@ -214,5 +232,26 @@ async def test_fetch_yuntu_5a_returns_brand_row():
 @pytest.mark.asyncio
 async def test_fetch_yuntu_5a_default_latest():
     result = await fetch_yuntu_5a()
+    assert result["ok"] is True
+    assert result["result"]["count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_yuntu_brand_mind_returns_smoke():
+    result = await fetch_yuntu_brand_mind(date=YESTERDAY.isoformat())
+    assert result["ok"] is True
+    smoke_rows = [r for r in result["result"]["rows"] if r["brand_id"] == "_smoke_W3b_brand"]
+    assert len(smoke_rows) == 1
+    row = smoke_rows[0]
+    assert row["brand_assoc_count"] == 555
+    assert row["industry_rank"] == 7
+    # numeric(8,6) 转 Decimal 序列化为 str
+    assert row["reputation"] == "0.850000"
+    assert row["preference"] == "0.720000"
+
+
+@pytest.mark.asyncio
+async def test_fetch_yuntu_brand_mind_default_latest():
+    result = await fetch_yuntu_brand_mind()
     assert result["ok"] is True
     assert result["result"]["count"] >= 1
