@@ -49,3 +49,9 @@ parse_long_doc_with_gemini:
   model: gemini-2.5-flash
   temperature: 0.2
   max_tokens: 8192
+
+codify_pattern_to_skill:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.3
+  max_tokens: 2048

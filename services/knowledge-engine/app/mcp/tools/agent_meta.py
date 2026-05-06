@@ -12,14 +12,19 @@ design doc §7（5 层进化 + 7.2 草稿审批流 + 7.4 反馈循环）。
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.database import get_pool
+from app.mcp import prompts
 from app.mcp.audit import tool_with_audit
+from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
+from app.mcp.trace import build_trace
+from app.services.ai_hub_client import AIHubClient
 
 logger = logging.getLogger(__name__)
 
@@ -96,3 +101,146 @@ async def agent_self_review(period_days: int = 7) -> dict:
             ),
         },
     }
+
+
+# ─── T4: codify_pattern_to_skill ───────────────────────────────────────────
+
+
+_SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,49}$")
+
+
+def _codify_summary(args: dict) -> str:
+    return (f"codify_pattern_to_skill: skill_name={args.get('skill_name')} "
+            f"tool_sequence={args.get('tool_sequence')}")
+
+
+async def _codify_impl(
+    *,
+    skill_name: str,
+    description: str,
+    tool_sequence: list[str],
+) -> dict:
+    """codify 真业务（无 audit/gate）。给测试 mock 用，也给 tool 包装函数调。"""
+    if not _SKILL_NAME_RE.match(skill_name or ""):
+        return {
+            "ok": False,
+            "error": "invalid_skill_name",
+            "hint": "skill_name 必须 a-z 0-9 - 组成、2-50 字符、首位字母数字",
+        }
+    if not tool_sequence or not isinstance(tool_sequence, list):
+        return {
+            "ok": False,
+            "error": "invalid_tool_sequence",
+            "hint": "tool_sequence 必须是非空 list[str]",
+        }
+    description = (description or "").strip()
+    if not description:
+        return {"ok": False, "error": "missing_description",
+                "hint": "description 不能为空"}
+
+    # 渲染 prompts
+    tool_seq_block = "\n".join(f"- {t}" for t in tool_sequence)
+    system_prompt = prompts.load("codify_skill.system")
+    user_prompt = prompts.render(
+        "codify_skill.user",
+        skill_name=skill_name,
+        description=description,
+        tool_sequence_block=tool_seq_block,
+    )
+
+    cfg = get_model_for_tool("codify_pattern_to_skill")
+    client = AIHubClient()
+    try:
+        resp = await client.chat(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            provider=cfg["provider"],
+            model=cfg["model"],
+            temperature=cfg.get("temperature", 0.3),
+            max_tokens=cfg.get("max_tokens", 2048),
+            enforce_human_voice=True,
+        )
+    except Exception as exc:
+        logger.exception("codify chat failed")
+        return {
+            "ok": False,
+            "error": "llm_call_failed",
+            "hint": f"ai-hub /chat 调用失败: {exc}",
+        }
+
+    md = (resp.get("content") or "").strip()
+    if not md.startswith("---"):
+        return {
+            "ok": False,
+            "error": "bad_llm_output",
+            "hint": "LLM 没返回带 frontmatter 的 markdown，重跑或换模型",
+        }
+
+    # 写草稿（已存在则加时间戳）
+    draft_dir = SKILL_DRAFTS_DIR / skill_name
+    if draft_dir.exists():
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        draft_dir = SKILL_DRAFTS_DIR / f"{skill_name}__{ts}"
+    draft_dir.mkdir(parents=True, exist_ok=True)
+    draft_path = draft_dir / "SKILL.md"
+    draft_path.write_text(md, encoding="utf-8")
+
+    effective_provider = resp.get("provider") or cfg["provider"]
+    effective_model = resp.get("model") or cfg["model"]
+    trace = build_trace(
+        provider=effective_provider,
+        model=effective_model,
+        prompt=f"[system]\n{system_prompt}\n\n[user]\n{user_prompt[:500]}...",
+        params={
+            "temperature": cfg.get("temperature", 0.3),
+            "max_tokens": cfg.get("max_tokens", 2048),
+            "tool_sequence_len": len(tool_sequence),
+        },
+        cost_estimate="~1k tokens",
+    )
+    trace["provider"] = effective_provider  # alias 让 testers/读者两边都能拿
+
+    return {
+        "ok": True,
+        "result": {
+            "skill_name": skill_name,
+            "draft_path": str(draft_path),
+            "host_hint": (
+                f"草稿已写到 {draft_path}（host 路径 "
+                f"data/agent_state/skill_drafts/{draft_dir.name}/SKILL.md）。"
+                "审过后 host 侧手动 `cp -r data/agent_state/skill_drafts/"
+                f"{draft_dir.name} ~/.claude/skills/{skill_name}` 启用。"
+            ),
+            "markdown": md,
+        },
+        "trace": trace,
+    }
+
+
+@tool_with_audit(
+    mcp,
+    require_approval=True,
+    summary_fn=_codify_summary,
+)
+async def codify_pattern_to_skill(
+    skill_name: str,
+    description: str,
+    tool_sequence: list[str],
+) -> dict:
+    """把一个高频 tool 调用序列升级成 skill markdown 草稿（require_approval=True）。
+
+    Args:
+        skill_name: skill 名（kebab-case，2-50 字符）
+        description: 一句话描述触发场景
+        tool_sequence: tool 名序列（list[str]，至少 1 个）
+
+    Returns:
+        {ok, result: {skill_name, draft_path, host_hint, markdown}, trace}
+    """
+    return await _codify_impl(
+        skill_name=skill_name,
+        description=description,
+        tool_sequence=tool_sequence,
+    )

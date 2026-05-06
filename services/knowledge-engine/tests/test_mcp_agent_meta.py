@@ -83,3 +83,56 @@ async def test_agent_self_review_rating_distribution(seed_calls):
     r = res["result"]
     assert "by_rating" in r
     assert r["by_rating"].get("good", 0) >= 1
+
+
+# ─── T4: codify_pattern_to_skill ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_codify_writes_draft(monkeypatch, tmp_path):
+    """codify 直接调（绕开 require_approval gate）写草稿到指定目录。"""
+    from app.mcp.tools import agent_meta
+
+    monkeypatch.setattr(agent_meta, "AGENT_STATE_DIR", tmp_path)
+    monkeypatch.setattr(agent_meta, "SKILL_DRAFTS_DIR", tmp_path / "skill_drafts")
+
+    # mock LLM 返回固定 markdown
+    fake_md = "---\nname: test-skill\ndescription: smoke\n---\n\n# Test\n"
+
+    class _FakeClient:
+        async def chat(self, **kwargs):
+            return {
+                "content": fake_md,
+                "provider": "gemini",
+                "model": "gemini-3-flash-preview",
+                "usage": {},
+            }
+
+    monkeypatch.setattr(agent_meta, "AIHubClient", _FakeClient)
+
+    # 直接调内部函数（绕 audit/gate 装饰器）
+    res = await agent_meta._codify_impl(
+        skill_name="test-skill",
+        description="测试 skill",
+        tool_sequence=["list_skus", "get_sku"],
+    )
+    assert res["ok"] is True
+    draft_path = Path(res["result"]["draft_path"])
+    assert draft_path.exists()
+    assert draft_path.read_text(encoding="utf-8").strip().startswith("---")
+    assert "test-skill" in draft_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_codify_invalid_skill_name(monkeypatch, tmp_path):
+    from app.mcp.tools import agent_meta
+    monkeypatch.setattr(agent_meta, "AGENT_STATE_DIR", tmp_path)
+    monkeypatch.setattr(agent_meta, "SKILL_DRAFTS_DIR", tmp_path / "skill_drafts")
+
+    res = await agent_meta._codify_impl(
+        skill_name="invalid name with spaces!",
+        description="x",
+        tool_sequence=["list_skus"],
+    )
+    assert res["ok"] is False
+    assert "invalid_skill_name" in res.get("error", "")
