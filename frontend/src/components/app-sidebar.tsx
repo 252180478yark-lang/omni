@@ -30,6 +30,7 @@ import {
   ClipboardCheck,
   CalendarDays,
   Calculator,
+  Activity,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -121,6 +122,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/ad-review', icon: LineChart, label: '投放复盘', hint: '广告 CSV + 素材报告，生成复盘建议' },
   { href: '/ad-review/flywheel', icon: RefreshCw, label: '飞轮仪表盘', hint: '看多轮投放迭代有没有变好' },
   { href: '/decisions', icon: ClipboardCheck, label: '决策日志', hint: 'AI 给的所有建议都存这里，跟踪命中率' },
+  { href: '/agent-log', icon: Activity, label: 'Agent 日志', hint: '看 omni 跑了啥 / 给好坏打分 / 自动累积模式' },
   { href: '/review', icon: CalendarDays, label: '周末复盘', hint: '本周 AI 命中率 + 前后对比卡 + 策略归档' },
 
   { kind: 'section', label: '系统' },
