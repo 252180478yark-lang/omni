@@ -1,0 +1,3 @@
+# patterns 文件 + skill drafts 太私人，全部不入 git
+*.md
+skill_drafts/
