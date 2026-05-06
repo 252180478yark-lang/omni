@@ -20,6 +20,7 @@ from app.routers.chat_sessions import router as chat_sessions_router
 from app.routers.sku_orchestrations import router as sku_orchestrations_router
 from app.routers.accounting import router as accounting_router
 from app.routers.mcp_tool_calls import router as mcp_tool_calls_router
+from app.routers.human_gates import router as human_gates_router
 from contextlib import AsyncExitStack
 from app.mcp.server import mcp_http_app
 
@@ -80,6 +81,7 @@ app.include_router(chat_sessions_router)
 app.include_router(sku_orchestrations_router)
 app.include_router(accounting_router)
 app.include_router(mcp_tool_calls_router)
+app.include_router(human_gates_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)
