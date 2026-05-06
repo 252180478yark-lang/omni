@@ -244,3 +244,106 @@ async def codify_pattern_to_skill(
         description=description,
         tool_sequence=tool_sequence,
     )
+
+
+# ─── T5: refresh_project_context ───────────────────────────────────────────
+
+
+def _refresh_summary(args: dict) -> str:
+    return "refresh_project_context: 渲染 dynamic_block.md（老板手动粘进 CLAUDE.md）"
+
+
+async def _refresh_impl() -> dict:
+    """渲染 dynamic_block.md（无 audit/gate）。"""
+    pool = get_pool()
+    # 1. 重点池 SKU（status='active'）
+    #    mvp_sku 主键叫 id（VARCHAR 64），不叫 sku_id
+    sku_rows = await pool.fetch(
+        "SELECT id, name FROM mvp_sku WHERE status='active' "
+        "ORDER BY id LIMIT 20"
+    )
+    # 2. 缺成本 SKU（mvp_sku 有但 accounting.cost_items 没有 is_active 行）
+    missing_cost_rows = await pool.fetch(
+        """
+        SELECT s.id, s.name FROM mvp_sku s
+         WHERE s.status='active'
+           AND NOT EXISTS (
+             SELECT 1 FROM accounting.cost_items c
+              WHERE c.sku_id = s.id AND c.is_active = TRUE
+           )
+         LIMIT 10
+        """
+    )
+    # 3. 最近未决定的 human_gates
+    gate_rows = await pool.fetch(
+        "SELECT g.summary, g.created_at FROM mcp.human_gates g "
+        "WHERE g.decision IS NULL ORDER BY g.created_at DESC LIMIT 5"
+    )
+
+    # 渲染 markdown
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    parts = [
+        "<!-- omni-dynamic:start -->",
+        f"## 当前业务底色（自动刷新于 {ts}）",
+        "",
+        "### 重点池 SKU（status=active）",
+    ]
+    if sku_rows:
+        for r in sku_rows:
+            parts.append(f"- `{r['id']}` — {r['name']}")
+    else:
+        parts.append("- _无 active SKU_")
+    parts.extend(["", "### 缺成本 SKU（active 但 accounting.cost_items 全空）"])
+    if missing_cost_rows:
+        for r in missing_cost_rows:
+            parts.append(f"- `{r['id']}` — {r['name']}（用 record_cost 录入）")
+    else:
+        parts.append("- _无_")
+    parts.extend(["", "### 待批 Human Gate"])
+    if gate_rows:
+        for r in gate_rows:
+            t = r["created_at"].strftime("%m-%d %H:%M") if r["created_at"] else "-"
+            parts.append(f"- [{t}] {r['summary']}")
+    else:
+        parts.append("- _无_")
+    parts.append("<!-- omni-dynamic:end -->")
+    block = "\n".join(parts) + "\n"
+
+    # 写到 agent_state/dynamic_block.md
+    out_path = AGENT_STATE_DIR / "dynamic_block.md"
+    out_path.write_text(block, encoding="utf-8")
+
+    return {
+        "ok": True,
+        "result": {
+            "dynamic_block_path": str(out_path),
+            "host_hint": (
+                "已写到 data/agent_state/dynamic_block.md。"
+                "把内容（含 marker 行）粘贴到 E:/agent/omni/CLAUDE.md 的 "
+                "<!-- omni-dynamic:start --> 到 <!-- omni-dynamic:end --> 之间。"
+                "首次使用：先在 CLAUDE.md 任意位置加一对 marker。"
+            ),
+            "markdown": block,
+            "stats": {
+                "active_skus": len(sku_rows),
+                "missing_cost": len(missing_cost_rows),
+                "pending_gates": len(gate_rows),
+            },
+        },
+    }
+
+
+@tool_with_audit(
+    mcp,
+    require_approval=True,
+    summary_fn=_refresh_summary,
+)
+async def refresh_project_context() -> dict:
+    """刷新 omni 业务底色（写到 data/agent_state/dynamic_block.md，require_approval=True）。
+
+    内容：当前重点池 SKU + 缺成本 SKU + 待批 Human Gate。
+
+    Returns:
+        {ok, result: {dynamic_block_path, host_hint, markdown, stats}}
+    """
+    return await _refresh_impl()

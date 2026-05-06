@@ -136,3 +136,61 @@ async def test_codify_invalid_skill_name(monkeypatch, tmp_path):
     )
     assert res["ok"] is False
     assert "invalid_skill_name" in res.get("error", "")
+
+
+# ─── T5: refresh_project_context ───────────────────────────────────────────
+
+
+@pytest_asyncio.fixture
+async def seed_active_skus():
+    """造 2 个 active SKU 用于 refresh 渲染。
+
+    mvp_sku 主键 = id (VARCHAR 64); douyin_product_id NOT NULL，给唯一值。
+    """
+    pool = get_pool()
+    inserted_ids = []
+    for sku_id, name in [("REFRESH-T5-001", "测试 SKU 1"), ("REFRESH-T5-002", "测试 SKU 2")]:
+        try:
+            await pool.execute(
+                "INSERT INTO mvp_sku (id, name, douyin_product_id, status) "
+                "VALUES ($1, $2, $1, 'active') "
+                "ON CONFLICT (id) DO UPDATE SET status='active'",
+                sku_id, name,
+            )
+            inserted_ids.append(sku_id)
+        except Exception:
+            pass
+    yield inserted_ids
+    for sid in inserted_ids:
+        await pool.execute("DELETE FROM mvp_sku WHERE id=$1", sid)
+
+
+@pytest.mark.asyncio
+async def test_refresh_writes_dynamic_block(monkeypatch, tmp_path, seed_active_skus):
+    from app.mcp.tools import agent_meta
+    monkeypatch.setattr(agent_meta, "AGENT_STATE_DIR", tmp_path)
+
+    res = await agent_meta._refresh_impl()
+    assert res["ok"] is True
+    out_path = Path(res["result"]["dynamic_block_path"])
+    assert out_path.exists()
+    text = out_path.read_text(encoding="utf-8")
+    assert "<!-- omni-dynamic:start -->" in text
+    assert "<!-- omni-dynamic:end -->" in text
+    # 重点池区段含至少一个 SKU
+    assert "REFRESH-T5" in text or "重点池 SKU" in text
+
+
+@pytest.mark.asyncio
+async def test_refresh_idempotent(monkeypatch, tmp_path, seed_active_skus):
+    from app.mcp.tools import agent_meta
+    monkeypatch.setattr(agent_meta, "AGENT_STATE_DIR", tmp_path)
+
+    r1 = await agent_meta._refresh_impl()
+    r2 = await agent_meta._refresh_impl()
+    assert r1["ok"] is True and r2["ok"] is True
+    p = Path(r1["result"]["dynamic_block_path"])
+    # 两次写入大小差不超过几十字节（仅 timestamp 行变）
+    text = p.read_text(encoding="utf-8")
+    assert text.count("<!-- omni-dynamic:start -->") == 1
+    assert text.count("<!-- omni-dynamic:end -->") == 1
