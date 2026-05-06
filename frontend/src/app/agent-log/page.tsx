@@ -105,9 +105,19 @@ export default function AgentLogPage() {
   async function openDetail(id: string) {
     setOpenId(id)
     setOpenRow(null)
-    const resp = await fetch(`/api/omni/agent-log/${id}`)
-    const data = await resp.json()
-    if (data.success) setOpenRow(data.data)
+    try {
+      const resp = await fetch(`/api/omni/agent-log/${id}`)
+      const data = await resp.json()
+      if (data.success) {
+        setOpenRow(data.data)
+      } else {
+        setOpenId(null)
+        window.alert(data.error ?? '加载详情失败')
+      }
+    } catch (err) {
+      setOpenId(null)
+      window.alert('网络异常：' + (err instanceof Error ? err.message : String(err)))
+    }
   }
 
   async function submitRating(id: string, r: 'good' | 'bad' | 'redo') {
@@ -123,7 +133,11 @@ export default function AgentLogPage() {
       if (data.success && data.ok) {
         setRows((prev) => prev.map((x) => x.id === id ? { ...x, user_rating: r, rating_note: note } : x))
         if (openRow?.id === id) setOpenRow({ ...openRow, user_rating: r, rating_note: note })
+      } else {
+        window.alert(data.hint ?? data.error ?? '评分失败')
       }
+    } catch (err) {
+      window.alert('网络异常：' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setRating(null)
     }
