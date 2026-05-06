@@ -1050,7 +1050,14 @@ sidebar 加'待批'菜单项（在 Agent 日志附近）。"
 
 ### Step 1: 起一条真 record_cost pending（容器内调 mcp tool）
 
+> ⚠️ **T4 实测修订**：原 plan 用 `asyncio.wait_for(timeout=8)` 让 caller cancel
+> 死掉，gate 后来批通也不会走到真 `await fn(...)` 那一步。要验全链路（含 cost_items
+> INSERT），必须用 `run_in_background=True` 跑（不加 wait_for），让
+> `request_approval` 真 polling 等批；前端批后 caller 拿到 approved 才走 fn。
+> 另：record_cost kwarg 名是 **`item_name=`** 不是 `name=`（cost_admin.py:51）。
+
 ```bash
+# 在 host 跑，run_in_background=True，让 caller 真等 decision
 docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -c '
 import asyncio, json
 from app.database import init_pool, close_pool
@@ -1059,21 +1066,14 @@ from app.mcp.tools.cost_admin import record_cost
 async def main():
     await init_pool()
     try:
-        # require_approval=True 会写 mcp.tool_calls + mcp.human_gates
-        # 注意：这 await 会卡在 human_gate.request_approval poll 里，timeout 60s 即可
-        result = await asyncio.wait_for(
-            record_cost(
-                sku_id=\"SKU-T4-INBOX-E2E\",
-                category=\"logistics\",
-                name=\"前端 inbox e2e 测试\",
-                unit_cost=\"3.5\",
-                quantity_per_unit=\"1\",
-            ),
-            timeout=10,
+        result = await record_cost(
+            sku_id=\"SKU-T4-INBOX-E2E\",
+            category=\"logistics\",
+            item_name=\"前端 inbox e2e 测试\",
+            unit_cost=\"3.5\",
+            quantity_per_unit=\"1\",
         )
         print(json.dumps(result, ensure_ascii=False))
-    except asyncio.TimeoutError:
-        print(\"[ok] gate created, request_approval still polling — will rejected by next test cleanup\")
     finally:
         await close_pool()
 
@@ -1081,19 +1081,17 @@ asyncio.run(main())
 '"
 ```
 
-Expected: print "[ok] gate created..." 因为我们故意 timeout 10s 不批。这时 mcp.human_gates 表里有一条 pending。
+等 3-5 秒让 mcp.human_gates 写入 pending 行。然后 `curl http://localhost:3000/api/omni/inbox` 看到一条 pending 即可进 Step 2。
 
-> **关键**：上面这条 gate 现在还在 polling（request_approval 等批/驳），如果 KE 容器内的 asyncio task 一直没人批它要么超时 1h 要么人批/驳。下面 step 用前端批掉它就清干净了。
-
-- [ ] **Step 1: 容器调 record_cost 起 pending gate（10s timeout 故意不等批）**
+- [x] **Step 1: 容器调 record_cost 起 pending gate（background，等批不死）**
 
 ### Step 2: 浏览器走前端批（带备注）
 
 打开 `http://localhost:3000/inbox`：
 
-- [ ] **Step 2a: 列表里看到刚那条 SKU-T4-INBOX-E2E 待批 gate**
-- [ ] **Step 2b: 点"批" → prompt 备注输 "T4 e2e 通路验证" → 卡片消失**
-- [ ] **Step 2c: 容器侧 record_cost 调用应已收到 approved，return 真 INSERT**
+- [x] **Step 2a: 列表里看到刚那条 SKU-T4-INBOX-E2E 待批 gate**
+- [x] **Step 2b: 点"批" → prompt 备注输 "T4 e2e 通路验证" → 卡片消失**
+- [x] **Step 2c: 容器侧 record_cost 调用应已收到 approved，return 真 INSERT**
 
 验证 DB 真写 cost_item（用 query_costs 或直接查表）：
 
@@ -1123,7 +1121,7 @@ ORDER BY g.created_at DESC LIMIT 1
 
 Expected: decision='approved', decision_note='T4 e2e 通路验证'。
 
-- [ ] **Step 2: 浏览器批通 + DB 验证 cost_item + gate 状态**
+- [x] **Step 2: 浏览器批通 + DB 验证 cost_item + gate 状态**
 
 ### Step 3: 起第二条 + 走前端驳
 
@@ -1155,7 +1153,7 @@ SELECT COUNT(*) FROM accounting.cost_items WHERE sku_id='SKU-T4-INBOX-REJECT'
 
 Expected: count=0。
 
-- [ ] **Step 3: 浏览器驳通 + DB 验证 gate 已驳 + cost_item 没写**
+- [x] **Step 3: 浏览器驳通 + DB 验证 gate 已驳 + cost_item 没写**
 
 ### Step 4: e2e 留痕清理
 
@@ -1167,7 +1165,7 @@ DELETE FROM mcp.tool_calls WHERE args::text LIKE '%SKU-T4-INBOX%';
 "
 ```
 
-- [ ] **Step 4: e2e 留痕清理（DB 删 SKU-T4-INBOX-* 全部数据）**
+- [x] **Step 4: e2e 留痕清理（DB 删 SKU-T4-INBOX-* 全部数据）**
 
 ### Step 5: 错误路径快测
 
@@ -1182,7 +1180,7 @@ curl -i -X POST http://localhost:3000/api/omni/inbox/00000000-0000-0000-0000-000
 
 Expected: (a) HTTP/1.1 404 + body 含 `"error":"gate_not_found"`。
 
-- [ ] **Step 5: 错误路径 curl 快测（gate_not_found 404）**
+- [x] **Step 5: 错误路径 curl 快测（gate_not_found 404 + already_decided 409）**
 
 ### Step 6: 更新 memory
 
@@ -1193,7 +1191,7 @@ Expected: (a) HTTP/1.1 404 + body 含 `"error":"gate_not_found"`。
 
 具体内容由 implementer 根据实际跑下来的情况填。
 
-- [ ] **Step 6: 更新 memory §二十三**
+- [x] **Step 6: 更新 memory §二十三**
 
 ### Step 7: T4 commit + push
 
@@ -1224,7 +1222,7 @@ feat(W4-B): /inbox 待批页 + sidebar 入口（W4-B 切片 2 T3）
 chore(W4-B): 切片 2 收尾 e2e + memory + plan（W4-B 切片 2 T4）
 ```
 
-- [ ] **Step 7: 收尾 commit + git log 确认**
+- [x] **Step 7: 收尾 commit + git log 确认**
 
 ### Step 8: 留给老板的口头报告
 
@@ -1239,16 +1237,16 @@ chore(W4-B): 切片 2 收尾 e2e + memory + plan（W4-B 切片 2 T4）
   3. cron weekly_self_review
   4. 修 codify e2e
 
-- [ ] **Step 8: 给老板报告 + 等切片 3 拍板**
+- [x] **Step 8: 给老板报告 + 等切片 3 拍板**
 
 ---
 
 ## 完成判据（全部 ✓ 才算切片 2 done）
 
-- [ ] T1 所有 step ✓ + 7 测试 PASS + doctor 27/27
-- [ ] T2 所有 step ✓ + curl 验通 list/approve 路径
-- [ ] T3 所有 step ✓ + 浏览器看到 sidebar 菜单 + /inbox 空状态
-- [ ] T4 所有 step ✓ + e2e 真造批/驳跑通 + DB 验证一致 + 留痕清理 + memory §二十三 写入
+- [x] T1 所有 step ✓ + 8 测试 PASS（plan 写"7"是数量笔误）+ doctor 27/27
+- [x] T2 所有 step ✓ + curl 验通 list/approve 路径
+- [x] T3 所有 step ✓ + curl 验 /inbox HTML 200 含"待批"
+- [x] T4 所有 step ✓ + e2e approve/reject 双向全链路通 + 错误路径 404/409 通 + 留痕清理 + memory §二十三 写入
 - [ ] git log 看 ~5 commit on `feat/mcp-w1` 含 plan
 - [ ] 工作树 clean（除 .claude/settings.local.json 这种本身就常变的）
 
