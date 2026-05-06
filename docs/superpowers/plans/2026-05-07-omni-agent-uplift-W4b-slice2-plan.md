@@ -188,7 +188,7 @@ class GateActionResponse(BaseModel):
     hint: str | None = None
 ```
 
-- [ ] **Step 1: 写上面这个 schemas 文件**
+- [x] **Step 1: 写上面这个 schemas 文件**
 
 ### Step 2: 写 inbox_service
 
@@ -275,15 +275,17 @@ async def _resolve_gate_id(short_or_full: str) -> dict[str, Any]:
                 "error": "gate_not_found",
                 "hint": f"'{s[:16]}...' 不是合法 uuid",
             }
+        # 不在此处过滤 decision IS NULL：让 human_gate.approve/reject 的 idempotent
+        # 行为决定 already_decided。本层只判 gate 是否存在。
         row = await pool.fetchrow(
-            "SELECT id FROM mcp.human_gates WHERE id=$1 AND decision IS NULL",
+            "SELECT id FROM mcp.human_gates WHERE id=$1",
             uuid.UUID(full),
         )
         if row is None:
             return {
                 "ok": False,
                 "error": "gate_not_found",
-                "hint": f"gate {full[:8]} 不存在或已批/驳",
+                "hint": f"gate {full[:8]} 不存在",
             }
         return {"ok": True, "id": full}
 
@@ -345,7 +347,7 @@ async def reject_gate(gate_id: str, note: str = "") -> dict[str, Any]:
     }
 ```
 
-- [ ] **Step 2: 写上面这个 inbox_service 文件**
+- [x] **Step 2: 写上面这个 inbox_service 文件**
 
 ### Step 3: 写 router
 
@@ -410,7 +412,7 @@ def _error_to_status(err: str | None) -> int:
     return 400
 ```
 
-- [ ] **Step 3: 写上面这个 router 文件**
+- [x] **Step 3: 写上面这个 router 文件**
 
 ### Step 4: include router
 
@@ -424,7 +426,7 @@ from app.routers.human_gates import router as human_gates_router  # 加在 mcp_t
 app.include_router(human_gates_router)  # 加在 mcp_tool_calls_router include 之后
 ```
 
-- [ ] **Step 4: 改 main.py 加 import + include_router**
+- [x] **Step 4: 改 main.py 加 import + include_router**
 
 ### Step 5: 写测试
 
@@ -635,7 +637,7 @@ async def test_reject_with_full_uuid(client, _seed_gates):
     assert row["decision_note"] == "不行，参数不对"
 ```
 
-- [ ] **Step 5: 写测试文件**
+- [x] **Step 5: 写测试文件**
 
 ```bash
 # 文件创建后立刻验证 import 不挂
@@ -646,7 +648,7 @@ Expected: 不报错（虽然 router 还没建，import 本身要过；如果报"
 
 ### Step 6: 重启 KE 容器 + 跑测试
 
-- [ ] **Step 6: 重启 KE 容器**
+- [x] **Step 6: 重启 KE 容器**
 
 ```bash
 docker compose -f E:/agent/omni/docker-compose.yml up -d --no-deps --force-recreate knowledge-engine
@@ -654,7 +656,7 @@ docker compose -f E:/agent/omni/docker-compose.yml up -d --no-deps --force-recre
 
 等 5-10 秒等启动完。
 
-- [ ] **Step 7: 跑测试**
+- [x] **Step 7: 跑测试**
 
 ```bash
 docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app pytest tests/test_router_human_gates.py -v"
@@ -662,7 +664,7 @@ docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app pytest tes
 
 Expected: 7 个测试全 PASS。
 
-- [ ] **Step 8: doctor 复查 27 tool 没动**
+- [x] **Step 8: doctor 复查 27 tool 没动**
 
 ```bash
 docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"
@@ -670,7 +672,7 @@ docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m 
 
 Expected: `27/27 tools OK`。
 
-- [ ] **Step 9: T1 commit**
+- [x] **Step 9: T1 commit**
 
 ```bash
 git add services/knowledge-engine/app/services/inbox_service.py \
