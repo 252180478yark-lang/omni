@@ -11,9 +11,26 @@ from httpx import ASGITransport, AsyncClient
 
 from app.database import close_pool, get_pool, init_pool
 from app.main import app
+from app.mcp import pattern_lib
 
 
 pytestmark = pytest.mark.asyncio
+
+
+@pytest.fixture(autouse=True)
+def tmp_state_dir(monkeypatch, tmp_path):
+    """隔离 pattern_lib 写盘到 pytest tmp_path，避免污染 host data/agent_state/。
+
+    rate_tool_call_logic 调 pattern_lib.append_successful_pattern / append_failed_pattern
+    会按 pattern_lib.AGENT_STATE_DIR 解析路径，默认 /app/agent_state（host bind mount）。
+    测试里全部 monkeypatch 到 tmp_path，跑完即销毁。
+    """
+    success = tmp_path / "successful_patterns.md"
+    failed = tmp_path / "failed_patterns.md"
+    success.write_text("# Successful Patterns\n\n", encoding="utf-8")
+    failed.write_text("# Failed Patterns\n\n", encoding="utf-8")
+    monkeypatch.setattr(pattern_lib, "AGENT_STATE_DIR", tmp_path)
+    return tmp_path
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -126,7 +143,7 @@ async def test_detail_404(client):
 # ─── rate endpoint ────────────────────────────────────────────────────────
 
 
-async def test_rate_writes_user_rating(client, _seed_tool_calls):
+async def test_rate_writes_user_rating(client, _seed_tool_calls, tmp_state_dir):
     target = _seed_tool_calls[1]
     resp = await client.post(
         f"/api/v1/mcp/tool-calls/{target}/rate",
@@ -143,6 +160,11 @@ async def test_rate_writes_user_rating(client, _seed_tool_calls):
     )
     assert row["user_rating"] == "good"
     assert row["rating_note"] == "录得对"
+    # feedback-loop contract: rating="good" 必须双写 successful_patterns.md
+    success_md = tmp_state_dir / "successful_patterns.md"
+    assert success_md.exists(), "rating=good 必须写 successful_patterns.md"
+    text = success_md.read_text(encoding="utf-8")
+    assert target in text, f"call_id={target} 未出现在 successful_patterns.md"
 
 
 async def test_rate_invalid_rating(client, _seed_tool_calls):

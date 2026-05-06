@@ -44,9 +44,13 @@ def _coerce_jsonb(val: Any) -> dict[str, Any] | None:
     return {"_raw": val}
 
 
-def _row_to_dict(row, *, include_full: bool) -> dict[str, Any]:
-    """asyncpg.Record → dict；include_full=True 时带 args/result 字段。"""
-    out: dict[str, Any] = {
+def _row_to_dict(row) -> dict[str, Any]:
+    """asyncpg.Record → dict（含 args/result 完整字段）。
+
+    list 与 detail 路径目前都返完整字段（前端摘要按需展开）。如未来要为分页性能
+    裁字段，另起 task 再切分。
+    """
+    return {
         "id": str(row["id"]),
         "tool_name": row["tool_name"],
         "status": row["status"],
@@ -58,15 +62,9 @@ def _row_to_dict(row, *, include_full: bool) -> dict[str, Any]:
         "error": row["error"],
         "created_at": row["created_at"],
         "completed_at": row["completed_at"],
+        "args": _coerce_jsonb(row["args"]),
+        "result": _coerce_jsonb(row["result"]),
     }
-    if include_full:
-        out["args"] = _coerce_jsonb(row["args"])
-        out["result"] = _coerce_jsonb(row["result"])
-    else:
-        # 列表也给 args/result，前端摘要可能用；但限制 result 大小由前端展开决定
-        out["args"] = _coerce_jsonb(row["args"])
-        out["result"] = _coerce_jsonb(row["result"])
-    return out
 
 
 def _parse_status_filter(status: str | None) -> list[str] | None:
@@ -126,7 +124,7 @@ async def list_tool_calls(
         f"LIMIT ${len(list_params) - 1} OFFSET ${len(list_params)}"
     )
     rows = await pool.fetch(list_sql, *list_params)
-    data = [_row_to_dict(r, include_full=False) for r in rows]
+    data = [_row_to_dict(r) for r in rows]
 
     summary = await _build_summary_24h()
 
@@ -189,7 +187,7 @@ async def get_tool_call(call_id: str) -> dict[str, Any] | None:
     )
     if row is None:
         return None
-    return _row_to_dict(row, include_full=True)
+    return _row_to_dict(row)
 
 
 async def rate_tool_call_logic(
