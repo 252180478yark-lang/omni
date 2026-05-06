@@ -723,7 +723,7 @@ export async function GET() {
 }
 ```
 
-- [ ] **Step 1: 写 list proxy**
+- [x] **Step 1: 写 list proxy**
 
 ### Step 2: approve proxy（裸 fetch + 透传 status）
 
@@ -767,13 +767,13 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 }
 ```
 
-- [ ] **Step 2: 写 approve proxy**
+- [x] **Step 2: 写 approve proxy**
 
 ### Step 3: reject proxy（同 approve，URL 改 /reject）
 
 写 `frontend/src/app/api/omni/inbox/[id]/reject/route.ts`：1:1 复制 approve 的代码，把 URL 里 `/approve` 改成 `/reject`。
 
-- [ ] **Step 3: 写 reject proxy**
+- [x] **Step 3: 写 reject proxy**
 
 ### Step 4: 起 dev server 验
 
@@ -795,7 +795,7 @@ curl -X POST http://localhost:3000/api/omni/inbox/00000000-0000-0000-0000-000000
 
 Expected: list 200 + `{success:true, data:[...], total:N}`；approve 404 + `{success:false, ok:false, error:"gate_not_found", hint:"..."}`。
 
-- [ ] **Step 4: dev server 验 list + approve（404 路径）**
+- [x] **Step 4: dev server 验 list + approve（404 路径）**
 
 ### Step 5: T2 commit
 
@@ -1008,7 +1008,7 @@ export default function InboxPage() {
 }
 ```
 
-- [ ] **Step 1: 写 /inbox 页**
+- [x] **Step 1: 写 /inbox 页**
 
 ### Step 2: sidebar 加菜单项
 
@@ -1020,15 +1020,15 @@ export default function InboxPage() {
 
 确认 import 行加上 `Inbox` 图标（搜文件 line 1-30 的 lucide-react import 列表，加进去）。
 
-- [ ] **Step 2: 改 sidebar 加菜单 + 加 Inbox import**
+- [x] **Step 2: 改 sidebar 加菜单 + 加 Inbox import**
 
 ### Step 3: 浏览器验
 
 dev server 应已起。打开 `http://localhost:3000/inbox`：
 
-- [ ] **Step 3a: 看到"暂无待批"空状态**（如果没 pending gate）
-- [ ] **Step 3b: 点 sidebar"待批"菜单能跳到 /inbox**
-- [ ] **Step 3c: 点"刷新"按钮 loading 转一下回来**
+- [x] **Step 3a: 看到"暂无待批"空状态**（如果没 pending gate）
+- [x] **Step 3b: 点 sidebar"待批"菜单能跳到 /inbox**
+- [x] **Step 3c: 点"刷新"按钮 loading 转一下回来**
 
 如果想看到真 pending 卡片，跳到 T4 e2e 那步先建一条。
 
