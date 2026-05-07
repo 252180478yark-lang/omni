@@ -123,6 +123,63 @@ async def test_codify_writes_draft(monkeypatch, tmp_path):
     assert "test-skill" in draft_path.read_text(encoding="utf-8")
 
 
+def test_strip_code_fence_unwraps_common_variants():
+    """LLM 偶尔把 frontmatter md 用 ``` 包起来，剥离后 startswith('---') 应通过。"""
+    from app.mcp.tools.agent_meta import _strip_code_fence
+
+    plain = "---\nname: x\n---\n# X"
+    assert _strip_code_fence(plain) == plain  # 已干净不动
+
+    fenced = "```\n---\nname: x\n---\n# X\n```"
+    assert _strip_code_fence(fenced).startswith("---")
+
+    fenced_yaml = "```yaml\n---\nname: y\n---\n```"
+    assert _strip_code_fence(fenced_yaml).startswith("---")
+
+    fenced_md = "```markdown\n---\nname: z\n---\n# Z\nbody\n```"
+    out = _strip_code_fence(fenced_md)
+    assert out.startswith("---") and "body" in out
+
+
+@pytest.mark.asyncio
+async def test_codify_strips_fenced_llm_output(monkeypatch, tmp_path):
+    """codify 拿到 ```...``` 包裹的 frontmatter md 应剥壳后入库（防 W4-A 留尾回归）。"""
+    from app.mcp.tools import agent_meta
+
+    monkeypatch.setattr(agent_meta, "AGENT_STATE_DIR", tmp_path)
+    monkeypatch.setattr(agent_meta, "SKILL_DRAFTS_DIR", tmp_path / "skill_drafts")
+
+    fenced_md = (
+        "```\n"
+        "---\nname: fenced-skill\ndescription: smoke 验证 fence 剥离\n---\n"
+        "# Fenced Skill\nbody\n"
+        "```"
+    )
+
+    class _FakeClient:
+        async def chat(self, **kwargs):
+            return {
+                "content": fenced_md,
+                "provider": "openai",
+                "model": "gpt-4o-mini",
+                "usage": {},
+            }
+
+    monkeypatch.setattr(agent_meta, "AIHubClient", _FakeClient)
+
+    res = await agent_meta._codify_impl(
+        skill_name="fenced-skill",
+        description="smoke",
+        tool_sequence=["list_skus"],
+    )
+    assert res["ok"] is True
+    text = Path(res["result"]["draft_path"]).read_text(encoding="utf-8")
+    # 入盘的内容不应残留 ``` fence
+    assert "```" not in text
+    assert text.startswith("---")
+    assert "fenced-skill" in text
+
+
 @pytest.mark.asyncio
 async def test_codify_invalid_skill_name(monkeypatch, tmp_path):
     from app.mcp.tools import agent_meta

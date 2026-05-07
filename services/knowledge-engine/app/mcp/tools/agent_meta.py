@@ -107,6 +107,17 @@ async def agent_self_review(period_days: int = 7) -> dict:
 
 
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,49}$")
+_FENCE_RE = re.compile(r"^```[a-zA-Z]*\n(.*?)\n```$", re.DOTALL)
+
+
+def _strip_code_fence(md: str) -> str:
+    """剥掉 LLM 偶尔多包的 ```...``` 外层（含 ```yaml / ```markdown）。
+
+    LLM gpt-4o-mini 在 codify 任务里有概率把 frontmatter md 用代码块包起来（实测
+    2026-05-07）。匹配则返内层；不匹配返原值。
+    """
+    m = _FENCE_RE.match(md)
+    return m.group(1).strip() if m else md
 
 
 def _codify_summary(args: dict) -> str:
@@ -170,7 +181,7 @@ async def _codify_impl(
             "hint": f"ai-hub /chat 调用失败: {exc}",
         }
 
-    md = (resp.get("content") or "").strip()
+    md = _strip_code_fence((resp.get("content") or "").strip())
     if not md.startswith("---"):
         return {
             "ok": False,
