@@ -102,23 +102,26 @@ INSERT INTO accounting.channel_fees (channel, fee_type, fee_rate, description)
 | KB 没命中 / KB 引用不对 | 3a 返回的上下文不好 | 看 sources 哪个 kb_role 弱，提示老板"补 X 类 KB" 或换 query 重调 gather_brief_context |
 | 改 prompt / 改 brief 系统提示 | 改 prompt 不改代码 | 编辑 `services/knowledge-engine/config/prompts/<tool>.{system,user}.md`，KE 容器无需 restart（mtime 自检） |
 
-## 业务 skill 第二批（W4-B 切片 10，2026-05-07）
+## 业务 skill 全集（cost-luru + 5 业务 + 1 编排，W4-B 切片 10/12/13）
 
-`.claude/skills/` 下话术触发的 5 个业务 skill（cost-luru 是切片 1 录成本专项，下面 5 个是内容/数据/分析专项）：
+`.claude/skills/` 下 7 个话术触发的 skill。**单点 skill** 5 个 + **数据/录入** skill 1 个 + **编排型** skill 1 个：
 
-| skill | 老板话术触发 | 串什么 tool | 输出 |
-|---|---|---|---|
-| `selling-point-finder` | "找 X 卖点" | get_sku → query_template_chunks → search_kb(template) | 三类卖点（功能/情绪/场景）|
-| `script-writer` | "给 X 写脚本/直播话术/文案" | get_sku → query_template_chunks → search_kb → generate_brief | 脚本草稿（kb_context 注入避免裸跑）|
-| `product-analysis` | "分析 X / X 卖得咋样 / X 还能推不" | get_sku → query_costs → compute_margin → fetch_compass_sku_detail → search_kb | 5 维度健康度报告 + 3 条建议 |
-| `crowd-sop` | "圈一个 X 的人群包/X 受众咋定" | search_kb(authoritative+methodology) → query_template_chunks | 可复制进抖店/巨量后台的圈人策略文 |
-| `daily-store-pulse` | "看店铺/今日大盘/最近店铺咋样" | fetch_compass_store_daily → fetch_yuntu_brand_mind → search_kb(methodology) | 店铺脉搏日报 + 异动判断 |
+| skill | 老板话术触发 | 类型 | 串什么 tool | 输出 |
+|---|---|---|---|---|
+| `cost-luru` | "录 X 成本" / "算 X 出厂价" / "重录 X" | 录入（双路径）| record_cost / disable_cost_item / list_product_prices / query_costs | 成本入库（路径 A 单笔 / 路径 B 工厂出厂价桥接）|
+| `selling-point-finder` | "找 X 卖点" | 单点 | get_sku（owner_selling_points 优先）→ search_kb / query_template_chunks | 三类卖点（功能/情绪/场景）|
+| `script-writer` | "给 X 写脚本/直播话术/文案" | 单点 | get_sku（specifications/price 真实字段）→ search_kb → generate_brief | 脚本草稿（kb_context 注入防裸跑）|
+| `product-analysis` | "分析 X / X 卖得咋样 / X 还能推不" | 单点 | get_sku（platform_status 7 态警告）→ query_costs → compute_margin → fetch_compass_sku_detail → search_kb | 健康度报告 + 3 条建议 |
+| `crowd-sop` | "圈一个 X 的人群包/X 受众咋定" | 单点 | get_sku(growth_class) → search_kb(authoritative+methodology) → query_template_chunks | 可复制进抖店/巨量后台的圈人策略 |
+| `daily-store-pulse` | "看店铺/今日大盘" | 单点 | fetch_compass_store_daily → fetch_yuntu_brand_mind → search_kb(methodology) | 店铺脉搏日报 + 异动判断 |
+| `sku-pipeline` | "X 全链路 / 给 X 出片 / 跑通 X" | **编排** | 5 步走串：query_costs → compute_margin → script-writer 子流程 → generate_image*3 → generate_video*3 → save_decision | 完整出片 + 入档 |
 
-通用约束（5 个 skill 都遵守）：
-- **每步停下等反馈**，不一气呵成（同 cost-luru 5 步走风格）
-- 输出**带来源**（哪条 KB / 哪个 SKU 字段），feedback memory 强反幻觉
+通用约束（7 个 skill 都遵守）：
+- **每步停下等反馈**，不一气呵成（cost-luru 5 步走风格 + sku-pipeline 烧钱 step）
+- 输出**带来源**（哪条 KB / 哪个 mvp_sku 字段），feedback memory 强反幻觉
 - **说人话**，禁 AI 化套话（赋能/打通/闭环/抢占心智 等）
 - gmv 字段统一 `gmv_paid`（用户支付金额）
+- **优先用 mvp_sku 真实字段**（W4-B 切片 12 起 specifications/price_min/owner_selling_points 全抓全），不让老板手报已有信息
 
 老板用 `/<skill-name>` 也能强制触发；通常按话术 Claude 会自动判断。
 

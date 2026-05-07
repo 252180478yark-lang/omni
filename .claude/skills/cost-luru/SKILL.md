@@ -1,13 +1,20 @@
 ---
 name: cost-luru
-description: 录入成本（物流/包装/原料/供应商报价）。老板说"录 sku-X 物流费 5 块"、"加成本 包装 0.8"、"录运费"等，触发标准录成本 5 步走 SOP，调用 record_cost 走 Human Gate，批后调 query_costs 验证。
+description: 录入或重录 SKU 成本。老板说"录 sku-X 物流费 5 块"/"加成本 包装 0.8"/"录运费"走单笔录入 5 步 SOP；说"算 sku-X 出厂价"/"重录 X 成本"/"X 用工厂出厂价"走桥接 SOP（list_product_prices 找候选 → disable 旧拆分 → record 新出厂价合计）。
 ---
 
-# cost-luru：录成本标准 SOP
+# cost-luru：录成本/重录成本 SOP
 
-> 这是 omni-vibe 项目内 skill。当老板提到"录成本/加成本/录入物流费/录运费/sku-X 加 X 块"等话术时，按本 SOP 走 5 步，**不要一气呵成跑完，每步停下来等老板反馈**。
+> omni-vibe 项目内 skill。两条路径并存：
+> - **路径 A 单笔录入**：老板说"录 sku-X 物流费 5 块"等具体单条 → 5 步 SOP
+> - **路径 B 工厂出厂价桥接**（W4-B 切片 12 加）：老板说"算 sku-X 出厂价"等
+>   要从工厂单品组合算 → 6 步桥接 SOP
+>
+> **每步停下等老板反馈**，不一气呵成。
 
-## 触发场景（5 类话术）
+## 触发场景
+
+### 路径 A：单笔录入
 
 | 话术 | 解析 | tool 调用 |
 |---|---|---|
@@ -16,6 +23,14 @@ description: 录入成本（物流/包装/原料/供应商报价）。老板说"
 | "顺丰华东 8 块每单" | sku_id=None（共享）, category=logistics, item_name=顺丰华东, unit_cost=8, unit=单 | record_cost(...) |
 | "C 厂商品报价 12 块/箱 24 瓶" | sku_id=None, category=partner_quote, vendor=C 厂, unit=箱, quantity_per_unit=24, unit_cost=12 | record_cost(...) |
 | "改 sku-A 物流费 6 块"（已存在） | 先 query_costs 找旧条 → disable_cost_item 停旧 → record_cost 录新 | 3 tool 链 |
+
+### 路径 B：工厂出厂价桥接（套装/组合 SKU）
+
+| 话术 | 含义 | 走 |
+|---|---|---|
+| "算 sku-X 出厂价" / "X 用工厂出厂价" | 按工厂单品组合算成本 | 桥接 6 步 |
+| "重录 X 成本"（含组合品） | 旧拆分式废弃用出厂价 | 桥接 6 步 |
+| "X 是套装 / 多瓶组合" | 显示型套装 SKU | 桥接 6 步 |
 
 ## 标准 5 步 SOP
 
@@ -97,6 +112,101 @@ query_costs(sku_id="SKU-A", category="logistics")  # 或 sku_id=None 看共享
 - 如果老板说"算利润"→ 调 compute_margin
 - 如果老板说"OK"→ skill 完成
 
+## 路径 B：工厂出厂价桥接 6 步 SOP
+
+> 适用：**套装/组合 SKU**（mvp_sku.specifications 含"X瓶 + Y瓶"或"500ml*2 +
+> 200ml*2"），需要从 accounting.product_price_list 查工厂单品出厂价合计，
+> 替代旧的"主料/人工/包装拆分式"成本（避免双算）。
+>
+> 真实跑通参考：W4-B 切片 12 给 SKU-367991-0002 重录的全过程（详见 §三十一）。
+
+### Step B1: 拿 SKU 信息推套装组合
+
+```python
+get_sku(sku_id="SKU-X")
+```
+
+看 `name` / `specifications` / `owner_notes` 推断它由哪些工厂单品组成。
+**复述给老板确认**：
+
+> "看 SKU-002 名「和田宽有机本酿造特级酱油」+ specifications「500ml*2 +
+> 200ml*2」→ 应该是「有机本酿造日式酱油」系列套装：2 瓶 500ml + 2 瓶 200ml。
+> 对吗？还是别的工厂单品组成？"
+
+老板确认后进 B2；老板说"是 X 系列别的款"→ 改 query 重 B2。
+
+### Step B2: list_product_prices 查候选
+
+```python
+list_product_prices(query="<推断的工厂单品名>", vendor="和田宽产品", limit=20)
+```
+
+vendor 一般是「和田宽产品」或「辣嘴宽心系列产品」（W4-B 切片 8 import 的两 sheet）。
+**关键约束**：
+- query 用工厂单品名关键词（如"本酿造日式酱油"），不要塞 SKU 名（太长稀释）
+- 命中后**给老板看候选**，让他圈对应的 500ml/200ml/1L 等规格
+
+> "查到 5 个候选：
+> A 宽牌本酿造原汁酱油 特级 500ml*12 ¥8.0/瓶
+> B 有机本酿造日式酱油 特级 500ml*12 ¥17.5/瓶
+> C 有机本酿造日式酱油 特级 200ml*12 ¥9.5/瓶
+>
+> 002 套装含 200ml → 排除 A（A 系列没 200ml 规格）；用 B+C 对吗？"
+
+### Step B3: 算套装合计 + 复述
+
+```
+500ml × 2 × ¥17.5 = ¥35.00
+200ml × 2 × ¥9.50 = ¥19.00
+出厂价合计 = ¥54.00
+```
+
+把组合关系明示给老板，**等老板确认才进 B4**。
+
+### Step B4: query_costs 列出现有 002 专属拆分式 cost_items
+
+```python
+query_costs(sku_id="SKU-X", view="public")
+```
+
+筛出 `sku_id="SKU-X"`（不是 sku_id=None 的 shared 共享行，那些不动）+
+category="product" 的旧拆分式行。给老板看 cost_item_id 列表 + 合计金额：
+
+> "002 专属 6 行拆分式：主料 ¥4.20 + 人工 ¥0.30 + 标签 ¥0.05 + 瓶身 ¥0.45×24 +
+> 瓶盖 ¥0.08×24 + 包装箱 ¥1.80×24。
+> 跟出厂价 ¥54 双算冲突，要 disable 这 6 行才能换出厂价口径。OK？"
+
+### Step B5: 一次性发起 N+1 个 Gate
+
+老板拍板后，**一气呵成**调：
+- N 次 `disable_cost_item(<旧 id>, reason="改用工厂出厂价口径")`
+- 1 次 `record_cost(sku_id="SKU-X", category="product", visibility="public",
+  item_name="出厂价合计", unit_cost="<合计>", unit="套", quantity_per_unit="1",
+  notes="<组合关系>")`
+
+老板用 `/inbox` 前端页**一次显示多个**批准（W4-B 切片 2 双向通路实测真路径通），
+或 cli_approve 逐个批。
+
+### Step B6: 验证 + 算新利润
+
+```python
+query_costs(sku_id="SKU-X")          # 确认旧的 disable + 新的 record 都生效
+compute_margin(sku_id="SKU-X", channel="douyin",
+               sale_price="<mvp_sku.price_min 或老板确认的卖价>")
+```
+
+把 cost_total / channel_fee / net_profit / margin_pct 给老板看，对照旧
+拆分式的虚高利润率（通常 80%+）vs 出厂价的真实利润率（通常 15-30%）。
+
+### 路径 B 实战参考（002 例）
+
+```
+卖价 ¥76 / 抖音扣点 2%
+出厂价 ¥54 + 默认运费 ¥5 + 默认包材 ¥3 = cost_total ¥62
+net_profit = 76 - 62 - 1.52 = ¥12.48
+margin_pct = 16.4%
+```
+
 ## 错误处理
 
 | 错误 | hint | 怎么办 |
@@ -106,6 +216,8 @@ query_costs(sku_id="SKU-A", category="logistics")  # 或 sku_id=None 看共享
 | `invalid_decimal` | unit_cost 含非数字 / 负数 | 让老板重说价格 |
 | `cost_item_not_found_or_already_inactive` | disable 时找不到 | query_costs 看看 id 对不对 |
 | Gate 超时（默认 1h） | 老板 1 小时没批 | 提醒老板在 cli_approve list 里看 / 重调 record_cost |
+| 路径 B 中 list_product_prices 返空 | KB 没该工厂单品 | 提示老板"是不是 vendor 写错了"或"工厂单品名没在字典里" |
+| 路径 B 中 SKU 没 specifications 字段 | 抖店爬取没填 | 让老板手填或 SQL 补，不要瞎猜套装组合 |
 
 ## 反例（**禁止**）
 

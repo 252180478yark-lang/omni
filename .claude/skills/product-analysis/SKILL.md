@@ -19,7 +19,7 @@ description: 分析一个 SKU 的健康度（成本/利润/数据/历史决策�
 
 ## 标准 5 步 SOP
 
-### Step 1: 锁定 SKU + 拿基础信息
+### Step 1: 锁定 SKU + 拿基础信息（mvp_sku 全字段）
 
 老板话术里 SKU ID 不明确就先 list_skus(query=...)；明确就直接：
 
@@ -27,20 +27,43 @@ description: 分析一个 SKU 的健康度（成本/利润/数据/历史决策�
 get_sku(sku_id="SKU-X")
 ```
 
-把 name / brand / pack_spec / channel / status 给老板看确认。**status 不是 active 就提醒老板**："这款 status=archived，确实要分析？还是分析当前 active 的版本？"
+W4-B 切片 12 后字段抓全，**重点看**：
+- `status` (active / archived) —— 内部状态
+- `platform_status` (on_sale / off_sale / out_of_stock / paused / under_review / banned / unknown) —— 抖店真实状态
+- `growth_class` (excellent / good / optimizing / declining) —— 抖店诊断分类
+- `price_min/price_max` —— 真实卖价
+- `total_stock` —— 真实库存
+- `owner_selling_points` / `owner_notes` —— 老板手填判断
+- `in_focus_pool` / `push_tier` / `focus_reason` —— 老板的重点池标记
 
-### Step 2: 成本 + 利润（员工版口径默认）
+**status 警告**：
+
+| 字段 | 警告条件 |
+|---|---|
+| `status != 'active'` | "这款 status=archived，确实要分析？还是分析当前 active 版本？" |
+| `platform_status == 'off_sale'` | "已下架，分析里要不要标'已下架'警示？" |
+| `platform_status == 'out_of_stock'` | "已售罄，库存原因，分析时要看销量历史" |
+| `platform_status == 'unknown'` | "状态未识别，可能爬虫 UI 失配，要不要重抓？" |
+| `growth_class == 'declining'` | "抖店诊断为衰退，体检重点查衰退原因" |
+
+### Step 2: 成本 + 利润（员工版口径默认 + 真实卖价）
 
 ```python
 query_costs(sku_id="SKU-X", view="public")
-compute_margin(sku_id="SKU-X", channel="douyin", sale="<老板说的售价或 SKU.price>")
+compute_margin(sku_id="SKU-X", channel="douyin",
+               sale_price=SKU.price_min)  # 用 mvp_sku.price_min 真实价，不让老板说
 ```
 
 **关键约束**：
+- **优先用 mvp_sku.price_min/price_max**（W4-B 切片 12 抓的真实抖店价），不再让老板手报
 - 默认走 view='public' 员工口径（出厂价），**不**默认查 real（真实成本需口令）
 - 老板话术里**明确说**"真实成本/我自己看的/老板版" → 提示老板传 passphrase 走 real
 - compute_margin 不传 channel_fee_rate 自动从 channel_fees 表 fallback（W4-B 切片 9）；
   breakdown.fee_rate_source 字段说明 fee 来源
+
+**双口径警告**：
+- 看到 cost_items 里有"主料/人工/包装"等**拆分式**行 + "出厂价合计"行**并存** →
+  双算冲突，提示老板用 cost-luru skill 路径 B 桥接清理
 
 把 breakdown 返回的 cost_total / channel_fee / margin / margin_rate 给老板看：
 

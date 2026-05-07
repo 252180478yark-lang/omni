@@ -18,7 +18,7 @@ description: 找一个 SKU 的卖点。老板说"找 SKU-X 的卖点"、"X 这�
 
 ## 标准 4 步 SOP
 
-### Step 1: 锁定 SKU + 拿基础信息
+### Step 1: 锁定 SKU + 拿基础信息（含 owner 字段优先）
 
 如果老板话术里 SKU ID 不明确：
 
@@ -32,11 +32,25 @@ list_skus(status="active", query="<老板说的关键词>")
 get_sku(sku_id="SKU-X")
 ```
 
-把返回的 name / brand / pack_spec / channel / status 给老板看，**确认对的那个**：
+返回字段优先级（W4-B 切片 12 后字段全抓全）：
+- `owner_selling_points`（**老板手填的卖点 JSON 数组**）—— 最权威，先看这个
+- `owner_notes`（老板手填的产品参数）
+- `specifications`（套装规格：500ml*2 + 200ml*2 等）
+- `name`（抖店标题，SEO 堆词长串）
+- `price_min/price_max` / `platform_status`
 
-> "是这款吧：SKU-375753-0001 — 和田宽特级辣酱油500ml*2瓶送200ml*2瓶。是的话进下一步。"
+**关键**：如果 `owner_selling_points` 已填，**优先复用**老板已有判断，不要重新挖：
 
-老板确认后进 Step 2。
+> "002 已经有 9 条 owner_selling_points：「180天发酵酿造 / 日式工艺 / 高盐稀态发酵 /
+> 有机 / 零添加 / 玻璃瓶 / 不含白砂糖 / 33年源头工厂 / 老北京和田宽酱油」。
+> 是基于这些挖深，还是要全新角度？"
+
+如果老板说"挖深"→ 拿 owner_selling_points 作种子进 Step 2 找模板支撑；
+如果老板说"全新"→ 跳过 owner_selling_points 走通用挖法。
+
+**status 检查**：如果 `platform_status` 是 `off_sale` / `out_of_stock`，先告诉老板：
+
+> "这款 platform_status=off_sale 已下架，确实要找卖点？是要复活推还是分析历史？"
 
 ### Step 2: 拿模板素材（卖点框架/竞品对比）
 

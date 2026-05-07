@@ -19,6 +19,15 @@ description: 圈一个人群包/受众包的策略 SOP。老板说"圈一个 X �
 
 不确定时**先反问**："你要的是品类反推（谁吃这个）、行为定向（买过的人）、还是场景代入（什么场合用）？"
 
+**绑 SKU 的 crowd 圈选**（如"圈 SKU-X 的人群包"）：
+
+先 `get_sku(sku_id)` 看 `mvp_sku.growth_class`：
+- `excellent` / `good` → 重点池 SKU，圈广泛人群（拉新+复购双侧）
+- `optimizing` → 当前数据弱，圈窄精准人群（test 验证）
+- `declining` → 衰退期，圈老客户为主（救流失）
+
+`owner_selling_points` 也要看——老板手填的卖点决定 psychographic 维度。
+
 ## 标准 4 步 SOP
 
 ### Step 1: 拆解老板的话术 → 三类维度

@@ -21,7 +21,7 @@ description: 给一个 SKU 写脚本（视频脚本 / 图文脚本 / 直播话�
 
 ## 标准 5 步 SOP
 
-### Step 1: 锁定 SKU + 拿基础信息
+### Step 1: 锁定 SKU + 拿基础信息（用 mvp_sku 真实字段）
 
 老板话术里 SKU ID 不明确就先 list_skus(query=...) 找；明确就直接：
 
@@ -29,22 +29,43 @@ description: 给一个 SKU 写脚本（视频脚本 / 图文脚本 / 直播话�
 get_sku(sku_id="SKU-X")
 ```
 
-把 name / brand / pack_spec / status 给老板看确认。
+抓的字段（W4-B 切片 12 后全抓全）：
+- `name`（抖店标题，SEO 堆词长串——脚本里**别全用**，挑关键词即可）
+- `specifications`（**真实规格**：500ml*2 + 200ml*2 等，脚本提到规格用这个）
+- `price_min/price_max`（**真实卖价**，脚本 CTA 价格用这个）
+- `platform_status`（如果 `off_sale` / `out_of_stock` 警告老板）
+- `owner_selling_points`（老板手填的卖点 → Step 2 直接用）
+- `owner_notes`（老板手填的产品参数）
 
-### Step 2: 找卖点（用 selling-point-finder 子流程）
+**status 检查**：
 
-调用：
+```
+if platform_status in ('off_sale', 'out_of_stock', 'paused'):
+    告诉老板"这款已下架/已售罄/暂停，写脚本前确认是要复活吗？"
+```
 
-```python
-search_kb(query="<品类> 卖点", kb_roles=["template"], top_k=5)
-query_template_chunks(query="<品类> 脚本 OR 文案", top_k=5)
+`unknown` 状态也提醒老板（爬虫没匹配到任何状态文字，可能 UI 又改了）。
+
+### Step 2: 找卖点（owner 字段优先 + selling-point-finder 子流程）
+
+**优先看 mvp_sku.owner_selling_points**（老板手填的卖点 JSON 数组）：
+
+```
+if SKU.owner_selling_points and len > 0:
+    直接列出来，让老板圈 2-3 条进脚本
+else:
+    跑 selling-point-finder 子流程：
+        search_kb(query="<品类> 卖点", kb_roles=["template"], top_k=5)
+        query_template_chunks(query="<品类> 脚本 OR 文案", top_k=5)
 ```
 
 如果老板**之前用过 selling-point-finder skill** 出过这个 SKU 的卖点，**直接复用**（让老板说"用上次那几条卖点"），不再重跑。
 
 **输出 3 类卖点**（功能/情绪/场景）给老板，让他**圈 2-3 条** 进脚本。
 
-> "有 6 条卖点候选：A 5 度无添加 / B 老牌信任感 / C 凉拌饺子蘸料 / D 大瓶+小瓶组合 / E 给娃辅食安心 / F 送礼体面。你圈哪几条进脚本？"
+> "002 owner_selling_points 已有 9 条：180天发酵酿造 / 日式工艺 / 高盐稀态发酵 /
+> 有机 / 零添加 / 玻璃瓶 / 不含白砂糖 / 33年源头工厂 / 老北京和田宽酱油。
+> 你圈哪 2-3 条进脚本？"
 
 老板圈完进 Step 3。
 
