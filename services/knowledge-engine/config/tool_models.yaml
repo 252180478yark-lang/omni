@@ -56,10 +56,19 @@ codify_pattern_to_skill:
   temperature: 0.3
   max_tokens: 2048
 
-# W4-B 切片 14：sku-pipeline step 2 卖点矩阵
+# W4-B 切片 14.1：sku-pipeline step 2 卖点矩阵
 # 用 gemini-3.1-pro-preview 跑（深度产品策略推理 — flash 系列偏快不偏深）
 generate_selling_points_matrix:
   provider: gemini
   model: gemini-3.1-pro-preview
   temperature: 0.3
   max_tokens: 6000
+
+# W4-B 切片 14.2：sku-pipeline step 3 人群匹配
+# 反向匹配：拿 matrix 三要素去 KB 全量 chunks（80 个，跨 KB 46 个 doc）实打实挑对口人群
+# max_tokens 18000：≥ 15 个匹配人群 × (KB 原文 + 5 理由) + 标签 ≥ 30 + 资料诊断段
+generate_audience_match:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.3
+  max_tokens: 18000

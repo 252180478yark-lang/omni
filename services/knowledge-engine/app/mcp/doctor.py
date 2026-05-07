@@ -86,7 +86,7 @@ async def _check_tools_registered(report: DoctorReport) -> None:
     try:
         from app.mcp.server import mcp
         tools = await mcp.list_tools()
-        # W1 5 + W2 5 + W3a 3 + W3b 7 + W3c 3 + W4-A 4 + W4-B 切片 5: 5 + 切片 8: 1 + 切片 9: 1 + 切片 14: 1 = 35
+        # W1 5 + W2 5 + W3a 3 + W3b 7 + W3c 3 + W4-A 4 + W4-B 切片 5: 5 + 切片 8: 1 + 切片 9: 1 + 切片 14.1: 1 + 切片 14.2: 1 = 36
         wanted = {
             # W1
             "list_skus", "get_sku", "search_kb", "list_kbs", "list_briefs",
@@ -114,8 +114,10 @@ async def _check_tools_registered(report: DoctorReport) -> None:
             "list_product_prices",
             # W4-B 切片 9（渠道扣点表）
             "list_channel_fees",
-            # W4-B 切片 14（sku-pipeline step 2 卖点矩阵）
+            # W4-B 切片 14.1（sku-pipeline step 2 卖点矩阵）
             "generate_selling_points_matrix",
+            # W4-B 切片 14.2（sku-pipeline step 3 人群匹配）
+            "generate_audience_match",
         }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names
@@ -140,8 +142,10 @@ def _check_prompts(report: DoctorReport) -> None:
             "channel_profiles/douyin",
             "channel_profiles/tmall",
             "channel_profiles/jd",
-            # W4-B 切片 14：sku-pipeline step 2
+            # W4-B 切片 14.1：sku-pipeline step 2
             "selling_points_matrix.system", "selling_points_matrix.user",
+            # W4-B 切片 14.2：sku-pipeline step 3
+            "audience_match.system", "audience_match.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

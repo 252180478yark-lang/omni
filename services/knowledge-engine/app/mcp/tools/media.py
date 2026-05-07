@@ -1,14 +1,17 @@
-"""W2 T6/T8/T9：media tools。
+"""W2 T6/T8/T9 + W4-B 切片 14 系列：media tools。
 
-- generate_brief：基于 sku metadata + 渠道特点 + KB context → Claude → markdown brief
+- generate_brief：基于 sku metadata + 渠道特点 + KB context → LLM → markdown brief
 - generate_image：多 prompt 一次出多张分镜（gpt-image-2，多类 refs）  ← T8
 - generate_video：多 segment 并发跑 Seedance 各段（首尾帧 + refs）   ← T9
+- generate_selling_points_matrix：sku-pipeline step 2 卖点矩阵       ← 切片 14.1
+- generate_audience_match：sku-pipeline step 3 人群匹配 + 多 query   ← 切片 14.2
 
 每个 LLM tool 返 result + trace + next_step_hint。
 """
 from __future__ import annotations
 
 import asyncio
+import re
 
 from app.database import get_pool
 from app.mcp import prompts
@@ -16,6 +19,7 @@ from app.mcp.audit import tool_with_audit
 from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
+from app.services import rag_chain
 from app.services.ai_hub_client import AIHubClient
 
 
@@ -497,7 +501,442 @@ async def generate_selling_points_matrix(
     }
     return attach_next_step(
         result,
-        suggested_tool=None,  # step 3 audience_match tool 切片 14.2 加
+        suggested_tool="generate_audience_match",
         suggested_args={"sku_id": sku_id, "matrix_md": matrix_md},
-        human_text="step 3 audience_match（人群匹配 + 多维描绘）—— 工具切片 14.2 加；当前可手动 search_kb(kb_id='b7a08c06') 看人群分析报告",
+        human_text="step 3 generate_audience_match（人群匹配 + 多 query 召回）",
+    )
+
+
+# ============================================================
+# W4-B 切片 14.2：sku-pipeline step 3 — 人群匹配（多 query 召回）
+# ============================================================
+
+# 人群分析报告 KB（kb_role=private_doc，46 docs / 3291 chunks）
+AUDIENCE_KB_ID = "b7a08c06-50a4-491e-9a1d-a6568dea5695"
+
+# 品类中性锚（**不预设人群圈层**，只锚 SKU 品类）
+# 多 query 用意 = 用多角度查同一件事避开「单 query 偏移」（KB 管线发现 #1），
+# 不是「用我预设的圈层覆盖一遍」。所有人群圈层都靠 matrix 派生 query 自然召回。
+# 反向推理硬约束（feedback_sku_pipeline_design memory 第 7 条）：
+#   严格按"卖点+场景+心智"反向匹配人群，不预先匹配思路
+_CATEGORY_ANCHORS: tuple[str, ...] = (
+    # 用 {category} 占位，运行时替换为 SKU 实际品类（"调味品" / "酱油" / "醋" 等）
+    "{category} 消费人群",
+    "{category} 内容偏好",
+    "{category} 决策路径",
+)
+
+
+def _extract_seed_phrases(matrix_md: str) -> list[str]:
+    """从 matrix_md 解析多角度 query seeds。
+
+    启发式（不依赖严格结构，对 prompt 输出格式变动鲁棒）：
+    - 抓 ###/#### 标题（去掉编号 / # / 装饰符）
+    - 抓 **加粗短语**（5-25 字）
+    - 抓「」/【】里的短语
+    - 去重、去停用词、限长
+
+    返回 ≤ 12 个种子短语。
+    """
+    seeds: list[str] = []
+    seen: set[str] = set()
+
+    # 1) 标题（### / ####）
+    for m in re.finditer(r"^#{2,4}\s+(.+?)$", matrix_md, flags=re.M):
+        raw = m.group(1).strip()
+        # 去编号前缀（"三、" / "1.1.2" / "2.6 节" 等）
+        clean = re.sub(r"^[一二三四五六七八九十0-9.\s、节·】\[\]【\.]+", "", raw)
+        clean = clean.strip("- ").strip()
+        if 4 <= len(clean) <= 30 and clean not in seen:
+            seen.add(clean)
+            seeds.append(clean)
+
+    # 2) **加粗短语**
+    for m in re.finditer(r"\*\*([^\*\n]{4,30})\*\*", matrix_md):
+        clean = m.group(1).strip()
+        # 跳过明显不是名词短语的（含冒号 / 太多空格）
+        if (
+            ":" not in clean
+            and "：" not in clean
+            and clean not in seen
+        ):
+            seen.add(clean)
+            seeds.append(clean)
+
+    # 3) 「」/【】里的短语
+    for m in re.finditer(r"[「【]([^」】\n]{3,20})[」】]", matrix_md):
+        clean = m.group(1).strip()
+        if clean not in seen:
+            seen.add(clean)
+            seeds.append(clean)
+
+    # 过滤掉太通用的词 + matrix prompt 的结构性章节标题（避免被当人群 query）
+    skip_words = {
+        "卖点", "场景", "心智", "标签", "USP", "信息", "产品", "品牌",
+        "强度评分", "匹配场景", "匹配理由", "证据", "合规风险",
+        "显性卖点", "隐性卖点", "独特卖点", "结构化标签",
+    }
+    skip_phrases = {
+        # selling_points_matrix.system.md 的结构性章节标题，不是真卖点/场景/心智名
+        "产品档案", "产品档案速写",
+        "三层卖点地图", "层卖点地图",
+        "五心智维度", "心智维度",
+        "使用场景", "场景心智", "内容心智", "产品心智", "品牌心智",
+        "结构化标签汇总", "信息补全", "信息补全建议",
+        "合规与红线", "输出前自检", "品类常识校准",
+        "复合心智候选", "排他性检验",
+    }
+    seeds = [s for s in seeds if s not in skip_words and s not in skip_phrases]
+
+    # 限 12 个（再多 query 量爆炸）
+    return seeds[:12]
+
+
+async def _list_audience_kb_docs(kb_id: str) -> list[str]:
+    """拿 audience KB 全部 doc title（去重）。让每个 doc 都有机会被召回。
+
+    用 doc title 做 query 不是"预设人群圈层"——doc title 反映 KB 实际存的圈层结构，
+    给所有 doc 公平召回机会，匹配什么仍由 LLM 看 chunk 实打实判断。
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT DISTINCT title FROM knowledge.knowledge_chunks "
+        "WHERE kb_id = $1 AND title IS NOT NULL AND title != ''",
+        kb_id,
+    )
+    return [r["title"] for r in rows]
+
+
+def _doc_title_to_query_seed(title: str) -> str:
+    """doc title → 适合做 query 的关键词。
+
+    剥掉年份/版本号/装饰，保留圈层关键词。
+    """
+    s = title
+    # 剥年份 / 版本
+    s = re.sub(r"^\d{4}", "", s).strip()
+    s = re.sub(r"\s*\(\d+\)\s*$", "", s).strip()
+    s = re.sub(r"\s*-?\s*final\s*$", "", s, flags=re.I).strip()
+    # 剥书名号 / 引号
+    s = s.strip("《》「」【】\"' ")
+    # 取括号外部分（"暮年当燃（银发圈层）" → "暮年当燃 银发圈层"）
+    s = re.sub(r"[（(]", " ", s)
+    s = re.sub(r"[）)]", "", s)
+    return s.strip()
+
+
+async def _build_audience_queries(
+    matrix_md: str,
+    sku_name: str,
+    sku_category: str | None = None,
+    kb_id: str | None = None,
+) -> list[str]:
+    """构造 query list — 品类锚 + matrix 派生 + 全 KB doc 扩散（不预设人群圈层）。
+
+    规则：
+    - 品类锚（3）：用 SKU 实际品类填 _CATEGORY_ANCHORS
+    - SKU 名锚（1）：剥容量/编号后做独立 query
+    - matrix 派生：从 matrix_md 提取卖点/场景/心智名
+    - **全 KB doc 扩散**：拿 KB 所有 doc title 做 query，让每个 doc 都有公平召回机会。
+      doc title 是 KB 实际存的圈层结构（不是我猜的人群圈层），给每个 doc 公平
+      召回机会才能让 LLM 看到 46 个 doc 全貌后自由判断匹配。
+
+    匹配什么人群圈层完全由 LLM 看 chunk 实打实决定，tool 不预判结果。
+    """
+    category = (sku_category or "").strip() or "调味品"
+    out: list[str] = [a.format(category=category) for a in _CATEGORY_ANCHORS]
+
+    # SKU 名锚（剥容量/规格/括号里的修饰）
+    sku_short = re.sub(r"\d+ml|\d+g|\*\d+|\(.*?\)|（.*?）", "", sku_name).strip()
+    if sku_short:
+        out.append(f"{sku_short[:20]} 消费人群")
+
+    # matrix 派生（卖点 / 场景 / 心智名 → query）
+    for seed in _extract_seed_phrases(matrix_md):
+        out.append(f"{category} {seed[:18]} 人群")
+
+    # 全 KB doc 扩散（每个 doc 一个 query，让所有圈层公平进候选池）
+    if kb_id:
+        try:
+            doc_titles = await _list_audience_kb_docs(kb_id)
+            for title in doc_titles:
+                seed = _doc_title_to_query_seed(title)
+                if seed:
+                    out.append(f"{category} {seed[:25]} 人群")
+        except Exception:
+            pass  # 失败回退到品类锚 + matrix 派生
+
+    # 去重保留顺序
+    seen: set[str] = set()
+    dedup: list[str] = []
+    for q in out:
+        if q not in seen:
+            seen.add(q)
+            dedup.append(q)
+    return dedup
+
+
+async def _multi_query_recall(
+    queries: list[str],
+    kb_id: str,
+    top_k_per_query: int = 5,
+    max_chunks: int = 40,
+) -> list[dict]:
+    """对多个 query 跑 KB 召回，按 chunk id 去重，返回合并 list。
+
+    Returns:
+        list[{source, kb_id, id, score, content, title, query_origin}]
+        其中 query_origin 标记是哪个 query 召回到的（首次命中的 query）
+    """
+    name_map: dict[str, str] = {}
+    try:
+        from app.services import ingestion as _ingestion
+        kbs = await _ingestion.list_kbs()
+        name_map = {k["id"]: k["name"] for k in kbs}
+    except Exception:
+        pass
+
+    # 并发跑（asyncio.gather；失败不挂全跑）
+    async def _one_query(q: str) -> tuple[str, list[dict]]:
+        try:
+            hits = await rag_chain.retrieve_multi_kb(
+                q,
+                [kb_id],
+                top_k_per_kb=top_k_per_query,
+                kb_name_map=name_map,
+            )
+            return q, hits
+        except Exception:
+            return q, []
+
+    results = await asyncio.gather(*[_one_query(q) for q in queries])
+
+    seen_chunk_ids: set[str] = set()
+    merged: list[dict] = []
+    for q, hits in results:
+        for h in hits:
+            cid = str(h.get("id") or "")
+            if not cid or cid in seen_chunk_ids:
+                continue
+            seen_chunk_ids.add(cid)
+            h2 = dict(h)
+            h2["query_origin"] = q
+            merged.append(h2)
+
+    # 按 doc round-robin 重排（避免单 doc 占据 chunks 大头让 LLM 偏视一个 doc）：
+    # 1) 按 title 分桶
+    # 2) 桶内按 score 降序
+    # 3) 轮询每个桶取一个，直到桶都空
+    # 这样不同 doc 的 chunk 交替出现，LLM 在第 1 部分跨 doc 多样性匹配会更稳
+    by_doc: dict[str, list[dict]] = {}
+    for h in merged:
+        title = (h.get("title") or "").strip() or "（无标题）"
+        by_doc.setdefault(title, []).append(h)
+    for d in by_doc:
+        by_doc[d].sort(key=lambda h: float(h.get("score") or 0), reverse=True)
+
+    diversified: list[dict] = []
+    while len(diversified) < max_chunks and any(by_doc.values()):
+        for d in list(by_doc.keys()):
+            if by_doc[d]:
+                diversified.append(by_doc[d].pop(0))
+                if len(diversified) >= max_chunks:
+                    break
+    return diversified
+
+
+def _format_kb_recall(chunks: list[dict]) -> str:
+    """把多 query 召回的 chunks 渲染成 markdown，喂给 LLM。
+
+    chunk 已被 _multi_query_recall 按 doc round-robin 重排（不再纯 score 降序）。
+    顶部加 doc 来源清单让 LLM 看到"涉及哪些 doc"，提示要全部 chunks 过一遍 + 不预设映射。
+
+    每个 chunk 一段：
+    ```
+    ### Chunk N — [来源: 文档名] (score: 0.78, query: "...")
+
+    [chunk 原文]
+    ```
+    """
+    if not chunks:
+        return "（KB 召回为空：建议检查 audience KB id 是否正确，或 query seeds 是否有效）"
+
+    # 顶部 doc 来源清单（按出现 chunk 数）
+    doc_count: dict[str, int] = {}
+    for h in chunks:
+        t = (h.get("title") or "").strip() or "（无标题）"
+        doc_count[t] = doc_count.get(t, 0) + 1
+    doc_list_md = "\n".join(
+        f"- **{t}**（{n} chunks）"
+        for t, n in sorted(doc_count.items(), key=lambda kv: -kv[1])
+    )
+    header = (
+        f'### 本次 KB 召回涉及 {len(doc_count)} 个不同 doc（按 chunk 数排序）：\n\n'
+        f'{doc_list_md}\n\n'
+        f'**全部 chunks 都过一遍**，按"假设卖点+场景+心智 vs chunk 描绘"实打实匹配；'
+        f'跨 doc 是自然结果，不要预设"哪个假设该去哪个 doc 找"。\n\n'
+        f'---\n\n'
+    )
+
+    parts: list[str] = []
+    for i, h in enumerate(chunks, start=1):
+        title = (h.get("title") or "").strip() or "（无标题）"
+        score = float(h.get("score") or 0)
+        q = h.get("query_origin") or ""
+        content = (h.get("content") or "").strip()
+        parts.append(
+            f"### Chunk {i} — [来源: {title}] (score: {score:.3f}, query: \"{q}\")\n\n"
+            f"{content}"
+        )
+    return header + "\n\n---\n\n".join(parts)
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_audience_match(
+    sku_id: str,
+    matrix_md: str,
+    extra_context: str | None = None,
+    kb_recall_override: str | None = None,
+) -> dict:
+    """生成 SKU 人群匹配（sku-pipeline step 3）。
+
+    输入 step 2 的卖点矩阵 markdown，内部按多 query 策略召回人群分析报告 KB
+    （绕开 KB 单 query 偏移），喂给 pro 模型，输出 4 部分人群匹配报告：
+
+    - 第 0 部分：人群假设推断（5-10 个跨圈层假设，反向推理）
+    - 第 1 部分：KB 匹配人群（KB 原文 1:1 + 匹配理由 ≥ 5 条含卖点+场景）
+    - 第 3 部分：KB 召回未覆盖的假设（信息补全建议）
+    - 第 4 部分：结构化标签汇总（≥ 30 条）
+
+    严格不写：圈包标签 / 优先级 / 预算 / 投放渠道 / 脚本 / 钩子 / 拒绝候选
+
+    Args:
+        sku_id: SKU id
+        matrix_md: step 2 输出的卖点矩阵 markdown（必填，没这个反向推理无依据）
+        extra_context: 额外要求（如"重点挖跨圈层"/"对标 X 品牌"）
+        kb_recall_override: 显式覆盖 KB 召回（老板手贴 chunks 时用）
+
+    Returns:
+        {ok, result: {audience_md, sku_id, recall_meta}, trace, next_step_hint(audience_sop_pack)}
+    """
+    pool = get_pool()
+    sku = await pool.fetchrow(
+        "SELECT id, name, category, price_min, price_max, specifications, "
+        "owner_selling_points, owner_notes, platform_status, growth_class "
+        "FROM mvp_sku WHERE id = $1",
+        sku_id,
+    )
+    if not sku:
+        return {
+            "ok": False,
+            "error": f"sku_id 未找到: {sku_id}",
+            "hint": "调 list_skus 看现有 sku_id",
+        }
+
+    if not matrix_md or not matrix_md.strip():
+        return {
+            "ok": False,
+            "error": "matrix_md 为空",
+            "hint": "step 3 必须先跑 step 2（generate_selling_points_matrix）拿 matrix_md。"
+                    "反向推理需要卖点+场景+心智作为推断起点",
+        }
+
+    # SKU 基本信息（精简版，audience_match 不需要 step 2 的所有套装规格细节）
+    spec_raw = sku["specifications"] or ""
+    sku_md = (
+        f"- 品名：{sku['name']}\n"
+        f"- 品类：{sku['category'] or '（未分类，调味品）'}\n"
+        f"- 规格：{spec_raw or '（无）'}\n"
+        f"- 抖店平台状态：{sku['platform_status'] or '（unknown）'}\n"
+        f"- 抖店诊断：{sku['growth_class'] or '（无）'}\n"
+    )
+
+    # === 多 query 召回（kb_recall_override 显式覆盖时跳过）===
+    if kb_recall_override and kb_recall_override.strip():
+        kb_recall_md = kb_recall_override.strip()
+        recall_meta = {
+            "mode": "override",
+            "queries": [],
+            "chunk_count": 0,
+        }
+    else:
+        queries = await _build_audience_queries(
+            matrix_md,
+            sku["name"] or "",
+            sku_category=sku["category"],
+            kb_id=AUDIENCE_KB_ID,
+        )
+        # 全 KB doc 扩散后 query 数 ~50-65，每 query top_k=3 节省 chunks 名额
+        # max_chunks=80 让 LLM 看到更多 doc 代表 chunks（之前 40 太少）
+        chunks = await _multi_query_recall(
+            queries=queries,
+            kb_id=AUDIENCE_KB_ID,
+            top_k_per_query=3,
+            max_chunks=80,
+        )
+        kb_recall_md = _format_kb_recall(chunks)
+        recall_meta = {
+            "mode": "multi_query",
+            "queries": queries,
+            "chunk_count": len(chunks),
+        }
+
+    # === LLM ===
+    sys_msg = prompts.load("audience_match.system")
+    user_msg = prompts.render(
+        "audience_match.user",
+        sku_md=sku_md,
+        matrix_md=matrix_md.strip(),
+        kb_recall=kb_recall_md,
+        extra_context=extra_context.strip() if extra_context else "（无）",
+    )
+    final_prompt = sys_msg + "\n\n" + user_msg
+
+    model_cfg = get_model_for_tool("generate_audience_match")
+    # pro 推理慢 + 输出长（≥ 30 标签 + 多人群 KB 原文 + 假设推断），给 240s
+    client = AIHubClient(timeout=240.0)
+    resp = await client.chat(
+        messages=[
+            {"role": "system", "content": sys_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3.1-pro-preview"),
+        temperature=model_cfg.get("temperature", 0.3),
+        max_tokens=model_cfg.get("max_tokens", 8000),
+        enforce_human_voice=True,
+    )
+    audience_md = (
+        ((resp.get("choices") or [{}])[0].get("message") or {}).get("content")
+        or resp.get("text")
+        or resp.get("content")
+        or ""
+    ).strip()
+
+    result = {
+        "ok": True,
+        "result": {
+            "audience_md": audience_md,
+            "sku_id": sku_id,
+            "recall_meta": recall_meta,
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "gemini"),
+            model=model_cfg.get("model", "gemini-3.1-pro-preview"),
+            prompt=final_prompt,
+            params={
+                "temperature": model_cfg.get("temperature", 0.3),
+                "max_tokens": model_cfg.get("max_tokens", 8000),
+                "audience_kb_id": AUDIENCE_KB_ID,
+                "queries_used": len(recall_meta["queries"]),
+                "chunks_recalled": recall_meta["chunk_count"],
+            },
+            cost_estimate="1 quota call (~5-8k tokens) + 多 query KB 召回",
+        ),
+    }
+    return attach_next_step(
+        result,
+        suggested_tool=None,  # step 4 audience_sop_pack 切片 14.3 再加
+        suggested_args={"sku_id": sku_id, "matrix_md": matrix_md, "audience_md": audience_md},
+        human_text="step 4 圈包 SOP（把人群描绘翻译成抖店/巨量后台标签）—— 工具切片 14.3 加",
     )

@@ -113,7 +113,7 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/content-studio/avatars', icon: Palette, label: '数字人脸库', hint: '管理 AI 数字人形象' },
     ],
   },
-  { href: '/sku-pipeline', icon: Sparkles, label: 'SKU Pipeline 测试', hint: 'sku-pipeline 各 step 单独测 + 调 prompt（step 2 卖点矩阵已通）' },
+  { href: '/sku-pipeline', icon: Sparkles, label: 'SKU Pipeline 测试', hint: 'sku-pipeline 各 step 单独测 + 调 prompt（step 2 卖点矩阵 + step 3 人群匹配 已通）' },
   { href: '/video-analysis', icon: Clapperboard, label: '短视频分析', hint: '上传素材，先让 AI 写分析报告' },
   { href: '/reverse-engineer', icon: Wand2, label: '反向拆解', hint: '把爆款素材拆成可复用提示词与镜头' },
   { href: '/livestream-analysis', icon: Radio, label: '直播分析', hint: '上传直播录屏，自动复盘出 Excel' },

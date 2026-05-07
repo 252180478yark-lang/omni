@@ -4,8 +4,9 @@
 
 当前暴露：
 - POST /api/v1/mcp/exec/generate_selling_points_matrix  — sku-pipeline step 2 卖点矩阵
+- POST /api/v1/mcp/exec/generate_audience_match         — sku-pipeline step 3 人群匹配
 
-后续切片加更多（audience_match / video_script / storyboard_descriptions 等），
+后续切片加更多（audience_sop_pack / video_script / storyboard_descriptions 等），
 也可改成通用 dispatch endpoint。
 
 设计取舍：
@@ -53,6 +54,39 @@ async def exec_generate_selling_points_matrix(
         return result
     except Exception as exc:
         logger.exception("generate_selling_points_matrix REST 异常")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "hint": "看 KE 日志定位（docker logs omni-knowledge-engine | tail）",
+            },
+        )
+
+
+class GenerateAudienceMatchRequest(BaseModel):
+    sku_id: str
+    matrix_md: str
+    extra_context: str | None = None
+    kb_recall_override: str | None = None
+
+
+@router.post("/exec/generate_audience_match")
+async def exec_generate_audience_match(
+    payload: GenerateAudienceMatchRequest,
+) -> Any:
+    from app.mcp.tools.media import generate_audience_match
+
+    try:
+        result = await generate_audience_match(
+            sku_id=payload.sku_id,
+            matrix_md=payload.matrix_md,
+            extra_context=payload.extra_context,
+            kb_recall_override=payload.kb_recall_override,
+        )
+        return result
+    except Exception as exc:
+        logger.exception("generate_audience_match REST 异常")
         return JSONResponse(
             status_code=500,
             content={
