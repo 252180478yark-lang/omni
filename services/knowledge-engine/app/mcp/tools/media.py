@@ -348,3 +348,145 @@ async def generate_video(
         suggested_args={},
         human_text="全链路完成。下载各段视频自己交剪辑（不自动拼接）。",
     )
+
+
+# ============================================================
+# W4-B 切片 14：sku-pipeline step 2 — 5 维卖点 + 3 心智矩阵
+# ============================================================
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_selling_points_matrix(
+    sku_id: str,
+    user_initial_points: str = "",
+    user_reviews: str = "",
+    kb_context: str | None = None,
+    extra_context: str | None = None,
+) -> dict:
+    """生成 SKU 三层卖点 + 5 心智矩阵（sku-pipeline step 2）。
+
+    使用调味品行业专家 prompt（5 部分输出：产品档案速写/三层卖点地图/五心智维度
+    /结构化标签汇总/信息补全建议）。每个卖点含 5 关键词 + 强度评分 + 匹配场景 +
+    匹配理由 + 30 字提炼。USP 走排他性检验。
+
+    Args:
+        sku_id: SKU id
+        user_initial_points: 用户/运营观察到的显性卖点清单
+        user_reviews: 用户评价（好评/差评关键词 / 客服反馈 / 私域反馈）
+        kb_context: KB 上下文（竞品/品牌故事/工艺细节等）
+        extra_context: 额外要求
+
+    Returns:
+        {ok, result: {matrix_md}, trace, next_step_hint(audience_match)}
+    """
+    pool = get_pool()
+    sku = await pool.fetchrow(
+        "SELECT id, name, category, price_min, price_max, specifications, "
+        "owner_selling_points, owner_notes, platform_status, growth_class "
+        "FROM mvp_sku WHERE id = $1",
+        sku_id,
+    )
+    if not sku:
+        return {
+            "ok": False,
+            "error": f"sku_id 未找到: {sku_id}",
+            "hint": "调 list_skus 看现有 sku_id",
+        }
+
+    # 售价
+    if sku["price_min"] is not None and sku["price_max"] is not None:
+        if sku["price_min"] == sku["price_max"]:
+            price_str = str(sku["price_min"])
+        else:
+            price_str = f"{sku['price_min']} - {sku['price_max']}"
+    else:
+        price_str = "（未设置）"
+
+    # owner_selling_points 是 JSONB（list[{text:...}]）→ 渲染成 bullet
+    osp_raw = sku["owner_selling_points"]
+    osp_lines = []
+    if osp_raw:
+        try:
+            import json as _json
+            items = osp_raw if isinstance(osp_raw, list) else _json.loads(osp_raw)
+            for it in items:
+                if isinstance(it, dict) and it.get("text"):
+                    osp_lines.append(f"  - {it['text']}")
+                elif isinstance(it, str):
+                    osp_lines.append(f"  - {it}")
+        except Exception:
+            osp_lines = [f"  - {osp_raw}"]
+
+    sku_md = (
+        f"- 品名：{sku['name']}\n"
+        f"- 品类：{sku['category'] or '（未分类，调味品/酱油醋类）'}\n"
+        f"- 规格：{sku['specifications'] or '（信息不足）'}\n"
+        f"- 老板手填备注（产品参数 / 工艺 / 认证）：{sku['owner_notes'] or '（无）'}\n"
+        f"- 抖店平台状态：{sku['platform_status'] or '（unknown）'}\n"
+        f"- 抖店诊断：{sku['growth_class'] or '（无）'}\n"
+        f"- 老板手填卖点（owner_selling_points）：\n"
+        + ("\n".join(osp_lines) if osp_lines else "  - （无）")
+    )
+
+    # SKU 与价格带（当前只有这一款 SKU 的信息，跨品类对比由 user 补充）
+    sku_price_band = (
+        f"- 当前主推 SKU：{sku['id']} / 售价 ¥{price_str} / 规格 {sku['specifications'] or '（无）'}\n"
+        f"- 其他在售 SKU 与价格分布：（信息不足，需用户补充其他 SKU 的价格带数据）\n"
+        f"- 渠道售价差异：（信息不足）"
+    )
+
+    # system 用 load 不 format（system.md 含字面 {需求表达} 等不希望被替换的花括号）
+    sys_msg = prompts.load("selling_points_matrix.system")
+    user_msg = prompts.render(
+        "selling_points_matrix.user",
+        sku_md=sku_md,
+        sku_price_band=sku_price_band,
+        user_reviews=user_reviews.strip() if user_reviews else "（信息不足，需补充用户评价/客服反馈/差评关键词）",
+        user_initial_points=user_initial_points.strip() if user_initial_points else "（用户/运营未输入显性卖点观察清单）",
+        kb_context=kb_context.strip() if kb_context else "（未提供 KB 上下文：建议先 search_kb 拿同品类爆款 / 品牌资产 / 竞品对比）",
+        extra_context=extra_context.strip() if extra_context else "（无）",
+    )
+    final_prompt = sys_msg + "\n\n" + user_msg
+
+    model_cfg = get_model_for_tool("generate_selling_points_matrix")
+    client = AIHubClient()
+    resp = await client.chat(
+        messages=[
+            {"role": "system", "content": sys_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3-flash-preview"),
+        temperature=model_cfg.get("temperature", 0.5),
+        max_tokens=6000,  # 5 部分输出（产品档案 + 三层卖点地图 + 5 心智 + 标签 + 信息补全）较长
+        enforce_human_voice=True,
+    )
+    matrix_md = (
+        ((resp.get("choices") or [{}])[0].get("message") or {}).get("content")
+        or resp.get("text")
+        or resp.get("content")
+        or ""
+    ).strip()
+
+    result = {
+        "ok": True,
+        "result": {
+            "matrix_md": matrix_md,
+            "sku_id": sku_id,
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "gemini"),
+            model=model_cfg.get("model", "gemini-3-flash-preview"),
+            prompt=final_prompt,
+            params={
+                "temperature": model_cfg.get("temperature", 0.5),
+                "max_tokens": 6000,
+            },
+            cost_estimate="1 quota call (~3-5k tokens)",
+        ),
+    }
+    return attach_next_step(
+        result,
+        suggested_tool=None,  # step 3 audience_match tool 切片 14.2 加
+        suggested_args={"sku_id": sku_id, "matrix_md": matrix_md},
+        human_text="step 3 audience_match（人群匹配 + 多维描绘）—— 工具切片 14.2 加；当前可手动 search_kb(kb_id='b7a08c06') 看人群分析报告",
+    )
