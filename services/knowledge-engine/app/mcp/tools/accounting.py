@@ -6,6 +6,11 @@
 W4-B 切片 7：两版成本 + 口令（migration 018）
 - view='public'（默认，员工版）+ view='real'（老板版，需 passphrase）
 - shared visibility 行两版都包含
+
+W4-B 切片 8：工厂出厂价字典（migration 019）
+- list_product_prices：查 accounting.product_price_list（工厂单品出厂价）
+- 给 agent 在组 mvp_sku 成本时调用——查工厂 SKU 出厂价 → 按组合关系算
+  → 录到 cost_items
 """
 from __future__ import annotations
 
@@ -266,3 +271,94 @@ async def compute_margin(
         suggested_args={"sku_id": sku_id, "channel": channel},
         human_text=f"利润 OK 的话出 brief（generate_brief，~1 quota call）",
     )
+
+
+# ─── W4-B 切片 8：工厂出厂价字典 query tool ────────────────────────────────
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def list_product_prices(
+    query: str = "",
+    vendor: str = "",
+    barcode: str = "",
+    limit: int = 30,
+) -> dict:
+    """查工厂出厂价字典 accounting.product_price_list。
+
+    给 agent 用——组 mvp_sku 成本时先 list_product_prices 查工厂单品出厂价，
+    再按组合关系算总价（人工识别 / 老板告诉的组合关系）。
+
+    Args:
+        query: 模糊搜（match product_name / spec / grade），空则不过滤
+        vendor: 'and田宽产品' 或 '辣嘴宽心系列产品'，空则全要
+        barcode: 精确条码匹配（match 优先级最高，命中后忽略 query/vendor）
+        limit: 返回上限（默认 30，最大 200）
+
+    Returns:
+        {ok, result: {total: int, items: [{id, vendor, product_name, grade,
+            spec, pack_size, unit_price, case_price, barcode, visibility,
+            valid_from}, ...]}}
+    """
+    pool = get_pool()
+    limit = max(1, min(int(limit or 30), 200))
+
+    # barcode 精确匹配优先
+    if barcode and barcode.strip():
+        rows = await pool.fetch(
+            """
+            SELECT id, vendor, product_name, grade, spec, pack_size,
+                   unit_price, case_price, barcode, visibility, valid_from
+              FROM accounting.product_price_list
+             WHERE barcode = $1 AND is_active = TRUE
+             ORDER BY valid_from DESC
+             LIMIT $2
+            """,
+            barcode.strip(), limit,
+        )
+    else:
+        # 模糊搜 + vendor 过滤
+        q_pattern = f"%{query.strip()}%" if query and query.strip() else "%"
+        v_pattern = vendor.strip() if vendor and vendor.strip() else None
+        if v_pattern:
+            rows = await pool.fetch(
+                """
+                SELECT id, vendor, product_name, grade, spec, pack_size,
+                       unit_price, case_price, barcode, visibility, valid_from
+                  FROM accounting.product_price_list
+                 WHERE is_active = TRUE
+                   AND vendor = $1
+                   AND (product_name ILIKE $2 OR spec ILIKE $2 OR grade ILIKE $2)
+                 ORDER BY product_name, spec
+                 LIMIT $3
+                """,
+                v_pattern, q_pattern, limit,
+            )
+        else:
+            rows = await pool.fetch(
+                """
+                SELECT id, vendor, product_name, grade, spec, pack_size,
+                       unit_price, case_price, barcode, visibility, valid_from
+                  FROM accounting.product_price_list
+                 WHERE is_active = TRUE
+                   AND (product_name ILIKE $1 OR spec ILIKE $1 OR grade ILIKE $1)
+                 ORDER BY vendor, product_name, spec
+                 LIMIT $2
+                """,
+                q_pattern, limit,
+            )
+
+    items = []
+    for r in rows:
+        d = decimal_to_jsonable(dict(r))
+        if d.get("id") is not None:
+            d["id"] = str(d["id"])
+        if d.get("valid_from") is not None:
+            d["valid_from"] = str(d["valid_from"])
+        items.append(d)
+    return {
+        "ok": True,
+        "result": {
+            "total": len(items),
+            "items": items,
+        },
+    }

@@ -162,6 +162,7 @@
       "mcp__omni__generate_image_compare",
       "mcp__omni__send_wecom_message",
       "mcp__omni__dy_publish_creative",
+      "mcp__omni__list_product_prices",
       "Bash(grep -nB 2 -A 10 \"_FAST_MODEL\" \"E:/agent/omni/services/knowledge-engine/app/services/query_enhancer.py\")",
       "PowerShell(docker network inspect omni-network --format \"Containers: {{range .Containers}}{{.Name}} {{end}}\"; Write-Host \"---\"; docker exec omni-knowledge-engine getent hosts ai-provider-hub 2>&1; Write-Host \"--- recreate KE on omni-network ---\"; docker compose -f \"E:\\\\agent\\\\omni\\\\docker-compose.yml\" up -d knowledge-engine 2>&1 | Select-Object -Last 5; Start-Sleep -Seconds 6; Write-Host \"--- DNS check after restart ---\"; docker exec omni-knowledge-engine getent hosts ai-provider-hub 2>&1; Write-Host \"--- doctor全绿确认 ---\"; docker exec omni-knowledge-engine python -m app.mcp.doctor 2>&1 | Select-Object -Last 8)",
       "PowerShell(netstat *)",

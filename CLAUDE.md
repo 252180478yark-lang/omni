@@ -36,6 +36,25 @@ omni 暴露 32 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 加分 5）：
 2. 录真实版：`record_cost(sku_id=..., visibility='real', unit_cost='Y')`
 3. 物流/扣点等共用项：`record_cost(..., visibility='shared')`
 
+## 工厂出厂价字典（W4-B 切片 8）
+
+`accounting.product_price_list` 存所有**工厂单品**的出厂价（条码维度，不绑
+mvp_sku）。当前来源：`F:\和田宽电商\价格表（内部）\酱油价格表.xlsx` 的
+"和田宽产品"+"辣嘴宽心系列产品" 99 行（不含锦百合）。
+
+mcp tool：`list_product_prices(query='', vendor='', barcode='', limit=30)`
+- query 模糊搜（match product_name / spec / grade）
+- vendor 精确：`'和田宽产品'` 或 `'辣嘴宽心系列产品'`
+- barcode 精确（命中后忽略 query/vendor）
+
+**典型用法（agent 组 mvp_sku 成本时调）**：
+1. 老板说"算 SKU-X 的出厂价" → agent 先看 mvp_sku.name 推它由哪些工厂
+   单品组成（如套装 = 2×500ml + 2×200ml）
+2. 调 `list_product_prices(query='米糀辣酱油', vendor='辣嘴宽心系列产品')`
+   拿对应工厂 SKU 出厂价
+3. 算总和（数量 × 单价 × 套装关系）
+4. 录到 `cost_items(sku_id=mvp_sku, visibility='public', unit_cost=算出的)`
+
 ## sku 出片标准链路（老板说"sku-X 全链路"时按此走）
 
 > W3a 起：第 3 步从"裸 LLM"升级为"先 KB grounding 再 LLM"。
