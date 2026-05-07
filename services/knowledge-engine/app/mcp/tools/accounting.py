@@ -11,6 +11,10 @@ W4-B 切片 8：工厂出厂价字典（migration 019）
 - list_product_prices：查 accounting.product_price_list（工厂单品出厂价）
 - 给 agent 在组 mvp_sku 成本时调用——查工厂 SKU 出厂价 → 按组合关系算
   → 录到 cost_items
+
+W4-B 切片 9：渠道扣点表（migration 020）
+- list_channel_fees：查 accounting.channel_fees（抖音/天猫/京东 平台抽点）
+- compute_margin 不显式传 channel_fee_rate 时 fallback 查这表
 """
 from __future__ import annotations
 
@@ -112,13 +116,45 @@ def _to_dec(x) -> Decimal:
     return Decimal(str(x))
 
 
+async def _resolve_channel_fee_rate(
+    channel: str,
+    explicit: str | None,
+) -> tuple[Decimal, str]:
+    """决定 compute_margin 用的扣点率。
+
+    优先级：caller 显式传值 > channel_fees 表当前 active percentage > 兜底 0.05
+
+    Returns: (fee_rate, source)，source ∈ {'caller', 'channel_fees', 'default'}
+    """
+    if explicit is not None and str(explicit).strip() != "":
+        return Decimal(str(explicit)), "caller"
+
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT fee_rate FROM accounting.channel_fees
+         WHERE channel = $1
+           AND fee_type = 'percentage'
+           AND is_active = TRUE
+           AND valid_from <= CURRENT_DATE
+           AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
+         ORDER BY valid_from DESC
+         LIMIT 1
+        """,
+        channel,
+    )
+    if row is not None:
+        return Decimal(str(row["fee_rate"])), "channel_fees"
+    return Decimal("0.05"), "default"
+
+
 @tool_with_audit(mcp, require_approval=False)
 async def compute_margin(
     sku_id: str,
     channel: str,
     sale_price: str | None = None,
     qty: int = 1,
-    channel_fee_rate: str = "0.05",
+    channel_fee_rate: str | None = None,
     skip_llm: bool = False,
     view: str = "public",
     passphrase: str = "",
@@ -130,7 +166,8 @@ async def compute_margin(
         channel: 渠道（douyin/tmall/jd 等）
         sale_price: 售价（str 输入避 float 误差）；None 则查 mvp_sku.sale_price
         qty: 数量（默认 1）
-        channel_fee_rate: 渠道扣点（默认 0.05 = 5%）
+        channel_fee_rate: 渠道扣点；None 时 fallback 查 accounting.channel_fees
+            （比如 channel='douyin' 默认 2%），表中没找到再兜底 0.05 = 5%
         skip_llm: 测试用，跳过 LLM 解读
         view: public（默认，员工出厂价算）| real（老板真实成本算，需 passphrase）
         passphrase: view='real' 时校验，跟 .env COST_REAL_VIEW_PASSPHRASE 比对
@@ -139,7 +176,7 @@ async def compute_margin(
         {"ok": True,
          "result": {"view": str,
                     "breakdown": {gmv, cost_total, channel_fee, net_profit,
-                                 margin_pct, items: [...]},
+                                 margin_pct, fee_rate_source, items: [...]},
                     "interpretation": "..."},  # LLM 写的人话
          "trace": {...},
          "next_step_hint": {suggested_tool: "generate_brief", ...}}
@@ -187,7 +224,9 @@ async def compute_margin(
 
     sale_dec = _to_dec(sale_price)
     qty_dec = _to_dec(qty)
-    fee_rate = _to_dec(channel_fee_rate)
+    fee_rate, fee_rate_source = await _resolve_channel_fee_rate(
+        channel, channel_fee_rate,
+    )
 
     # 3. 算账
     gmv = sale_dec * qty_dec
@@ -202,6 +241,7 @@ async def compute_margin(
         "qty": qty,
         "sale_price": str(sale_dec),
         "channel_fee_rate": str(fee_rate),
+        "fee_rate_source": fee_rate_source,
         "gmv": str(gmv.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
         "cost_total": str(cost_subtotal),
         "channel_fee": str(channel_fee),
@@ -354,6 +394,68 @@ async def list_product_prices(
             d["id"] = str(d["id"])
         if d.get("valid_from") is not None:
             d["valid_from"] = str(d["valid_from"])
+        items.append(d)
+    return {
+        "ok": True,
+        "result": {
+            "total": len(items),
+            "items": items,
+        },
+    }
+
+
+# ─── W4-B 切片 9：渠道扣点表 query tool ────────────────────────────────────
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def list_channel_fees(channel: str = "") -> dict:
+    """查 accounting.channel_fees 当前生效的渠道扣点率。
+
+    给 agent / 老板核对，也给 compute_margin 内部 fallback 调用（不通过 mcp 包装，
+    见 _resolve_channel_fee_rate）。
+
+    Args:
+        channel: 精确过滤（如 'douyin' / 'tmall' / 'jd'）；空则返全部
+
+    Returns:
+        {ok, result: {total, items: [{id, channel, fee_type, fee_rate,
+            description, valid_from, valid_to, notes}, ...]}}
+    """
+    pool = get_pool()
+    if channel and channel.strip():
+        rows = await pool.fetch(
+            """
+            SELECT id, channel, fee_type, fee_rate, description,
+                   valid_from, valid_to, notes
+              FROM accounting.channel_fees
+             WHERE channel = $1
+               AND is_active = TRUE
+               AND valid_from <= CURRENT_DATE
+               AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
+             ORDER BY valid_from DESC
+            """,
+            channel.strip(),
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT id, channel, fee_type, fee_rate, description,
+                   valid_from, valid_to, notes
+              FROM accounting.channel_fees
+             WHERE is_active = TRUE
+               AND valid_from <= CURRENT_DATE
+               AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
+             ORDER BY channel, valid_from DESC
+            """,
+        )
+    items = []
+    for r in rows:
+        d = decimal_to_jsonable(dict(r))
+        if d.get("id") is not None:
+            d["id"] = str(d["id"])
+        for k in ("valid_from", "valid_to"):
+            if d.get(k) is not None:
+                d[k] = str(d[k])
         items.append(d)
     return {
         "ok": True,

@@ -55,6 +55,24 @@ mcp tool：`list_product_prices(query='', vendor='', barcode='', limit=30)`
 3. 算总和（数量 × 单价 × 套装关系）
 4. 录到 `cost_items(sku_id=mvp_sku, visibility='public', unit_cost=算出的)`
 
+## 渠道扣点（W4-B 切片 9）
+
+`accounting.channel_fees` 存各渠道当前生效的扣点率（按 GMV % 或固定每单）。
+当前已录：抖音 2%（抖店技术服务费）。
+
+`compute_margin` 不显式传 `channel_fee_rate` 时**自动 fallback** 查这表
+（按 channel 找 active percentage 行）；找不到再兜底 5%。breakdown 返
+`fee_rate_source` 字段表明来源：`'caller'` / `'channel_fees'` / `'default'`。
+
+`list_channel_fees(channel='')` 查全部或某渠道的当前扣点。
+
+老板要改/加新渠道（如天猫 5%）：
+```sql
+INSERT INTO accounting.channel_fees (channel, fee_type, fee_rate, description)
+  VALUES ('tmall', 'percentage', 0.05, '天猫扣点');
+-- 或改：旧行 valid_to=今天 + 新行 valid_from=明天
+```
+
 ## sku 出片标准链路（老板说"sku-X 全链路"时按此走）
 
 > W3a 起：第 3 步从"裸 LLM"升级为"先 KB grounding 再 LLM"。
