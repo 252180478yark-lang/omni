@@ -326,9 +326,11 @@ services:
     ports:
       - "127.0.0.1:8009:8009"
     volumes:
-      - scout_sessions:/app/sessions
-      - scout_downloads:/app/downloads
-      - scout_snapshots:/app/snapshots
+      # bind mount 让 host 端跑 relogin 脚本写的 cookie 容器立刻可用
+      # （named volume 会让 host/容器隔离，登录态进不去容器）
+      - ./services/scout-agent/sessions:/app/sessions
+      - ./services/scout-agent/downloads:/app/downloads
+      - ./services/scout-agent/snapshots:/app/snapshots
     depends_on:
       postgres:
         condition: service_healthy
@@ -346,9 +348,6 @@ volumes:
   video_analysis_data:
   livestream_analysis_data:
   ad_review_data:
-  scout_sessions:
-  scout_downloads:
-  scout_snapshots:
 
 networks:
   omni-network:
