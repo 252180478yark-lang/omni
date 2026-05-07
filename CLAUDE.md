@@ -168,12 +168,30 @@ INSERT INTO accounting.channel_fees (channel, fee_type, fee_rate, description)
 - _无_
 <!-- omni-dynamic:end -->
 
+## 后台 cron 任务（W4-B 切片 4 + 11）
+
+KE 容器 lifespan 启动期起 3 个 asyncio loop，每小时唤醒一次检查 last_run。
+失败容忍（log warning 不挂），容器停就停（不是 SLA 服务）。
+
+| cron | 周期 | 动作 | 写文件 |
+|---|---|---|---|
+| `weekly_self_review` | 7 天 | 调 `agent_self_review(period_days=7)` | `data/agent_state/weekly_review.md` |
+| `daily_pulse` | 1 天 | 调 `fetch_compass_store_daily` + `fetch_yuntu_brand_mind` | `data/agent_state/daily_pulse.md` |
+| `dynamic_block_refresh` | 7 天 | 调 `agent_meta._refresh_impl`（绕 require_approval）| `data/agent_state/dynamic_block.md` |
+
+每个 cron 各一个 `last_*.txt` 文件持久化时间戳。**老板手动**把 dynamic_block.md
+新内容粘到本文件 `<!-- omni-dynamic:start ... :end -->` marker 之间（cron 不
+自动改 CLAUDE.md，因为 CLAUDE.md 入 git 老板要审）。
+
+实现：`services/knowledge-engine/app/mcp/cron.py`
+
 ## 已知约束
 
 - 不调 `run_sku_orch` —— 没这个 tool，编排靠对话
 - LLM tool 必返 `trace` 字段，老板要看 final_prompt 才能调 prompt 重跑
 - video 多段并发跑（asyncio.gather），typically 30-60s 每段；并发后总时间 ≈ 单段
 - W2 5 个 LLM tool 不走 Human Gate；W3a 加的 `record_cost` / `disable_cost_item` 走 Gate（CLI 批）
+- cron 跑数据来自 DB（scout-agent 最近一次 runbook 抓的）；cron 本身**不**主动跑 scout runbook（罗盘 cookie 浮动，runbook 老板手动跑）
 
 ## 调试常用命令
 

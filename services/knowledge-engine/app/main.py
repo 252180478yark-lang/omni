@@ -64,18 +64,28 @@ async def lifespan(app: FastAPI):
         from app.mcp.doctor import run_at_startup
         await run_at_startup()
 
-        # W4-B 切片 4：weekly_self_review 后台 cron
-        from app.mcp.cron import weekly_self_review_loop
-        cron_task = asyncio.create_task(weekly_self_review_loop())
+        # W4-B 切片 4 + 11：后台 cron 任务（3 个互不干扰的 loop）
+        from app.mcp.cron import (
+            daily_pulse_loop,
+            dynamic_block_refresh_loop,
+            weekly_self_review_loop,
+        )
+        cron_tasks = [
+            asyncio.create_task(weekly_self_review_loop()),
+            asyncio.create_task(daily_pulse_loop()),
+            asyncio.create_task(dynamic_block_refresh_loop()),
+        ]
 
         try:
             yield
         finally:
-            cron_task.cancel()
-            try:
-                await cron_task
-            except (asyncio.CancelledError, Exception):
-                pass
+            for t in cron_tasks:
+                t.cancel()
+            for t in cron_tasks:
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
 
     logger.info("Shutting down — closing database pool...")
     await close_pool()
