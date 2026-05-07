@@ -20,10 +20,11 @@ from app.mcp.server import mcp
 
 
 _VALID_CATEGORIES = {"product", "logistics", "partner_quote"}
+_VALID_VISIBILITIES = {"public", "real", "shared"}
 
 
 def _record_cost_summary(args: dict) -> str:
-    """Gate 卡片摘要：录入 SKU-X 的 product 类成本「瓶身」¥0.5/件 × 24 件"""
+    """Gate 卡片摘要：录入 SKU-X 的 product 类成本「瓶身」¥0.5/件 × 24 件 [public]"""
     parts = [
         f"录入 {args.get('category', '?')} 类成本「{args.get('item_name', '?')}」",
         f"¥{args.get('unit_cost', '?')}/{args.get('unit', '件')}",
@@ -32,6 +33,9 @@ def _record_cost_summary(args: dict) -> str:
         parts.insert(0, f"SKU={args['sku_id']}")
     if args.get("vendor"):
         parts.append(f"供应商={args['vendor']}")
+    vis = args.get("visibility", "public")
+    if vis != "public":
+        parts.append(f"visibility={vis}")
     return "；".join(parts)
 
 
@@ -57,6 +61,7 @@ async def record_cost(
     valid_from: str | None = None,
     valid_to: str | None = None,
     notes: str | None = None,
+    visibility: str = "public",
 ) -> dict:
     """录一行 accounting.cost_items（require_approval=True，CLI 批后才写）。
 
@@ -72,6 +77,8 @@ async def record_cost(
         valid_from: 起始日期 ISO（"2026-05-05"），默认今天
         valid_to: 截止日期 ISO；None = 长期有效
         notes: 备注
+        visibility: public（默认，员工可见）| real（仅老板真实成本）|
+            shared（两版共用，如物流/平台扣点）
 
     Returns:
         {ok, result: {cost_item_id, ...}}
@@ -81,6 +88,12 @@ async def record_cost(
             "ok": False,
             "error": "invalid_category",
             "hint": f"category 必须是 {sorted(_VALID_CATEGORIES)} 之一，给的是 {category!r}",
+        }
+    if visibility not in _VALID_VISIBILITIES:
+        return {
+            "ok": False,
+            "error": "invalid_visibility",
+            "hint": f"visibility 必须是 {sorted(_VALID_VISIBILITIES)} 之一，给的是 {visibility!r}",
         }
 
     try:
@@ -106,11 +119,11 @@ async def record_cost(
         """
         INSERT INTO accounting.cost_items
             (id, sku_id, category, item_name, unit_cost, currency, unit,
-             quantity_per_unit, vendor, valid_from, valid_to, notes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+             quantity_per_unit, vendor, valid_from, valid_to, notes, visibility)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         """,
         new_id, sku_id, category, item_name, unit_cost_dec, currency, unit,
-        qty_per_unit_dec, vendor, vf, vt, notes,
+        qty_per_unit_dec, vendor, vf, vt, notes, visibility,
     )
 
     return {
@@ -122,6 +135,7 @@ async def record_cost(
             "item_name": item_name,
             "unit_cost": str(unit_cost_dec),
             "valid_from": vf.isoformat(),
+            "visibility": visibility,
         },
     }
 

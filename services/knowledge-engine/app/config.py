@@ -92,5 +92,11 @@ class Settings(BaseSettings):
     avatar_promote_min_ctr: float = 0.03
     avatar_archive_consecutive_low: int = 3
 
+    # W4-B 切片 7：成本两版口令解锁
+    # 老板的真实成本（visibility='real'）只对持有此口令的调用方可见。
+    # 留空 → 不启用口令保护（开发环境用，老板自己电脑）。
+    # 设值 → query_costs / compute_margin 调 view='real' 时必须传相同 passphrase。
+    cost_real_view_passphrase: str = ""
+
 
 settings = Settings()

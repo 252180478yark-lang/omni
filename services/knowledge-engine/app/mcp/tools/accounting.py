@@ -2,9 +2,14 @@
 
 - query_costs：纯 DB 查 accounting.cost_items（migration 015）
 - compute_margin：DB 查成本 + Python 算账（确定性）+ LLM 写解读（T5 加）
+
+W4-B 切片 7：两版成本 + 口令（migration 018）
+- view='public'（默认，员工版）+ view='real'（老板版，需 passphrase）
+- shared visibility 行两版都包含
 """
 from __future__ import annotations
 
+from app.config import settings
 from app.database import get_pool
 from app.mcp import prompts
 from app.mcp.audit import tool_with_audit
@@ -12,34 +17,71 @@ from app.mcp.server import mcp
 from app.mcp.utils import decimal_to_jsonable
 
 
+_VALID_VIEWS = {"public", "real"}
+
+
+def _resolve_view(view: str, passphrase: str) -> tuple[bool, str, list[str], str]:
+    """决定本次查询用哪些 visibility 值。
+
+    Returns:
+        (ok, error, allowed_visibilities, hint)
+    """
+    if view not in _VALID_VIEWS:
+        return False, "invalid_view", [], (
+            f"view 必须是 {sorted(_VALID_VIEWS)} 之一，给的是 {view!r}"
+        )
+    if view == "public":
+        return True, "", ["public", "shared"], ""
+    # view == "real"
+    required = (settings.cost_real_view_passphrase or "").strip()
+    if required and (passphrase or "").strip() != required:
+        return False, "wrong_passphrase", [], (
+            "view='real' 需正确 passphrase 才能解锁老板真实成本；"
+            "传 passphrase=<.env COST_REAL_VIEW_PASSPHRASE 设的值>"
+        )
+    return True, "", ["real", "shared"], ""
+
+
 @tool_with_audit(mcp, require_approval=False)
-async def query_costs(sku_id: str) -> dict:
+async def query_costs(
+    sku_id: str,
+    view: str = "public",
+    passphrase: str = "",
+) -> dict:
     """查 SKU 的有效成本项（含共享成本如物流）。纯 DB 查询，无 LLM 调用。
 
     Args:
         sku_id: SKU id
+        view: public（默认，员工出厂价）| real（老板真实成本，需 passphrase）
+        passphrase: view='real' 时校验，跟 .env COST_REAL_VIEW_PASSPHRASE 比对
 
     Returns:
-        {"ok": True, "result": {"cost_items": [{id, sku_id, category, item_name,
-            unit_cost, currency, unit, quantity_per_unit, vendor, valid_from,
-            valid_to, notes}, ...]}}
+        {"ok": True, "result": {"view": str, "cost_items": [{id, sku_id, category,
+            item_name, unit_cost, currency, unit, quantity_per_unit, vendor,
+            visibility, valid_from, valid_to, notes}, ...]}}
 
         category 取值：product | logistics | partner_quote
+        visibility 取值：public（员工版）| real（老板版）| shared（两版共用）
         sku_id 为 None 的行表示共享成本（如全 SKU 共用的物流费）
     """
+    ok, err, allowed_vis, hint = _resolve_view(view, passphrase)
+    if not ok:
+        return {"ok": False, "error": err, "hint": hint}
+
     pool = get_pool()
     rows = await pool.fetch(
         """
         SELECT id, sku_id, category, item_name, unit_cost, currency, unit,
-               quantity_per_unit, vendor, valid_from, valid_to, notes
+               quantity_per_unit, vendor, visibility, valid_from, valid_to, notes
         FROM accounting.cost_items
         WHERE (sku_id = $1 OR sku_id IS NULL)
           AND is_active = TRUE
+          AND visibility = ANY($2::text[])
           AND valid_from <= CURRENT_DATE
           AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
         ORDER BY (sku_id IS NULL), category, valid_from DESC
         """,
-        sku_id,
+        sku_id, allowed_vis,
     )
     items = [decimal_to_jsonable(dict(r)) for r in rows]
     # UUID / date 也 str 化
@@ -50,7 +92,7 @@ async def query_costs(sku_id: str) -> dict:
             i["valid_from"] = str(i["valid_from"])
         if i.get("valid_to") is not None:
             i["valid_to"] = str(i["valid_to"])
-    return {"ok": True, "result": {"cost_items": items}}
+    return {"ok": True, "result": {"view": view, "cost_items": items}}
 
 
 import json
@@ -73,6 +115,8 @@ async def compute_margin(
     qty: int = 1,
     channel_fee_rate: str = "0.05",
     skip_llm: bool = False,
+    view: str = "public",
+    passphrase: str = "",
 ) -> dict:
     """算 SKU 在某渠道的净利率。LLM 不做数学，只写解读。
 
@@ -83,28 +127,36 @@ async def compute_margin(
         qty: 数量（默认 1）
         channel_fee_rate: 渠道扣点（默认 0.05 = 5%）
         skip_llm: 测试用，跳过 LLM 解读
+        view: public（默认，员工出厂价算）| real（老板真实成本算，需 passphrase）
+        passphrase: view='real' 时校验，跟 .env COST_REAL_VIEW_PASSPHRASE 比对
 
     Returns:
         {"ok": True,
-         "result": {"breakdown": {gmv, cost_total, channel_fee, net_profit,
+         "result": {"view": str,
+                    "breakdown": {gmv, cost_total, channel_fee, net_profit,
                                  margin_pct, items: [...]},
                     "interpretation": "..."},  # LLM 写的人话
          "trace": {...},
          "next_step_hint": {suggested_tool: "generate_brief", ...}}
     """
+    ok, err, allowed_vis, hint = _resolve_view(view, passphrase)
+    if not ok:
+        return {"ok": False, "error": err, "hint": hint}
+
     pool = get_pool()
 
-    # 1. 拿成本（直接 SQL，避免装饰器嵌套；同 query_costs 同样的过滤条件）
+    # 1. 拿成本（直接 SQL，避免装饰器嵌套；同 query_costs 同样的过滤条件 + visibility）
     cost_rows = await pool.fetch(
         """
-        SELECT category, item_name, unit_cost, quantity_per_unit
+        SELECT category, item_name, unit_cost, quantity_per_unit, visibility
         FROM accounting.cost_items
         WHERE (sku_id = $1 OR sku_id IS NULL)
           AND is_active = TRUE
+          AND visibility = ANY($2::text[])
           AND valid_from <= CURRENT_DATE
           AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
         """,
-        sku_id,
+        sku_id, allowed_vis,
     )
 
     cost_items = []
@@ -116,6 +168,7 @@ async def compute_margin(
             "category": r["category"],
             "item_name": r["item_name"],
             "line_cost": str(line.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)),
+            "visibility": r["visibility"],
         })
 
     # 2. 拿售价（如未给）。mvp_sku 实际 schema：PK=id，价格列是 price_min/price_max
@@ -149,6 +202,7 @@ async def compute_margin(
         "channel_fee": str(channel_fee),
         "net_profit": str(net_profit),
         "margin_pct": str(margin_pct),
+        "view": view,
         "items": cost_items,
     }
 
@@ -194,7 +248,7 @@ async def compute_margin(
 
     result = {
         "ok": True,
-        "result": {"breakdown": breakdown, "interpretation": interpretation},
+        "result": {"view": view, "breakdown": breakdown, "interpretation": interpretation},
         "trace": build_trace(
             provider=model_cfg.get("provider", "gemini"),
             model=model_cfg.get("model", "gemini-3-flash-preview"),

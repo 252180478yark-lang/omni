@@ -4,14 +4,37 @@
 
 ## omni MCP server
 
-omni 暴露 13 个 tool（W1 5 + W2 5 + W3a 3）：
+omni 暴露 32 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 加分 5）：
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
-- 编排辅助：`gather_brief_context`(W3a 新)
-- 生成：`generate_brief`, `generate_image`, `generate_video`
-- 写入（require_approval=True）：`record_cost`, `disable_cost_item`(W3a 新)
+- 编排辅助：`gather_brief_context`
+- 生成：`generate_brief`, `generate_image`, `generate_video`, `generate_image_compare`
+- KB 写入：`kb_upload_doc`, `kb_set_role`
+- 抓数：`fetch_compass_*` (3), `fetch_yuntu_5a`, `fetch_yuntu_brand_mind`
+- 通用：`summarize_text`, `parse_long_doc_with_gemini`, `query_template_chunks`
+- Agent 进化：`rate_tool_call`, `agent_self_review`, `codify_pattern_to_skill`, `refresh_project_context`
+- W4 加分：`save_decision`, `schedule_observation`, `send_wecom_message`, `dy_publish_creative`
+- 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
 调用见 `services/knowledge-engine/app/mcp/tools/`。
+
+## 成本两版 + 口令解锁（W4-B 切片 7）
+
+`accounting.cost_items.visibility` 三态：
+- `public` 员工版（出厂价，对外可见）— record_cost 默认值
+- `real` 老板真实成本（独占，需 passphrase 解锁）
+- `shared` 两版共用（物流/平台扣点等共用成本）
+
+`query_costs` / `compute_margin` 加 `view` 参数：
+- `view='public'` 默认 → 看 public + shared 行（员工口径）
+- `view='real'` + `passphrase=<...>` → 看 real + shared 行（老板真实账）
+  - 口令在 `.env` 配 `COST_REAL_VIEW_PASSPHRASE='<x>'`；空则跳过校验
+  - 口令错或缺 → 返 `wrong_passphrase`，**不暴露真实成本**
+
+**老板录两版的标准操作**：
+1. 录员工版：`record_cost(sku_id=..., visibility='public', unit_cost='X')`
+2. 录真实版：`record_cost(sku_id=..., visibility='real', unit_cost='Y')`
+3. 物流/扣点等共用项：`record_cost(..., visibility='shared')`
 
 ## sku 出片标准链路（老板说"sku-X 全链路"时按此走）
 

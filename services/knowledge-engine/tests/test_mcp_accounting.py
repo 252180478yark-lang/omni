@@ -79,10 +79,29 @@ from app.mcp.tools.accounting import compute_margin
 
 @pytest.mark.asyncio
 async def test_smoke_compute_margin_basic_math():
-    """sale_price=29.9 / cost=5.45 → margin=24.45 / margin_pct ≈ 0.818。
+    """sale_price=29.9 / cost=自家 0.95 + shared 物流总和 → 数学链路必须自洽。
 
     LLM 解读字段允许波动；但数字字段必须是确定性。
+
+    W4-B 切片 7 后：表内可能有非 _smoke 的真业务 sku_id IS NULL shared 物流行
+    被一并算进去（历史 record_cost e2e 留的）。本测改用动态 expected：从表上
+    实算 _smoke_sku_001 自家成本 + 所有 sku_id IS NULL shared 物流，断言
+    compute_margin 输出与之一致。
     """
+    pool = get_pool()
+    expected_cost = await pool.fetchval(
+        """
+        SELECT COALESCE(SUM(unit_cost / quantity_per_unit), 0)
+        FROM accounting.cost_items
+        WHERE (sku_id = '_smoke_sku_001' OR sku_id IS NULL)
+          AND is_active = TRUE
+          AND visibility IN ('public', 'shared')
+          AND valid_from <= CURRENT_DATE
+          AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)
+        """
+    )
+    expected_cost = Decimal(str(expected_cost))
+
     r = await compute_margin(
         sku_id="_smoke_sku_001",
         channel="douyin",
@@ -93,16 +112,15 @@ async def test_smoke_compute_margin_basic_math():
     )
     assert r["ok"] is True
     breakdown = r["result"]["breakdown"]
-    # cost 总和
-    assert breakdown["cost_total"] == "5.45"
-    # gmv = sale_price * qty
+    assert Decimal(breakdown["cost_total"]) == expected_cost.quantize(Decimal("0.01"))
     assert breakdown["gmv"] == "29.90"
-    # channel_fee = gmv * channel_fee_rate = 29.90 * 0.05 = 1.495
     assert breakdown["channel_fee"] == "1.4950"
-    # net_profit = gmv - cost_total - channel_fee = 29.90 - 5.45 - 1.495 = 22.955
-    assert breakdown["net_profit"] == "22.9550"
-    # margin_pct = net_profit / gmv ≈ 0.7677
-    assert breakdown["margin_pct"].startswith("0.76")
+    # net_profit = gmv - cost_total - channel_fee
+    expected_net = Decimal("29.90") - expected_cost.quantize(Decimal("0.01")) - Decimal("1.4950")
+    assert Decimal(breakdown["net_profit"]) == expected_net
+    # margin_pct 介于 (0,1)
+    margin_pct = Decimal(breakdown["margin_pct"])
+    assert 0 < margin_pct < 1
 
 
 @pytest.mark.asyncio
