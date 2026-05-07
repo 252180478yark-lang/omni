@@ -416,10 +416,20 @@ async def generate_selling_points_matrix(
         except Exception:
             osp_lines = [f"  - {osp_raw}"]
 
+    # 套装规格表达更清晰：避免 LLM 把 "500ml*2 + 200ml*2" 误读成"单瓶 1.4L"
+    spec_raw = sku["specifications"]
+    spec_explanation = ""
+    if spec_raw:
+        # 启发式：规格里含 "+" 或 "*N + ..." 形式 → 是套装组合
+        if "+" in spec_raw or " + " in spec_raw:
+            spec_explanation = f"\n- 规格说明：**这是套装组合**（不是单瓶），上述 `{spec_raw}` 表示装在一起的多瓶配置。算单瓶价时不要把售价直接除以总容量"
+        elif "*" in spec_raw:
+            spec_explanation = f"\n- 规格说明：`{spec_raw}` 含 `*` 通常表示一箱多瓶或套装。算单瓶价请按瓶数拆分"
+
     sku_md = (
         f"- 品名：{sku['name']}\n"
         f"- 品类：{sku['category'] or '（未分类，调味品/酱油醋类）'}\n"
-        f"- 规格：{sku['specifications'] or '（信息不足）'}\n"
+        f"- 规格：{spec_raw or '（信息不足）'}{spec_explanation}\n"
         f"- 老板手填备注（产品参数 / 工艺 / 认证）：{sku['owner_notes'] or '（无）'}\n"
         f"- 抖店平台状态：{sku['platform_status'] or '（unknown）'}\n"
         f"- 抖店诊断：{sku['growth_class'] or '（无）'}\n"
@@ -429,7 +439,7 @@ async def generate_selling_points_matrix(
 
     # SKU 与价格带（当前只有这一款 SKU 的信息，跨品类对比由 user 补充）
     sku_price_band = (
-        f"- 当前主推 SKU：{sku['id']} / 售价 ¥{price_str} / 规格 {sku['specifications'] or '（无）'}\n"
+        f"- 当前主推 SKU：{sku['id']} / 售价 ¥{price_str} / 规格 {spec_raw or '（无）'}\n"
         f"- 其他在售 SKU 与价格分布：（信息不足，需用户补充其他 SKU 的价格带数据）\n"
         f"- 渠道售价差异：（信息不足）"
     )
