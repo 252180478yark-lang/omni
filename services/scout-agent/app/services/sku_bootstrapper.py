@@ -112,6 +112,7 @@ async def _fetch_g_list_skus() -> list[dict[str, Any]]:
     """
     session_dir = Path(settings.sessions_dir) / "douyin_shop_admin"
     session_dir.mkdir(parents=True, exist_ok=True)
+    storage_state_file = session_dir / "storage_state.json"
 
     skus: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -119,14 +120,28 @@ async def _fetch_g_list_skus() -> list[dict[str, Any]]:
     try:
         from playwright.async_api import async_playwright
         async with async_playwright() as p:
-            # Persistent context loads cookies from user_data_dir; storage_state
-            # is not a valid kwarg here (API rejects it).
-            ctx = await p.chromium.launch_persistent_context(
-                user_data_dir=str(session_dir / "user_data"),
+            # 用 storage_state.json 跨 OS 共享 cookie（host 端 chromium 写的
+            # user_data 在 Windows 用 DPAPI 加密，容器 Linux 解不出，所以
+            # 不用 launch_persistent_context；改用 storage_state JSON 明文）
+            # 老板登录脚本：python scripts/relogin_douyin_shop_admin.py
+            if not storage_state_file.exists():
+                log.warning(
+                    "g-list: storage_state.json 不存在 → 老板需要先跑 "
+                    "scripts/relogin_douyin_shop_admin.py 登录抖店"
+                )
+                return []
+
+            browser = await p.chromium.launch(
                 headless=settings.playwright_headless,
                 args=["--disable-blink-features=AutomationControlled"],
             )
-            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            # 超大 viewport：让虚拟列表 buffer 一次性容纳更多行（默认 1080 只能渲 ~8 行；
+            # 4000 能渲 ~22 行，配合多轮滚动累积可拿全 29 个 SKU）
+            ctx = await browser.new_context(
+                storage_state=str(storage_state_file),
+                viewport={"width": 1920, "height": 4000},
+            )
+            page = await ctx.new_page()
 
             # 抖店后台有大量 polling/analytics,networkidle 几乎不会触发;
             # 用 domcontentloaded + 等待表格 selector 出现
@@ -145,6 +160,10 @@ async def _fetch_g_list_skus() -> list[dict[str, Any]]:
                 log.warning("g-list: session expired, cannot sync SKUs")
                 await ctx.close()
                 return []
+
+            # 关键：改 page size 到 100/页（抖店选项 10/20/50/100）→ 一页装下全店 SKU
+            # 避开虚拟滚动 + 翻页两个深坑（2026-05-07 切片 12 第三发现）
+            await _set_page_size_max(page)
 
             # Collect rows across pages with dedup + duplicate-page detection
             prev_first_id: str | None = None
@@ -180,7 +199,11 @@ async def _fetch_g_list_skus() -> list[dict[str, Any]]:
                 # disabled 状态有多种写法（class / aria-disabled / button[disabled]），
                 # 都尝试过滤
                 next_selectors = [
-                    # 抖店 ecom-g 组件库（主战场）
+                    # 抖店 ecom-g 组件库（主战场，2026-05-07 实测真实结构）
+                    # disabled 状态用 aria-disabled 属性，不是 class
+                    'li.ecom-g-pagination-next[aria-disabled="false"] button',
+                    'li[title="下一页"][aria-disabled="false"] button',
+                    # 旧版兼容（class 形式）
                     'li.ecom-g-pagination-next:not(.ecom-g-pagination-disabled) button:not([disabled])',
                     'button.ecom-g-pagination-item-link[aria-label*="next"]:not([disabled])',
                     'button.ecom-g-pagination-item-link[aria-label*="下一页"]:not([disabled])',
@@ -230,6 +253,7 @@ async def _fetch_g_list_skus() -> list[dict[str, Any]]:
                     break
 
             await ctx.close()
+            await browser.close()
 
     except Exception as exc:
         log.error("g-list scrape failed: %s", exc)
@@ -239,82 +263,195 @@ async def _fetch_g_list_skus() -> list[dict[str, Any]]:
     return skus
 
 
-async def _extract_g_list_rows(page) -> list[dict[str, Any]]:
-    """Extract product rows from 抖店后台 g-list page.
+async def _set_page_size_max(page) -> None:
+    """点击 size changer 改 page size 到 100/页（抖店最大）— 避开虚拟滚动+翻页双坑。
 
-    Real selectors (verified 2026-05 via _inspect_shop_admin.py):
-      - 表格行: tr.ecom-g-table-row (level-0 = data rows)
-      - 商品信息列: td.ecom-g-table-cell.style_goodsInformation*
-      - 售价列: td.ecom-g-table-cell.style_sellingPrice*
-      - 库存列: td.ecom-g-table-cell.style_totalInventory*
-      - 商品 ID: appears as "ID:DDDDDDDDDDDDD" in row text + visible in HTML id attrs
+    选项：10 / 20 / 50 / 100 条/页。失败容忍（log warning 不抛）。
     """
-    rows = []
     try:
-        await page.wait_for_selector("tr.ecom-g-table-row", timeout=15000)
-        row_els = await page.query_selector_all("tr.ecom-g-table-row.ecom-g-table-row-level-0")
-        if not row_els:  # fallback if level-0 selector misses
+        size_changer = page.locator('[class*="size-changer"]').first
+        if await size_changer.count() == 0:
+            log.debug("set_page_size: 找不到 size-changer，可能 SPA 改 UI；跳过")
+            return
+        await size_changer.click()
+        await asyncio.sleep(1)
+
+        # 选项里 "100 条/页" 通常 dup 出现（visible + hidden）
+        # 用 :has-text 精准匹配第 1 个可见的
+        opt_100 = page.locator('text="100 条/页"').first
+        if await opt_100.count() == 0:
+            log.debug("set_page_size: 没找到 '100 条/页' 选项")
+            return
+        await opt_100.click()
+        await asyncio.sleep(2)  # 等表格重渲
+
+        # 再等 row count 变多（确认换页生效）
+        for _ in range(10):
+            n = await page.locator("tr.ecom-g-table-row").count()
+            if n > 11:
+                log.info("set_page_size: 切到 100/页，当前 %d 行", n)
+                return
+            await asyncio.sleep(0.5)
+        log.warning("set_page_size: 已切但 row count 仍 ≤11，可能 SPA 没刷新")
+    except Exception as exc:
+        log.warning("set_page_size 失败：%s", exc)
+
+
+async def _scroll_and_collect_rows(
+    page, max_attempts: int = 120
+) -> dict[str, dict[str, Any]]:
+    """抖店 g-list 用虚拟滚动 — 每滚一次只渲染当前视口附近的行（旧行被 virtualize 回收）。
+    所以"row count 稳定"是错的判停标准（DOM 行数恒定 ~8-22）。
+
+    正确做法：
+    1. 边滚边累积 douyin_product_id 去重 dict
+    2. 配合 4000px 大 viewport 一次容纳更多行
+    3. 每 15 轮回滚到顶 + 再滚到底（cycle 模式触发完整渲染）
+    4. 直到 dict size 连续 10 轮不变 → 滚遍了
+
+    返 {product_id: row_data}。
+    """
+    collected: dict[str, dict[str, Any]] = {}
+    last_size = -1
+    stable_iters = 0
+
+    for attempt in range(max_attempts):
+        # 抓当前 DOM 里所有 row 的 id + data，加进 collected
+        row_els = await page.query_selector_all(
+            "tr.ecom-g-table-row.ecom-g-table-row-level-0"
+        )
+        if not row_els:
             row_els = await page.query_selector_all("tr.ecom-g-table-row")
 
         for row_el in row_els:
             try:
                 row_text = (await row_el.inner_text()) or ""
-                # Product ID: "ID:3757631870687379783" pattern in row text,
-                # or any 15-20 digit number (douyin product ids are 18-19 digits).
-                id_match = re.search(r'ID[:\s]*(\d{15,20})', row_text) or re.search(r'\b(\d{15,20})\b', row_text)
+                id_match = re.search(
+                    r'ID[:\s]*(\d{15,20})', row_text
+                ) or re.search(r'\b(\d{15,20})\b', row_text)
                 if not id_match:
                     continue
                 product_id = id_match.group(1)
-
-                # Goods info cell — first non-checkbox cell holds name + ID
-                info_cell = await row_el.query_selector('td[class*="goodsInformation"]')
-                name = ""
-                if info_cell:
-                    cell_text = (await info_cell.inner_text()).strip()
-                    # First line is typically the product name
-                    name = cell_text.split('\n')[0].strip() if cell_text else ""
-                if not name:
-                    # Fallback: take first ~50 chars of row text up to "ID:"
-                    name = row_text.split('ID')[0].strip()[:200]
-
-                # Inventory cell
-                stock_cell = await row_el.query_selector('td[class*="totalInventory"]')
-                stock_text = (await stock_cell.inner_text()).strip() if stock_cell else "0"
-                try:
-                    total_stock = int(re.sub(r"\D", "", stock_text.split('\n')[0]) or "0")
-                except ValueError:
-                    total_stock = 0
-
-                # Status: 抖店没有显式 status 列,但 row text 含 "现货模式" / "下架" 等
-                if "下架" in row_text or "停售" in row_text:
-                    platform_status = "off_sale"
-                elif "暂停" in row_text:
-                    platform_status = "paused"
-                else:
-                    platform_status = "on_sale"
-
-                # Growth class (商品诊断分类) — last-ish column shows 优秀/优质/待优化/衰退
-                growth_class = None
-                for kw, cls in [("优秀", "excellent"), ("优质", "good"),
-                                 ("待优化", "optimizing"), ("衰退", "declining")]:
-                    if kw in row_text:
-                        growth_class = cls
-                        break
-
-                rows.append({
-                    "douyin_product_id": product_id,
-                    "name": name,
-                    "platform_status": platform_status,
-                    "total_stock": total_stock,
-                    "available_stock": total_stock,
-                    "locked_stock": 0,
-                    "growth_class": growth_class,
-                    "created_on_platform_at": None,
-                    "url": f"https://fxg.jinritemai.com/ffa/g/detail?id={product_id}",
-                })
+                if product_id in collected:
+                    continue
+                # 提 row 数据（跟原 _extract_g_list_rows 同一逻辑）
+                collected[product_id] = await _row_to_dict(row_el, row_text, product_id)
             except Exception as exc:
-                log.debug("skip row: %s", exc)
+                log.debug("collect skip row: %s", exc)
+
+        cur = len(collected)
+        if cur == last_size:
+            stable_iters += 1
+            if stable_iters >= 10:  # 连续 10 轮 dict size 不变 → 滚遍了（之前 6 太短）
+                log.debug("scroll_collect: 稳定 collected=%d (attempt=%d)", cur, attempt)
+                return collected
+        else:
+            stable_iters = 0
+            last_size = cur
+
+        # 每 15 轮：回滚到顶 + 再滚到底（cycle 模式 — 触发完整虚拟列表 cache）
+        if attempt > 0 and attempt % 15 == 0:
+            try:
+                await page.evaluate("window.scrollTo(0, 0)")
+                await asyncio.sleep(0.5)
+            except Exception:
+                pass
+
+        # 滚到最后一行（触发虚拟列表加载下一批）
+        try:
+            last_row = page.locator("tr.ecom-g-table-row").last
+            if await last_row.count() > 0:
+                await last_row.scroll_into_view_if_needed(timeout=3000)
+        except Exception:
+            pass
+
+        # JS 强制滚所有候选容器 + window 到底
+        try:
+            await page.evaluate(
+                """() => {
+                    const sels = ['.ecom-g-table', '.ecom-g-table-container',
+                                  '.ecom-g-table-body', '[class*="table-body"]'];
+                    for (const s of sels) {
+                        document.querySelectorAll(s).forEach(el => {
+                            el.scrollTop = el.scrollHeight;
+                        });
+                    }
+                    window.scrollTo(0, document.body.scrollHeight);
+                }"""
+            )
+        except Exception:
+            pass
+
+        if attempt % 5 == 4:
+            try:
+                await page.keyboard.press("End")
+            except Exception:
+                pass
+
+        await asyncio.sleep(0.6)
+
+    log.warning(
+        "scroll_collect: %d 轮后仍未稳定，返当前 %d 个 SKU", max_attempts, len(collected)
+    )
+    return collected
+
+
+async def _row_to_dict(row_el, row_text: str, product_id: str) -> dict[str, Any]:
+    """把表格行 element 转成 SKU dict。"""
+    info_cell = await row_el.query_selector('td[class*="goodsInformation"]')
+    name = ""
+    if info_cell:
+        cell_text = (await info_cell.inner_text()).strip()
+        name = cell_text.split('\n')[0].strip() if cell_text else ""
+    if not name:
+        name = row_text.split('ID')[0].strip()[:200]
+
+    stock_cell = await row_el.query_selector('td[class*="totalInventory"]')
+    stock_text = (await stock_cell.inner_text()).strip() if stock_cell else "0"
+    try:
+        total_stock = int(re.sub(r"\D", "", stock_text.split('\n')[0]) or "0")
+    except ValueError:
+        total_stock = 0
+
+    if "下架" in row_text or "停售" in row_text:
+        platform_status = "off_sale"
+    elif "暂停" in row_text:
+        platform_status = "paused"
+    else:
+        platform_status = "on_sale"
+
+    growth_class = None
+    for kw, cls in [("优秀", "excellent"), ("优质", "good"),
+                     ("待优化", "optimizing"), ("衰退", "declining")]:
+        if kw in row_text:
+            growth_class = cls
+            break
+
+    return {
+        "douyin_product_id": product_id,
+        "name": name,
+        "platform_status": platform_status,
+        "total_stock": total_stock,
+        "available_stock": total_stock,
+        "locked_stock": 0,
+        "growth_class": growth_class,
+        "created_on_platform_at": None,
+        "url": f"https://fxg.jinritemai.com/ffa/g/detail?id={product_id}",
+    }
+
+
+async def _extract_g_list_rows(page) -> list[dict[str, Any]]:
+    """Extract product rows from 抖店后台 g-list page。
+
+    虚拟滚动（2026-05-07 切片 12 重大发现）：抖店表格滚到底时**回收旧行**（DOM
+    里 tr 数恒定 ~8-15 个）。所以不能"滚到稳定再 extract"——必须 **边滚边累积**
+    去重 dict，等 dict size 不再增长才停。详见 _scroll_and_collect_rows。
+    """
+    try:
+        await page.wait_for_selector("tr.ecom-g-table-row", timeout=15000)
+        collected = await _scroll_and_collect_rows(page)
+        log.info("extract: 边滚边累积 %d 个唯一 SKU", len(collected))
+        return list(collected.values())
     except Exception as exc:
         log.warning("extract_g_list_rows: %s", exc)
-
-    return rows
+        return []

@@ -28,6 +28,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SESSION_DIR = REPO_ROOT / "services" / "scout-agent" / "sessions" / "douyin_shop_admin"
 USER_DATA_DIR = SESSION_DIR / "user_data"
+STORAGE_STATE_FILE = SESSION_DIR / "storage_state.json"
 TARGET_URL = "https://fxg.jinritemai.com/ffa/g/list"
 DEADLINE_SECONDS = 300  # 老板有 5 分钟登录
 
@@ -93,14 +94,23 @@ async def main() -> int:
             if (i + 1) % 30 == 0:
                 print(f"[INFO] 已等 {i+1}s，cur_url={cur_url}")
 
+        # 关键：保存 storage_state.json（明文 JSON，跨 OS 通用）
+        # user_data_dir 里的 cookie 在 Windows 用 DPAPI 加密，容器 Linux 解不出
+        try:
+            await ctx.storage_state(path=str(STORAGE_STATE_FILE))
+            print(f"[OK] storage_state 已保存 → {STORAGE_STATE_FILE}")
+            print(f"[OK] 文件大小：{STORAGE_STATE_FILE.stat().st_size} bytes")
+        except Exception as exc:
+            print(f"[ERROR] storage_state 保存失败：{exc}")
+
         try:
             await ctx.close()
         except Exception:
             pass
 
     if not success:
-        print("[WARN] 没检测到明确登录态。如果你确认登好了，仍可重启 scout-agent 试")
-        print("       cookies 已落到 user_data_dir，可能脚本检测逻辑没抓到")
+        print("[WARN] 没检测到明确登录态。如果你确认登好了，storage_state 仍可能保存成功——")
+        print("       检查上面 [OK] storage_state 行；有就直接重启 scout-agent 试")
 
     print("[DONE] 下一步：")
     print("  docker compose restart scout-agent")
