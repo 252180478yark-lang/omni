@@ -103,12 +103,18 @@ async def _fetch_g_list_skus() -> list[dict[str, Any]]:
 
     Each row contains: product name, product ID, status, stock info, growth class.
     We scroll through all pages collecting rows.
+
+    翻页防御（2026-05-07 升级）：
+    - 多套 next button selector fallback（抖店 SPA 改 UI 后老 selector 失效）
+    - 按 douyin_product_id 去重（点 next 没真翻时不重复入库）
+    - 同页检测（连续两页第一行 ID 相同 → break）
+    - 详细 log（next_btn 候选数/disabled 状态/各页 ID 范围）
     """
     session_dir = Path(settings.sessions_dir) / "douyin_shop_admin"
     session_dir.mkdir(parents=True, exist_ok=True)
-    storage_file = session_dir / "storage_state.json"
 
     skus: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
 
     try:
         from playwright.async_api import async_playwright
@@ -140,38 +146,96 @@ async def _fetch_g_list_skus() -> list[dict[str, Any]]:
                 await ctx.close()
                 return []
 
-            # Collect rows across pages
+            # Collect rows across pages with dedup + duplicate-page detection
+            prev_first_id: str | None = None
             page_num = 1
             while True:
                 rows = await _extract_g_list_rows(page)
-                skus.extend(rows)
-                log.info("g-list page %d: %d rows (total=%d)", page_num, len(rows), len(skus))
 
-                # 抖店后台用 ecom-g-pagination (自家 UI 库),不是 antd
-                next_btn = page.locator(
-                    'button.ecom-g-pagination-item-link[aria-label*="next"], '
-                    'li.ecom-g-pagination-next:not(.ecom-g-pagination-disabled) button, '
-                    'button.ant-pagination-next:not([disabled])'
-                )
-                if await next_btn.count() == 0:
+                # 同页检测：连续两页第一行 ID 相同 = 没真翻
+                cur_first_id = rows[0]["douyin_product_id"] if rows else None
+                if page_num > 1 and cur_first_id and cur_first_id == prev_first_id:
+                    log.warning(
+                        "g-list page %d: first ID %s 跟上页一样，next 按钮可能没真翻；break",
+                        page_num, cur_first_id,
+                    )
                     break
+
+                # 去重：按 douyin_product_id 增量入 skus（避免重复抓相同 SKU）
+                new_count = 0
+                for r in rows:
+                    pid = r.get("douyin_product_id")
+                    if pid and pid not in seen_ids:
+                        seen_ids.add(pid)
+                        skus.append(r)
+                        new_count += 1
+                log.info(
+                    "g-list page %d: %d rows raw / %d new (total unique=%d) first_id=%s",
+                    page_num, len(rows), new_count, len(skus), cur_first_id,
+                )
+                prev_first_id = cur_first_id
+
+                # 找 next 按钮（多套 selector fallback；抖店 SPA UI 改版兜底）
+                # 注意：抖店用自家 ecom-g 组件库，不是 antd，但保留 antd 兜底
+                # disabled 状态有多种写法（class / aria-disabled / button[disabled]），
+                # 都尝试过滤
+                next_selectors = [
+                    # 抖店 ecom-g 组件库（主战场）
+                    'li.ecom-g-pagination-next:not(.ecom-g-pagination-disabled) button:not([disabled])',
+                    'button.ecom-g-pagination-item-link[aria-label*="next"]:not([disabled])',
+                    'button.ecom-g-pagination-item-link[aria-label*="下一页"]:not([disabled])',
+                    # arco-design 组件库（抖店有些页面用 arco）
+                    'button.arco-pagination-item-next:not([disabled])',
+                    # antd 兜底
+                    'button.ant-pagination-next:not([disabled])',
+                    'li.ant-pagination-next:not(.ant-pagination-disabled) a',
+                    # 通用兜底（最弱，只匹配带"下一页/next"关键字的可点击元素）
+                    '[role="button"][aria-label="下一页"]:not([aria-disabled="true"])',
+                    '[role="button"][aria-label="Next page"]:not([aria-disabled="true"])',
+                ]
+                next_btn = None
+                hit_selector = None
+                for sel in next_selectors:
+                    candidate = page.locator(sel)
+                    n = await candidate.count()
+                    if n > 0:
+                        next_btn = candidate.first
+                        hit_selector = sel
+                        log.debug("g-list page %d: next 按钮命中 selector=%r (count=%d)",
+                                  page_num, sel, n)
+                        break
+
+                if next_btn is None:
+                    # 一个也没命中 → 翻不动了（也可能是单页）
+                    # 列出所有 pagination 相关元素帮诊断
+                    diag = await page.locator('[class*="pagination"]').count()
+                    log.info(
+                        "g-list page %d: 找不到 next 按钮（候选 %d 个 selector 全 0；"
+                        "页内 pagination 元素 %d 个）；可能单页或 SPA selector 失效",
+                        page_num, len(next_selectors), diag,
+                    )
+                    break
+
                 try:
-                    await next_btn.first.click()
+                    await next_btn.click()
                     # 不用 networkidle (抖店后台 polling 永远不静); 给 4s 让表格重渲
                     await asyncio.sleep(4)
                 except Exception as exc:
-                    log.warning("g-list pagination click failed: %s", exc)
+                    log.warning("g-list page %d: next click 失败 (selector=%s): %s",
+                                page_num, hit_selector, exc)
                     break
                 page_num += 1
-                if page_num > 20:  # safety cap
+                if page_num > 30:  # safety cap（之前 20 太保守，可能漏页）
+                    log.warning("g-list: 翻到 page %d 仍未结束，触发安全上限 break", page_num)
                     break
 
             await ctx.close()
 
     except Exception as exc:
         log.error("g-list scrape failed: %s", exc)
-        return []
+        return skus  # 返已抓到的部分，不丢
 
+    log.info("g-list scrape 完成：共 %d unique SKU，跨 %d 页", len(skus), page_num)
     return skus
 
 
