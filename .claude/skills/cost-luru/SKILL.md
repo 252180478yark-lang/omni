@@ -29,10 +29,19 @@ description: 录入成本（物流/包装/原料/供应商报价）。老板说"
 - `unit` 默认 "件"，常见还有 "次"/"箱"/"单"
 - `sku_id` 可空（共享成本如顺丰运费 → 全 SKU 用）
 - `valid_from` 默认今天，老板说"从昨天开始算"才显式填
+- **`visibility` 默认 `public`（员工出厂价）**；老板话术里若提到"真实成本/我自己看的/老板版"→ `real`；物流/平台扣点等共用 → `shared`（W4-B 切片 7 后）
 
-**解析完先复述给老板看**，让老板确认参数：
+**话术 → visibility 映射**（默认 public，明确触发改值）：
 
-> "我打算录：SKU-A，物流类，「物流费」¥5/件，从今天起。对吗？"
+| 老板话术 | visibility |
+|---|---|
+| 没明说（默认）/ "员工版" / "出厂价" / "对外" | `public`（默认） |
+| "真实成本" / "我自己看" / "老板版" / "实际进货价" | `real` |
+| "物流费" / "运费" / "平台扣点" / "共用" / "通用" | `shared` |
+
+**解析完先复述给老板看**，让老板确认参数（含 visibility）：
+
+> "我打算录：SKU-A，物流类，「物流费」¥5/件，visibility=shared（共用），从今天起。对吗？"
 
 ### Step 2: 调 record_cost
 
@@ -51,6 +60,7 @@ record_cost(
     valid_from=None,         # None 默认今天
     valid_to=None,
     notes=None,
+    visibility="public",     # public（默认）| real（老板独占）| shared（共用）
 )
 ```
 
@@ -92,6 +102,7 @@ query_costs(sku_id="SKU-A", category="logistics")  # 或 sku_id=None 看共享
 | 错误 | hint | 怎么办 |
 |---|---|---|
 | `invalid_category` | category 不是 3 选 1 | 跟老板确认是 product/logistics/partner_quote 哪个 |
+| `invalid_visibility` | visibility 不是 3 选 1 | 跟老板确认是 public/real/shared 哪个（默认 public） |
 | `invalid_decimal` | unit_cost 含非数字 / 负数 | 让老板重说价格 |
 | `cost_item_not_found_or_already_inactive` | disable 时找不到 | query_costs 看看 id 对不对 |
 | Gate 超时（默认 1h） | 老板 1 小时没批 | 提醒老板在 cli_approve list 里看 / 重调 record_cost |
