@@ -58,11 +58,13 @@ async def bootstrap_skus() -> int:
                 INSERT INTO mvp_sku (
                     id, name, category, douyin_product_id, douyin_url, douyin_shop_id,
                     source, platform_status, total_stock, available_stock, locked_stock,
-                    growth_class, created_on_platform_at, status, push_tier
+                    growth_class, created_on_platform_at, status, push_tier,
+                    price_min, price_max
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6,
                     'shop_admin', $7, $8, $9, $10,
-                    $11, $12, 'active', $13
+                    $11, $12, 'active', $13,
+                    $14, $15
                 )
                 ON CONFLICT (douyin_product_id) DO UPDATE SET
                     name               = EXCLUDED.name,
@@ -72,6 +74,8 @@ async def bootstrap_skus() -> int:
                     locked_stock       = EXCLUDED.locked_stock,
                     growth_class       = EXCLUDED.growth_class,
                     push_tier          = EXCLUDED.push_tier,
+                    price_min          = EXCLUDED.price_min,
+                    price_max          = EXCLUDED.price_max,
                     updated_at         = NOW()
                 """,
                 sku_id,
@@ -87,6 +91,8 @@ async def bootstrap_skus() -> int:
                 sku.get("growth_class"),
                 sku.get("created_on_platform_at"),
                 push_tier,
+                sku.get("price_min"),
+                sku.get("price_max"),
             )
             upserted += 1
 
@@ -397,7 +403,14 @@ async def _scroll_and_collect_rows(
 
 
 async def _row_to_dict(row_el, row_text: str, product_id: str) -> dict[str, Any]:
-    """把表格行 element 转成 SKU dict。"""
+    """把表格行 element 转成 SKU dict。
+
+    抖店 g-list 8 列结构（2026-05-07 实测）：
+    - [0] selection / [1] goodsInformation / [2] sellingPrice / [3] totalInventory
+    - [4] newSellTitle 销量 / [5] qualityScoreTitle / [6] timeSortTitle 时间+状态
+    - [7] operating 操作按钮（含"下架/编辑"等按钮文字 — 不能用 row_text 判 status）
+    """
+    # name（第 1 列商品信息列第一行）
     info_cell = await row_el.query_selector('td[class*="goodsInformation"]')
     name = ""
     if info_cell:
@@ -406,6 +419,22 @@ async def _row_to_dict(row_el, row_text: str, product_id: str) -> dict[str, Any]
     if not name:
         name = row_text.split('ID')[0].strip()[:200]
 
+    # price（第 2 列，'￥59.90' 或 '￥10-20' 区间）
+    price_min: float | None = None
+    price_max: float | None = None
+    price_cell = await row_el.query_selector('td[class*="sellingPrice"]')
+    if price_cell:
+        price_text = (await price_cell.inner_text()).strip()
+        # 提所有数字（含小数点）
+        nums = re.findall(r"\d+(?:\.\d+)?", price_text)
+        if nums:
+            try:
+                price_min = float(nums[0])
+                price_max = float(nums[-1]) if len(nums) > 1 else price_min
+            except ValueError:
+                pass
+
+    # stock（第 3 列）
     stock_cell = await row_el.query_selector('td[class*="totalInventory"]')
     stock_text = (await stock_cell.inner_text()).strip() if stock_cell else "0"
     try:
@@ -413,17 +442,32 @@ async def _row_to_dict(row_el, row_text: str, product_id: str) -> dict[str, Any]
     except ValueError:
         total_stock = 0
 
-    if "下架" in row_text or "停售" in row_text:
+    # platform_status（第 6 列 timeSortTitle，文本 "2026/04/25 | 18:14:37 | 售卖中"）
+    # 不能用 row_text 因为第 7 列操作按钮永远含"下架"两字 → 误判
+    status_cell = await row_el.query_selector('td[class*="timeSortTitle"]')
+    status_text = (await status_cell.inner_text()).strip() if status_cell else ""
+    if "已售罄" in status_text:
+        platform_status = "out_of_stock"
+    elif "已下架" in status_text or "停售" in status_text:
         platform_status = "off_sale"
-    elif "暂停" in row_text:
+    elif "暂停" in status_text:
         platform_status = "paused"
-    else:
+    elif "审核" in status_text:
+        platform_status = "under_review"
+    elif "封禁" in status_text:
+        platform_status = "banned"
+    elif "售卖中" in status_text or "在售" in status_text:
         platform_status = "on_sale"
+    else:
+        platform_status = "unknown"
 
+    # growth_class（第 5 列 qualityScoreTitle："优秀 | 88"）
+    quality_cell = await row_el.query_selector('td[class*="qualityScoreTitle"]')
+    quality_text = (await quality_cell.inner_text()).strip() if quality_cell else ""
     growth_class = None
     for kw, cls in [("优秀", "excellent"), ("优质", "good"),
                      ("待优化", "optimizing"), ("衰退", "declining")]:
-        if kw in row_text:
+        if kw in quality_text:
             growth_class = cls
             break
 
@@ -435,6 +479,8 @@ async def _row_to_dict(row_el, row_text: str, product_id: str) -> dict[str, Any]
         "available_stock": total_stock,
         "locked_stock": 0,
         "growth_class": growth_class,
+        "price_min": price_min,
+        "price_max": price_max,
         "created_on_platform_at": None,
         "url": f"https://fxg.jinritemai.com/ffa/g/detail?id={product_id}",
     }
