@@ -4,7 +4,7 @@
 
 ## omni MCP server
 
-omni 暴露 32 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 加分 5）：
+omni 暴露 34 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9）：
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
 - 编排辅助：`gather_brief_context`
@@ -14,6 +14,7 @@ omni 暴露 32 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 加分 5）：
 - 通用：`summarize_text`, `parse_long_doc_with_gemini`, `query_template_chunks`
 - Agent 进化：`rate_tool_call`, `agent_self_review`, `codify_pattern_to_skill`, `refresh_project_context`
 - W4 加分：`save_decision`, `schedule_observation`, `send_wecom_message`, `dy_publish_creative`
+- 字典查询：`list_product_prices`（工厂出厂价）, `list_channel_fees`（渠道扣点）
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
 调用见 `services/knowledge-engine/app/mcp/tools/`。
@@ -100,6 +101,26 @@ INSERT INTO accounting.channel_fees (channel, fee_type, fee_rate, description)
 | 录成本 / 加成本 / 录入物流费 | cost 数据录入 | 调 `record_cost(...)`，老板用 `python -m app.mcp.cli_approve approve <id>` 批 |
 | KB 没命中 / KB 引用不对 | 3a 返回的上下文不好 | 看 sources 哪个 kb_role 弱，提示老板"补 X 类 KB" 或换 query 重调 gather_brief_context |
 | 改 prompt / 改 brief 系统提示 | 改 prompt 不改代码 | 编辑 `services/knowledge-engine/config/prompts/<tool>.{system,user}.md`，KE 容器无需 restart（mtime 自检） |
+
+## 业务 skill 第二批（W4-B 切片 10，2026-05-07）
+
+`.claude/skills/` 下话术触发的 5 个业务 skill（cost-luru 是切片 1 录成本专项，下面 5 个是内容/数据/分析专项）：
+
+| skill | 老板话术触发 | 串什么 tool | 输出 |
+|---|---|---|---|
+| `selling-point-finder` | "找 X 卖点" | get_sku → query_template_chunks → search_kb(template) | 三类卖点（功能/情绪/场景）|
+| `script-writer` | "给 X 写脚本/直播话术/文案" | get_sku → query_template_chunks → search_kb → generate_brief | 脚本草稿（kb_context 注入避免裸跑）|
+| `product-analysis` | "分析 X / X 卖得咋样 / X 还能推不" | get_sku → query_costs → compute_margin → fetch_compass_sku_detail → search_kb | 5 维度健康度报告 + 3 条建议 |
+| `crowd-sop` | "圈一个 X 的人群包/X 受众咋定" | search_kb(authoritative+methodology) → query_template_chunks | 可复制进抖店/巨量后台的圈人策略文 |
+| `daily-store-pulse` | "看店铺/今日大盘/最近店铺咋样" | fetch_compass_store_daily → fetch_yuntu_brand_mind → search_kb(methodology) | 店铺脉搏日报 + 异动判断 |
+
+通用约束（5 个 skill 都遵守）：
+- **每步停下等反馈**，不一气呵成（同 cost-luru 5 步走风格）
+- 输出**带来源**（哪条 KB / 哪个 SKU 字段），feedback memory 强反幻觉
+- **说人话**，禁 AI 化套话（赋能/打通/闭环/抢占心智 等）
+- gmv 字段统一 `gmv_paid`（用户支付金额）
+
+老板用 `/<skill-name>` 也能强制触发；通常按话术 Claude 会自动判断。
 
 ## prompt 调整三通道（W3a 新）
 
