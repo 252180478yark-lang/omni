@@ -51,9 +51,7 @@ parse_long_doc_with_gemini:
   max_tokens: 8192
 
 codify_pattern_to_skill:
-  # 2026-05-07: gemini key 临时失效后切 openai；codify 写 frontmatter md，
-  # gpt-4o-mini 即足。老板 gemini 续期后可切回。
-  provider: openai
-  model: gpt-4o-mini
+  provider: gemini
+  model: gemini-3-flash-preview
   temperature: 0.3
   max_tokens: 2048
