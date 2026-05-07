@@ -55,3 +55,11 @@ codify_pattern_to_skill:
   model: gemini-3-flash-preview
   temperature: 0.3
   max_tokens: 2048
+
+# W4-B 切片 14：sku-pipeline step 2 卖点矩阵
+# 用 gemini-3.1-pro-preview 跑（深度产品策略推理 — flash 系列偏快不偏深）
+generate_selling_points_matrix:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.3
+  max_tokens: 6000
