@@ -102,3 +102,11 @@ docs/调试问题/
 
 # W2 e2e 落盘（base64 图片）
 .e2e-out/
+
+# 14.3 本地测试临时（payload / 探针脚本 / 一次性 verify）
+.tmp/
+
+# scout-agent 本地探针 / 一次性脚本（前缀 _ 是研究阶段产物，不入仓）
+services/scout-agent/_inspect_*.py
+services/scout-agent/_kb_*.py
+services/scout-agent/data/

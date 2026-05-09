@@ -118,6 +118,15 @@ async def _check_tools_registered(report: DoctorReport) -> None:
             "generate_selling_points_matrix",
             # W4-B 切片 14.2（sku-pipeline step 3 人群匹配）
             "generate_audience_match",
+            # W4-B 切片 14.3 phase A（pipeline lineage 查询/采纳）
+            "pipeline_list_matrix_runs", "pipeline_get_matrix_run",
+            "pipeline_list_audience_runs", "pipeline_get_audience_run",
+            "pipeline_list_audience_records", "pipeline_get_audience_record",
+            "pipeline_adopt",
+            # W4-B 切片 14.3 phase B（sku-pipeline step 4 圈包 SOP）
+            "generate_audience_pack",
+            # W4-B 切片 14.3 phase B+（关键词扩展 500 词）
+            "generate_keyword_pack",
         }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names
@@ -146,6 +155,10 @@ def _check_prompts(report: DoctorReport) -> None:
             "selling_points_matrix.system", "selling_points_matrix.user",
             # W4-B 切片 14.2：sku-pipeline step 3
             "audience_match.system", "audience_match.user",
+            # W4-B 切片 14.3 phase B：sku-pipeline step 4
+            "audience_pack.system", "audience_pack.user",
+            # W4-B 切片 14.3 phase B+：keyword 扩展
+            "keyword_pack.system", "keyword_pack.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

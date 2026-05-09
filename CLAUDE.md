@@ -4,17 +4,19 @@
 
 ## omni MCP server
 
-omni 暴露 34 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9）：
+omni 暴露 45 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14）：
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
 - 编排辅助：`gather_brief_context`
 - 生成：`generate_brief`, `generate_image`, `generate_video`, `generate_image_compare`
+- sku-pipeline LLM：`generate_selling_points_matrix`（step 2）, `generate_audience_match`（step 3）, `generate_audience_pack`（step 4，phase B）, `generate_keyword_pack`（500 词扩展，phase B+）
 - KB 写入：`kb_upload_doc`, `kb_set_role`
 - 抓数：`fetch_compass_*` (3), `fetch_yuntu_5a`, `fetch_yuntu_brand_mind`
 - 通用：`summarize_text`, `parse_long_doc_with_gemini`, `query_template_chunks`
 - Agent 进化：`rate_tool_call`, `agent_self_review`, `codify_pattern_to_skill`, `refresh_project_context`
 - W4 加分：`save_decision`, `schedule_observation`, `send_wecom_message`, `dy_publish_creative`
 - 字典查询：`list_product_prices`（工厂出厂价）, `list_channel_fees`（渠道扣点）
+- 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
 调用见 `services/knowledge-engine/app/mcp/tools/`。
@@ -73,6 +75,75 @@ INSERT INTO accounting.channel_fees (channel, fee_type, fee_rate, description)
   VALUES ('tmall', 'percentage', 0.05, '天猫扣点');
 -- 或改：旧行 valid_to=今天 + 新行 valid_from=明天
 ```
+
+## sku 出片链路血缘（W4-B 切片 14.3 phase A）
+
+`pipeline` schema 6 张表，**每步落库 + 多版本 + denorm sku_id**，目的是投后视频
+回传 ad_metrics 时一句 SQL 反查全链路（不用上传 SKU/卖点/人群）。
+
+```
+matrix_run (step 2) → audience_run (step 3) → audience_record (拆 N 行)
+  → audience_pack (step 4 phase B 加) → script (step 5/6 phase C)
+  → asset (image/video，挂 ad_metrics 投后回传)
+```
+
+**核心约定**：
+- **状态两态**：`status='draft'` 跑完即落 → 老板手点采纳变 `'adopted'` → 下游只跟 adopted 走
+- **多版本**：每次重跑 = 新一行（`version` 自增 + `parent_run_id` 串前后），不覆盖
+- **拆 N 人群**：step 3 跑完整段 markdown 入 `audience_runs` 同时 regex 拆每个 `#### 1.X [人群名]` 段入 `audience_records`（`selected_for_pack` 标位标"老板选了挂下游"）
+- **denorm `sku_id`**：6 张表都直接挂 sku_id，复盘 SQL 不用 6 join
+- **反查视图**：`pipeline.v_asset_full_lineage`（按 asset_id 一句 SELECT 拉全链路）
+
+**老板话术 → tool**：
+- "看 sku-X 跑过几版卖点矩阵"  → `pipeline_list_matrix_runs(sku_id)`
+- "看那次人群报告拆了几个" → `pipeline_list_audience_records(audience_run_id)`
+- "选第 3 个人群挂下游" → `pipeline_adopt(table='audience_records', run_id=..., set_selected=True)`
+- "把这版 matrix 采纳" → `pipeline_adopt(table='matrix_runs', run_id=...)`
+
+**前端 /sku-pipeline**：step 3 输出已改卡片化（N 个人群独立可选）；step 2 输出
+带 `matrix_run_id` 标签自动喂给 step 3。
+
+实现：
+- `migrations/021_pipeline_lineage.sql`（schema + 6 表 + 视图）
+- `migrations/022_keyword_packs.sql`（关键词扩展包表，挂 sku/audience_record/pack）
+- `services/knowledge-engine/app/services/pipeline_lineage.py`（save/list/get/adopt + regex 拆）
+- `services/knowledge-engine/app/mcp/tools/pipeline.py`（7 个 lineage 查询/采纳 tool）
+
+## sku-pipeline step 4 圈包 SOP（W4-B 切片 14.3 phase B）
+
+`generate_audience_pack(audience_record_id, extra_context?)` —— 输入老板已勾选
+的某个 audience_record，自动拉它关联的 matrix_run + sku + 巨量云图/千川 KB 召回，
+LLM 翻译成可在巨量云图后台一步步勾选 + 可推到千川的圈人 SOP。
+
+**输出固定 5 节**（`config/prompts/audience_pack.{system,user}.md`）：
+- 第 0 部分 4 维度人群画像扩展（生活方式 / 消费习惯 / 痛点 / 触发场景，每句标 [KB] / [matrix X.Y] / [行业推理]）
+- 第 1 部分 1.1 概览表 + 1.2 ASCII 圈人架构图（前置工具 → 单元 → 组合 ∩∪- → 推千川）
+- 第 2 部分 N 个圈人单元（N 由 LLM 判断、无上下限），每个细到三级菜单 + 大白话理由 + 跟其他单元的关系
+- 第 3 部分 交并排拓配方（只在 1 单元不够精准时给，禁止凑数）
+- 第 4 部分 关键词扩展（按 4.7 判定表，目的地是云图数据工厂关键词夹）
+
+**严禁**：脚本/钩子/文案 / 预算（测试期/放量期）/ A/B 测试矩阵 / P0-P2 优先级 /
+预测 ROI 或 GMV / 推计划类型 / 重写 KB 原文 / 虚构 KB 不存在的标签
+（IP 偏好只 5 类、内容偏好/行业品类兴趣三级树没给清单时让老板查实际可选项）。
+
+**链路落库**：跑完即落 `pipeline.audience_packs`，挂 audience_record_id +
+audience_run_id + matrix_run_id + sku_id 全 denorm。多版本（重跑 = 新行 +
+parent_pack_id 串前后）。
+
+## sku-pipeline 关键词扩展（W4-B 切片 14.3 phase B+）
+
+`generate_keyword_pack(seed_keywords, target_count=500, sku_id?, audience_record_id?,
+audience_pack_id?, extra_context?)` —— 输入种子词，输出 N 个**纯文本一行一词无标点**
+的关键词（向量近邻词，**不是 SKU 商品维度词、不是人群属性词、不是元话题词**）。
+
+**用途**：导入「云图 → 数据工厂 → 关键词夹 → 新建关键词包」 → 标签工厂转成
+人群标签 → 回自定义人群引用 → 推千川。**不是直接进千川计划关键词定向**。
+
+落库 `pipeline.keyword_packs`（migration 022），可挂 sku/audience_record/audience_pack。
+后处理 `_clean_keyword_pack` 强制清掉标点/数字/重复，保证格式纯净。
+
+下一步（phase C / D）：step 5/6 脚本绑链路（`pipeline.scripts`）、视频回传
+ad_metrics 自动反查（`pipeline.assets` + `v_asset_full_lineage`）。
 
 ## sku 出片标准链路（老板说"sku-X 全链路"时按此走）
 

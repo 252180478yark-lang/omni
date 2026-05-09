@@ -69,6 +69,7 @@ class GenerateAudienceMatchRequest(BaseModel):
     matrix_md: str
     extra_context: str | None = None
     kb_recall_override: str | None = None
+    matrix_run_id: str | None = None
 
 
 @router.post("/exec/generate_audience_match")
@@ -83,6 +84,7 @@ async def exec_generate_audience_match(
             matrix_md=payload.matrix_md,
             extra_context=payload.extra_context,
             kb_recall_override=payload.kb_recall_override,
+            matrix_run_id=payload.matrix_run_id,
         )
         return result
     except Exception as exc:
@@ -95,3 +97,200 @@ async def exec_generate_audience_match(
                 "hint": "看 KE 日志定位（docker logs omni-knowledge-engine | tail）",
             },
         )
+
+
+# ════════════════════════════════════════════════════════════════
+# W4-B 切片 14.3 phase B：sku-pipeline step 4 圈包 SOP
+# ════════════════════════════════════════════════════════════════
+
+
+class GenerateKeywordPackRequest(BaseModel):
+    seed_keywords: str
+    target_count: int = 500
+    sku_id: str | None = None
+    audience_record_id: str | None = None
+    audience_pack_id: str | None = None
+    extra_context: str | None = None
+
+
+@router.post("/exec/generate_keyword_pack")
+async def exec_generate_keyword_pack(
+    payload: GenerateKeywordPackRequest,
+) -> Any:
+    from app.mcp.tools.media import generate_keyword_pack
+    try:
+        return await generate_keyword_pack(
+            seed_keywords=payload.seed_keywords,
+            target_count=payload.target_count,
+            sku_id=payload.sku_id,
+            audience_record_id=payload.audience_record_id,
+            audience_pack_id=payload.audience_pack_id,
+            extra_context=payload.extra_context,
+        )
+    except Exception as exc:
+        logger.exception("generate_keyword_pack REST 异常")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": f"{type(exc).__name__}: {exc}"},
+        )
+
+
+class GenerateAudiencePackRequest(BaseModel):
+    audience_record_id: str
+    extra_context: str | None = None
+
+
+@router.post("/exec/generate_audience_pack")
+async def exec_generate_audience_pack(
+    payload: GenerateAudiencePackRequest,
+) -> Any:
+    from app.mcp.tools.media import generate_audience_pack
+
+    try:
+        return await generate_audience_pack(
+            audience_record_id=payload.audience_record_id,
+            extra_context=payload.extra_context,
+        )
+    except Exception as exc:
+        logger.exception("generate_audience_pack REST 异常")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "hint": "看 KE 日志（docker logs omni-knowledge-engine | tail）",
+            },
+        )
+
+
+# ════════════════════════════════════════════════════════════════
+# W4-B 切片 14.3 phase A：pipeline lineage 查询/采纳 endpoint
+# ════════════════════════════════════════════════════════════════
+
+
+class PipelineListMatrixRunsRequest(BaseModel):
+    sku_id: str | None = None
+    limit: int = 30
+
+
+@router.post("/exec/pipeline_list_matrix_runs")
+async def exec_pipeline_list_matrix_runs(
+    payload: PipelineListMatrixRunsRequest,
+) -> Any:
+    from app.mcp.tools.pipeline import pipeline_list_matrix_runs
+    try:
+        return await pipeline_list_matrix_runs(sku_id=payload.sku_id, limit=payload.limit)
+    except Exception as exc:
+        logger.exception("pipeline_list_matrix_runs REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineGetMatrixRunRequest(BaseModel):
+    matrix_run_id: str
+
+
+@router.post("/exec/pipeline_get_matrix_run")
+async def exec_pipeline_get_matrix_run(
+    payload: PipelineGetMatrixRunRequest,
+) -> Any:
+    from app.mcp.tools.pipeline import pipeline_get_matrix_run
+    try:
+        return await pipeline_get_matrix_run(matrix_run_id=payload.matrix_run_id)
+    except Exception as exc:
+        logger.exception("pipeline_get_matrix_run REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineListAudienceRunsRequest(BaseModel):
+    sku_id: str | None = None
+    limit: int = 30
+
+
+@router.post("/exec/pipeline_list_audience_runs")
+async def exec_pipeline_list_audience_runs(
+    payload: PipelineListAudienceRunsRequest,
+) -> Any:
+    from app.mcp.tools.pipeline import pipeline_list_audience_runs
+    try:
+        return await pipeline_list_audience_runs(sku_id=payload.sku_id, limit=payload.limit)
+    except Exception as exc:
+        logger.exception("pipeline_list_audience_runs REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineGetAudienceRunRequest(BaseModel):
+    audience_run_id: str
+
+
+@router.post("/exec/pipeline_get_audience_run")
+async def exec_pipeline_get_audience_run(
+    payload: PipelineGetAudienceRunRequest,
+) -> Any:
+    from app.mcp.tools.pipeline import pipeline_get_audience_run
+    try:
+        return await pipeline_get_audience_run(audience_run_id=payload.audience_run_id)
+    except Exception as exc:
+        logger.exception("pipeline_get_audience_run REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineListAudienceRecordsRequest(BaseModel):
+    audience_run_id: str | None = None
+    sku_id: str | None = None
+    selected_only: bool = False
+    limit: int = 50
+
+
+@router.post("/exec/pipeline_list_audience_records")
+async def exec_pipeline_list_audience_records(
+    payload: PipelineListAudienceRecordsRequest,
+) -> Any:
+    from app.mcp.tools.pipeline import pipeline_list_audience_records
+    try:
+        return await pipeline_list_audience_records(
+            audience_run_id=payload.audience_run_id,
+            sku_id=payload.sku_id,
+            selected_only=payload.selected_only,
+            limit=payload.limit,
+        )
+    except Exception as exc:
+        logger.exception("pipeline_list_audience_records REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineGetAudienceRecordRequest(BaseModel):
+    record_id: str
+
+
+@router.post("/exec/pipeline_get_audience_record")
+async def exec_pipeline_get_audience_record(
+    payload: PipelineGetAudienceRecordRequest,
+) -> Any:
+    from app.mcp.tools.pipeline import pipeline_get_audience_record
+    try:
+        return await pipeline_get_audience_record(record_id=payload.record_id)
+    except Exception as exc:
+        logger.exception("pipeline_get_audience_record REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineAdoptRequest(BaseModel):
+    table: str  # matrix_runs / audience_runs / audience_records / audience_packs / scripts
+    run_id: str
+    set_selected: bool = False
+
+
+@router.post("/exec/pipeline_adopt")
+async def exec_pipeline_adopt(
+    payload: PipelineAdoptRequest,
+) -> Any:
+    from app.mcp.tools.pipeline import pipeline_adopt
+    try:
+        return await pipeline_adopt(
+            table=payload.table,
+            run_id=payload.run_id,
+            set_selected=payload.set_selected,
+        )
+    except Exception as exc:
+        logger.exception("pipeline_adopt REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})

@@ -37,6 +37,7 @@ from app.mcp.tools import general as _general  # noqa: E402, F401  # W3c T1+
 from app.mcp.tools import feedback as _feedback  # noqa: E402, F401  # W4-A T2
 from app.mcp.tools import agent_meta as _agent_meta  # noqa: E402, F401  # W4-A T3+
 from app.mcp.tools import agent_extras as _agent_extras  # noqa: E402, F401  # W4-B 切片 5
+from app.mcp.tools import pipeline as _pipeline  # noqa: E402, F401  # W4-B 切片 14.3 phase A
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
 # path="/" 使子应用内路由为 "/"，挂载到 /mcp 后完整路径即 /mcp

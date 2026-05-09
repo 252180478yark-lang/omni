@@ -19,7 +19,7 @@ from app.mcp.audit import tool_with_audit
 from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
-from app.services import rag_chain
+from app.services import pipeline_lineage, rag_chain
 from app.services.ai_hub_client import AIHubClient
 
 
@@ -482,11 +482,26 @@ async def generate_selling_points_matrix(
         or ""
     ).strip()
 
+    # 落库 pipeline.matrix_runs（status=draft；老板审完手点采纳）
+    matrix_run_id = await pipeline_lineage.save_matrix_run(
+        sku_id=sku_id,
+        matrix_md=matrix_md,
+        user_initial_points=user_initial_points,
+        user_reviews=user_reviews,
+        kb_context=kb_context,
+        extra_context=extra_context,
+        model_provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3-flash-preview"),
+        final_prompt=final_prompt,
+        cost_estimate="1 quota call (~3-5k tokens)",
+    )
+
     result = {
         "ok": True,
         "result": {
             "matrix_md": matrix_md,
             "sku_id": sku_id,
+            "matrix_run_id": matrix_run_id,
         },
         "trace": build_trace(
             provider=model_cfg.get("provider", "gemini"),
@@ -495,6 +510,7 @@ async def generate_selling_points_matrix(
             params={
                 "temperature": model_cfg.get("temperature", 0.5),
                 "max_tokens": 6000,
+                "matrix_run_id": matrix_run_id,
             },
             cost_estimate="1 quota call (~3-5k tokens)",
         ),
@@ -502,7 +518,7 @@ async def generate_selling_points_matrix(
     return attach_next_step(
         result,
         suggested_tool="generate_audience_match",
-        suggested_args={"sku_id": sku_id, "matrix_md": matrix_md},
+        suggested_args={"sku_id": sku_id, "matrix_md": matrix_md, "matrix_run_id": matrix_run_id},
         human_text="step 3 generate_audience_match（人群匹配 + 多 query 召回）",
     )
 
@@ -797,27 +813,31 @@ async def generate_audience_match(
     matrix_md: str,
     extra_context: str | None = None,
     kb_recall_override: str | None = None,
+    matrix_run_id: str | None = None,
 ) -> dict:
     """生成 SKU 人群匹配（sku-pipeline step 3）。
 
     输入 step 2 的卖点矩阵 markdown，内部按多 query 策略召回人群分析报告 KB
-    （绕开 KB 单 query 偏移），喂给 pro 模型，输出 4 部分人群匹配报告：
+    （绕开 KB 单 query 偏移），喂给 pro 模型，输出 2 部分人群匹配报告：
 
-    - 第 0 部分：人群假设推断（5-10 个跨圈层假设，反向推理）
-    - 第 1 部分：KB 匹配人群（KB 原文 1:1 + 匹配理由 ≥ 5 条含卖点+场景）
-    - 第 3 部分：KB 召回未覆盖的假设（信息补全建议）
-    - 第 4 部分：结构化标签汇总（≥ 30 条）
+    - 第 1 部分：KB 匹配人群（≥ 15 个，跨 ≥ 10 doc，KB 原文 1:1 + 匹配理由 ≥ 5 条）
+    - 第 2 部分：结构化标签汇总（≥ 30 条）
 
     严格不写：圈包标签 / 优先级 / 预算 / 投放渠道 / 脚本 / 钩子 / 拒绝候选
+
+    返回后**自动落库**：1 条 pipeline.audience_runs + N 条 pipeline.audience_records
+    （regex 拆 #### 1.X [人群名] 段），老板可从 N 条里选 1 个挂下游 step 4 圈包。
 
     Args:
         sku_id: SKU id
         matrix_md: step 2 输出的卖点矩阵 markdown（必填，没这个反向推理无依据）
         extra_context: 额外要求（如"重点挖跨圈层"/"对标 X 品牌"）
         kb_recall_override: 显式覆盖 KB 召回（老板手贴 chunks 时用）
+        matrix_run_id: 上游 step 2 落库的 matrix_run_id；不传则自动用 sku 最新 matrix_run，没有则用本次 matrix_md 自动建一条 stub
 
     Returns:
-        {ok, result: {audience_md, sku_id, recall_meta}, trace, next_step_hint(audience_sop_pack)}
+        {ok, result: {audience_md, sku_id, recall_meta, audience_run_id, records:[...]},
+         trace, next_step_hint(audience_sop_pack)}
     """
     pool = get_pool()
     sku = await pool.fetchrow(
@@ -913,12 +933,64 @@ async def generate_audience_match(
         or ""
     ).strip()
 
+    # 解析 / 落库 matrix_run（如果调用方没传 id，自动 fallback 或建 stub）
+    effective_matrix_run_id = matrix_run_id
+    if not effective_matrix_run_id:
+        # 用 sku 最新的 matrix_run 兜底；都没有就拿本次 matrix_md 自动建 stub
+        pool = get_pool()
+        latest = await pool.fetchrow(
+            "SELECT id::text AS id FROM pipeline.matrix_runs "
+            "WHERE sku_id = $1 ORDER BY created_at DESC LIMIT 1",
+            sku_id,
+        )
+        if latest and latest["id"]:
+            effective_matrix_run_id = latest["id"]
+        else:
+            effective_matrix_run_id = await pipeline_lineage.save_matrix_run(
+                sku_id=sku_id,
+                matrix_md=matrix_md,
+                extra_context="(stub — auto-created from generate_audience_match 调用，没有真实 step 2 跑过)",
+                model_provider="(stub)",
+                model="(stub)",
+            )
+
+    # 落库 pipeline.audience_runs + 拆 N 条 pipeline.audience_records
+    audience_run_id = None
+    records: list[dict] = []
+    if effective_matrix_run_id:
+        audience_run_id, records = await pipeline_lineage.save_audience_run(
+            matrix_run_id=effective_matrix_run_id,
+            sku_id=sku_id,
+            audience_md=audience_md,
+            recall_meta=recall_meta,
+            extra_context=extra_context,
+            kb_recall_override=kb_recall_override,
+            model_provider=model_cfg.get("provider", "gemini"),
+            model=model_cfg.get("model", "gemini-3.1-pro-preview"),
+            final_prompt=final_prompt,
+            cost_estimate="1 quota call (~5-8k tokens) + 多 query KB 召回",
+        )
+
     result = {
         "ok": True,
         "result": {
             "audience_md": audience_md,
             "sku_id": sku_id,
             "recall_meta": recall_meta,
+            "matrix_run_id": effective_matrix_run_id,
+            "audience_run_id": audience_run_id,
+            "records": [
+                {
+                    "id": r.get("id"),
+                    "ordinal": r.get("ordinal"),
+                    "name": r.get("name"),
+                    "kb_doc": r.get("kb_doc"),
+                    "kb_section": r.get("kb_section"),
+                    "layer_tags": r.get("layer_tags") or [],
+                    "match_reason_count": len(r.get("match_reasons") or []),
+                }
+                for r in records
+            ],
         },
         "trace": build_trace(
             provider=model_cfg.get("provider", "gemini"),
@@ -930,13 +1002,561 @@ async def generate_audience_match(
                 "audience_kb_id": AUDIENCE_KB_ID,
                 "queries_used": len(recall_meta["queries"]),
                 "chunks_recalled": recall_meta["chunk_count"],
+                "audience_run_id": audience_run_id,
+                "records_parsed": len(records),
             },
             cost_estimate="1 quota call (~5-8k tokens) + 多 query KB 召回",
         ),
     }
     return attach_next_step(
         result,
-        suggested_tool=None,  # step 4 audience_sop_pack 切片 14.3 再加
-        suggested_args={"sku_id": sku_id, "matrix_md": matrix_md, "audience_md": audience_md},
-        human_text="step 4 圈包 SOP（把人群描绘翻译成抖店/巨量后台标签）—— 工具切片 14.3 加",
+        suggested_tool="generate_audience_pack",
+        suggested_args={
+            "sku_id": sku_id,
+            "audience_run_id": audience_run_id,
+            "audience_record_ids_to_choose_from": [r.get("id") for r in records if r.get("id")],
+        },
+        human_text="step 4 圈包 SOP — 老板从 records 选 1 个 audience_record_id → 调 generate_audience_pack 出 8 大维度 DMP 标签 + 预算 + A/B 矩阵",
+    )
+
+
+# ============================================================
+# W4-B 切片 14.3 phase B：sku-pipeline step 4 — 圈包 SOP
+# ============================================================
+
+# 巨量云图 + 巨量千川 authoritative KB（圈包标签必须从这两个 KB 找出处）
+_PLATFORM_KB_IDS = (
+    "608807ec-29ff-4fc0-b15b-73d0609c93a8",  # 巨量云图
+    "1d6c0d68-5b4a-4ceb-ade8-10f887e895c6",  # 巨量千川
+)
+
+
+def _build_platform_queries(
+    sku_category: str | None,
+    sku_name: str | None,
+    layer_tags: list[str],
+    matrix_md: str,
+) -> list[str]:
+    """构造云图+千川 KB 召回 query 清单。
+    覆盖：平台维度通用 / SKU 品类锚 / 人群圈层锚 / matrix 卖点锚。
+    """
+    queries = [
+        "巨量云图 自定义人群 标签维度",
+        "巨量云图 数据工厂 圈选方式",
+        "巨量云图 行为意向 标签层级",
+        "巨量云图 行业兴趣 三级品类",
+        "巨量云图 8A 人群分层",
+        "巨量云图 5A 人群资产",
+        "巨量千川 莱卡定向",
+        "巨量千川 人群定向 圈包",
+        "巨量千川 关键词定向 词包",
+        "巨量千川 抖音号定向",
+    ]
+    if sku_category:
+        queries.append(f"{sku_category} 行业偏好 人群标签")
+    if sku_name:
+        # 取 sku name 前 8 字作为锚（避免长 query 召回偏）
+        queries.append(f"{sku_name[:8]} 人群定向")
+    for tag in (layer_tags or [])[:5]:
+        queries.append(f"{tag} 圈层人群 标签")
+    # matrix 卖点关键词
+    seed = _extract_seed_phrases(matrix_md)
+    for s in seed[:5]:
+        queries.append(f"{s} 标签 兴趣")
+    # 去重保序
+    seen: set[str] = set()
+    out: list[str] = []
+    for q in queries:
+        if q not in seen:
+            seen.add(q)
+            out.append(q)
+    return out
+
+
+async def _recall_platform_kb_chunks(
+    queries: list[str],
+    top_k_per_query: int = 3,
+    max_chunks: int = 30,
+) -> list[dict]:
+    """从巨量云图 + 巨量千川 authoritative KB 多 query 召回 chunks，doc round-robin 去重。"""
+    name_map: dict[str, str] = {}
+    try:
+        from app.services import ingestion as _ingestion
+        kbs = await _ingestion.list_kbs()
+        name_map = {k["id"]: k["name"] for k in kbs}
+    except Exception:
+        pass
+
+    async def _one(q: str) -> tuple[str, list[dict]]:
+        try:
+            hits = await rag_chain.retrieve_multi_kb(
+                q,
+                list(_PLATFORM_KB_IDS),
+                top_k_per_kb=top_k_per_query,
+                kb_name_map=name_map,
+            )
+            return q, hits
+        except Exception:
+            return q, []
+
+    results = await asyncio.gather(*[_one(q) for q in queries])
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for q, hits in results:
+        for h in hits:
+            cid = str(h.get("id") or "")
+            if not cid or cid in seen:
+                continue
+            seen.add(cid)
+            h2 = dict(h)
+            h2["query_origin"] = q
+            merged.append(h2)
+
+    by_doc: dict[str, list[dict]] = {}
+    for h in merged:
+        title = (h.get("title") or "").strip() or "（无标题）"
+        by_doc.setdefault(title, []).append(h)
+    for d in by_doc:
+        by_doc[d].sort(key=lambda x: float(x.get("score") or 0), reverse=True)
+    diversified: list[dict] = []
+    while len(diversified) < max_chunks and any(by_doc.values()):
+        for d in list(by_doc.keys()):
+            if by_doc[d]:
+                diversified.append(by_doc[d].pop(0))
+                if len(diversified) >= max_chunks:
+                    break
+    return diversified
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_audience_pack(
+    audience_record_id: str,
+    extra_context: str | None = None,
+) -> dict:
+    """生成单个人群的圈包 SOP（sku-pipeline step 4）。
+
+    输入老板已勾选的某个 audience_record，自动拉它关联的 matrix_run + sku +
+    巨量云图/千川 authoritative KB 召回，LLM 翻译成可在巨量云图后台一步步勾选 +
+    可推到千川的圈人 SOP。
+
+    输出固定 5 节：
+    - 第 0 部分 4 维度人群画像扩展（带 KB / matrix / 行业推理 来源 tag）
+    - 第 1 部分 1.1 概览表 + 1.2 ASCII 圈人架构图（前置工具 → 单元 → 组合 ∩∪- → 推千川）
+    - 第 2 部分 N 个圈人单元（数量无上下限，每个细到三级菜单 + 大白话理由 + 跟其他单元的关系）
+    - 第 3 部分 交并排拓配方（只在 1 单元不够时才给，按真需要数）
+    - 第 4 部分 关键词扩展（按 system 4.7 判定，目的地是云图数据工厂关键词夹）
+
+    严禁：脚本/钩子/文案 / 预测 ROI 或 GMV / 推计划类型 / 重写 KB 原文 /
+    预算（测试期/放量期日预算）/ A/B 测试矩阵 / P0-P2 优先级 /
+    虚构 KB 不存在的标签（IP 偏好只 5 类等）。
+
+    Args:
+        audience_record_id: pipeline.audience_records.id；通常老板从 SKU 已收藏池里选 1 个
+        extra_context: 额外要求（如"主推送礼场景""避开同行已饱和标签"）
+
+    Returns:
+        {ok, result: {pack_md, audience_pack_id, audience_record_id, sku_id,
+                      matrix_run_id, audience_run_id}, trace, next_step_hint(generate_brief 脚本)}
+    """
+    # 1. 拉 audience_record
+    record = await pipeline_lineage.get_audience_record(audience_record_id)
+    if not record:
+        return {
+            "ok": False,
+            "error": "audience_record_not_found",
+            "hint": "audience_record_id 无效。先调 pipeline_list_audience_records 拉某 sku 的人群池找候选。",
+        }
+
+    # 2. 拉关联的 matrix_run（取 record 的 matrix_run_id）
+    matrix_run_id = record.get("matrix_run_id")
+    audience_run_id = record.get("audience_run_id")
+    sku_id = record.get("sku_id")
+    if not matrix_run_id or not sku_id:
+        return {
+            "ok": False,
+            "error": "lineage_broken",
+            "hint": "audience_record 缺 matrix_run_id 或 sku_id（数据异常）",
+            "record_summary": {"id": record.get("id"), "name": record.get("name")},
+        }
+
+    matrix_run = await pipeline_lineage.get_matrix_run(matrix_run_id)
+    if not matrix_run:
+        return {
+            "ok": False,
+            "error": "matrix_run_not_found",
+            "hint": f"audience_record 关联的 matrix_run_id={matrix_run_id} 已不存在（可能被删了）",
+        }
+
+    # 3. 拉 SKU 信息
+    pool = get_pool()
+    sku = await pool.fetchrow(
+        "SELECT id, name, category, price_min, price_max, specifications, "
+        "owner_selling_points, owner_notes, platform_status "
+        "FROM mvp_sku WHERE id = $1",
+        sku_id,
+    )
+    if not sku:
+        return {
+            "ok": False,
+            "error": "sku_not_found",
+            "hint": f"sku_id={sku_id} 已不存在",
+        }
+
+    # 售价表达
+    if sku["price_min"] is not None and sku["price_max"] is not None:
+        if sku["price_min"] == sku["price_max"]:
+            price_str = f"¥{sku['price_min']}"
+        else:
+            price_str = f"¥{sku['price_min']} - ¥{sku['price_max']}"
+    else:
+        price_str = "（信息不足，老板补 SKU 售价后预算才能算准）"
+
+    sku_md = (
+        f"- SKU id：{sku['id']}\n"
+        f"- 品名：{sku['name']}\n"
+        f"- 品类：{sku['category'] or '（未分类，调味品）'}\n"
+        f"- 规格：{sku['specifications'] or '（无）'}\n"
+        f"- 售价：{price_str}\n"
+        f"- 抖店平台状态：{sku['platform_status'] or '（unknown）'}\n"
+    )
+
+    # 4. 拼 audience 输入段（KB chunk + 5 理由）
+    kb_chunk = (record.get("kb_chunk_text") or "（KB chunk 缺失）").rstrip()
+    reasons = record.get("match_reasons") or []
+    if reasons:
+        reasons_md = "\n".join(f"{i + 1}. {r}" for i, r in enumerate(reasons))
+    else:
+        reasons_md = "（无 — 历史拆分未保留 5 条理由）"
+    layer_tags = record.get("layer_tags") or []
+    layer_tags_str = " / ".join(layer_tags) if layer_tags else "（无）"
+    kb_section_suffix = f" / {record['kb_section']}" if record.get("kb_section") else ""
+
+    # 5. 召回巨量云图 + 巨量千川 KB（让标签真实可勾选，不让 LLM 凭空想象）
+    platform_queries = _build_platform_queries(
+        sku_category=sku["category"],
+        sku_name=sku["name"],
+        layer_tags=record.get("layer_tags") or [],
+        matrix_md=(matrix_run.get("matrix_md") or ""),
+    )
+    platform_chunks = await _recall_platform_kb_chunks(
+        queries=platform_queries,
+        top_k_per_query=3,
+        max_chunks=30,
+    )
+    platform_kb_context = _format_kb_recall(platform_chunks)
+
+    # 6. system + user prompt
+    sys_msg = prompts.load("audience_pack.system")
+    user_msg = prompts.render(
+        "audience_pack.user",
+        sku_md=sku_md,
+        matrix_md=(matrix_run.get("matrix_md") or "（matrix 缺失）").strip(),
+        audience_name=record.get("name") or "（无名）",
+        audience_kb_doc=record.get("kb_doc") or "（KB doc 缺失）",
+        audience_kb_section_suffix=kb_section_suffix,
+        audience_layer_tags=layer_tags_str,
+        audience_kb_chunk=kb_chunk,
+        audience_match_reasons_md=reasons_md,
+        extra_context=extra_context.strip() if extra_context else "（无）",
+        platform_kb_context=platform_kb_context,
+    )
+    final_prompt = sys_msg + "\n\n" + user_msg
+
+    # 6. 调 LLM
+    model_cfg = get_model_for_tool("generate_audience_pack")
+    client = AIHubClient(timeout=180.0)
+    resp = await client.chat(
+        messages=[
+            {"role": "system", "content": sys_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3-flash-preview"),
+        temperature=model_cfg.get("temperature", 0.3),
+        max_tokens=model_cfg.get("max_tokens", 8000),
+        enforce_human_voice=True,
+    )
+    pack_md = (
+        ((resp.get("choices") or [{}])[0].get("message") or {}).get("content")
+        or resp.get("text")
+        or resp.get("content")
+        or ""
+    ).strip()
+
+    # 7. 落库 pipeline.audience_packs
+    audience_pack_id = await pipeline_lineage.save_audience_pack(
+        audience_record_id=audience_record_id,
+        audience_run_id=audience_run_id,
+        matrix_run_id=matrix_run_id,
+        sku_id=sku_id,
+        pack_md=pack_md,
+        # dmp_tags / budget_suggestion 留空 jsonb（phase B 先存整段 markdown，
+        # 后续切片再加 markdown → 结构化 jsonb 解析）
+        dmp_tags=[],
+        budget_suggestion={},
+        extra_context=extra_context,
+        model_provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3-flash-preview"),
+        final_prompt=final_prompt,
+        cost_estimate="1 quota call (~3-5k tokens)",
+    )
+
+    result = {
+        "ok": True,
+        "result": {
+            "pack_md": pack_md,
+            "audience_pack_id": audience_pack_id,
+            "audience_record_id": audience_record_id,
+            "audience_run_id": audience_run_id,
+            "matrix_run_id": matrix_run_id,
+            "sku_id": sku_id,
+            "audience_name": record.get("name"),
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "gemini"),
+            model=model_cfg.get("model", "gemini-3-flash-preview"),
+            prompt=final_prompt,
+            params={
+                "temperature": model_cfg.get("temperature", 0.3),
+                "max_tokens": model_cfg.get("max_tokens", 8000),
+                "audience_pack_id": audience_pack_id,
+                "platform_kb_queries": len(platform_queries),
+                "platform_kb_chunks": len(platform_chunks),
+                "platform_kb_ids": list(_PLATFORM_KB_IDS),
+            },
+            cost_estimate="1 quota call (~3-5k tokens) + 巨量云图/千川 KB 召回",
+        ),
+    }
+    return attach_next_step(
+        result,
+        suggested_tool="generate_brief",
+        suggested_args={
+            "sku_id": sku_id,
+            "channel": "douyin",
+            "extra_context": f"基于 audience_pack_id={audience_pack_id} 出脚本（人群：{record.get('name')}）",
+        },
+        human_text="step 5/6 出脚本 — generate_brief 拿这个 pack 的标签 + 预算建议作上下文，给单条人群定制脚本",
+    )
+
+
+# ============================================================
+# W4-B 切片 14.3 phase B+：500 词关键词扩展（可下载粘贴千川后台）
+# ============================================================
+
+
+def _clean_keyword_pack(text: str, target_count: int) -> tuple[str, int]:
+    """清洗 LLM 输出为 N 行纯文本：每行 1 词，无标点无数字，长度 2-15 字。
+
+    Returns:
+        (cleaned_text 拼接 \\n, keyword_count)
+    """
+    if not text:
+        return "", 0
+    # 去掉 markdown 围栏
+    text = re.sub(r"^```[a-zA-Z]*\n?", "", text, flags=re.M)
+    text = re.sub(r"\n?```$", "", text, flags=re.M)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # 保留中英文，去掉数字 / 标点 / emoji / 空白 等所有非字母汉字
+        word = re.sub(r"[^一-龥A-Za-z]+", "", line)
+        if not word:
+            continue
+        if len(word) < 2 or len(word) > 15:
+            continue
+        if word in seen:
+            continue
+        seen.add(word)
+        out.append(word)
+        if len(out) >= target_count:
+            break
+    return "\n".join(out), len(out)
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_keyword_pack(
+    seed_keywords: str,
+    target_count: int = 500,
+    sku_id: str | None = None,
+    audience_record_id: str | None = None,
+    audience_pack_id: str | None = None,
+    extra_context: str | None = None,
+) -> dict:
+    """生成 N 个相关关键词扩展包（默认 500 词），可下载粘贴进巨量千川/云图后台。
+
+    输出**纯文本一行一词无标点无数字**。后处理会清洗 LLM 输出，确保格式严格正确。
+
+    Args:
+        seed_keywords: 种子关键词（逗号 / 空格 / 换行 分隔均可，会自动 normalize）
+        target_count: 目标词数（默认 500，最大 1000）
+        sku_id: SKU id（可选；不传时尝试从 audience_record/pack 反查）
+        audience_record_id: 关联人群 record（可选；自动拉人群信息作 prompt 上下文）
+        audience_pack_id: 关联圈包（可选；不传 record_id 时从 pack 反查 record + sku）
+        extra_context: 额外要求
+
+    Returns:
+        {ok, result: {keyword_text, keyword_count, target_count, keyword_pack_id, sku_id, ...},
+         trace, next_step_hint}
+    """
+    target_count = max(50, min(int(target_count or 500), 1000))
+
+    if not seed_keywords or not seed_keywords.strip():
+        return {
+            "ok": False,
+            "error": "seed_keywords 为空",
+            "hint": "至少给 1 个种子词。多个用换行 / 逗号 / 空格分隔。",
+        }
+
+    pool = get_pool()
+
+    # 反查 record + sku（如果只给了 audience_pack_id）
+    record = None
+    if audience_record_id:
+        record = await pipeline_lineage.get_audience_record(audience_record_id)
+    elif audience_pack_id:
+        pack = await pipeline_lineage.get_audience_pack(audience_pack_id)
+        if pack:
+            audience_record_id = pack.get("audience_record_id")
+            if audience_record_id:
+                record = await pipeline_lineage.get_audience_record(audience_record_id)
+            sku_id = sku_id or pack.get("sku_id")
+
+    if record:
+        sku_id = sku_id or record.get("sku_id")
+
+    if not sku_id:
+        return {
+            "ok": False,
+            "error": "sku_id 缺失",
+            "hint": "至少给 sku_id 或 audience_record_id 或 audience_pack_id 之一",
+        }
+
+    # 拉 SKU 信息
+    sku = await pool.fetchrow(
+        "SELECT id, name, category, price_min, price_max, specifications "
+        "FROM mvp_sku WHERE id = $1",
+        sku_id,
+    )
+    if not sku:
+        return {"ok": False, "error": "sku_not_found", "sku_id": sku_id}
+
+    if sku["price_min"] is not None:
+        price_str = f"¥{sku['price_min']}" + (f" - ¥{sku['price_max']}" if sku['price_max'] and sku['price_max'] != sku['price_min'] else "")
+    else:
+        price_str = "（信息不足）"
+
+    sku_md = (
+        f"- SKU id：{sku['id']}\n"
+        f"- 品名：{sku['name']}\n"
+        f"- 品类：{sku['category'] or '调味品'}\n"
+        f"- 售价：{price_str}\n"
+        f"- 规格：{sku['specifications'] or '（无）'}"
+    )
+
+    # audience 摘要（如果有）
+    if record:
+        layer_tags_str = " / ".join(record.get("layer_tags") or []) or "（无）"
+        audience_summary = (
+            f"- 人群名：{record.get('name')}\n"
+            f"- KB 来源：{record.get('kb_doc') or '（无）'}\n"
+            f"- 圈层标签：{layer_tags_str}\n"
+        )
+        # 简短 KB chunk 提示（截短，避免 prompt 太大）
+        chunk = (record.get("kb_chunk_text") or "").strip()
+        if chunk:
+            audience_summary += f"- KB 画像（节选 ≤ 300 字）：{chunk[:300]}"
+    else:
+        audience_summary = "（未关联人群，按种子词 + SKU 通用扩展）"
+
+    # render prompt
+    sys_msg = prompts.load("keyword_pack.system")
+    user_msg = prompts.render(
+        "keyword_pack.user",
+        seed_keywords=seed_keywords.strip(),
+        sku_md=sku_md,
+        audience_summary=audience_summary,
+        extra_context=(extra_context or "").strip() or "（无）",
+        target_count=str(target_count),
+    )
+    final_prompt = sys_msg + "\n\n" + user_msg
+
+    model_cfg = get_model_for_tool("generate_keyword_pack")
+    client = AIHubClient(timeout=120.0)
+    resp = await client.chat(
+        messages=[
+            {"role": "system", "content": sys_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3-flash-preview"),
+        temperature=model_cfg.get("temperature", 0.5),
+        max_tokens=model_cfg.get("max_tokens", 4500),
+        enforce_human_voice=False,  # 关键词包不是人话，关掉防 AI 化检查
+    )
+    raw = (
+        ((resp.get("choices") or [{}])[0].get("message") or {}).get("content")
+        or resp.get("text")
+        or resp.get("content")
+        or ""
+    )
+    keyword_text, keyword_count = _clean_keyword_pack(raw, target_count)
+
+    # 落库
+    keyword_pack_id = await pipeline_lineage.save_keyword_pack(
+        sku_id=sku_id,
+        seed_keywords=seed_keywords,
+        keyword_text=keyword_text,
+        keyword_count=keyword_count,
+        target_count=target_count,
+        audience_record_id=audience_record_id,
+        audience_pack_id=audience_pack_id,
+        extra_context=extra_context,
+        model_provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3-flash-preview"),
+        final_prompt=final_prompt,
+        cost_estimate="1 quota call (~1.5-2k tokens)",
+    )
+
+    warnings: list[str] = []
+    if keyword_count < target_count * 0.8:
+        warnings.append(
+            f"实际清洗后只 {keyword_count} 词 / 目标 {target_count} 词；"
+            f"可能 LLM 输出本身少 / 或重复多被去掉。可加 extra_context 后重跑。"
+        )
+
+    result = {
+        "ok": True,
+        "result": {
+            "keyword_text": keyword_text,
+            "keyword_count": keyword_count,
+            "target_count": target_count,
+            "keyword_pack_id": keyword_pack_id,
+            "sku_id": sku_id,
+            "audience_record_id": audience_record_id,
+            "audience_pack_id": audience_pack_id,
+            "warnings": warnings,
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "gemini"),
+            model=model_cfg.get("model", "gemini-3-flash-preview"),
+            prompt=final_prompt,
+            params={
+                "temperature": model_cfg.get("temperature", 0.5),
+                "max_tokens": model_cfg.get("max_tokens", 4500),
+                "target_count": target_count,
+                "keyword_count": keyword_count,
+                "keyword_pack_id": keyword_pack_id,
+            },
+            cost_estimate="1 quota call (~1.5-2k tokens)",
+        ),
+    }
+    return attach_next_step(
+        result,
+        suggested_tool=None,
+        suggested_args={"keyword_pack_id": keyword_pack_id},
+        human_text="老板下载 .txt 后粘贴进巨量千川 / 云图后台关键词定向输入框即可",
     )

@@ -72,3 +72,22 @@ generate_audience_match:
   model: gemini-3.1-pro-preview
   temperature: 0.3
   max_tokens: 18000
+
+# W4-B 切片 14.3 phase B：sku-pipeline step 4 圈包 SOP
+# 拿单 audience_record + matrix_run + 巨量云图/千川 KB 召回 → 翻译成可勾选标签 SOP
+# 切 pro：颗粒度细到三级菜单 + 数据工厂/自定义人群两层架构 + 大白话理由，pro 推理深度更稳
+# max_tokens 18000：pro 有 thinking budget，给充足空间避免 thinking 吃完正式输出截断
+generate_audience_pack:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.3
+  max_tokens: 18000
+
+# W4-B 切片 14.3 phase B+：keyword_pack 500 词扩展
+# 输入种子词 + 可选人群/SKU → 输出 500 词，一行一个无标点
+# flash + temp 0.5（求多样不求深度）+ max_tokens 4500（500 词 × 4-6 字 ≈ 2500-3000 字 ≈ 1500-2000 token，留 buffer）
+generate_keyword_pack:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.5
+  max_tokens: 4500
