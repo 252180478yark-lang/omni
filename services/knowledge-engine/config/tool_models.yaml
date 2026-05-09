@@ -91,3 +91,14 @@ generate_keyword_pack:
   model: gemini-3-flash-preview
   temperature: 0.5
   max_tokens: 4500
+
+# W4-B 切片 14.4 phase C：generate_creative_pack 6 类素材脚本
+# 视频/图文/主图/详情页 6 类共用 1 tool，按 kind 路由 system prompt
+# 切 pro：脚本要深度推理（钩子/卖点串/视觉 brief 都需要创意 + 严谨结构）
+# max_tokens 10000：视频类主脚本+3钩子+5-7 分镜约 3-4k，详情页 8-12 段更大
+# temp 0.5：脚本要发挥但不能漂得太离谱
+generate_creative_pack:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.5
+  max_tokens: 10000

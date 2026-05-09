@@ -827,6 +827,176 @@ async def get_audience_record(record_id: str) -> dict[str, Any] | None:
     return d
 
 
+# ════════════════════════════════════════════════════════════════
+# step 5 创意素材落库（W4-B 切片 14.4 phase C，6 类素材入 pipeline.scripts）
+# ════════════════════════════════════════════════════════════════
+
+CREATIVE_KINDS = (
+    "video_soft_ad",
+    "video_planting",
+    "video_harvest",
+    "graphic_harvest",
+    "product_main_image",
+    "product_detail_page",
+)
+
+# kind → 旧 target_purpose 字段映射（向后兼容）
+_KIND_TO_TARGET_PURPOSE = {
+    "video_soft_ad": "awareness",
+    "video_planting": "planting",
+    "video_harvest": "conversion",
+    # 图文/主图/详情页不写 target_purpose
+}
+
+
+async def save_creative_pack(
+    *,
+    sku_id: str,
+    kind: str,
+    script_md: str,
+    audience_record_id: str | None = None,
+    audience_pack_id: str | None = None,
+    audience_run_id: str | None = None,
+    matrix_run_id: str | None = None,
+    hooks: list | None = None,
+    scenes: list | None = None,
+    extra_context: str | None = None,
+    model_provider: str | None = None,
+    model: str | None = None,
+    final_prompt: str | None = None,
+    cost_estimate: str | None = None,
+    parent_script_id: str | None = None,
+) -> str | None:
+    """落 1 行 pipeline.scripts，返回 id。失败返 None 不抛。
+
+    弹性挂：record/pack/audience_run/matrix_run 都可空，但 sku_id 必填。
+    kind 必须在 CREATIVE_KINDS 里。
+    """
+    if not script_md or not script_md.strip():
+        logger.warning("save_creative_pack: script_md 空，跳过落库")
+        return None
+    if kind not in CREATIVE_KINDS:
+        logger.warning("save_creative_pack: kind=%s 非法，跳过落库", kind)
+        return None
+
+    pool = get_pool()
+
+    # 同 sku + kind 的 version 自增
+    next_version = 1
+    if parent_script_id:
+        row = await pool.fetchrow(
+            "SELECT version FROM pipeline.scripts WHERE id = $1::uuid",
+            parent_script_id,
+        )
+        if row and row["version"]:
+            next_version = int(row["version"]) + 1
+    else:
+        row = await pool.fetchrow(
+            "SELECT MAX(version) AS v FROM pipeline.scripts WHERE sku_id = $1 AND kind = $2",
+            sku_id, kind,
+        )
+        if row and row["v"]:
+            next_version = int(row["v"]) + 1
+
+    target_purpose = _KIND_TO_TARGET_PURPOSE.get(kind)
+
+    try:
+        rec = await pool.fetchrow(
+            """
+            INSERT INTO pipeline.scripts (
+                audience_pack_id, audience_record_id, matrix_run_id, sku_id,
+                script_md, hooks, scenes, target_purpose, kind,
+                extra_context,
+                model_provider, model, prompt_hash, cost_estimate,
+                status, version, parent_script_id
+            ) VALUES (
+                $1::uuid, $2::uuid, $3::uuid, $4,
+                $5, $6::jsonb, $7::jsonb, $8, $9,
+                $10,
+                $11, $12, $13, $14,
+                'draft', $15, $16::uuid
+            ) RETURNING id::text AS id
+            """,
+            audience_pack_id,
+            audience_record_id,
+            matrix_run_id,
+            sku_id,
+            script_md.strip(),
+            json.dumps(hooks or [], ensure_ascii=False),
+            json.dumps(scenes or [], ensure_ascii=False),
+            target_purpose,
+            kind,
+            extra_context,
+            model_provider,
+            model,
+            _prompt_hash(final_prompt) if final_prompt else None,
+            cost_estimate,
+            next_version,
+            parent_script_id,
+        )
+        return rec["id"] if rec else None
+    except Exception as exc:
+        logger.exception("save_creative_pack failed: %s", exc)
+        return None
+
+
+async def list_creative_packs(
+    sku_id: str | None = None,
+    kind: str | None = None,
+    audience_record_id: str | None = None,
+    limit: int = 30,
+) -> list[dict[str, Any]]:
+    pool = get_pool()
+    where = []
+    params: list[Any] = []
+    if sku_id:
+        params.append(sku_id)
+        where.append(f"sku_id = ${len(params)}")
+    if kind:
+        params.append(kind)
+        where.append(f"kind = ${len(params)}")
+    if audience_record_id:
+        params.append(audience_record_id)
+        where.append(f"audience_record_id = ${len(params)}::uuid")
+    params.append(limit)
+    where_sql = "WHERE " + " AND ".join(where) if where else ""
+
+    rows = await pool.fetch(
+        f"""
+        SELECT id::text, sku_id, kind, audience_record_id::text, audience_pack_id::text,
+               matrix_run_id::text, version, status, target_purpose,
+               model_provider, model, created_at, parent_script_id::text
+        FROM pipeline.scripts
+        {where_sql}
+        ORDER BY created_at DESC
+        LIMIT ${len(params)}
+        """,
+        *params,
+    )
+    return [dict(r) for r in rows]
+
+
+async def get_creative_pack(script_id: str) -> dict[str, Any] | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT id::text, sku_id, kind, audience_record_id::text, audience_pack_id::text,
+               matrix_run_id::text, script_md, hooks, scenes, target_purpose,
+               extra_context, model_provider, model, version, status,
+               parent_script_id::text, created_at, updated_at
+        FROM pipeline.scripts
+        WHERE id = $1::uuid
+        """,
+        script_id,
+    )
+    if not row:
+        return None
+    d = dict(row)
+    d["hooks"] = _coerce_jsonb_list(d.get("hooks"))
+    d["scenes"] = _coerce_jsonb_list(d.get("scenes"))
+    return d
+
+
 async def adopt_run(table: str, run_id: str, *, set_selected: bool = False) -> dict[str, Any]:
     """把 status 从 draft 改 adopted。table 在 {matrix_runs, audience_runs, audience_records, audience_packs, scripts}。
 

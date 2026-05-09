@@ -164,6 +164,44 @@ async def exec_generate_audience_pack(
 
 
 # ════════════════════════════════════════════════════════════════
+# W4-B 切片 14.4 phase C：generate_creative_pack 6 类素材
+# ════════════════════════════════════════════════════════════════
+
+
+class GenerateCreativePackRequest(BaseModel):
+    kind: str
+    sku_id: str | None = None
+    audience_record_id: str | None = None
+    audience_pack_id: str | None = None
+    extra_context: str | None = None
+
+
+@router.post("/exec/generate_creative_pack")
+async def exec_generate_creative_pack(
+    payload: GenerateCreativePackRequest,
+) -> Any:
+    from app.mcp.tools.media import generate_creative_pack
+    try:
+        return await generate_creative_pack(
+            kind=payload.kind,
+            sku_id=payload.sku_id,
+            audience_record_id=payload.audience_record_id,
+            audience_pack_id=payload.audience_pack_id,
+            extra_context=payload.extra_context,
+        )
+    except Exception as exc:
+        logger.exception("generate_creative_pack REST 异常")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "hint": "看 KE 日志（docker logs omni-knowledge-engine | tail）",
+            },
+        )
+
+
+# ════════════════════════════════════════════════════════════════
 # W4-B 切片 14.3 phase A：pipeline lineage 查询/采纳 endpoint
 # ════════════════════════════════════════════════════════════════
 

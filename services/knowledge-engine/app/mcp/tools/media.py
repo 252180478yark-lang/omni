@@ -1560,3 +1560,249 @@ async def generate_keyword_pack(
         suggested_args={"keyword_pack_id": keyword_pack_id},
         human_text="老板下载 .txt 后粘贴进巨量千川 / 云图后台关键词定向输入框即可",
     )
+
+
+# ============================================================
+# W4-B 切片 14.4 phase C：generate_creative_pack（6 类素材脚本）
+# ============================================================
+
+_KIND_LABELS = {
+    "video_soft_ad": "视频 · 软广（A2 触动）",
+    "video_planting": "视频 · 种草（A3 共鸣）",
+    "video_harvest": "视频 · 收割（A4 行动）",
+    "graphic_harvest": "图文 · 收割",
+    "product_main_image": "商品视觉 · 主图",
+    "product_detail_page": "商品视觉 · 详情页",
+}
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_creative_pack(
+    kind: str,
+    sku_id: str | None = None,
+    audience_record_id: str | None = None,
+    audience_pack_id: str | None = None,
+    extra_context: str | None = None,
+) -> dict:
+    """生成 6 类素材之一：视频软广/种草/收割 + 图文收割 + 主图 + 详情页（sku-pipeline step 5）。
+
+    弹性挂：
+    - 给 audience_pack_id：拉 pack + 关联的 record + matrix + sku（最完整链路）
+    - 给 audience_record_id：拉 record + matrix + sku（绕过 step 4）
+    - 都不给但给 sku_id：单 SKU 模式，prompt 里 audience/pack 段写"通用画像"
+
+    kind 6 选 1：
+    - `video_soft_ad`：A2 触动层视频，内容娱乐化软植入，30s 内
+    - `video_planting`：A3 共鸣层视频，痛点共鸣 + 卖点植入，30-45s
+    - `video_harvest`：A4 行动层视频，强卖点 + 强 CTA，15-25s
+    - `graphic_harvest`：抖店/小红书收割图文，标题 + 5 段正文 + 配图 brief
+    - `product_main_image`：电商主图设计 brief，5-9 张
+    - `product_detail_page`：电商详情页设计 brief，8-12 段叙事长图
+
+    Args:
+        kind: 素材类型 6 选 1（必填）
+        sku_id: 单 SKU 模式时必填；其他模式从 record/pack 反查
+        audience_record_id: 推荐 — 从 SKU 人群池选 1 条
+        audience_pack_id: 最完整 — 已跑过 step 4 圈包时挂上
+        extra_context: 临时要求（"主推送礼场景""避开同行已饱和卖点"等）
+
+    Returns:
+        {ok, result: {script_md, script_id, kind, sku_id, audience_record_id?,
+                      audience_pack_id?, matrix_run_id?}, trace, next_step_hint}
+    """
+    if kind not in pipeline_lineage.CREATIVE_KINDS:
+        return {
+            "ok": False,
+            "error": f"非法 kind={kind}",
+            "hint": f"必须 6 选 1：{list(pipeline_lineage.CREATIVE_KINDS)}",
+        }
+
+    pool = get_pool()
+
+    # === 弹性反查 record / pack / matrix ===
+    record = None
+    pack = None
+    matrix_run = None
+    audience_run_id = None
+    matrix_run_id = None
+
+    if audience_pack_id:
+        pack = await pipeline_lineage.get_audience_pack(audience_pack_id)
+        if not pack:
+            return {"ok": False, "error": "audience_pack_not_found", "audience_pack_id": audience_pack_id}
+        sku_id = sku_id or pack.get("sku_id")
+        audience_record_id = audience_record_id or pack.get("audience_record_id")
+        audience_run_id = pack.get("audience_run_id")
+        matrix_run_id = pack.get("matrix_run_id")
+
+    if audience_record_id:
+        record = await pipeline_lineage.get_audience_record(audience_record_id)
+        if record:
+            sku_id = sku_id or record.get("sku_id")
+            audience_run_id = audience_run_id or record.get("audience_run_id")
+            matrix_run_id = matrix_run_id or record.get("matrix_run_id")
+
+    if matrix_run_id:
+        matrix_run = await pipeline_lineage.get_matrix_run(matrix_run_id)
+
+    if not sku_id:
+        return {
+            "ok": False,
+            "error": "sku_id 缺失",
+            "hint": "至少给 sku_id 或 audience_record_id 或 audience_pack_id 之一",
+        }
+
+    # === 拉 SKU ===
+    sku = await pool.fetchrow(
+        "SELECT id, name, category, price_min, price_max, specifications, "
+        "owner_selling_points, owner_notes, platform_status "
+        "FROM mvp_sku WHERE id = $1",
+        sku_id,
+    )
+    if not sku:
+        return {"ok": False, "error": "sku_not_found", "sku_id": sku_id}
+
+    if sku["price_min"] is not None and sku["price_max"] is not None:
+        if sku["price_min"] == sku["price_max"]:
+            price_str = f"¥{sku['price_min']}"
+        else:
+            price_str = f"¥{sku['price_min']} - ¥{sku['price_max']}"
+    else:
+        price_str = "（信息不足）"
+
+    sku_md = (
+        f"- SKU id：{sku['id']}\n"
+        f"- 品名：{sku['name']}\n"
+        f"- 品类：{sku['category'] or '调味品'}\n"
+        f"- 规格：{sku['specifications'] or '（无）'}\n"
+        f"- 售价：{price_str}\n"
+        f"- 老板自填卖点：{sku['owner_selling_points'] or '（无）'}\n"
+        f"- 抖店平台状态：{sku['platform_status'] or '（unknown）'}\n"
+    )
+
+    # === 拼 matrix / audience / pack 段 ===
+    matrix_md = (matrix_run.get("matrix_md") if matrix_run else None) or "（无 — 单 SKU 模式或未跑 step 2 卖点矩阵）"
+
+    if record:
+        layer_tags = " / ".join(record.get("layer_tags") or []) or "（无）"
+        kb_chunk = (record.get("kb_chunk_text") or "").strip() or "（KB 原文缺）"
+        reasons = record.get("match_reasons") or []
+        reasons_md = "\n".join(f"  {i + 1}. {r}" for i, r in enumerate(reasons)) if reasons else "  （无）"
+        audience_md = (
+            f"- 人群名：{record.get('name')}\n"
+            f"- KB 来源：{record.get('kb_doc') or '（无）'}{(' / ' + record['kb_section']) if record.get('kb_section') else ''}\n"
+            f"- 圈层标签：{layer_tags}\n"
+            f"- KB 原文画像：\n\n{kb_chunk}\n\n"
+            f"- 5 条匹配理由：\n{reasons_md}\n"
+        )
+    else:
+        audience_md = "（无 — 单 SKU 模式或未跑 step 3 人群匹配，按 SKU 通用画像出稿）"
+
+    if pack:
+        pack_md_full = (pack.get("pack_md") or "").strip()
+        # 截 pack 头 800 字给 LLM 当上下文（避免 prompt 太大）
+        pack_md_excerpt = pack_md_full[:800] + ("\n\n（…后略）" if len(pack_md_full) > 800 else "")
+        audience_pack_summary = f"已跑 step 4 圈包（id={audience_pack_id}）摘要：\n\n{pack_md_excerpt}"
+    else:
+        audience_pack_summary = "（无 — 未跑 step 4 圈包；本素材直接用 audience 画像 + matrix 卖点出稿）"
+
+    # === render prompt ===
+    sys_template = f"creative_pack.{kind}.system"
+    sys_msg = prompts.load(sys_template)
+    user_msg = prompts.render(
+        "creative_pack.user",
+        kind=kind,
+        kind_label=_KIND_LABELS.get(kind, kind),
+        sku_md=sku_md,
+        matrix_md=matrix_md.strip(),
+        audience_md=audience_md.strip(),
+        audience_pack_summary=audience_pack_summary.strip(),
+        extra_context=(extra_context or "").strip() or "（无）",
+    )
+    final_prompt = sys_msg + "\n\n" + user_msg
+
+    # === 调 LLM ===
+    model_cfg = get_model_for_tool("generate_creative_pack")
+    client = AIHubClient(timeout=180.0)
+    resp = await client.chat(
+        messages=[
+            {"role": "system", "content": sys_msg},
+            {"role": "user", "content": user_msg},
+        ],
+        provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3-flash-preview"),
+        temperature=model_cfg.get("temperature", 0.4),
+        max_tokens=model_cfg.get("max_tokens", 8000),
+        enforce_human_voice=True,
+    )
+    script_md = (
+        ((resp.get("choices") or [{}])[0].get("message") or {}).get("content")
+        or resp.get("text")
+        or resp.get("content")
+        or ""
+    ).strip()
+
+    # === 落库 ===
+    script_id = await pipeline_lineage.save_creative_pack(
+        sku_id=sku_id,
+        kind=kind,
+        script_md=script_md,
+        audience_record_id=audience_record_id,
+        audience_pack_id=audience_pack_id,
+        audience_run_id=audience_run_id,
+        matrix_run_id=matrix_run_id,
+        hooks=[],   # phase C v1 先存整段 markdown，后续切片再加 hooks/scenes 解析
+        scenes=[],
+        extra_context=extra_context,
+        model_provider=model_cfg.get("provider", "gemini"),
+        model=model_cfg.get("model", "gemini-3-flash-preview"),
+        final_prompt=final_prompt,
+        cost_estimate="1 quota call (~3-6k tokens)",
+    )
+
+    next_hint = {
+        "video_soft_ad": "step 6 拿主脚本里的分镜清单调 generate_image 出 5-7 张分镜图",
+        "video_planting": "step 6 拿主脚本里的分镜清单调 generate_image 出 6-9 张分镜图",
+        "video_harvest": "step 6 拿主脚本里的分镜清单调 generate_image 出 4-6 张分镜图",
+        "graphic_harvest": "step 6 拿配图 brief 调 generate_image 出 4-6 张图文配图",
+        "product_main_image": "step 6 拿主图 brief 调 generate_image 出 5-9 张主图",
+        "product_detail_page": "step 6 拿详情页段落 brief 调 generate_image 出 8-12 段长图",
+    }.get(kind, "step 6 调 generate_image 出图")
+
+    result = {
+        "ok": True,
+        "result": {
+            "script_md": script_md,
+            "script_id": script_id,
+            "kind": kind,
+            "kind_label": _KIND_LABELS.get(kind, kind),
+            "sku_id": sku_id,
+            "audience_record_id": audience_record_id,
+            "audience_pack_id": audience_pack_id,
+            "matrix_run_id": matrix_run_id,
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "gemini"),
+            model=model_cfg.get("model", "gemini-3-flash-preview"),
+            prompt=final_prompt,
+            params={
+                "temperature": model_cfg.get("temperature", 0.4),
+                "max_tokens": model_cfg.get("max_tokens", 8000),
+                "kind": kind,
+                "script_id": script_id,
+                "lineage": {
+                    "sku_id": sku_id,
+                    "audience_record_id": audience_record_id,
+                    "audience_pack_id": audience_pack_id,
+                    "matrix_run_id": matrix_run_id,
+                },
+            },
+            cost_estimate="1 quota call (~3-6k tokens)",
+        ),
+    }
+    return attach_next_step(
+        result,
+        suggested_tool="generate_image",
+        suggested_args={"sku_id": sku_id, "script_id": script_id},
+        human_text=next_hint,
+    )

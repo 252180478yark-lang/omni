@@ -86,7 +86,7 @@ async def _check_tools_registered(report: DoctorReport) -> None:
     try:
         from app.mcp.server import mcp
         tools = await mcp.list_tools()
-        # W1 5 + W2 5 + W3a 3 + W3b 7 + W3c 3 + W4-A 4 + W4-B 切片 5: 5 + 切片 8: 1 + 切片 9: 1 + 切片 14.1: 1 + 切片 14.2: 1 = 36
+        # W1 5 + W2 5 + W3a 3 + W3b 7 + W3c 3 + W4-A 4 + W4-B 切片 5/8/9/14.1/14.2/14.3 phase A+B+B+/14.4 phase C = 46
         wanted = {
             # W1
             "list_skus", "get_sku", "search_kb", "list_kbs", "list_briefs",
@@ -127,6 +127,8 @@ async def _check_tools_registered(report: DoctorReport) -> None:
             "generate_audience_pack",
             # W4-B 切片 14.3 phase B+（关键词扩展 500 词）
             "generate_keyword_pack",
+            # W4-B 切片 14.4 phase C（6 类素材脚本：视频软广/种草/收割 + 图文收割 + 主图 + 详情页）
+            "generate_creative_pack",
         }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names
@@ -159,6 +161,14 @@ def _check_prompts(report: DoctorReport) -> None:
             "audience_pack.system", "audience_pack.user",
             # W4-B 切片 14.3 phase B+：keyword 扩展
             "keyword_pack.system", "keyword_pack.user",
+            # W4-B 切片 14.4 phase C：6 类素材 system + 1 共用 user
+            "creative_pack.video_soft_ad.system",
+            "creative_pack.video_planting.system",
+            "creative_pack.video_harvest.system",
+            "creative_pack.graphic_harvest.system",
+            "creative_pack.product_main_image.system",
+            "creative_pack.product_detail_page.system",
+            "creative_pack.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

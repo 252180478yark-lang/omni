@@ -4,12 +4,12 @@
 
 ## omni MCP server
 
-omni 暴露 45 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14）：
+omni 暴露 46 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14）：
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
 - 编排辅助：`gather_brief_context`
 - 生成：`generate_brief`, `generate_image`, `generate_video`, `generate_image_compare`
-- sku-pipeline LLM：`generate_selling_points_matrix`（step 2）, `generate_audience_match`（step 3）, `generate_audience_pack`（step 4，phase B）, `generate_keyword_pack`（500 词扩展，phase B+）
+- sku-pipeline LLM：`generate_selling_points_matrix`（step 2）, `generate_audience_match`（step 3）, `generate_audience_pack`（step 4，phase B）, `generate_keyword_pack`（500 词扩展，phase B+）, `generate_creative_pack`（step 5 创意素材 6 类，phase C）
 - KB 写入：`kb_upload_doc`, `kb_set_role`
 - 抓数：`fetch_compass_*` (3), `fetch_yuntu_5a`, `fetch_yuntu_brand_mind`
 - 通用：`summarize_text`, `parse_long_doc_with_gemini`, `query_template_chunks`
@@ -142,8 +142,55 @@ audience_pack_id?, extra_context?)` —— 输入种子词，输出 N 个**纯�
 落库 `pipeline.keyword_packs`（migration 022），可挂 sku/audience_record/audience_pack。
 后处理 `_clean_keyword_pack` 强制清掉标点/数字/重复，保证格式纯净。
 
-下一步（phase C / D）：step 5/6 脚本绑链路（`pipeline.scripts`）、视频回传
-ad_metrics 自动反查（`pipeline.assets` + `v_asset_full_lineage`）。
+下一步（phase D）：step 6 分镜图/视频生成挂 `pipeline.assets`、视频回传
+ad_metrics 自动反查（`v_asset_full_lineage` 已建好）。
+
+## sku-pipeline step 5 创意素材（W4-B 切片 14.4 phase C）
+
+`generate_creative_pack(kind, sku_id?, audience_record_id?, audience_pack_id?, extra_context?)`
+—— 1 个 tool 路由 6 类素材，按 `kind` 选对应 system prompt。
+
+**6 类素材**（`config/prompts/creative_pack.<kind>.system.md` 各 1 套，user 共用 1 套）：
+
+| kind | 媒体 | 漏斗位置 | 时长/尺寸 | 输出特点 |
+|---|---|---|---|---|
+| `video_soft_ad` | 视频 | A2 触动 | 25-30s | 内容娱乐化软植入 / 主脚本 + 3 钩子 + 5-7 分镜 |
+| `video_planting` | 视频 | A3 共鸣 | 30-45s | 痛点+卖点串 / 主脚本 + 3 钩子 + 6-9 分镜 |
+| `video_harvest` | 视频 | A4 行动 | 15-25s | 强 CTA + 限时利益 / 主脚本 + 3 钩子 + 4-6 分镜 |
+| `graphic_harvest` | 图文 | A4 行动 | 300-500 字 | 标题党 + 5 段正文 + 4-6 张配图 brief |
+| `product_main_image` | 商品视觉 | 列表点击 | 5-9 张主图 | 每张 1 卖点 + 大字 ≤ 8 字 + 风格关键词 |
+| `product_detail_page` | 商品视觉 | 详情页 | 8-12 段长图 | 叙事 + 卖点闭环 + 信任锚（资质段没真数据就跳过） |
+
+**弹性挂链路**（按可用性自动选）：
+- 给 `audience_pack_id` → 拉 pack + record + matrix + sku（最完整链路）
+- 给 `audience_record_id` → 拉 record + matrix + sku（绕过 step 4）
+- 都没但给 `sku_id` → 单 SKU 模式，audience/pack 段写"通用画像"
+
+**严禁**（所有 6 类共用）：
+- 编 SKU 没有的卖点 / 资质 / 检测 / 价格 / 赠品
+- AI 化套话：赋能 / 打通 / 闭环 / 抢占心智 / 极致 / 匠心 / 一站式
+- 各类型独有禁忌：
+  - `video_soft_ad`：直接卖货话术、价格/折扣
+  - `video_harvest`：编假"已 10w+ 售出""仅剩 50 件"
+  - `graphic_harvest`："宝子们""家人们" 烂俗开头
+  - `product_main_image`：把多个卖点塞 1 张图、文艺词如"留白哲学"
+  - `product_detail_page`："百年传承""非遗工艺" 等无依据描述
+
+**链路落库**：跑完落 `pipeline.scripts`（migration 023 加 `kind` 字段 +
+弹性挂改 nullable）。多版本（同 sku+kind 的 version 自增 + parent_script_id 串前后）。
+
+**老板话术 → tool**：
+- "给 sku-X 写个种草脚本" → `generate_creative_pack(kind='video_planting', audience_record_id=...)`
+- "给 X 出收割图文" → `generate_creative_pack(kind='graphic_harvest', sku_id='X')`
+- "给 X 设计 5 张主图" → `generate_creative_pack(kind='product_main_image', sku_id='X')`
+- "给 X 写详情页文案" → `generate_creative_pack(kind='product_detail_page', audience_record_id=...)`
+
+**前端 /sku-pipeline step 5 tab**：左侧选模式（record / sku）+ 6 个 kind chip
++ extra_context；右侧输出 markdown + 复制 + 下载 .md + trace 折叠。pack 模式
+v1 暂未开放（老板要时再加 list_audience_packs tool + UI）。
+
+下一步（phase D）：step 6 分镜图/视频生成挂 `pipeline.assets`，从
+`pipeline.scripts.scenes` JSONB 拉分镜清单 + 首帧 hint 喂给 generate_image。
 
 ## sku 出片标准链路（老板说"sku-X 全链路"时按此走）
 

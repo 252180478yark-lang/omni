@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Target } from 'lucide-react'
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Target, Film } from 'lucide-react'
 
 interface SkuRow {
   id: string
@@ -129,6 +129,40 @@ interface KeywordPackResp {
   hint?: string
 }
 
+type CreativeKind =
+  | 'video_soft_ad'
+  | 'video_planting'
+  | 'video_harvest'
+  | 'graphic_harvest'
+  | 'product_main_image'
+  | 'product_detail_page'
+
+const CREATIVE_KIND_LIST: { kind: CreativeKind; label: string; group: string; hint: string }[] = [
+  { kind: 'video_soft_ad', label: '视频 · 软广', group: '视频', hint: 'A2 触动层 / 软植入 / 内容娱乐化 / 30s 内' },
+  { kind: 'video_planting', label: '视频 · 种草', group: '视频', hint: 'A3 共鸣层 / 痛点+卖点 / 30-45s' },
+  { kind: 'video_harvest', label: '视频 · 收割', group: '视频', hint: 'A4 行动层 / 强 CTA + 限时 / 15-25s' },
+  { kind: 'graphic_harvest', label: '图文 · 收割', group: '图文', hint: '抖店/小红书图文 / 标题 + 5 段 + 配图 brief' },
+  { kind: 'product_main_image', label: '主图', group: '商品视觉', hint: '5-9 张主图设计 brief / 大字 + 卖点叠加' },
+  { kind: 'product_detail_page', label: '详情页', group: '商品视觉', hint: '8-12 段叙事长图 brief / 卖点闭环 + 信任锚' },
+]
+
+interface CreativePackResp {
+  ok: boolean
+  result?: {
+    script_md: string
+    script_id: string | null
+    kind: CreativeKind
+    kind_label: string
+    sku_id: string
+    audience_record_id: string | null
+    audience_pack_id: string | null
+    matrix_run_id: string | null
+  }
+  trace?: TraceShape
+  error?: string
+  hint?: string
+}
+
 export default function SkuPipelinePage() {
   const [skus, setSkus] = useState<SkuRow[]>([])
   const [skuId, setSkuId] = useState<string>('')
@@ -183,6 +217,18 @@ export default function SkuPipelinePage() {
   const [runningKw, setRunningKw] = useState(false)
   const [respKw, setRespKw] = useState<KeywordPackResp | null>(null)
   const [copiedKw, setCopiedKw] = useState(false)
+
+  // Step 5 创意素材（phase C）
+  const [kind5, setKind5] = useState<CreativeKind>('video_planting')
+  const [srcMode5, setSrcMode5] = useState<'record' | 'pack' | 'sku'>('record')
+  const [record5Id, setRecord5Id] = useState<string>('')
+  const [pack5Id, setPack5Id] = useState<string>('')
+  const [packListForSku, setPackListForSku] = useState<Array<{ id: string; sku_id: string; version: number; status: string; created_at: string }> | null>(null)
+  const [packListLoading, setPackListLoading] = useState(false)
+  const [extraContext5, setExtraContext5] = useState('')
+  const [running5, setRunning5] = useState(false)
+  const [resp5, setResp5] = useState<CreativePackResp | null>(null)
+  const [showPrompt5, setShowPrompt5] = useState(false)
 
   useEffect(() => {
     fetch('/api/omni/scout/skus?status=active')
@@ -497,6 +543,49 @@ export default function SkuPipelinePage() {
     }
   }
 
+  // === Step 5: 创意素材（6 类）===
+  const runStep5 = async () => {
+    if (srcMode5 === 'record' && !record5Id) {
+      setError('record 模式必须先选 1 条人群')
+      return
+    }
+    if (srcMode5 === 'sku' && !skuId) {
+      setError('sku 模式必须先选 SKU')
+      return
+    }
+    setRunning5(true)
+    setResp5(null)
+    setError(null)
+    try {
+      const body: Record<string, unknown> = {
+        kind: kind5,
+        extra_context: extraContext5 || null,
+      }
+      if (srcMode5 === 'record') {
+        body.audience_record_id = record5Id
+      } else if (srcMode5 === 'sku') {
+        body.sku_id = skuId
+      } else if (srcMode5 === 'pack') {
+        body.audience_pack_id = pack5Id
+      }
+      const res = await fetch('/api/omni/sku-pipeline/creative-pack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        setError(json.error || '调用失败')
+      } else {
+        setResp5(json.data)
+      }
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setRunning5(false)
+    }
+  }
+
   // SKU 切换时清空 step 4 状态
   useEffect(() => {
     setRecord4Id('')
@@ -687,6 +776,9 @@ export default function SkuPipelinePage() {
           </TabsTrigger>
           <TabsTrigger value="step4">
             <Target className="w-3 h-3 mr-1" /> Step 4 · 圈包 SOP
+          </TabsTrigger>
+          <TabsTrigger value="step5">
+            <Film className="w-3 h-3 mr-1" /> Step 5 · 创意素材
           </TabsTrigger>
         </TabsList>
 
@@ -1629,6 +1721,217 @@ export default function SkuPipelinePage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* ============== STEP 5: 创意素材（6 类） ============== */}
+        <TabsContent value="step5" className="mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* 左：模式 + 输入 */}
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Film className="w-4 h-4" /> 输入
+                </CardTitle>
+                <CardDescription>
+                  6 类素材 1 个 tool 6 套 prompt；选挂哪一层链路 + 选素材类型 → 跑
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {SkuPicker}
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">挂链路（弹性挂）</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={`text-xs px-3 py-1 rounded border ${srcMode5 === 'record' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                      onClick={() => setSrcMode5('record')}
+                    >
+                      record（人群池选）
+                    </button>
+                    <button
+                      type="button"
+                      className={`text-xs px-3 py-1 rounded border ${srcMode5 === 'sku' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                      onClick={() => setSrcMode5('sku')}
+                    >
+                      sku（单 SKU 直跑）
+                    </button>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    record 模式：拉人群 KB 画像 + matrix 卖点喂 LLM；sku 模式：用通用画像，适合先试主图/详情页
+                  </div>
+                </div>
+
+                {srcMode5 === 'record' && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-sm font-medium">从 SKU 人群池选</label>
+                      <button
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => {
+                          setShowPool(prev => !prev)
+                          if (poolRecords === null) loadPool()
+                        }}
+                      >
+                        {showPool ? '收起' : '展开'}
+                      </button>
+                    </div>
+                    {poolLoading && <div className="text-xs text-muted-foreground">加载中...</div>}
+                    {!poolLoading && poolRecords !== null && poolRecords.length === 0 && (
+                      <div className="text-xs text-muted-foreground py-2">
+                        当前 SKU 还没人群池。先去 step 3 跑一次匹配，挑认可的点 ⭐ 加入池子。
+                      </div>
+                    )}
+                    {!poolLoading && poolRecords !== null && poolRecords.length > 0 && (
+                      <div className="space-y-1 max-h-64 overflow-y-auto">
+                        {poolRecords.map(r => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            className={`w-full text-left text-xs px-2 py-1 rounded border ${record5Id === r.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}
+                            onClick={() => setRecord5Id(r.id || '')}
+                          >
+                            <div className="font-medium">{r.name}</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {r.kb_doc || '（无 doc）'} · {(r.layer_tags || []).join(' / ')}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-sm font-medium mb-2 block">素材类型（6 选 1）</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CREATIVE_KIND_LIST.map(item => (
+                      <button
+                        key={item.kind}
+                        type="button"
+                        className={`text-xs text-left px-2 py-2 rounded border ${kind5 === item.kind ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}
+                        onClick={() => setKind5(item.kind)}
+                        title={item.hint}
+                      >
+                        <div className="font-medium">{item.label}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">{item.hint}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">extra_context（可空）</label>
+                  <Textarea
+                    placeholder="例：「这版主推送礼场景」「避开同行已饱和卖点」「老板自给优惠：下单立减 10 元」"
+                    value={extraContext5}
+                    onChange={e => setExtraContext5(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                <Button onClick={runStep5} disabled={running5} className="w-full">
+                  {running5 ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 跑中...（约 30-90s）</> : '跑创意素材'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* 右：输出 */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base">输出</CardTitle>
+                <CardDescription>
+                  v1 骨架 — prompt 调试中。任何不对的地方，告诉我改 prompt（不用改代码）
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!resp5 && !running5 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    左侧选 record / sku + 选素材类型 → 点"跑创意素材"，结果显示在这里。
+                  </div>
+                )}
+
+                {running5 && !resp5 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    <Loader2 className="w-5 h-5 mx-auto animate-spin mb-2" />
+                    LLM 出稿中（gemini-3.1-pro-preview）...
+                  </div>
+                )}
+
+                {resp5 && !resp5.ok && (
+                  <div className="text-sm text-red-500 p-2 border border-red-200 rounded bg-red-50">
+                    Error: {resp5.error}
+                    {resp5.hint && <div className="text-xs mt-1">{resp5.hint}</div>}
+                  </div>
+                )}
+
+                {resp5 && resp5.ok && resp5.result && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                      <Badge variant="secondary">{resp5.result.kind_label}</Badge>
+                      {resp5.result.script_id && (
+                        <span title="pipeline.scripts.id">script_id: {resp5.result.script_id.slice(0, 8)}</span>
+                      )}
+                      {resp5.result.audience_record_id && (
+                        <span>record: {resp5.result.audience_record_id.slice(0, 8)}</span>
+                      )}
+                      {resp5.result.matrix_run_id && (
+                        <span>matrix: {resp5.result.matrix_run_id.slice(0, 8)}</span>
+                      )}
+                      <button
+                        className="ml-auto text-primary hover:underline"
+                        onClick={() => {
+                          if (resp5.result?.script_md) {
+                            navigator.clipboard.writeText(resp5.result.script_md)
+                          }
+                        }}
+                      >
+                        <Copy className="w-3 h-3 inline mr-1" /> 复制
+                      </button>
+                      <button
+                        className="text-primary hover:underline"
+                        onClick={() => {
+                          if (!resp5.result?.script_md) return
+                          const blob = new Blob([resp5.result.script_md], { type: 'text/markdown' })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url
+                          a.download = `${resp5.result.kind}-${(resp5.result.script_id || 'creative').slice(0, 8)}.md`
+                          a.click()
+                          URL.revokeObjectURL(url)
+                        }}
+                      >
+                        <Download className="w-3 h-3 inline mr-1" /> 下载 .md
+                      </button>
+                    </div>
+
+                    <div className="prose prose-sm max-w-none border rounded p-3 bg-muted/30 max-h-[600px] overflow-y-auto">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{resp5.result.script_md}</ReactMarkdown>
+                    </div>
+
+                    {resp5.trace && (
+                      <div className="border rounded">
+                        <button
+                          className="w-full flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
+                          onClick={() => setShowPrompt5(!showPrompt5)}
+                        >
+                          <span>
+                            {showPrompt5 ? <ChevronDown className="w-3 h-3 inline" /> : <ChevronRight className="w-3 h-3 inline" />}
+                            {' '}prompt + trace（{resp5.trace.model_provider}/{resp5.trace.model}）
+                          </span>
+                        </button>
+                        {showPrompt5 && (
+                          <pre className="text-[10px] p-3 bg-muted/50 max-h-96 overflow-y-auto whitespace-pre-wrap">
+                            {resp5.trace.final_prompt}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
