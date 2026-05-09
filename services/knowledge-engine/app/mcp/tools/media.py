@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 
 from app.database import get_pool
@@ -1576,6 +1577,285 @@ _KIND_LABELS = {
 }
 
 
+# ============================================================
+# 创意素材 metrics_json 后端校验（反"LLM 自检装饰"）
+# ============================================================
+
+# regex 抠最后一个 ```json {...} ``` 代码块
+_METRICS_JSON_RE = re.compile(
+    r"```(?:json)?\s*(\{.*?\})\s*```",
+    re.S,
+)
+
+
+def _extract_metrics_json(script_md: str) -> dict | None:
+    """从 LLM 输出尾部抠 metrics_json 代码块。失败返 None 不抛。"""
+    if not script_md:
+        return None
+    matches = _METRICS_JSON_RE.findall(script_md)
+    if not matches:
+        return None
+    raw = matches[-1].strip()
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _validate_creative_metrics(metrics: dict, kind: str) -> list[str]:
+    """跑硬约束校验，返回 warnings list（空 = 全过）。
+
+    设计：v1 只 warn 不 fail（不 retry / 不挂掉调用）。warnings 写到 result，
+    前端展示给老板。老板看 metrics 数字 + warnings 自己判断要不要重跑。
+
+    v8（W4-B 14.4 phase C v8 八模块）：按 selected_framework 分支校验
+    （pixar_spine / slice_of_life / cer / hero_journey / empathy /
+    cultural_tension / aspirational / mini_documentary 之一）。
+
+    暂只校验 video_soft_ad（其他 kind 后续切片调通后再加）。
+    """
+    if kind != "video_soft_ad":
+        return []
+
+    warnings: list[str] = []
+    framework = (metrics.get("selected_framework") or "").strip().lower()
+
+    # === 总时长按 framework ===
+    duration_ranges = {
+        "pixar_spine": (15, 32),       # M1 标 30s，给 ±2 容差
+        "slice_of_life": (15, 32),     # M2
+        "cer": (25, 36),               # M3
+        "hero_journey": (28, 47),      # M4
+        "empathy": (28, 47),           # M5
+        "cultural_tension": (43, 62),  # M6
+        "aspirational": (28, 47),      # M7
+        "mini_documentary": (60, 240), # M8 60s+ ~ 4min
+    }
+    if framework not in duration_ranges:
+        warnings.append(
+            f"selected_framework={framework!r} 非法（应为 8 模块之一：pixar_spine/slice_of_life/cer/"
+            "hero_journey/empathy/cultural_tension/aspirational/mini_documentary）"
+        )
+    else:
+        dmin, dmax = duration_ranges[framework]
+        dur = metrics.get("duration_seconds")
+        try:
+            if dur is None or not (dmin <= float(dur) <= dmax):
+                warnings.append(
+                    f"duration_seconds={dur} 不在 {framework} 合理区间 [{dmin}, {dmax}]"
+                )
+        except (TypeError, ValueError):
+            warnings.append(f"duration_seconds={dur!r} 不是数字")
+
+    # === 台词密度按 framework（仅短素材 M1-M3 严格，M4-M8 不强求） ===
+    # Slice of Life / CER 都留白主义，极简版可以很低（情绪叙事需要呼吸感）
+    # Pixar 因为是 6 句话填空结构，密度需要稍高保证信息推进
+    density_ranges = {
+        "slice_of_life": (1.0, 4.5),
+        "pixar_spine": (3.0, 5.0),
+        "cer": (1.0, 4.0),
+    }
+    if framework in density_ranges:
+        dmin, dmax = density_ranges[framework]
+        density = metrics.get("dialog_words_per_second")
+        if density is not None:
+            try:
+                d = float(density)
+                if not (dmin <= d <= dmax):
+                    warnings.append(
+                        f"dialog_words_per_second={d} 不在 {framework} 合理区间 [{dmin}, {dmax}]"
+                    )
+            except (TypeError, ValueError):
+                warnings.append(f"dialog_words_per_second={density!r} 不是数字")
+
+    # === 8 模块共同硬约束 ===
+    if int(metrics.get("selling_point_dialog_count") or 0) > 0:
+        warnings.append(
+            f"selling_point_dialog_count={metrics.get('selling_point_dialog_count')} "
+            "应为 0（8 模块全程零产品讲解；通用强制原则 #2）"
+        )
+
+    if metrics.get("identity_or_setting_hook_present") is False:
+        warnings.append(
+            "identity_or_setting_hook_present=false（必须身份钩子/Setting 钩子，不准信息钩子）"
+        )
+
+    # M7/M8 可豁免截图传播点 + 评论召唤点（按 prompt 通用强制原则 #4 #5）
+    framework_no_share_summon = {"aspirational", "mini_documentary"}
+    if framework not in framework_no_share_summon:
+        if metrics.get("screenshot_share_point_present") is False:
+            warnings.append("screenshot_share_point_present=false（必须有截图传播点 — 社交货币）")
+        if metrics.get("comment_summon_point_present") is False:
+            warnings.append("comment_summon_point_present=false（必须有评论召唤点）")
+
+    # 品牌出现次数（video_soft_ad 统一 O→A1：== 1 次，最后 Brand Mark 字幕算这 1 次）
+    brand_count = metrics.get("brand_total_mention_count")
+    try:
+        bc = int(brand_count) if brand_count is not None else None
+        if bc is not None:
+            if bc < 1:
+                warnings.append(
+                    f"brand_total_mention_count={bc} 缺品牌识别（O→A1 命脉是品牌可识别，"
+                    "最后 Brand Mark 字幕至少 1 次，否则用户看完不知道是哪个品牌 = 白做）"
+                )
+            elif bc > 1:
+                warnings.append(
+                    f"brand_total_mention_count={bc} 超过 1（video_soft_ad 统一 O→A1，"
+                    "通用强制 #3 ≤ 1，最后 Brand Mark 字幕只能算这 1 次）"
+                )
+    except (TypeError, ValueError):
+        pass
+
+    # 署名格式（除 M6 文化张力可有 Slogan，其他都禁广告口号 + 必须有署名）
+    sig = (metrics.get("brand_signature_format") or "").strip().lower()
+    framework_strict_credit = {
+        "pixar_spine", "slice_of_life", "cer",
+        "hero_journey", "empathy", "aspirational", "mini_documentary",
+    }
+    if framework in framework_strict_credit:
+        if sig not in ("content_credit", "brand_mark"):
+            warnings.append(
+                f"brand_signature_format={sig!r} 应为 content_credit/brand_mark "
+                f"（{framework} 必须有署名，禁广告口号 + 禁 none — A1A2 阶段没署名 = 用户看完不知道是哪个品牌）"
+            )
+    if sig == "ad_slogan" and framework != "cultural_tension":
+        warnings.append(f"brand_signature_format=ad_slogan（{framework} 禁广告口号；M6 文化张力例外可有 Manifesto）")
+
+    # 传播动机：必须单值，禁连接词
+    target = (metrics.get("transmission_target") or "").strip()
+    if framework not in framework_no_share_summon:
+        if not target or target.lower() == "all":
+            warnings.append("transmission_target 必须填具体的人（母亲/伴侣/闺蜜/自己等），不能 all 或空")
+        elif any(c in target for c in ("或", "和", "/", "&", "、", ",", "，")):
+            warnings.append(
+                f"transmission_target={target!r} 含多目标连接词（或/和/、/, 等）— 必须单值。"
+                "传播动机理论强调'想让某个具体的人看到'，双值 = 稀释传播动机"
+            )
+
+    # === 通用底层 8 条 ===
+    fsc = metrics.get("first_subtitle_chars")
+    try:
+        if fsc is not None and int(fsc) > 12:
+            warnings.append(f"地板 3 · first_subtitle_chars={fsc} 超过 12（最佳 7-10）")
+    except (TypeError, ValueError):
+        pass
+
+    sg = metrics.get("scene_change_max_gap_seconds")
+    try:
+        if sg is not None and float(sg) > 5:
+            warnings.append(f"地板 4 · scene_change_max_gap_seconds={sg} 超过 5")
+    except (TypeError, ValueError):
+        pass
+
+    if metrics.get("first_3s_mentions_product"):
+        warnings.append("钩子前 3s 不准提产品（first_3s_mentions_product 必须 false）")
+
+    if metrics.get("ending_open") is False:
+        warnings.append("地板 5 · ending_open=false（必须开放性收尾）")
+
+    if metrics.get("hardad_words_present") is True:
+        warnings.append("地板 7 · 检测到硬广敏感词（最/第一/绝对/治愈/功效/根治）")
+
+    # === 品牌出现时机按 framework ===
+    bfa = metrics.get("brand_first_appearance_second")
+    try:
+        bfa_val = float(bfa) if bfa is not None else None
+    except (TypeError, ValueError):
+        bfa_val = None
+        warnings.append(f"brand_first_appearance_second={bfa!r} 不是数字")
+
+    if bfa_val is not None:
+        if framework == "cer" and bfa_val < 28:
+            warnings.append(f"CER 隐身策略 · brand_first_appearance_second={bfa_val} 必须 ≥ 28")
+        elif framework == "pixar_spine" and bfa_val < 25:
+            warnings.append(
+                f"Pixar 隐身策略 · brand_first_appearance_second={bfa_val} 提示品牌名出现过早 "
+                "（品类词可中途但品牌名应仅最后 2-3s 署名）"
+            )
+        elif framework == "mini_documentary" and bfa_val < 60:
+            warnings.append(
+                f"M8 极克制 · brand_first_appearance_second={bfa_val} 出现过早（M8 通常仅片尾落款）"
+            )
+
+    # === M1 Pixar 专属 ===
+    if framework == "pixar_spine":
+        psc = metrics.get("pixar_six_sentence_count")
+        try:
+            if psc is None or int(psc) != 6:
+                warnings.append(f"M1 Pixar 硬约束 · pixar_six_sentence_count={psc} 必须严格 = 6")
+        except (TypeError, ValueError):
+            pass
+
+    # === M2 Slice of Life 专属 ===
+    if framework == "slice_of_life":
+        if metrics.get("slice_setting_specificity_high") is not True:
+            warnings.append(
+                "M2 Slice of Life · slice_setting_specificity_high=false "
+                "（场景必须具体到时间+地点+状态）"
+            )
+        try:
+            qmc = int(metrics.get("slice_quality_moment_close_up_count") or 0)
+            if qmc < 1:
+                warnings.append(
+                    "M2 Slice of Life · slice_quality_moment_close_up_count < 1 "
+                    "（至少 1 个质感瞬间特写）"
+                )
+        except (TypeError, ValueError):
+            pass
+
+    # === M3 CER 专属 ===
+    if framework == "cer":
+        if metrics.get("cer_twist_present") is not True:
+            warnings.append("M3 CER · cer_twist_present 必须 true（20-25s 必须有 Twist 反转）")
+        rtype = (metrics.get("cer_emotion_release_type") or "").strip().lower()
+        if rtype in ("", "none"):
+            warnings.append(
+                f"M3 CER · cer_emotion_release_type={rtype!r} 不能 none "
+                "（必须 tearful/pleasant/enlightened/comforting 之一）"
+            )
+
+    # === M4 Hero's Journey 专属 ===
+    if framework == "hero_journey":
+        if metrics.get("hero_protagonist_is_ordinary") is not True:
+            warnings.append(
+                "M4 Hero · hero_protagonist_is_ordinary=false（主角必须是普通人，不是成功者）"
+            )
+
+    # === M5 Empathy 专属（最关键 — 防贩卖焦虑）===
+    if framework == "empathy":
+        if metrics.get("empathy_validation_no_blame") is not True:
+            warnings.append(
+                "M5 Empathy · empathy_validation_no_blame=false（Validation 必须给"
+                "'这不是你的错'，不准'你应该更努力' = 贩卖焦虑）"
+            )
+
+    # === M6 Cultural Tension 专属 ===
+    if framework == "cultural_tension":
+        if metrics.get("cultural_tension_real") is not True:
+            warnings.append(
+                "M6 Cultural Tension · cultural_tension_real=false（必须真实社会文化张力，"
+                "不能品牌自己造的伪张力）"
+            )
+
+    # === M7 Aspirational 专属 ===
+    if framework == "aspirational":
+        if metrics.get("aspirational_middle_class_reachable") is not True:
+            warnings.append(
+                "M7 Aspirational · aspirational_middle_class_reachable=false（生活方式必须"
+                "'中产可达' — 不豪宅奢侈品，不出租屋廉价道具）"
+            )
+
+    # === M8 Mini-Documentary 专属 ===
+    if framework == "mini_documentary":
+        if metrics.get("doc_real_subject") is not True:
+            warnings.append("M8 Mini-Doc · doc_real_subject=false（必须真实人物，禁演员）")
+        if metrics.get("doc_real_interview") is not True:
+            warnings.append("M8 Mini-Doc · doc_real_interview=false（必须真实采访，禁配音/后期改语气）")
+
+    return warnings
+
+
 @tool_with_audit(mcp, require_approval=False)
 async def generate_creative_pack(
     kind: str,
@@ -1742,6 +2022,13 @@ async def generate_creative_pack(
         or ""
     ).strip()
 
+    # === 拉 metrics_json + 跑后端硬约束校验（反"LLM 自检装饰") ===
+    metrics = _extract_metrics_json(script_md)
+    if metrics is None:
+        validation_warnings = ["⚠ LLM 没输出 metrics_json 代码块（或 JSON 解析失败），无法跑硬约束校验。改 prompt 或重跑。"]
+    else:
+        validation_warnings = _validate_creative_metrics(metrics, kind)
+
     # === 落库 ===
     script_id = await pipeline_lineage.save_creative_pack(
         sku_id=sku_id,
@@ -1780,6 +2067,8 @@ async def generate_creative_pack(
             "audience_record_id": audience_record_id,
             "audience_pack_id": audience_pack_id,
             "matrix_run_id": matrix_run_id,
+            "metrics": metrics,  # LLM 自报的结构化指标（None = 没输出 JSON）
+            "validation_warnings": validation_warnings,  # 后端硬约束校验失败项；空 = 全过
         },
         "trace": build_trace(
             provider=model_cfg.get("provider", "gemini"),
@@ -1790,6 +2079,8 @@ async def generate_creative_pack(
                 "max_tokens": model_cfg.get("max_tokens", 8000),
                 "kind": kind,
                 "script_id": script_id,
+                "validation_warnings_count": len(validation_warnings),
+                "metrics_extracted": metrics is not None,
                 "lineage": {
                     "sku_id": sku_id,
                     "audience_record_id": audience_record_id,

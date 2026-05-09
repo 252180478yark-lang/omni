@@ -157,6 +157,8 @@ interface CreativePackResp {
     audience_record_id: string | null
     audience_pack_id: string | null
     matrix_run_id: string | null
+    metrics?: Record<string, unknown> | null
+    validation_warnings?: string[]
   }
   trace?: TraceShape
   error?: string
@@ -1739,22 +1741,47 @@ export default function SkuPipelinePage() {
               <CardContent className="space-y-4">
                 {SkuPicker}
 
+                {/* 当前选中 summary（一眼看明白现在选了啥） */}
+                <div className="rounded border border-dashed p-2 text-xs space-y-1 bg-muted/30">
+                  <div className="font-medium text-muted-foreground">当前选中</div>
+                  <div>
+                    <span className="text-muted-foreground">模式：</span>
+                    <Badge variant="secondary">{srcMode5 === 'record' ? 'record 人群池' : 'sku 单 SKU 直跑'}</Badge>
+                  </div>
+                  {srcMode5 === 'record' && (
+                    <div>
+                      <span className="text-muted-foreground">人群：</span>
+                      {record5Id ? (
+                        <Badge>
+                          {(poolRecords?.find(r => r.id === record5Id)?.name) || record5Id.slice(0, 8)}
+                        </Badge>
+                      ) : (
+                        <span className="text-orange-500">未选（点下面"从 SKU 人群池选"展开后挑 1 条）</span>
+                      )}
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">素材类型：</span>
+                    <Badge>{CREATIVE_KIND_LIST.find(x => x.kind === kind5)?.label || kind5}</Badge>
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-sm font-medium mb-2 block">挂链路（弹性挂）</label>
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      className={`text-xs px-3 py-1 rounded border ${srcMode5 === 'record' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                      className={`text-xs px-3 py-1.5 rounded border-2 font-medium transition-colors ${srcMode5 === 'record' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}
                       onClick={() => setSrcMode5('record')}
                     >
-                      record（人群池选）
+                      {srcMode5 === 'record' ? '✓ ' : ''}record（人群池选）
                     </button>
                     <button
                       type="button"
-                      className={`text-xs px-3 py-1 rounded border ${srcMode5 === 'sku' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}
+                      className={`text-xs px-3 py-1.5 rounded border-2 font-medium transition-colors ${srcMode5 === 'sku' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}
                       onClick={() => setSrcMode5('sku')}
                     >
-                      sku（单 SKU 直跑）
+                      {srcMode5 === 'sku' ? '✓ ' : ''}sku（单 SKU 直跑）
                     </button>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
@@ -1767,6 +1794,7 @@ export default function SkuPipelinePage() {
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-sm font-medium">从 SKU 人群池选</label>
                       <button
+                        type="button"
                         className="text-xs text-primary hover:underline"
                         onClick={() => {
                           setShowPool(prev => !prev)
@@ -1776,27 +1804,33 @@ export default function SkuPipelinePage() {
                         {showPool ? '收起' : '展开'}
                       </button>
                     </div>
-                    {poolLoading && <div className="text-xs text-muted-foreground">加载中...</div>}
-                    {!poolLoading && poolRecords !== null && poolRecords.length === 0 && (
+                    {showPool && poolLoading && <div className="text-xs text-muted-foreground">加载中...</div>}
+                    {showPool && !poolLoading && poolRecords !== null && poolRecords.length === 0 && (
                       <div className="text-xs text-muted-foreground py-2">
                         当前 SKU 还没人群池。先去 step 3 跑一次匹配，挑认可的点 ⭐ 加入池子。
                       </div>
                     )}
-                    {!poolLoading && poolRecords !== null && poolRecords.length > 0 && (
+                    {showPool && !poolLoading && poolRecords !== null && poolRecords.length > 0 && (
                       <div className="space-y-1 max-h-64 overflow-y-auto">
-                        {poolRecords.map(r => (
-                          <button
-                            key={r.id}
-                            type="button"
-                            className={`w-full text-left text-xs px-2 py-1 rounded border ${record5Id === r.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}
-                            onClick={() => setRecord5Id(r.id || '')}
-                          >
-                            <div className="font-medium">{r.name}</div>
-                            <div className="text-[10px] text-muted-foreground">
-                              {r.kb_doc || '（无 doc）'} · {(r.layer_tags || []).join(' / ')}
-                            </div>
-                          </button>
-                        ))}
+                        {poolRecords.map(r => {
+                          const selected = record5Id === r.id
+                          return (
+                            <button
+                              key={r.id}
+                              type="button"
+                              className={`w-full text-left text-xs px-2 py-1.5 rounded border-2 transition-colors ${selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-muted'}`}
+                              onClick={() => setRecord5Id(r.id || '')}
+                            >
+                              <div className="font-medium flex items-center gap-1">
+                                {selected && <span>✓</span>}
+                                {r.name}
+                              </div>
+                              <div className={`text-[10px] ${selected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                                {r.kb_doc || '（无 doc）'} · {(r.layer_tags || []).join(' / ')}
+                              </div>
+                            </button>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -1805,18 +1839,26 @@ export default function SkuPipelinePage() {
                 <div>
                   <label className="text-sm font-medium mb-2 block">素材类型（6 选 1）</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {CREATIVE_KIND_LIST.map(item => (
-                      <button
-                        key={item.kind}
-                        type="button"
-                        className={`text-xs text-left px-2 py-2 rounded border ${kind5 === item.kind ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'}`}
-                        onClick={() => setKind5(item.kind)}
-                        title={item.hint}
-                      >
-                        <div className="font-medium">{item.label}</div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">{item.hint}</div>
-                      </button>
-                    ))}
+                    {CREATIVE_KIND_LIST.map(item => {
+                      const selected = kind5 === item.kind
+                      return (
+                        <button
+                          key={item.kind}
+                          type="button"
+                          className={`text-xs text-left px-2 py-2 rounded border-2 transition-colors ${selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-muted'}`}
+                          onClick={() => setKind5(item.kind)}
+                          title={item.hint}
+                        >
+                          <div className="font-medium flex items-center gap-1">
+                            {selected && <span>✓</span>}
+                            {item.label}
+                          </div>
+                          <div className={`text-[10px] mt-0.5 ${selected ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
+                            {item.hint}
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
 
@@ -1904,6 +1946,40 @@ export default function SkuPipelinePage() {
                         <Download className="w-3 h-3 inline mr-1" /> 下载 .md
                       </button>
                     </div>
+
+                    {/* 后端硬约束校验结果（反 LLM 自检装饰） */}
+                    {resp5.result.validation_warnings && resp5.result.validation_warnings.length > 0 && (
+                      <div className="border-2 border-orange-300 rounded p-3 bg-orange-50 space-y-2">
+                        <div className="text-sm font-semibold text-orange-800">
+                          ⚠ 后端硬约束校验：{resp5.result.validation_warnings.length} 项不通过
+                        </div>
+                        <ul className="text-xs text-orange-900 space-y-1 list-disc pl-5">
+                          {resp5.result.validation_warnings.map((w, i) => (
+                            <li key={i}>{w}</li>
+                          ))}
+                        </ul>
+                        <div className="text-[10px] text-orange-700 mt-1">
+                          这是 LLM 自报 metrics_json 后跑的代码校验，不是 LLM 自打钩。改 prompt 或重跑修。
+                        </div>
+                      </div>
+                    )}
+                    {resp5.result.validation_warnings && resp5.result.validation_warnings.length === 0 && resp5.result.metrics && (
+                      <div className="border-2 border-green-300 rounded p-2 bg-green-50 text-xs text-green-800">
+                        ✓ 后端硬约束校验全过（地板 8 条 + 选定方向硬约束）
+                      </div>
+                    )}
+
+                    {/* metrics_json 数据（折叠显示） */}
+                    {resp5.result.metrics && (
+                      <details className="border rounded p-2 bg-muted/20">
+                        <summary className="text-xs cursor-pointer text-muted-foreground">
+                          metrics_json（LLM 自报指标，后端校验依据）
+                        </summary>
+                        <pre className="text-[10px] mt-2 whitespace-pre-wrap">
+                          {JSON.stringify(resp5.result.metrics, null, 2)}
+                        </pre>
+                      </details>
+                    )}
 
                     <div className="prose prose-sm max-w-none border rounded p-3 bg-muted/30 max-h-[600px] overflow-y-auto">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{resp5.result.script_md}</ReactMarkdown>
