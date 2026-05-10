@@ -1604,20 +1604,30 @@ def _extract_metrics_json(script_md: str) -> dict | None:
 
 
 def _validate_creative_metrics(metrics: dict, kind: str) -> list[str]:
-    """跑硬约束校验，返回 warnings list（空 = 全过）。
+    """按 kind 路由到对应 validator，返回 warnings list（空 = 全过）。
 
     设计：v1 只 warn 不 fail（不 retry / 不挂掉调用）。warnings 写到 result，
     前端展示给老板。老板看 metrics 数字 + warnings 自己判断要不要重跑。
 
+    路由：
+    - video_soft_ad：8 模块体系（O→A1 让人知道）— v8.5
+    - video_planting：9 模块双层体系（A1/A2→A3 让人相信）— v2
+    - 其他 kind：暂未实现校验，返空列表
+    """
+    if kind == "video_soft_ad":
+        return _validate_video_soft_ad_metrics(metrics)
+    if kind == "video_planting":
+        return _validate_video_planting_metrics(metrics)
+    return []
+
+
+def _validate_video_soft_ad_metrics(metrics: dict) -> list[str]:
+    """video_soft_ad（O→A1 软广 8 模块）metrics 校验。
+
     v8（W4-B 14.4 phase C v8 八模块）：按 selected_framework 分支校验
     （pixar_spine / slice_of_life / cer / hero_journey / empathy /
     cultural_tension / aspirational / mini_documentary 之一）。
-
-    暂只校验 video_soft_ad（其他 kind 后续切片调通后再加）。
     """
-    if kind != "video_soft_ad":
-        return []
-
     warnings: list[str] = []
     framework = (metrics.get("selected_framework") or "").strip().lower()
 
@@ -1852,6 +1862,324 @@ def _validate_creative_metrics(metrics: dict, kind: str) -> list[str]:
             warnings.append("M8 Mini-Doc · doc_real_subject=false（必须真实人物，禁演员）")
         if metrics.get("doc_real_interview") is not True:
             warnings.append("M8 Mini-Doc · doc_real_interview=false（必须真实采访，禁配音/后期改语气）")
+
+    return warnings
+
+
+def _validate_video_planting_metrics(metrics: dict) -> list[str]:
+    """video_planting（A1/A2→A3 种草 9 模块双层体系）metrics 校验。
+
+    v2（W4-B 14.4 phase C v2 九模块）：双层结构 — 必须 1 相关性层 (M1/M2) +
+    1 判断依据层 (M3-M9)。按 selected_relevance_module + selected_justification_module
+    各自分支校验。
+    """
+    warnings: list[str] = []
+    relevance = (metrics.get("selected_relevance_module") or "").strip().lower()
+    justification = (metrics.get("selected_justification_module") or "").strip().lower()
+    is_dual = bool(metrics.get("is_dual_justification"))
+
+    # === 必须双层结构 ===
+    valid_relevance = {"slice_of_life", "problem_naming"}
+    valid_justification = {
+        "insider_reveal", "origin_story", "comparison_frame", "reason_why",
+        "testimonial", "demonstration", "authority_endorsement",
+    }
+    if relevance not in valid_relevance:
+        warnings.append(
+            f"selected_relevance_module={relevance!r} 非法（A1A2→A3 必须 "
+            "slice_of_life/problem_naming 之一 — 缺相关性层会让用户停在 A1）"
+        )
+    if justification not in valid_justification:
+        warnings.append(
+            f"selected_justification_module={justification!r} 非法（A1A2→A3 必须 "
+            "insider_reveal/origin_story/comparison_frame/reason_why/testimonial/"
+            "demonstration/authority_endorsement 之一 — 缺判断依据层会让用户停在 A2）"
+        )
+
+    # === 时长按 单/双 组合 ===
+    duration = metrics.get("duration_seconds")
+    try:
+        d = float(duration) if duration is not None else None
+        if d is not None:
+            if is_dual and not (38 <= d <= 50):
+                warnings.append(
+                    f"duration_seconds={d} 双判断组合应 ~ 45s ± 5"
+                )
+            elif not is_dual and not (25 <= d <= 35):
+                warnings.append(
+                    f"duration_seconds={d} 单组合应 ~ 30s ± 3（80% 素材应该是单组合）"
+                )
+    except (TypeError, ValueError):
+        warnings.append(f"duration_seconds={duration!r} 不是数字")
+
+    # === 卖点严限（A3 阶段产品功能介绍 ≤ 1 句）===
+    spc = metrics.get("selling_point_dialog_count")
+    try:
+        spc_val = int(spc) if spc is not None else None
+        if spc_val is not None and spc_val > 1:
+            warnings.append(
+                f"selling_point_dialog_count={spc_val} 超过 1（A3 阶段产品功能介绍"
+                "全片 ≤ 1 句，自检清单第 3 条；卖点轰炸是 A3 大忌）"
+            )
+    except (TypeError, ValueError):
+        pass
+
+    # === 真实身份披露细节数（中段 ≥ 3 处，桌面自检清单第 5 条）===
+    ridc = metrics.get("real_identity_disclosure_count")
+    try:
+        ridc_val = int(ridc) if ridc is not None else None
+        if ridc_val is not None and ridc_val < 3:
+            warnings.append(
+                f"real_identity_disclosure_count={ridc_val} 少于 3（自检清单第 5 条 — "
+                "中段必须有真实身份披露细节 ≥ 3 处，决定 Slice 代入感和 Testimonial 真实度）"
+            )
+    except (TypeError, ValueError):
+        pass
+
+    # === 前 5 秒禁忌（自检清单第 4 条）===
+    if metrics.get("first_5s_brand_name_mentioned") is True:
+        warnings.append("first_5s_brand_name_mentioned=true（前 5 秒禁出现品牌名 — 自检 #4）")
+    if metrics.get("first_5s_product_close_up") is True:
+        warnings.append("first_5s_product_close_up=true（前 5 秒禁产品特写 — 自检 #4）")
+    if metrics.get("first_5s_ad_style_address") is True:
+        warnings.append(
+            "first_5s_ad_style_address=true（前 5 秒禁广告化称呼 — 宝子们/家人们/姐妹们 等 — 自检 #4）"
+        )
+
+    # === 截图传播点 + 评论召唤点（M8 Demo 可豁免）===
+    if justification != "demonstration":
+        if metrics.get("screenshot_share_point_present") is False:
+            warnings.append(
+                "screenshot_share_point_present=false（必须有截图传播点，作为延时画面联想锚点）"
+            )
+        if metrics.get("comment_summon_point_present") is False:
+            warnings.append("comment_summon_point_present=false（必须有评论召唤点）")
+
+    # === 结尾必须具体未来场景画面（自检清单第 7 条）===
+    if metrics.get("ending_concrete_future_scene") is False:
+        warnings.append(
+            "ending_concrete_future_scene=false（结尾必须具体未来场景画面 — 自检 #7，"
+            "不是抽象评价/CTA 指令/完结感收尾）"
+        )
+    if metrics.get("ending_has_cta") is True:
+        warnings.append(
+            "ending_has_cta=true（A3 阶段不做硬转化 / 结尾不能 CTA — 破坏 A3 形成的心理过程）"
+        )
+
+    # === 通用底层 ===
+    fsc = metrics.get("first_subtitle_chars")
+    try:
+        if fsc is not None and int(fsc) > 12:
+            warnings.append(f"地板 3 · first_subtitle_chars={fsc} 超过 12（最佳 7-10）")
+    except (TypeError, ValueError):
+        pass
+    sg = metrics.get("scene_change_max_gap_seconds")
+    try:
+        if sg is not None and float(sg) > 5:
+            warnings.append(f"地板 4 · scene_change_max_gap_seconds={sg} 超过 5")
+    except (TypeError, ValueError):
+        pass
+    if metrics.get("hardad_words_present") is True:
+        warnings.append(
+            "地板 7 · 检测到硬广敏感词（最/第一/绝对/治愈/功效/根治/限时/仅剩/抢购）"
+        )
+    if metrics.get("vague_words_present") is True:
+        warnings.append(
+            "通用强制 #2 · 检测到模糊词（很多/不少/大多数/众所周知/业内人士都说 "
+            "— A3 大忌；M6 Reason-Why 严限）"
+        )
+
+    # === 品牌出现时机（前 5 秒禁）===
+    bfa = metrics.get("brand_first_appearance_second")
+    try:
+        bfa_val = float(bfa) if bfa is not None else None
+        if bfa_val is not None and bfa_val < 5:
+            warnings.append(
+                f"brand_first_appearance_second={bfa_val} 早于 5（前 5 秒禁品牌名）"
+            )
+    except (TypeError, ValueError):
+        pass
+
+    # === 传播动机单值（M8 Demo 可豁免）===
+    if justification != "demonstration":
+        target = (metrics.get("transmission_target") or "").strip()
+        if not target or target.lower() == "all":
+            warnings.append(
+                "transmission_target 必须填具体的人（嫂子/同事/邻居/妈妈/伴侣 等），"
+                "不能 all 或空"
+            )
+        elif any(c in target for c in ("或", "和", "/", "&", "、", ",", "，")):
+            warnings.append(
+                f"transmission_target={target!r} 含多目标连接词（或/和/、/, 等）"
+                "— 必须单值。延时口碑传播理论强调'想让某个具体的人看到'"
+            )
+
+    # === M1 Slice of Life 专属 ===
+    if relevance == "slice_of_life":
+        if metrics.get("slice_setting_specificity_high") is not True:
+            warnings.append(
+                "M1 · slice_setting_specificity_high=false（场景必须具体到时间+地点+状态）"
+            )
+        if metrics.get("slice_brand_appearance_seconds_le_2") is not True:
+            warnings.append(
+                "M1 · slice_brand_appearance_seconds_le_2=false（Moment 里品牌画面停留 ≤ 2 秒）"
+            )
+        try:
+            rdc = int(metrics.get("slice_routine_disclosure_count") or 0)
+            if rdc < 2:
+                warnings.append(
+                    f"M1 · slice_routine_disclosure_count={rdc} 少于 2（Routine 必须 "
+                    "≥ 2 个真实身份披露细节）"
+                )
+        except (TypeError, ValueError):
+            pass
+
+    # === M2 Problem-Naming 专属 ===
+    if relevance == "problem_naming":
+        if metrics.get("problem_naming_real_anxiety") is not True:
+            warnings.append(
+                "M2 · problem_naming_real_anxiety=false（命名的焦虑必须真实存在不能臆造）"
+            )
+        if metrics.get("problem_naming_cause_external_no_blame") is not True:
+            warnings.append(
+                "M2 · problem_naming_cause_external_no_blame=false（Cause 必须归因到"
+                "外部因素，不能甩锅给用户 — 用户感觉被指责会反向远离品牌）"
+            )
+        if metrics.get("problem_naming_relief_directly_corresponds") is not True:
+            warnings.append(
+                "M2 · problem_naming_relief_directly_corresponds=false（Relief 必须跟 "
+                "Cause 直接对应不能跑题）"
+            )
+
+    # === M3 Insider Reveal 专属 ===
+    if justification == "insider_reveal":
+        if metrics.get("insider_identity_verifiable") is not True:
+            warnings.append("M3 · insider_identity_verifiable=false（内行身份必须真实可验证）")
+        if metrics.get("insider_misconception_real") is not True:
+            warnings.append(
+                "M3 · insider_misconception_real=false（戳破的误区必须用户脑子里真实存在）"
+            )
+        if metrics.get("insider_standard_actionable") is not True:
+            warnings.append(
+                "M3 · insider_standard_actionable=false（判断标准必须具体可操作，不能抽象观点）"
+            )
+
+    # === M4 Origin Story 专属 ===
+    if justification == "origin_story":
+        if metrics.get("origin_skeptic_real") is not True:
+            warnings.append("M4 · origin_skeptic_real=false（怀疑必须真实，不能假装）")
+        if metrics.get("origin_trigger_specific_event") is not True:
+            warnings.append(
+                "M4 · origin_trigger_specific_event=false（Trigger 必须具体可还原 = "
+                "时间+地点+人物）"
+            )
+        if metrics.get("origin_self_verification") is not True:
+            warnings.append(
+                "M4 · origin_self_verification=false（必须'我自己试'，不准'专家说''研究表明'）"
+            )
+        if metrics.get("origin_integration_concrete_scene") is not True:
+            warnings.append(
+                "M4 · origin_integration_concrete_scene=false（Integration 必须具体画面"
+                "不是抽象总结）"
+            )
+
+    # === M5 Comparison Frame 专属 ===
+    if justification == "comparison_frame":
+        if metrics.get("comparison_visual_difference_clear") is not True:
+            warnings.append(
+                "M5 · comparison_visual_difference_clear=false（差异必须肉眼可见，"
+                "不能只是口播差异）"
+            )
+        if metrics.get("comparison_no_competitor_disparage") is not True:
+            warnings.append(
+                "M5 · comparison_no_competitor_disparage=false（不能贬损同类竞品 — 平台规则）"
+            )
+        if metrics.get("comparison_verdict_user_self_drawn") is not True:
+            warnings.append(
+                "M5 · comparison_verdict_user_self_drawn=false（结论必须用户自己得出 — "
+                "激活判断主权感）"
+            )
+
+    # === M6 Reason-Why 专属 ===
+    if justification == "reason_why":
+        if metrics.get("reason_why_fact_verifiable") is not True:
+            warnings.append(
+                "M6 · reason_why_fact_verifiable=false（事实必须可验证，禁模糊陈述）"
+            )
+        if metrics.get("reason_why_implication_user_lang") is not True:
+            warnings.append(
+                "M6 · reason_why_implication_user_lang=false（Implication 必须翻译成"
+                "用户日常语言，禁行业术语堆砌）"
+            )
+
+    # === M7 Testimonial 专属 ===
+    if justification == "testimonial":
+        if metrics.get("testimonial_speaker_real_no_actor") is not True:
+            warnings.append(
+                "M7 · testimonial_speaker_real_no_actor=false（Speaker 必须真实非演员 — "
+                "同期声 + 自然光 + 自然场景）"
+            )
+        if metrics.get("testimonial_experience_specific_detail") is not True:
+            warnings.append(
+                "M7 · testimonial_experience_specific_detail=false（Experience 必须有"
+                "具体可信细节）"
+            )
+        if metrics.get("testimonial_continuation_present_tense") is not True:
+            warnings.append(
+                "M7 · testimonial_continuation_present_tense=false（Continuation 必须"
+                "当下进行时画面，不是过去式回忆）"
+            )
+
+    # === M8 Demonstration 专属 ===
+    if justification == "demonstration":
+        if metrics.get("demo_action_complete_no_edit_tricks") is not True:
+            warnings.append(
+                "M8 · demo_action_complete_no_edit_tricks=false（Action 必须完整连贯，"
+                "不剪辑造成魔术效果）"
+            )
+        if metrics.get("demo_reveal_repeatable_real") is not True:
+            warnings.append(
+                "M8 · demo_reveal_repeatable_real=false（Reveal 必须真实可重复，"
+                "不能特殊条件极端展示）"
+            )
+        if metrics.get("demo_daily_no_lab_feel") is not True:
+            warnings.append(
+                "M8 · demo_daily_no_lab_feel=false（Daily 不能实验室感）"
+            )
+
+    # === M9 Authority Endorsement 专属 ===
+    if justification == "authority_endorsement":
+        if metrics.get("authority_real_verifiable") is not True:
+            warnings.append(
+                "M9 · authority_real_verifiable=false（权威必须真实可查，禁'业内人士'"
+                "'专家'模糊表述）"
+            )
+        if metrics.get("authority_recognition_evidence_provided") is not True:
+            warnings.append(
+                "M9 · authority_recognition_evidence_provided=false（Recognition 必须"
+                "有可验证证据 — 证书/报道/数据）"
+            )
+        if metrics.get("authority_translation_user_lang") is not True:
+            warnings.append(
+                "M9 · authority_translation_user_lang=false（Translation 必须翻译成"
+                "用户语言，禁堆砌专业术语）"
+            )
+
+    # === 谨慎组合提示（不阻塞，仅 hint）===
+    if relevance == "slice_of_life" and justification == "authority_endorsement":
+        warnings.append(
+            "★ 谨慎组合提示 · M1+M9 — 权威感容易破坏 Slice of Life 真实感，"
+            "需把权威落地到生活细节里（路由 2.2 节）"
+        )
+    if relevance == "problem_naming" and justification == "origin_story":
+        warnings.append(
+            "★ 谨慎组合提示 · M2+M4 — 焦虑命名后讲长故事容易拖节奏，30s 内要小心控时（路由 2.2 节）"
+        )
+    if relevance == "slice_of_life" and justification == "reason_why":
+        warnings.append(
+            "★ 谨慎组合提示 · M1+M6 — Slice of Life 真实感跟反常识事实的'打断'感"
+            "需要平衡（路由 2.2 节）"
+        )
 
     return warnings
 
