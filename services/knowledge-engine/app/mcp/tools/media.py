@@ -1000,6 +1000,22 @@ async def generate_video_segments(
         scene_face_refs = _resolve_face_refs(scene)
         scene_product_refs = _resolve_product_refs(scene)
 
+        # 火山方舟硬约束（2026-05-11 实测）：first_frame 跟 reference_images 任何 model 互斥；
+        # 1.x 系列（含 1.5-pro-251215）只支持 t2v + i2v，不支持 r2v（reference_images）。
+        # → step 7 走 i2v 模式：first_frame 优先，reference_images 全清掉（face/product 锁脸
+        #   靠 step 6 分镜图本身已按 character_sheet 锁过脸间接传递）
+        # → 等 2.0 激活后看是否开放 r2v + i2v 混合（火山方舟可能仍互斥），届时再调
+        _model_supports_r2v = "seedance-2-" in (model or "")
+        _refs_blocked_reason: str | None = None
+        if first_frame and (scene_face_refs or scene_product_refs):
+            _refs_blocked_reason = "first_frame_i2v_excludes_refs"
+            scene_face_refs = []
+            scene_product_refs = None
+        elif not _model_supports_r2v and (scene_face_refs or scene_product_refs):
+            _refs_blocked_reason = "model_does_not_support_r2v"
+            scene_face_refs = []
+            scene_product_refs = None
+
         if scene_product_refs:
             prompt = _append_strict_product_hint(
                 prompt,
@@ -1065,6 +1081,7 @@ async def generate_video_segments(
                 "last_frame_used": last_frame,
                 "face_refs_used": scene_face_refs,
                 "product_refs_used": scene_product_refs or [],
+                "refs_blocked_reason": _refs_blocked_reason,  # i2v 互斥或 model 不支持 r2v 时填
                 "characters_in_scene": scene.get("characters_in_scene") or [],
                 "product_appearance": scene.get("product_appearance"),
                 "duration_s": duration_s,

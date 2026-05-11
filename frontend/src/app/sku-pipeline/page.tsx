@@ -342,6 +342,7 @@ export default function SkuPipelinePage() {
         last_frame_used?: string | null
         face_refs_used?: string[]
         product_refs_used?: string[]
+        refs_blocked_reason?: string | null
         characters_in_scene?: string[]
         product_appearance?: boolean
         duration_s?: number
@@ -3701,6 +3702,17 @@ export default function SkuPipelinePage() {
                               {(r.product_refs_used?.length || 0) > 0 && (
                                 <Badge variant="outline" className="text-[10px]">
                                   📦 ({r.product_refs_used!.length})
+                                </Badge>
+                              )}
+                              {r.refs_blocked_reason && (
+                                <Badge variant="secondary" className="text-[10px]" title={
+                                  r.refs_blocked_reason === 'first_frame_i2v_excludes_refs'
+                                    ? '火山方舟硬约束：first_frame 跟 reference_images 互斥，i2v 模式下 face/product refs 不传。锁脸靠 step 6 分镜图已按 character_sheet 锁过脸间接传递。'
+                                    : r.refs_blocked_reason === 'model_does_not_support_r2v'
+                                      ? '当前 model（1.x 系列）不支持 r2v 多模态参考；2.0 激活后才能用 face/product refs。'
+                                      : r.refs_blocked_reason
+                                }>
+                                  ⓘ refs 已绕开
                                 </Badge>
                               )}
                             </div>

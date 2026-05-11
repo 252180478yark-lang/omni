@@ -39,8 +39,19 @@ generate_image:
   model: gpt-image-1.5
 
 generate_video:
+  # W4-B 14.4 phase D step 7 实测（2026-05-11，火山方舟账号 2101056731）：
+  # 实测能力：
+  #   - doubao-seedance-2-0-260128 / 2-0-fast-260128 → ModelNotOpen（账号未激活，需 Ark Console 激活模型推理服务）
+  #   - doubao-seedance-1-5-pro-251215 → ✓ 已激活（当前最强可用）
+  #   - doubao-seedance-1-0-pro-250528 → ✓ 已激活（老版本）
+  # 能力差异：
+  #   - 1.x 系列只支持 t2v + i2v（first_frame），不支持 r2v（reference_images 多模态）
+  #   - 2.0 系列才有 r2v（人脸+产品多参考图同传）
+  #   - 火山方舟硬约束：first_frame + reference_images 任何 model 都互斥（不能混传）
+  # → step 7 当前走 i2v 模式：first_frame = step 6 分镜图，锁脸靠分镜图本身已按 character_sheet 锁过
+  # → 等老板去 Ark Console 激活 2.0 后切 doubao-seedance-2-0-260128 + 开放 r2v 模式
   provider: seedance
-  model: seedance-2-0
+  model: doubao-seedance-1-5-pro-251215
   duration: 8
 
 summarize_text:
