@@ -138,6 +138,7 @@ class AIHubClient:
         n: int = 1,
         model: str = "gpt-image-2",
         provider: str = "openai",
+        quality: str | None = None,
         extra: dict[str, Any] | None = None,
     ) -> dict:
         """W2: image gen with multi-class refs (face / product / style)。
@@ -146,6 +147,7 @@ class AIHubClient:
           - reference_images: [{url, type, weight}, ...]  type ∈ {face, product, style}
           - aspect_ratio: 字符串（hub ImageGenerateRequest 当前用 size，但视频侧已统一用
             aspect_ratio；这里两个字段都带，hub 不识别的会被静默丢）
+          - quality: 'low' / 'medium' / 'high' / 'auto'（gpt-image-2 推荐 'high' 锁脸）
         """
         refs: list[dict[str, Any]] = []
         for r in face_refs or []:
@@ -162,6 +164,8 @@ class AIHubClient:
             "n": n,
             "aspect_ratio": aspect,
         }
+        if quality:
+            body["quality"] = quality
         if refs:
             body["reference_images"] = refs
         if extra:

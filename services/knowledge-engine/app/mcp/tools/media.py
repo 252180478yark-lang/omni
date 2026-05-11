@@ -195,6 +195,7 @@ async def generate_image(
                 n=n_per_prompt,
                 model=model_cfg.get("model", "gpt-image-2"),
                 provider=model_cfg.get("provider", "openai"),
+                quality=model_cfg.get("quality"),
             )
             urls = []
             for img in resp.get("images") or resp.get("data") or []:
@@ -335,8 +336,9 @@ async def generate_character_sheets(
                 prompt=prompt,
                 aspect=aspect_ratio,
                 n=1,
-                model=model_cfg.get("model", "gpt-image-1"),
+                model=model_cfg.get("model", "gpt-image-2"),
                 provider=model_cfg.get("provider", "openai"),
+                quality=model_cfg.get("quality"),
             )
             urls: list[str] = []
             for img in resp.get("images") or resp.get("data") or []:
@@ -604,8 +606,9 @@ async def generate_storyboard_images(
                 style_refs=style_refs,
                 aspect=aspect_ratio,
                 n=1,
-                model=model_cfg.get("model", "gpt-image-1"),
+                model=model_cfg.get("model", "gpt-image-2"),
                 provider=model_cfg.get("provider", "openai"),
+                quality=model_cfg.get("quality"),
             )
             urls: list[str] = []
             for img in resp.get("images") or resp.get("data") or []:

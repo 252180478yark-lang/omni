@@ -166,6 +166,39 @@ interface CreativePackResp {
   hint?: string
 }
 
+// ── 故事板提示词导出 util（W4-B 14.4 phase D step 6 增强 2026-05-11） ─────────
+// 把 step 5 写的 image_prompt 里的 character_sheet[role_id] 占位符
+// 展开成 inline 5 官描述（外部模型如 Midjourney / 即梦 / 可灵 / 豆包等读懂的纯文本 prompt）。
+// 不调任何 LLM —— 纯字符串拼接 + 查 character_sheets meta 替换。
+function buildStandalonePrompt(
+  imagePromptRaw: string,
+  characterSheets: Array<{
+    role_id: string
+    age?: string
+    gender?: string
+    appearance_keywords?: string
+    aura?: string
+  }>,
+): string {
+  let prompt = imagePromptRaw
+  const reCharRef = /character_sheet\s*\[\s*([a-z_][a-z0-9_]*)\s*\]/gi
+  prompt = prompt.replace(reCharRef, (match, roleId: string) => {
+    const cs = characterSheets.find(c => c.role_id === roleId)
+    if (!cs) return match // 找不到保留原占位符
+    const genderEn = cs.gender === '女' ? 'woman' : cs.gender === '男' ? 'man' : 'person'
+    const age = (cs.age || '').trim()
+    const apk = (cs.appearance_keywords || '').trim()
+    const aura = (cs.aura || '').trim()
+    // inline 描述：a 60-65 岁 woman with neat short graying hair... ; A seasoned family cook...
+    const parts: string[] = []
+    parts.push(`a ${age ? age + ' ' : ''}${genderEn}`)
+    if (apk) parts.push(`with ${apk}`)
+    if (aura) parts.push(aura)
+    return parts.join(', ')
+  })
+  return prompt
+}
+
 export default function SkuPipelinePage() {
   const [skus, setSkus] = useState<SkuRow[]>([])
   const [skuId, setSkuId] = useState<string>('')
@@ -3028,22 +3061,117 @@ export default function SkuPipelinePage() {
                     <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
                       {script6Detail.scenes.map(s => {
                         const sel = selectedScenes6.has(s.scene_no)
+                        // 故事板 prompt 数据准备（独立于 step 6 跑没跑过）
+                        const rawIp = s.image_prompt || ''
+                        const sheets = script6Detail.character_sheets || []
+                        const standalonePrompt = rawIp ? buildStandalonePrompt(rawIp, sheets) : ''
+                        // character_sheet asset url（来自 step 6.5 跑结果）— role_id → file_url
+                        const charAssetUrls: Record<string, string> = {}
+                        ;(charSheetsResp?.result?.results || []).forEach(rr => {
+                          if (rr.role_id && rr.file_url) charAssetUrls[rr.role_id] = rr.file_url
+                        })
+                        const sceneFaceUrls = (s.characters_in_scene || [])
+                          .map(roleId => charAssetUrls[roleId])
+                          .filter((x): x is string => Boolean(x))
+                        const manualFaceUrls = faceRefs6.split(/\n/).map(x => x.trim()).filter(Boolean)
+                        const allFaceUrls = [...manualFaceUrls, ...sceneFaceUrls]
+                        const productUrls = s.product_appearance !== false
+                          ? productRefs6.split(/\n/).map(x => x.trim()).filter(Boolean)
+                          : []
+                        const refLines: string[] = []
+                        allFaceUrls.forEach((u, i) => refLines.push(`- 人脸参考 ${i + 1}: ${u}`))
+                        productUrls.forEach((u, i) => refLines.push(`- 产品参考 ${i + 1}: ${u}`))
+                        const sbFullText = refLines.length > 0
+                          ? `${standalonePrompt}\n\nReference images (strictly preserve the people and products shown):\n${refLines.join('\n')}`
+                          : standalonePrompt
                         return (
                           <div
                             key={s.scene_no}
-                            className={`p-2 border rounded cursor-pointer transition ${sel ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/30'}`}
-                            onClick={() => toggleScene6(s.scene_no)}
+                            className={`p-2 border rounded transition ${sel ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/30'}`}
                           >
-                            <div className="flex items-center gap-2 text-xs">
+                            <div
+                              className="flex items-center gap-2 text-xs cursor-pointer"
+                              onClick={() => toggleScene6(s.scene_no)}
+                            >
                               <span className="font-medium">第 {s.scene_no} 段</span>
                               {s.name && <span className="text-muted-foreground truncate">· {s.name}</span>}
                               {s.time_range && <Badge variant="outline" className="text-[10px]">{s.time_range}</Badge>}
+                              {(s.characters_in_scene?.length || 0) > 0 && (
+                                <Badge variant="outline" className="text-[10px]">
+                                  👤 {s.characters_in_scene!.join('/')} ({sceneFaceUrls.length})
+                                </Badge>
+                              )}
+                              {s.product_appearance === true && (
+                                <Badge variant="outline" className="text-[10px]">📦 ({productUrls.length})</Badge>
+                              )}
                               {sel && <span className="ml-auto text-primary text-[10px]">✓ 跑</span>}
                             </div>
                             {s.visual && (
-                              <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                              <div
+                                className="text-[11px] text-muted-foreground mt-1 line-clamp-2 cursor-pointer"
+                                onClick={() => toggleScene6(s.scene_no)}
+                              >
                                 {s.visual}
                               </div>
+                            )}
+                            {rawIp && (
+                              <details
+                                className="mt-1 text-[11px]"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <summary className="cursor-pointer text-primary font-medium">
+                                  📋 故事板提示词（外部模型用 · 含人脸/产品描述 + 参考图 url）
+                                </summary>
+                                <div className="mt-1 space-y-2" onClick={e => e.stopPropagation()}>
+                                  <textarea
+                                    readOnly
+                                    value={sbFullText}
+                                    rows={Math.min(14, sbFullText.split('\n').length + 2)}
+                                    className="w-full text-[10px] font-mono p-2 border rounded bg-muted/30"
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      (e.target as HTMLTextAreaElement).select()
+                                    }}
+                                  />
+                                  {(allFaceUrls.length > 0 || productUrls.length > 0) && (
+                                    <div className="space-y-1">
+                                      <div className="text-[10px] text-muted-foreground">
+                                        参考图（点缩略图打开原图，方便下载贴外部模型）：
+                                      </div>
+                                      <div className="flex flex-wrap gap-2">
+                                        {allFaceUrls.map((u, i) => (
+                                          <a key={`f${i}`} href={u} target="_blank" rel="noreferrer" title={`人脸 ${i + 1}`} onClick={e => e.stopPropagation()}>
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={u} alt={`face${i}`} className="w-12 h-12 object-cover rounded border" />
+                                          </a>
+                                        ))}
+                                        {productUrls.map((u, i) => (
+                                          <a key={`p${i}`} href={u} target="_blank" rel="noreferrer" title={`产品 ${i + 1}`} onClick={e => e.stopPropagation()}>
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={u} alt={`product${i}`} className="w-12 h-12 object-cover rounded border" />
+                                          </a>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {(s.characters_in_scene?.length || 0) > 0 && sceneFaceUrls.length === 0 && (
+                                    <div className="text-[10px] text-orange-500">
+                                      ⚠ 本段角色 {s.characters_in_scene!.join('/')} 还没出定妆照（step 6.5），prompt 里只有文字描述、无参考图 url。先跑 step 6.5 定妆照后再来这里拿 url
+                                    </div>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="text-xs h-7"
+                                    onClick={e => {
+                                      e.stopPropagation()
+                                      navigator.clipboard.writeText(sbFullText)
+                                    }}
+                                  >
+                                    📋 复制全文（prompt + 参考图 url）
+                                  </Button>
+                                </div>
+                              </details>
                             )}
                           </div>
                         )
@@ -3276,10 +3404,71 @@ export default function SkuPipelinePage() {
                         )}
                         {r.prompt && (
                           <details className="mt-2 text-[11px]">
-                            <summary className="cursor-pointer text-muted-foreground">prompt</summary>
+                            <summary className="cursor-pointer text-muted-foreground">prompt (omni 内部，带 character_sheet[] 占位)</summary>
                             <pre className="whitespace-pre-wrap bg-muted/40 p-2 rounded mt-1 text-[10px]">{r.prompt}</pre>
                           </details>
                         )}
+                        {(() => {
+                          // 故事板提示词（外部模型用）— 展开 character_sheet[] 占位 + 列出参考图 url
+                          const scene = script6Detail?.scenes?.find(s => s.scene_no === r.scene_no)
+                          const rawIp = scene?.image_prompt || ''
+                          if (!rawIp) return null
+                          const sheets = script6Detail?.character_sheets || []
+                          const standalone = buildStandalonePrompt(rawIp, sheets)
+                          const faceUrls = r.face_refs_used || []
+                          const productUrls = r.product_refs_used || []
+                          const refLines: string[] = []
+                          faceUrls.forEach((u, i) => refLines.push(`- 人脸参考 ${i + 1}: ${u}`))
+                          productUrls.forEach((u, i) => refLines.push(`- 产品参考 ${i + 1}: ${u}`))
+                          const fullText = refLines.length > 0
+                            ? `${standalone}\n\nReference images (use as visual reference, strictly preserve the people and products shown):\n${refLines.join('\n')}`
+                            : standalone
+                          return (
+                            <details className="mt-2 text-[11px]">
+                              <summary className="cursor-pointer text-primary font-medium">
+                                📋 故事板提示词（外部模型用 · 含人脸/产品描述+参考图 url）
+                              </summary>
+                              <div className="mt-1 space-y-2">
+                                <textarea
+                                  readOnly
+                                  value={fullText}
+                                  rows={Math.min(14, fullText.split('\n').length + 2)}
+                                  className="w-full text-[10px] font-mono p-2 border rounded bg-muted/30"
+                                  onClick={e => (e.target as HTMLTextAreaElement).select()}
+                                />
+                                {(faceUrls.length > 0 || productUrls.length > 0) && (
+                                  <div className="space-y-1">
+                                    <div className="text-[10px] text-muted-foreground">参考图（点缩略图打开原图，方便下载贴外部模型）：</div>
+                                    <div className="flex flex-wrap gap-2">
+                                      {faceUrls.map((u, i) => (
+                                        <a key={`f${i}`} href={u} target="_blank" rel="noreferrer" title={`人脸 ${i + 1}`}>
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={u} alt={`face${i}`} className="w-14 h-14 object-cover rounded border" />
+                                        </a>
+                                      ))}
+                                      {productUrls.map((u, i) => (
+                                        <a key={`p${i}`} href={u} target="_blank" rel="noreferrer" title={`产品 ${i + 1}`}>
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img src={u} alt={`product${i}`} className="w-14 h-14 object-cover rounded border" />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="text-xs h-7"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(fullText)
+                                  }}
+                                >
+                                  📋 复制全文（prompt + 参考图 url）
+                                </Button>
+                              </div>
+                            </details>
+                          )
+                        })()}
                         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                           <Button
                             size="sm"
@@ -3733,10 +3922,85 @@ export default function SkuPipelinePage() {
                           )}
                           {r.prompt && (
                             <details className="text-xs">
-                              <summary className="cursor-pointer text-muted-foreground">▼ prompt</summary>
+                              <summary className="cursor-pointer text-muted-foreground">▼ prompt (omni 内部，带占位翻译)</summary>
                               <pre className="mt-1 p-2 bg-muted/50 rounded whitespace-pre-wrap text-[10px]">{r.prompt}</pre>
                             </details>
                           )}
+                          {(() => {
+                            // 故事板提示词（外部视频模型用：即梦/可灵/Sora/Veo 等）
+                            const scene = script6Detail?.scenes?.find(s => s.scene_no === r.scene_no)
+                            const rawIp = scene?.image_prompt || ''
+                            if (!rawIp) return null
+                            const sheets = script6Detail?.character_sheets || []
+                            const standalone = buildStandalonePrompt(rawIp, sheets)
+                            // step 7 face_refs 可能被 i2v 互斥清空，回退 step 6 出图同 scene 拿
+                            let faceUrls = r.face_refs_used || []
+                            const productUrls = r.product_refs_used || []
+                            if (faceUrls.length === 0 && r.refs_blocked_reason) {
+                              // 回查 step 6 此段出图（如有跑过）拿到 face/product refs（中间桥接）
+                              const sb6 = resp6?.result?.results?.find(x => x.scene_no === r.scene_no)
+                              if (sb6) {
+                                faceUrls = sb6.face_refs_used || []
+                              }
+                            }
+                            const refLines: string[] = []
+                            if (r.first_frame_used) refLines.push(`- 起手帧 (step 6 分镜图): ${r.first_frame_used}`)
+                            faceUrls.forEach((u, i) => refLines.push(`- 人脸参考 ${i + 1}: ${u}`))
+                            productUrls.forEach((u, i) => refLines.push(`- 产品参考 ${i + 1}: ${u}`))
+                            const durationHint = r.duration_s ? `\n\nVideo duration: ${r.duration_s}s.` : ''
+                            const fullText = refLines.length > 0
+                              ? `${standalone}${durationHint}\n\nReference media:\n${refLines.join('\n')}`
+                              : standalone + durationHint
+                            return (
+                              <details className="text-xs">
+                                <summary className="cursor-pointer text-primary font-medium">
+                                  📋 故事板提示词（外部视频模型用 · 含人脸/产品+起手帧 url）
+                                </summary>
+                                <div className="mt-1 space-y-2">
+                                  <textarea
+                                    readOnly
+                                    value={fullText}
+                                    rows={Math.min(14, fullText.split('\n').length + 2)}
+                                    className="w-full text-[10px] font-mono p-2 border rounded bg-muted/30"
+                                    onClick={e => (e.target as HTMLTextAreaElement).select()}
+                                  />
+                                  {(faceUrls.length > 0 || productUrls.length > 0 || r.first_frame_used) && (
+                                    <div className="space-y-1">
+                                      <div className="text-[10px] text-muted-foreground">参考媒体（点缩略图打开原图）：</div>
+                                      <div className="flex flex-wrap gap-2">
+                                        {r.first_frame_used && (
+                                          <a href={r.first_frame_used} target="_blank" rel="noreferrer" title="起手帧（step 6 分镜图）">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={r.first_frame_used} alt="first_frame" className="w-14 h-14 object-cover rounded border border-blue-400" />
+                                          </a>
+                                        )}
+                                        {faceUrls.map((u, i) => (
+                                          <a key={`f${i}`} href={u} target="_blank" rel="noreferrer" title={`人脸 ${i + 1}`}>
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={u} alt={`face${i}`} className="w-14 h-14 object-cover rounded border" />
+                                          </a>
+                                        ))}
+                                        {productUrls.map((u, i) => (
+                                          <a key={`p${i}`} href={u} target="_blank" rel="noreferrer" title={`产品 ${i + 1}`}>
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={u} alt={`product${i}`} className="w-14 h-14 object-cover rounded border" />
+                                          </a>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="text-xs h-7"
+                                    onClick={() => navigator.clipboard.writeText(fullText)}
+                                  >
+                                    📋 复制全文（prompt + 媒体 url）
+                                  </Button>
+                                </div>
+                              </details>
+                            )
+                          })()}
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <Button
                               size="sm"
