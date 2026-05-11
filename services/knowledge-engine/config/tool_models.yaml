@@ -30,14 +30,16 @@ generate_brief:
     user: generate_brief.user
 
 generate_image:
-  # 2026-05-11 老板临时回切 1.5 — 暂不等 gpt-image-2 verify 15min 传播，先把 step 7 视频测试跑通
-  # gpt-image-2 切换文档保留：
-  #   - 切 model: gpt-image-2 + quality: high 即可（KE / hub / ai_hub_client 已透 quality）
-  #   - 前提：OpenAI Organization Verification 已通过
-  #     (platform.openai.com/settings/organization/general)
-  #   - gpt-image-2 自动 high input_fidelity 处理每张参考图，锁脸明显优于 1.5
-  provider: openai
-  model: gpt-image-1.5
+  # 2026-05-11 OpenAI gpt-image-2 verify 未生效（老板 verify 后仍返 403 Forbidden），
+  # 临时切 Google Gemini gemini-3.1-flash-image-preview
+  # Gemini image-gen 特点：
+  #   - 自然语言长 prompt 表现好（11 维度 image_prompt 模板对口）
+  #   - 锁脸能力实测待校准（旧版 phase D 之前用过，没专门测多角色锁脸）
+  # 回切候选：
+  #   - openai/gpt-image-2 + quality: high（等老板 verify 真生效后）
+  #   - openai/gpt-image-1.5（fallback，锁脸不准）
+  provider: gemini
+  model: gemini-3.1-flash-image-preview
 
 generate_video:
   # W4-B 14.4 phase D step 7（2026-05-11，老板 Ark Console 已激活 2.0 后切）：
