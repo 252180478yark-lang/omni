@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Target, Film } from 'lucide-react'
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Target, Film, Network, Image as ImageIcon } from 'lucide-react'
+import LineageTree, { type PickableNode } from './LineageTree'
 
 interface SkuRow {
   id: string
@@ -177,7 +178,7 @@ export default function SkuPipelinePage() {
   const [extraContext2, setExtraContext2] = useState('')
   const [running2, setRunning2] = useState(false)
   const [resp2, setResp2] = useState<MatrixResp | null>(null)
-  const [showPrompt2, setShowPrompt2] = useState(false)
+  const [showPrompt2, setShowPrompt2] = useState(true)
 
   // Step 3 state
   const [matrixMd3, setMatrixMd3] = useState('')
@@ -186,7 +187,7 @@ export default function SkuPipelinePage() {
   const [showOverride, setShowOverride] = useState(false)
   const [running3, setRunning3] = useState(false)
   const [resp3, setResp3] = useState<AudienceResp | null>(null)
-  const [showPrompt3, setShowPrompt3] = useState(false)
+  const [showPrompt3, setShowPrompt3] = useState(true)
   const [showQueries, setShowQueries] = useState(false)
   // Step 3 phase A：N 个人群卡片相关
   const [adoptedRecordIds, setAdoptedRecordIds] = useState<Set<string>>(new Set())
@@ -194,6 +195,114 @@ export default function SkuPipelinePage() {
   const [expandedRecord, setExpandedRecord] = useState<string | null>(null)
   const [recordDetails, setRecordDetails] = useState<Record<string, RecordDetail>>({})
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null)
+  // Step 4 / Step 5 / 未来 step：确认绑入血缘（status='draft' → 'adopted'）
+  // 跑完即落 draft（已实现），老板手动点"确认绑入血缘"才走下游 + 进 v_asset_full_lineage
+  const [adoptingPack, setAdoptingPack] = useState<string | null>(null)
+  const [adoptedPackIds, setAdoptedPackIds] = useState<Set<string>>(new Set())
+  const [adoptingScript, setAdoptingScript] = useState<string | null>(null)
+  const [adoptedScriptIds, setAdoptedScriptIds] = useState<Set<string>>(new Set())
+  // 血缘图 pick 模态（step 5 / phase D 输入区调起，从血缘图选上游）
+  const [pickModalOpen, setPickModalOpen] = useState(false)
+
+  // ── Step 6：分镜图生成（W4-B 切片 14.4 phase D） ─────────
+  // SKU 下所有 adopted 脚本（拉来选 1 条出分镜图）
+  const [scriptsForSku6, setScriptsForSku6] = useState<Array<{
+    id: string
+    kind: string
+    version: number
+    status: string
+    created_at: string
+    audience_record_id: string | null
+    audience_pack_id: string | null
+  }> | null>(null)
+  const [loadingScripts6, setLoadingScripts6] = useState(false)
+  const [script6Id, setScript6Id] = useState<string>('')
+  const [script6Detail, setScript6Detail] = useState<{
+    id: string
+    kind: string
+    sku_id: string
+    version: number
+    status: string
+    scenes: Array<{
+      scene_no: number
+      name?: string
+      time_range?: string
+      visual?: string
+      shot?: string
+      dialog?: string
+      image_prompt?: string
+      characters_in_scene?: string[]
+      product_appearance?: boolean
+    }>
+    character_sheets?: Array<{
+      role_id: string
+      name?: string
+      age?: string
+      gender?: string
+      appearance_keywords?: string
+      aura?: string
+    }>
+  } | null>(null)
+  const [loadingScript6Detail, setLoadingScript6Detail] = useState(false)
+  const [faceRefs6, setFaceRefs6] = useState('')
+  const [productRefs6, setProductRefs6] = useState('')
+  const [aspect6, setAspect6] = useState('9:16')
+  const [extraSuffix6, setExtraSuffix6] = useState('')
+  const [running6, setRunning6] = useState(false)
+  const [resp6, setResp6] = useState<{
+    ok: boolean
+    result?: {
+      script_id: string
+      kind: string
+      sku_id: string
+      scenes_total: number
+      success_count: number
+      error_count: number
+      results: Array<{
+        scene_no: number
+        asset_id?: string
+        file_url?: string
+        prompt?: string
+        error?: string
+        face_refs_used?: string[]
+        product_refs_used?: string[]
+        characters_in_scene?: string[]
+        product_appearance?: boolean
+      }>
+    }
+    trace?: TraceShape
+    error?: string
+    hint?: string
+  } | null>(null)
+  // 哪些 scene 选中重跑（默认全跑；prefix 用 -1 表示全跑）
+  const [selectedScenes6, setSelectedScenes6] = useState<Set<number>>(new Set())
+  // 已采纳 asset id 集合（step 6 / 6.5 共用：分镜图 + 角色定妆图都进 pipeline.assets）
+  const [adoptedAssetIds, setAdoptedAssetIds] = useState<Set<string>>(new Set())
+  const [adoptingAsset, setAdoptingAsset] = useState<string | null>(null)
+  // 血缘图刷新触发器 — character_sheets / storyboard / adopt 跑完 +1，LineageTree key remount 重 fetch
+  const [lineageKey, setLineageKey] = useState(0)
+  const bumpLineage = () => setLineageKey(k => k + 1)
+  // step 6.5 角色定妆白底像
+  const [runningCharSheets, setRunningCharSheets] = useState(false)
+  const [charSheetsResp, setCharSheetsResp] = useState<{
+    ok: boolean
+    result?: {
+      script_id: string
+      roles_total: number
+      success_count: number
+      error_count: number
+      results: Array<{
+        role_id: string
+        name?: string
+        asset_id?: string
+        file_url?: string
+        prompt?: string
+        error?: string
+      }>
+    }
+    error?: string
+    hint?: string
+  } | null>(null)
   // SKU 已收藏人群池（跨多次 audience_run 的 status=adopted 累积）
   const [poolRecords, setPoolRecords] = useState<AudienceRecordSummary[] | null>(null)
   const [poolLoading, setPoolLoading] = useState(false)
@@ -212,7 +321,7 @@ export default function SkuPipelinePage() {
   const [extraContext4, setExtraContext4] = useState('')
   const [running4, setRunning4] = useState(false)
   const [resp4, setResp4] = useState<AudiencePackResp | null>(null)
-  const [showPrompt4, setShowPrompt4] = useState(false)
+  const [showPrompt4, setShowPrompt4] = useState(true)
   // Step 4 关键词扩展（phase B+）
   const [seedKw, setSeedKw] = useState('')
   const [targetCountKw, setTargetCountKw] = useState(500)
@@ -225,12 +334,25 @@ export default function SkuPipelinePage() {
   const [srcMode5, setSrcMode5] = useState<'record' | 'pack' | 'sku'>('record')
   const [record5Id, setRecord5Id] = useState<string>('')
   const [pack5Id, setPack5Id] = useState<string>('')
+  const [pack5Detail, setPack5Detail] = useState<{
+    id: string
+    sku_id: string
+    audience_record_id: string
+    audience_run_id: string
+    matrix_run_id: string
+    pack_md: string
+    version: number
+    status: string
+    created_at: string
+  } | null>(null)
+  const [loadingPack5, setLoadingPack5] = useState(false)
+  const [showPack5Md, setShowPack5Md] = useState(false)
   const [packListForSku, setPackListForSku] = useState<Array<{ id: string; sku_id: string; version: number; status: string; created_at: string }> | null>(null)
   const [packListLoading, setPackListLoading] = useState(false)
   const [extraContext5, setExtraContext5] = useState('')
   const [running5, setRunning5] = useState(false)
   const [resp5, setResp5] = useState<CreativePackResp | null>(null)
-  const [showPrompt5, setShowPrompt5] = useState(false)
+  const [showPrompt5, setShowPrompt5] = useState(true)
 
   useEffect(() => {
     fetch('/api/omni/scout/skus?status=active')
@@ -348,6 +470,71 @@ export default function SkuPipelinePage() {
     }
   }
 
+  // 把某个 audience_pack 从 status='draft' 改 'adopted'（确认绑入血缘）。
+  // 不动 audience_record selected_for_pack — pack adopt 只是"老板觉得这版圈包 OK"的标记。
+  // 多版本并存：同 record 重跑得多版 pack，老板可逐个采纳，下游手挑。
+  const adoptAudiencePack = async (packId: string) => {
+    if (!packId || adoptingPack) return
+    setAdoptingPack(packId)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/adopt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          table: 'audience_packs',
+          run_id: packId,
+        }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok) {
+        setAdoptedPackIds(prev => {
+          const next = new Set(prev)
+          next.add(packId)
+          return next
+        })
+        bumpLineage()
+      } else {
+        setError(`圈包采纳失败：${json.data?.error || json.error || '未知错误'}`)
+      }
+    } catch (e) {
+      setError(`圈包采纳异常：${String(e)}`)
+    } finally {
+      setAdoptingPack(null)
+    }
+  }
+
+  // 把某条 creative script（pipeline.scripts）从 'draft' 改 'adopted'。
+  // 同 sku+kind 多版可并存采纳；下游 phase D 生成时按 sku+kind 列出 adopted 让老板挑。
+  const adoptCreativeScript = async (scriptId: string) => {
+    if (!scriptId || adoptingScript) return
+    setAdoptingScript(scriptId)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/adopt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          table: 'scripts',
+          run_id: scriptId,
+        }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok) {
+        setAdoptedScriptIds(prev => {
+          const next = new Set(prev)
+          next.add(scriptId)
+          return next
+        })
+        bumpLineage()
+      } else {
+        setError(`脚本采纳失败：${json.data?.error || json.error || '未知错误'}`)
+      }
+    } catch (e) {
+      setError(`脚本采纳异常：${String(e)}`)
+    } finally {
+      setAdoptingScript(null)
+    }
+  }
+
   // 拉 SKU 已收藏池（跨多次 audience_run）—— 老板要确认"留着以后用"是真留下了
   const loadPool = async () => {
     if (!skuId) return
@@ -374,13 +561,237 @@ export default function SkuPipelinePage() {
     }
   }
 
-  // SKU 变化时清空 pool / history 缓存（让老板切 SKU 时不串）
+  // 脚本详情变化时自动全选所有 scene（不依赖 selectScript6 内部 timing）
+  useEffect(() => {
+    if (script6Detail?.scenes && script6Detail.scenes.length > 0) {
+      const all = new Set<number>(
+        script6Detail.scenes.map(s => s.scene_no).filter((n): n is number => typeof n === 'number')
+      )
+      setSelectedScenes6(all)
+    } else {
+      setSelectedScenes6(new Set())
+    }
+  }, [script6Detail])
+
+  // SKU 变化时清空 pool / history / 已采纳 Set / step 6 脚本缓存 / step 5 pack/record 选中（让老板切 SKU 时不串）
   useEffect(() => {
     setPoolRecords(null)
     setShowPool(false)
     setHistoryRuns(null)
     setShowHistory(false)
+    setAdoptedPackIds(new Set())
+    setAdoptedScriptIds(new Set())
+    setScriptsForSku6(null)
+    setScript6Id('')
+    setScript6Detail(null)
+    setResp6(null)
+    setSelectedScenes6(new Set())
+    setCharSheetsResp(null)
+    setRecord5Id('')
+    setPack5Id('')
+    setPack5Detail(null)
+    setShowPack5Md(false)
   }, [skuId])
+
+  // pack 模式：拉选中 pack 的 pack_md / 关联 ids（让老板预览选对没）
+  const loadPack5Detail = async (packId: string) => {
+    if (!packId) {
+      setPack5Detail(null)
+      return
+    }
+    setLoadingPack5(true)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/get-pack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pack_id: packId }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok && json.data.pack) {
+        setPack5Detail(json.data.pack)
+      } else {
+        setPack5Detail(null)
+      }
+    } catch (e) {
+      console.error('loadPack5Detail failed', e)
+      setPack5Detail(null)
+    } finally {
+      setLoadingPack5(false)
+    }
+  }
+
+  // ── Step 6 函数：拉脚本列表 / 选脚本拉 scenes / 跑分镜图 ──
+  const loadScriptsForStep6 = async () => {
+    if (!skuId) return
+    setLoadingScripts6(true)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/list-scripts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku_id: skuId, limit: 50 }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok) {
+        setScriptsForSku6(json.data.scripts || [])
+      } else {
+        setScriptsForSku6([])
+        setError(`加载脚本失败：${json.data?.error || json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`加载脚本异常：${String(e)}`)
+      setScriptsForSku6([])
+    } finally {
+      setLoadingScripts6(false)
+    }
+  }
+
+  const selectScript6 = async (scriptId: string) => {
+    setScript6Id(scriptId)
+    setScript6Detail(null)
+    setSelectedScenes6(new Set())
+    setCharSheetsResp(null)
+    if (!scriptId) return
+    setLoadingScript6Detail(true)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/get-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script_id: scriptId }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok && json.data.script) {
+        setScript6Detail(json.data.script)
+        // 默认全选
+        const all = new Set<number>(
+          (json.data.script.scenes || []).map((s: any) => s.scene_no as number)
+        )
+        setSelectedScenes6(all)
+      }
+    } catch (e) {
+      console.error('selectScript6 failed', e)
+    } finally {
+      setLoadingScript6Detail(false)
+    }
+  }
+
+  const runStep6Storyboard = async (sceneNumsOverride?: number[]) => {
+    if (!script6Id || running6) return
+    const scene_nums = sceneNumsOverride !== undefined
+      ? sceneNumsOverride
+      : (selectedScenes6.size > 0 && selectedScenes6.size < (script6Detail?.scenes?.length || 0)
+          ? Array.from(selectedScenes6)
+          : null)  // null = 全跑
+    const face_refs = faceRefs6.split(/\n/).map(s => s.trim()).filter(Boolean)
+    const product_refs = productRefs6.split(/\n/).map(s => s.trim()).filter(Boolean)
+    setRunning6(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/storyboard-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script_id: script6Id,
+          scene_nums,
+          face_refs: face_refs.length ? face_refs : null,
+          product_refs: product_refs.length ? product_refs : null,
+          aspect_ratio: aspect6,
+          extra_prompt_suffix: extraSuffix6.trim() || null,
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setResp6(json.data)
+        bumpLineage()  // 触发 LineageTree refetch（新出的分镜 asset 已落 db）
+      } else {
+        setError(`分镜图生成失败：${json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`分镜图生成异常：${String(e)}`)
+    } finally {
+      setRunning6(false)
+    }
+  }
+
+  // step 6.5：跑 character_sheets 角色定妆白底像（同 script_id 全角色或某几个）
+  const runCharacterSheets = async (roleIds?: string[]) => {
+    if (!script6Id || runningCharSheets) return
+    setRunningCharSheets(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/character-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script_id: script6Id,
+          role_ids: roleIds || null,
+          aspect_ratio: '1:1',
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setCharSheetsResp(json.data)
+        bumpLineage()  // 触发 LineageTree refetch（character_sheet asset 已落 db，让血缘图能立刻看到）
+      } else {
+        setError(`角色定妆失败：${json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`角色定妆异常：${String(e)}`)
+    } finally {
+      setRunningCharSheets(false)
+    }
+  }
+
+  // ✓ 采纳 asset（落 status='draft' → 'adopted'，下游/血缘图可挂）
+  const adoptAsset = async (assetId: string) => {
+    if (!assetId || adoptingAsset) return
+    setAdoptingAsset(assetId)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/adopt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'assets', run_id: assetId }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok) {
+        setAdoptedAssetIds(prev => {
+          const next = new Set(prev)
+          next.add(assetId)
+          return next
+        })
+        bumpLineage()  // 血缘图同步刷新（asset status 变绿）
+      } else {
+        setError(`资产采纳失败：${json.data?.error || json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`资产采纳异常：${String(e)}`)
+    } finally {
+      setAdoptingAsset(null)
+    }
+  }
+
+  // ⬇ 下载图（base64 data URL 或 http url 都支持，直接触发浏览器下载）
+  const downloadAsset = (url: string, filename: string) => {
+    if (!url) return
+    try {
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+    } catch (e) {
+      setError(`下载失败：${String(e)}`)
+    }
+  }
+
+  const toggleScene6 = (sceneNo: number) => {
+    setSelectedScenes6(prev => {
+      const next = new Set(prev)
+      if (next.has(sceneNo)) next.delete(sceneNo)
+      else next.add(sceneNo)
+      return next
+    })
+  }
 
   // 老板点了"看人群池"或者本次新收藏一条 → 自动 refresh pool（保证池数据是最新的）
   useEffect(() => {
@@ -758,7 +1169,7 @@ export default function SkuPipelinePage() {
   )
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
+    <div className="mx-auto p-6 max-w-[1800px]">
       <div className="mb-6">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Sparkles className="w-6 h-6" /> SKU Pipeline 测试
@@ -768,24 +1179,30 @@ export default function SkuPipelinePage() {
         </p>
       </div>
 
-      <Tabs defaultValue="step2" className="w-full">
-        <TabsList variant="line">
-          <TabsTrigger value="step2">
-            <Sparkles className="w-3 h-3 mr-1" /> Step 2 · 卖点矩阵
+      <Tabs defaultValue="step2" orientation="vertical" className="w-full gap-4 items-start">
+        <TabsList variant="line" className="w-40 shrink-0 h-fit p-2 sticky top-4">
+          <TabsTrigger value="step2" className="text-sm font-medium w-full justify-start py-2">
+            <Sparkles className="w-4 h-4 mr-1.5" /> Step 2 · 卖点矩阵
           </TabsTrigger>
-          <TabsTrigger value="step3">
-            <Users className="w-3 h-3 mr-1" /> Step 3 · 人群匹配
+          <TabsTrigger value="step3" className="text-sm font-medium w-full justify-start py-2">
+            <Users className="w-4 h-4 mr-1.5" /> Step 3 · 人群匹配
           </TabsTrigger>
-          <TabsTrigger value="step4">
-            <Target className="w-3 h-3 mr-1" /> Step 4 · 圈包 SOP
+          <TabsTrigger value="step4" className="text-sm font-medium w-full justify-start py-2">
+            <Target className="w-4 h-4 mr-1.5" /> Step 4 · 圈包
           </TabsTrigger>
-          <TabsTrigger value="step5">
-            <Film className="w-3 h-3 mr-1" /> Step 5 · 创意素材
+          <TabsTrigger value="step5" className="text-sm font-medium w-full justify-start py-2">
+            <Film className="w-4 h-4 mr-1.5" /> Step 5 · 创意素材
+          </TabsTrigger>
+          <TabsTrigger value="step6" className="text-sm font-medium w-full justify-start py-2">
+            <ImageIcon className="w-4 h-4 mr-1.5" /> Step 6 · 分镜图
+          </TabsTrigger>
+          <TabsTrigger value="lineage" className="text-sm font-medium w-full justify-start py-2">
+            <Network className="w-4 h-4 mr-1.5" /> 血缘图
           </TabsTrigger>
         </TabsList>
 
         {/* ============== STEP 2: 卖点矩阵 ============== */}
-        <TabsContent value="step2" className="mt-4">
+        <TabsContent value="step2" className="mt-0 flex-1 min-w-0">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader>
@@ -806,7 +1223,7 @@ export default function SkuPipelinePage() {
                     placeholder="例：日式风味、有机、零添加、180 天发酵、玻璃瓶包装、33 年源头工厂..."
                     value={userInitialPoints}
                     onChange={e => setUserInitialPoints(e.target.value)}
-                    rows={3}
+                    rows={5}
                     className="text-sm"
                   />
                 </div>
@@ -832,7 +1249,7 @@ export default function SkuPipelinePage() {
                     placeholder="（可空）建议先 search_kb 拿同品类爆款拆解 / 品牌资产再贴这里"
                     value={kbContext}
                     onChange={e => setKbContext(e.target.value)}
-                    rows={3}
+                    rows={5}
                     className="text-sm"
                   />
                 </div>
@@ -845,7 +1262,7 @@ export default function SkuPipelinePage() {
                     placeholder="（可空）例：「这次主推送礼场景」「重点挖儿童辅食角度」"
                     value={extraContext2}
                     onChange={e => setExtraContext2(e.target.value)}
-                    rows={2}
+                    rows={4}
                     className="text-sm"
                   />
                 </div>
@@ -926,7 +1343,7 @@ export default function SkuPipelinePage() {
                           Final Prompt
                         </button>
                         {showPrompt2 && (
-                          <pre className="mt-2 p-3 bg-muted text-xs rounded max-h-96 overflow-auto whitespace-pre-wrap">
+                          <pre className="mt-2 p-3 bg-muted text-xs rounded whitespace-pre-wrap">
                             {resp2.trace.final_prompt}
                           </pre>
                         )}
@@ -946,7 +1363,7 @@ export default function SkuPipelinePage() {
         </TabsContent>
 
         {/* ============== STEP 3: 人群匹配 ============== */}
-        <TabsContent value="step3" className="mt-4">
+        <TabsContent value="step3" className="mt-0 flex-1 min-w-0">
           {/* SKU 状态卡（人群池 + 历史跑次）*/}
           {skuId && (
             <Card className="mb-4">
@@ -1131,7 +1548,7 @@ export default function SkuPipelinePage() {
                     placeholder="（可空）例：「重点挖跨圈层」「假设里多列银发人群」「对标 X 品牌的人群路径」"
                     value={extraContext3}
                     onChange={e => setExtraContext3(e.target.value)}
-                    rows={2}
+                    rows={4}
                     className="text-sm"
                   />
                 </div>
@@ -1336,7 +1753,7 @@ export default function SkuPipelinePage() {
                     )}
 
                     {/* 完整原始报告（折叠 — 老板想看 LLM 原始整段时翻这里） */}
-                    <details className="mt-4 border-t pt-4">
+                    <details className="mt-4 border-t pt-4" open>
                       <summary className="text-sm font-medium cursor-pointer select-none">
                         完整原始报告（含第 2 部分标签汇总；含 LLM 原始 markdown）
                       </summary>
@@ -1357,7 +1774,7 @@ export default function SkuPipelinePage() {
                           Final Prompt（含 KB 召回原文）
                         </button>
                         {showPrompt3 && (
-                          <pre className="mt-2 p-3 bg-muted text-xs rounded max-h-96 overflow-auto whitespace-pre-wrap">
+                          <pre className="mt-2 p-3 bg-muted text-xs rounded whitespace-pre-wrap">
                             {resp3.trace.final_prompt}
                           </pre>
                         )}
@@ -1377,7 +1794,7 @@ export default function SkuPipelinePage() {
         </TabsContent>
 
         {/* ============== STEP 4: 圈包 SOP ============== */}
-        <TabsContent value="step4" className="mt-4">
+        <TabsContent value="step4" className="mt-0 flex-1 min-w-0">
           {/* SKU 状态卡（已收藏池 — 复用 step 3 的池子）*/}
           {skuId && (
             <Card className="mb-4">
@@ -1481,7 +1898,7 @@ export default function SkuPipelinePage() {
                       展开 KB chunk 原文
                     </button>
                     {showRecord4Detail && (
-                      <pre className="mt-2 p-2 bg-background border rounded text-[10px] max-h-60 overflow-auto whitespace-pre-wrap">
+                      <pre className="mt-2 p-2 bg-background border rounded text-xs whitespace-pre-wrap">
                         {record4Detail.kb_chunk_text || '（KB chunk 缺失）'}
                       </pre>
                     )}
@@ -1496,7 +1913,7 @@ export default function SkuPipelinePage() {
                     placeholder="（可空）例：「测试期预算紧，最多 ¥800/天」「主推送礼场景」「这版圈包要避开同行已饱和标签」"
                     value={extraContext4}
                     onChange={e => setExtraContext4(e.target.value)}
-                    rows={2}
+                    rows={4}
                     className="text-sm"
                   />
                 </div>
@@ -1552,22 +1969,47 @@ export default function SkuPipelinePage() {
                 )}
                 {resp4?.result?.pack_md && (
                   <>
-                    {resp4.result.audience_pack_id && (
-                      <div className="mb-4 p-3 border rounded bg-blue-50/40 dark:bg-blue-950/20 text-xs">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="outline">已落库</Badge>
-                          <span>
-                            audience_pack_id: <code className="text-[10px]">{resp4.result.audience_pack_id.slice(0, 8)}…</code>
-                          </span>
-                          <span className="ml-2 text-muted-foreground">
-                            ← record_id: <code className="text-[10px]">{resp4.result.audience_record_id.slice(0, 8)}…</code>
-                          </span>
+                    {resp4.result.audience_pack_id && (() => {
+                      const pId = resp4.result.audience_pack_id
+                      const isAdopted = adoptedPackIds.has(pId)
+                      const isAdoptingThis = adoptingPack === pId
+                      return (
+                        <div className={`mb-4 p-3 border rounded text-xs transition ${isAdopted ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800' : 'bg-blue-50/40 dark:bg-blue-950/20'}`}>
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                              <Badge variant={isAdopted ? 'default' : 'outline'}>
+                                {isAdopted ? '✅ 已绑入血缘' : '已落库 · draft'}
+                              </Badge>
+                              <span>
+                                audience_pack_id: <code className="text-[10px]">{pId.slice(0, 8)}…</code>
+                              </span>
+                              <span className="ml-2 text-muted-foreground">
+                                ← record_id: <code className="text-[10px]">{resp4.result.audience_record_id.slice(0, 8)}…</code>
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant={isAdopted ? 'default' : 'outline'}
+                              disabled={isAdoptingThis || isAdopted}
+                              onClick={() => adoptAudiencePack(pId)}
+                              className="shrink-0"
+                              title={isAdopted ? '已绑入血缘 — 下游 step 5/6 可挂这一版' : '老板审完 OK 后点这里：把这版圈包标 adopted，绑入血缘，下游可挂'}
+                            >
+                              {isAdoptingThis
+                                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 绑入中</>
+                                : isAdopted
+                                  ? <>✅ 已绑入血缘</>
+                                  : <>✓ 确认绑入血缘</>}
+                            </Button>
+                          </div>
+                          <div className="text-muted-foreground mt-2">
+                            {isAdopted
+                              ? '已绑入。后续 step 5/6 跑脚本会自动挂这个 audience_pack_id；血缘反查（v_asset_full_lineage）也只跟 adopted 走。'
+                              : '审完觉得这版 OK 再点"确认绑入血缘"。不点也能往下走，但血缘反查不会跟这版（draft 状态可重跑覆盖）。'}
+                          </div>
                         </div>
-                        <div className="text-muted-foreground mt-1">
-                          step 5/6 脚本会自动挂这个 audience_pack_id（人群 + 圈包 + 卖点全链路）。
-                        </div>
-                      </div>
-                    )}
+                      )
+                    })()}
 
                     <div className="prose prose-sm max-w-none dark:prose-invert">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -1585,7 +2027,7 @@ export default function SkuPipelinePage() {
                           Final Prompt（含 KB 原文 + matrix）
                         </button>
                         {showPrompt4 && (
-                          <pre className="mt-2 p-3 bg-muted text-xs rounded max-h-96 overflow-auto whitespace-pre-wrap">
+                          <pre className="mt-2 p-3 bg-muted text-xs rounded whitespace-pre-wrap">
                             {resp4.trace.final_prompt}
                           </pre>
                         )}
@@ -1726,10 +2168,10 @@ export default function SkuPipelinePage() {
         </TabsContent>
 
         {/* ============== STEP 5: 创意素材（6 类） ============== */}
-        <TabsContent value="step5" className="mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <TabsContent value="step5" className="mt-0 flex-1 min-w-0">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
             {/* 左：模式 + 输入 */}
-            <Card className="lg:col-span-1">
+            <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Film className="w-4 h-4" /> 输入
@@ -1746,7 +2188,11 @@ export default function SkuPipelinePage() {
                   <div className="font-medium text-muted-foreground">当前选中</div>
                   <div>
                     <span className="text-muted-foreground">模式：</span>
-                    <Badge variant="secondary">{srcMode5 === 'record' ? 'record 人群池' : 'sku 单 SKU 直跑'}</Badge>
+                    <Badge variant="secondary">
+                      {srcMode5 === 'record' ? 'record 候选人群'
+                        : srcMode5 === 'pack' ? 'pack 圈包（最完整链路）'
+                        : 'sku 单 SKU 直跑'}
+                    </Badge>
                   </div>
                   {srcMode5 === 'record' && (
                     <div>
@@ -1760,6 +2206,33 @@ export default function SkuPipelinePage() {
                       )}
                     </div>
                   )}
+                  {srcMode5 === 'pack' && (
+                    <div>
+                      <span className="text-muted-foreground">圈包：</span>
+                      {pack5Id ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Badge>
+                            圈包 第 {pack5Detail?.version || '?'} 版 · <code className="text-[10px]">{pack5Id.slice(0, 8)}</code>
+                          </Badge>
+                          {loadingPack5 && <Loader2 className="w-3 h-3 animate-spin" />}
+                          <button
+                            type="button"
+                            className="text-[10px] text-muted-foreground hover:text-red-500"
+                            onClick={() => {
+                              setPack5Id('')
+                              setPack5Detail(null)
+                              setShowPack5Md(false)
+                            }}
+                            title="清除选中圈包"
+                          >
+                            ✕ 清除
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="text-orange-500">未选（点下方"从血缘图选上游"挑一个圈包节点）</span>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <span className="text-muted-foreground">素材类型：</span>
                     <Badge>{CREATIVE_KIND_LIST.find(x => x.kind === kind5)?.label || kind5}</Badge>
@@ -1767,14 +2240,25 @@ export default function SkuPipelinePage() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium mb-2 block">挂链路（弹性挂）</label>
-                  <div className="flex gap-2">
+                  <label className="text-sm font-medium mb-2 block">挂链路（弹性挂 · 完整度 pack &gt; record &gt; sku）</label>
+                  <div className="flex gap-2 flex-wrap">
                     <button
                       type="button"
                       className={`text-xs px-3 py-1.5 rounded border-2 font-medium transition-colors ${srcMode5 === 'record' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}
                       onClick={() => setSrcMode5('record')}
                     >
-                      {srcMode5 === 'record' ? '✓ ' : ''}record（人群池选）
+                      {srcMode5 === 'record' ? '✓ ' : ''}record（候选人群）
+                    </button>
+                    <button
+                      type="button"
+                      className={`text-xs px-3 py-1.5 rounded border-2 font-medium transition-colors ${srcMode5 === 'pack' ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background text-muted-foreground hover:bg-muted'}`}
+                      onClick={() => {
+                        setSrcMode5('pack')
+                        // pack 没有独立"池子"UI（人群池 ≠ 圈包池），点了直接弹血缘图选
+                        if (!pack5Id) setPickModalOpen(true)
+                      }}
+                    >
+                      {srcMode5 === 'pack' ? '✓ ' : ''}pack（圈包）
                     </button>
                     <button
                       type="button"
@@ -1783,9 +2267,20 @@ export default function SkuPipelinePage() {
                     >
                       {srcMode5 === 'sku' ? '✓ ' : ''}sku（单 SKU 直跑）
                     </button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="text-xs h-auto py-1.5"
+                      disabled={!skuId}
+                      onClick={() => setPickModalOpen(true)}
+                      title={skuId ? '从血缘图选 record / pack 节点回填' : '先选 SKU'}
+                    >
+                      <Network className="w-3 h-3 mr-1" /> 从血缘图选上游
+                    </Button>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    record 模式：拉人群 KB 画像 + matrix 卖点喂 LLM；sku 模式：用通用画像，适合先试主图/详情页
+                    <strong>pack 模式</strong>：拉圈包 + 关联 record + matrix 全链路（最完整）；<strong>record 模式</strong>：人群 KB 画像 + matrix 卖点；<strong>sku 模式</strong>：通用画像，适合先试主图/详情页。
                   </div>
                 </div>
 
@@ -1836,6 +2331,66 @@ export default function SkuPipelinePage() {
                   </div>
                 )}
 
+                {/* pack 模式：选中圈包详情卡（pack_md 预览，老板确认选对没） */}
+                {srcMode5 === 'pack' && pack5Id && (
+                  <div className="border rounded p-3 bg-pink-50/40 dark:bg-pink-950/10 text-xs space-y-2 border-pink-200 dark:border-pink-900">
+                    {loadingPack5 && (
+                      <div className="text-muted-foreground">
+                        <Loader2 className="w-3 h-3 inline animate-spin mr-1" /> 拉圈包详情...
+                      </div>
+                    )}
+                    {pack5Detail && (
+                      <>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge className="text-[10px]">圈包第 {pack5Detail.version} 版</Badge>
+                          <Badge
+                            variant={pack5Detail.status === 'adopted' ? 'default' : 'outline'}
+                            className="text-[10px]"
+                          >
+                            {pack5Detail.status === 'adopted' ? '✅ 已采纳' : '草稿'}
+                          </Badge>
+                          <span className="text-muted-foreground">
+                            上游候选人群 <code className="text-[10px]">{pack5Detail.audience_record_id?.slice(0, 8)}</code>
+                          </span>
+                          <span className="text-muted-foreground">
+                            · 卖点矩阵 <code className="text-[10px]">{pack5Detail.matrix_run_id?.slice(0, 8)}</code>
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          创建于 {pack5Detail.created_at?.slice(0, 16).replace('T', ' ')}
+                        </div>
+                        <div className="border-t border-pink-200/60 dark:border-pink-900/60 pt-2">
+                          <button
+                            type="button"
+                            className="text-xs flex items-center gap-1 text-primary hover:underline"
+                            onClick={() => setShowPack5Md(s => !s)}
+                          >
+                            {showPack5Md ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                            {showPack5Md ? '收起' : '展开'} pack_md 全文（{pack5Detail.pack_md?.length || 0} 字）
+                          </button>
+                          {!showPack5Md && pack5Detail.pack_md && (
+                            <div className="text-[11px] text-muted-foreground mt-1 line-clamp-3 italic">
+                              {pack5Detail.pack_md.slice(0, 240)}...
+                            </div>
+                          )}
+                          {showPack5Md && pack5Detail.pack_md && (
+                            <div className="prose prose-sm max-w-none dark:prose-invert mt-2 text-sm p-3 bg-background border rounded">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {pack5Detail.pack_md}
+                              </ReactMarkdown>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                    {!loadingPack5 && !pack5Detail && (
+                      <div className="text-muted-foreground">
+                        ⚠ 圈包详情拉不到（id 可能失效）。点 ✕ 清除重选。
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div>
                   <label className="text-sm font-medium mb-2 block">素材类型（6 选 1）</label>
                   <div className="grid grid-cols-2 gap-2">
@@ -1868,7 +2423,7 @@ export default function SkuPipelinePage() {
                     placeholder="例：「这版主推送礼场景」「避开同行已饱和卖点」「老板自给优惠：下单立减 10 元」"
                     value={extraContext5}
                     onChange={e => setExtraContext5(e.target.value)}
-                    rows={3}
+                    rows={5}
                   />
                 </div>
 
@@ -1879,7 +2434,7 @@ export default function SkuPipelinePage() {
             </Card>
 
             {/* 右：输出 */}
-            <Card className="lg:col-span-2">
+            <Card className="lg:col-span-3">
               <CardHeader>
                 <CardTitle className="text-base">输出</CardTitle>
                 <CardDescription>
@@ -1947,6 +2502,52 @@ export default function SkuPipelinePage() {
                       </button>
                     </div>
 
+                    {/* 确认绑入血缘（status='draft' → 'adopted'）—— 老板审完点 */}
+                    {resp5.result.script_id && (() => {
+                      const sId = resp5.result.script_id
+                      const isAdopted = adoptedScriptIds.has(sId)
+                      const isAdoptingThis = adoptingScript === sId
+                      const hasWarnings = (resp5.result.validation_warnings || []).length > 0
+                      return (
+                        <div className={`p-3 border rounded text-xs transition ${isAdopted ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800' : 'bg-blue-50/40 dark:bg-blue-950/20'}`}>
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                              <Badge variant={isAdopted ? 'default' : 'outline'}>
+                                {isAdopted ? '✅ 已绑入血缘' : '已落库 · draft'}
+                              </Badge>
+                              <span className="text-muted-foreground">
+                                kind: <code className="text-[10px]">{resp5.result.kind}</code>
+                              </span>
+                              <span className="text-muted-foreground">
+                                script_id: <code className="text-[10px]">{sId.slice(0, 8)}…</code>
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant={isAdopted ? 'default' : 'outline'}
+                              disabled={isAdoptingThis || isAdopted}
+                              onClick={() => adoptCreativeScript(sId)}
+                              className="shrink-0"
+                              title={isAdopted ? '已绑入血缘 — 下游 phase D 生成图/视频可挂这版' : '审完 OK 后点这里：标 adopted 进血缘，下游可挂'}
+                            >
+                              {isAdoptingThis
+                                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 绑入中</>
+                                : isAdopted
+                                  ? <>✅ 已绑入血缘</>
+                                  : <>✓ 确认绑入血缘</>}
+                            </Button>
+                          </div>
+                          <div className="text-muted-foreground mt-2">
+                            {isAdopted
+                              ? '已绑入。phase D 起拉分镜图 / 视频生成时按 sku+kind 列 adopted 让你挑这版。血缘反查也只跟 adopted 走。'
+                              : hasWarnings
+                                ? '⚠ 上方校验有警告。建议改 prompt / 重跑修复后再绑；硬要绑也可以（多版本并存，draft 老板按需重跑覆盖）。'
+                                : '审完觉得这版 OK 再点"确认绑入血缘"。不点也能继续跑别的，但 phase D 生成时不会列 draft 版本。'}
+                          </div>
+                        </div>
+                      )
+                    })()}
+
                     {/* 后端硬约束校验结果（反 LLM 自检装饰） */}
                     {resp5.result.validation_warnings && resp5.result.validation_warnings.length > 0 && (
                       <div className="border-2 border-orange-300 rounded p-3 bg-orange-50 space-y-2">
@@ -1971,7 +2572,7 @@ export default function SkuPipelinePage() {
 
                     {/* metrics_json 数据（折叠显示） */}
                     {resp5.result.metrics && (
-                      <details className="border rounded p-2 bg-muted/20">
+                      <details className="border rounded p-2 bg-muted/20" open>
                         <summary className="text-xs cursor-pointer text-muted-foreground">
                           metrics_json（LLM 自报指标，后端校验依据）
                         </summary>
@@ -1981,7 +2582,7 @@ export default function SkuPipelinePage() {
                       </details>
                     )}
 
-                    <div className="prose prose-sm max-w-none border rounded p-3 bg-muted/30 max-h-[600px] overflow-y-auto">
+                    <div className="prose prose-sm max-w-none border rounded p-4 bg-muted/30">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{resp5.result.script_md}</ReactMarkdown>
                     </div>
 
@@ -1997,7 +2598,7 @@ export default function SkuPipelinePage() {
                           </span>
                         </button>
                         {showPrompt5 && (
-                          <pre className="text-[10px] p-3 bg-muted/50 max-h-96 overflow-y-auto whitespace-pre-wrap">
+                          <pre className="text-xs p-3 bg-muted/50 whitespace-pre-wrap">
                             {resp5.trace.final_prompt}
                           </pre>
                         )}
@@ -2009,7 +2610,665 @@ export default function SkuPipelinePage() {
             </Card>
           </div>
         </TabsContent>
+
+        {/* ============== STEP 6: 分镜图生成（W4-B 14.4 phase D） ============== */}
+        <TabsContent value="step6" className="mt-0 flex-1 min-w-0">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            {/* 左：选脚本 + 输入 */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" /> 输入
+                </CardTitle>
+                <CardDescription>
+                  选已采纳脚本 → 自动拆分镜清单 → 选哪几段 + 参考图 → 并发出图（每张 30-60s）落入血缘
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {SkuPicker}
+
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium">脚本</label>
+                  <Button size="sm" variant="outline" onClick={loadScriptsForStep6} disabled={!skuId || loadingScripts6}>
+                    {loadingScripts6 ? <Loader2 className="w-3 h-3 animate-spin" /> : (scriptsForSku6 !== null ? '刷新' : '加载脚本')}
+                  </Button>
+                </div>
+                {scriptsForSku6 === null && (
+                  <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                    点上方"加载脚本"拉这个 SKU 跑过的所有脚本（按时间倒序）。
+                  </div>
+                )}
+                {scriptsForSku6 && scriptsForSku6.length === 0 && (
+                  <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                    这个 SKU 还没跑过 step 5 创意脚本。
+                  </div>
+                )}
+                {scriptsForSku6 && scriptsForSku6.length > 0 && (
+                  <select
+                    className="w-full border rounded px-2 py-2 text-sm bg-background"
+                    value={script6Id}
+                    onChange={e => selectScript6(e.target.value)}
+                  >
+                    <option value="">— 请选择脚本 —</option>
+                    {scriptsForSku6.map(s => (
+                      <option key={s.id} value={s.id}>
+                        [{s.status === 'adopted' ? '✅' : '·'}] {s.kind} v{s.version} · {s.id.slice(0, 8)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {loadingScript6Detail && (
+                  <div className="text-xs text-muted-foreground">
+                    <Loader2 className="w-3 h-3 inline animate-spin mr-1" /> 拉脚本详情...
+                  </div>
+                )}
+
+                {script6Detail && (
+                  <div className="border rounded p-2 bg-muted/30 text-xs space-y-1">
+                    <div>
+                      <Badge variant="secondary" className="text-[10px]">{script6Detail.kind}</Badge>
+                      <Badge variant="outline" className="text-[10px] ml-1">第 {script6Detail.version} 版</Badge>
+                      <Badge
+                        variant={script6Detail.status === 'adopted' ? 'default' : 'outline'}
+                        className="text-[10px] ml-1"
+                      >
+                        {script6Detail.status === 'adopted' ? '已采纳' : '草稿'}
+                      </Badge>
+                    </div>
+                    <div className="text-muted-foreground">
+                      共 <strong>{script6Detail.scenes?.length || 0}</strong> 段分镜
+                      {(script6Detail.character_sheets?.length || 0) > 0 && (
+                        <span> · <strong>{script6Detail.character_sheets!.length}</strong> 个固定角色</span>
+                      )}
+                      {(script6Detail.scenes?.length || 0) === 0 && (
+                        <span className="text-orange-500 ml-1">
+                          ⚠ scenes 为空，先调"回填分镜"按钮
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ═════ 主操作按钮（置顶，老板一眼能看见） ═════ */}
+                {script6Detail && (script6Detail.scenes?.length || 0) > 0 && (
+                  <div className="border-2 border-primary/50 rounded-lg p-3 bg-primary/5 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="text-sm font-medium">
+                        ▶ 出图：已选 <strong className="text-primary">{selectedScenes6.size}</strong> / {script6Detail.scenes!.length} 段
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => setSelectedScenes6(new Set([script6Detail.scenes![0].scene_no]))}
+                          title="只跑第 1 段（先小范围测）"
+                        >
+                          只第 1 段
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => setSelectedScenes6(new Set(script6Detail.scenes!.map(s => s.scene_no)))}
+                        >
+                          全选 {script6Detail.scenes!.length}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => setSelectedScenes6(new Set())}
+                        >
+                          全清
+                        </Button>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => runStep6Storyboard()}
+                      disabled={running6 || selectedScenes6.size === 0}
+                      className="w-full text-base h-11"
+                      size="lg"
+                    >
+                      {running6 ? (
+                        <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> 跑中（{selectedScenes6.size} 张并发，约 30-60s）</>
+                      ) : selectedScenes6.size === 0 ? (
+                        '先选要跑的段'
+                      ) : (
+                        `★ 出 ${selectedScenes6.size} 张分镜图（${selectedScenes6.size > 1 ? '并发 ' : ''}gpt-image-1.5）`
+                      )}
+                    </Button>
+                    <div className="text-[11px] text-muted-foreground">
+                      下方可调画幅 / 角色定妆 / 参考图等细节后再跑。
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 6.5：角色定妆白底像（chatgpt-image-2 锁脸） */}
+                {script6Detail && (script6Detail.character_sheets?.length || 0) > 0 && (
+                  <div className="border rounded p-3 bg-purple-50/30 dark:bg-purple-950/10 text-sm space-y-2 border-purple-200 dark:border-purple-900">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium flex items-center gap-2">
+                        <span className="text-purple-700 dark:text-purple-400">★ Step 6.5</span>
+                        <span>角色定妆（锁脸）</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={charSheetsResp?.result?.success_count ? 'default' : 'outline'}
+                        disabled={runningCharSheets || !script6Id}
+                        onClick={() => runCharacterSheets()}
+                      >
+                        {runningCharSheets
+                          ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 跑中</>
+                          : charSheetsResp?.result?.success_count
+                            ? `✓ 已出 ${charSheetsResp.result.success_count} 张 · 重跑`
+                            : `出 ${script6Detail.character_sheets!.length} 张白底像（约 30s）`}
+                      </Button>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      跑完后 step 6 分镜图自动按每段 <code>characters_in_scene</code> 找对应角色当 face_refs，全篇锁脸。
+                    </div>
+                    <div className="space-y-1.5">
+                      {script6Detail.character_sheets!.map(s => {
+                        const got = charSheetsResp?.result?.results?.find(r => r.role_id === s.role_id)
+                        return (
+                          <div key={s.role_id} className="flex items-start gap-2 text-xs p-2 rounded bg-background/60 border">
+                            {got?.file_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={got.file_url}
+                                alt={s.role_id}
+                                className="w-16 h-16 object-cover rounded border shrink-0"
+                              />
+                            ) : (
+                              <div className="w-16 h-16 rounded border border-dashed flex items-center justify-center bg-muted text-muted-foreground text-[10px] shrink-0">
+                                {got?.error ? '❌' : 'pending'}
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium">
+                                <code>{s.role_id}</code> · {s.name || '?'}
+                                {got?.asset_id && (
+                                  <Badge variant="default" className="text-[10px] ml-2">已落血缘</Badge>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {s.age} · {s.gender} · {s.appearance_keywords?.slice(0, 60)}
+                                {(s.appearance_keywords?.length || 0) > 60 && '...'}
+                              </div>
+                              {got?.error && (
+                                <div className="text-[11px] text-red-500 mt-1">{got.error}</div>
+                              )}
+                              {got?.file_url && (
+                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={runningCharSheets}
+                                    onClick={() => runCharacterSheets([s.role_id])}
+                                    className="text-[10px] h-6 px-2"
+                                  >
+                                    🔄 重跑
+                                  </Button>
+                                  {got.asset_id && (() => {
+                                    const isAdopted = adoptedAssetIds.has(got.asset_id!)
+                                    const isAdoptingThis = adoptingAsset === got.asset_id
+                                    return (
+                                      <Button
+                                        size="sm"
+                                        variant={isAdopted ? 'default' : 'outline'}
+                                        disabled={isAdoptingThis || isAdopted}
+                                        onClick={() => adoptAsset(got.asset_id!)}
+                                        className="text-[10px] h-6 px-2"
+                                      >
+                                        {isAdoptingThis
+                                          ? <Loader2 className="w-3 h-3 animate-spin" />
+                                          : isAdopted ? '✅ 已绑' : '✓ 绑血缘'}
+                                      </Button>
+                                    )
+                                  })()}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      const fname = `${script6Detail?.sku_id || 'sku'}_${s.role_id}.png`
+                                      downloadAsset(got.file_url!, fname)
+                                    }}
+                                    className="text-[10px] h-6 px-2"
+                                  >
+                                    ⬇ 下载
+                                  </Button>
+                                  <a
+                                    href={got.file_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[11px] text-primary hover:underline ml-auto"
+                                  >
+                                    原图 ↗
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {script6Detail && (script6Detail.character_sheets?.length || 0) === 0 && (
+                  <div className="text-xs text-muted-foreground p-2 border border-dashed rounded">
+                    ⚠ 这个脚本没角色清单（v10 老格式无第 3.5 部分）。step 6 分镜图照常跑，但无 face_refs 锁脸。
+                    建议重跑 step 5 出 v11+ 新格式脚本。
+                  </div>
+                )}
+
+                {script6Detail && (script6Detail.scenes?.length || 0) > 0 && (
+                  <div>
+                    <label className="text-sm font-medium mb-2 block text-muted-foreground">
+                      ▼ 多选段详情（点卡片切换；当前选 {selectedScenes6.size} / {script6Detail.scenes!.length}）
+                    </label>
+                    <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                      {script6Detail.scenes.map(s => {
+                        const sel = selectedScenes6.has(s.scene_no)
+                        return (
+                          <div
+                            key={s.scene_no}
+                            className={`p-2 border rounded cursor-pointer transition ${sel ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/30'}`}
+                            onClick={() => toggleScene6(s.scene_no)}
+                          >
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="font-medium">第 {s.scene_no} 段</span>
+                              {s.name && <span className="text-muted-foreground truncate">· {s.name}</span>}
+                              {s.time_range && <Badge variant="outline" className="text-[10px]">{s.time_range}</Badge>}
+                              {sel && <span className="ml-auto text-primary text-[10px]">✓ 跑</span>}
+                            </div>
+                            {s.visual && (
+                              <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                                {s.visual}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">人脸参考图（face_refs，每行 1 url）</label>
+                  <Textarea
+                    placeholder="（可空）每行 1 个 url"
+                    value={faceRefs6}
+                    onChange={e => setFaceRefs6(e.target.value)}
+                    rows={4}
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-sm font-medium">产品参考图（product_refs · 严格参考产品外观）</label>
+                    <label className="text-xs text-primary hover:underline cursor-pointer">
+                      ⬆ 上传白底图
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={async e => {
+                          const files = Array.from(e.target.files || [])
+                          if (!files.length) return
+                          const dataUrls: string[] = []
+                          for (const f of files) {
+                            try {
+                              const dataUrl = await new Promise<string>((resolve, reject) => {
+                                const reader = new FileReader()
+                                reader.onload = () => resolve(reader.result as string)
+                                reader.onerror = () => reject(reader.error)
+                                reader.readAsDataURL(f)
+                              })
+                              dataUrls.push(dataUrl)
+                            } catch (err) {
+                              console.error('upload failed', f.name, err)
+                            }
+                          }
+                          if (dataUrls.length) {
+                            const existing = productRefs6.trim()
+                            setProductRefs6(existing ? `${existing}\n${dataUrls.join('\n')}` : dataUrls.join('\n'))
+                          }
+                          // 重置 input 让同一个文件可再选
+                          e.target.value = ''
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <Textarea
+                    placeholder="（可空）每行 1 个 url 或 base64 data URL；点上方「⬆ 上传白底图」直接上传文件"
+                    value={productRefs6}
+                    onChange={e => setProductRefs6(e.target.value)}
+                    rows={4}
+                    className="text-xs font-mono"
+                  />
+                  {/* 已上传/输入的图片缩略图列表（含 1 键删除） */}
+                  {(() => {
+                    const lines = productRefs6.split('\n').map(s => s.trim()).filter(Boolean)
+                    if (!lines.length) return null
+                    return (
+                      <div className="mt-2 grid grid-cols-4 sm:grid-cols-5 gap-2">
+                        {lines.map((url, i) => (
+                          <div key={i} className="relative group border rounded overflow-hidden bg-muted/30">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={url}
+                              alt={`ref ${i + 1}`}
+                              className="w-full h-20 object-contain bg-white"
+                              onError={e => {
+                                (e.target as HTMLImageElement).style.opacity = '0.3'
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded text-[10px] px-1.5 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => {
+                                const next = lines.filter((_, idx) => idx !== i).join('\n')
+                                setProductRefs6(next)
+                              }}
+                              title="删除"
+                            >
+                              ✕
+                            </button>
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] px-1 py-0.5 truncate">
+                              #{i + 1} {url.startsWith('data:') ? '(上传)' : url.slice(0, 30)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                  <div className="text-[11px] text-muted-foreground mt-1">
+                    {productRefs6.split('\n').filter(s => s.trim()).length} 张产品参考图。
+                    上传后会跟 character_sheet 一起作为 reference image 传给 chatgpt-image，OpenAI 严格参考画。
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">画幅</label>
+                    <select
+                      className="w-full border rounded px-2 py-2 text-sm bg-background"
+                      value={aspect6}
+                      onChange={e => setAspect6(e.target.value)}
+                    >
+                      <option value="9:16">9:16（抖音竖版）</option>
+                      <option value="1:1">1:1（方版）</option>
+                      <option value="16:9">16:9（横版）</option>
+                      <option value="3:4">3:4（小红书）</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">风格 hint（可空）</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded px-2 py-2 text-sm bg-background"
+                      placeholder="如 photo-realistic, warm tone"
+                      value={extraSuffix6}
+                      onChange={e => setExtraSuffix6(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground border-t pt-2 mt-2">
+                  💡 历史脚本 scenes 为空？
+                  <button
+                    className="text-primary underline ml-1"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/omni/sku-pipeline/backfill-scenes', { method: 'POST' })
+                        const json = await res.json()
+                        if (json.success && json.data?.ok) {
+                          alert(`回填完成：扫 ${json.data.scanned} 条、更新 ${json.data.scripts_updated} 条、解析 ${json.data.scenes_parsed_total} 段。\n刷新脚本列表重选。`)
+                          if (script6Id) await selectScript6(script6Id)
+                        } else {
+                          alert(`回填失败：${json.data?.error || json.error}`)
+                        }
+                      } catch (e) {
+                        alert(`回填异常：${String(e)}`)
+                      }
+                    }}
+                  >
+                    一键回填全库 scenes
+                  </button>
+                  （扫所有 video_* 脚本，按 markdown 分镜段重解析）
+                </div>
+
+                {error && (
+                  <div className="text-sm text-red-500 p-2 border border-red-200 rounded bg-red-50">
+                    {error}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 右：输出 grid */}
+            <Card className="lg:col-span-3">
+              <CardHeader>
+                <CardTitle className="text-base">输出</CardTitle>
+                <CardDescription className="text-xs">
+                  {resp6?.result
+                    ? `成功 ${resp6.result.success_count} / ${resp6.result.scenes_total}，失败 ${resp6.result.error_count}。每张图自动落 pipeline.assets（status=draft）。`
+                    : 'left 输入完毕跑出 → 右侧 grid 显示。每张图卡可单独采纳/重跑/挂血缘。'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!resp6 && !running6 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    左侧选脚本 + 选段 → 点出图。
+                  </div>
+                )}
+                {running6 && !resp6 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" />
+                    {selectedScenes6.size} 张分镜并发出图...
+                  </div>
+                )}
+                {resp6 && !resp6.ok && (
+                  <div className="text-sm text-red-500 p-2 border border-red-200 rounded bg-red-50">
+                    Error: {resp6.error}
+                    {resp6.hint && <div className="text-xs mt-1">{resp6.hint}</div>}
+                  </div>
+                )}
+                {resp6?.result && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {resp6.result.results.map(r => (
+                      <div
+                        key={r.scene_no}
+                        className={`border rounded p-2 ${r.error ? 'border-red-300 bg-red-50/30' : 'border-emerald-200 bg-emerald-50/20'}`}
+                      >
+                        <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <Badge variant="secondary" className="text-[10px]">第 {r.scene_no} 段</Badge>
+                            {(r.characters_in_scene?.length || 0) > 0 && (
+                              <Badge variant="outline" className="text-[10px]" title="本段角色 / face_refs 数">
+                                👤 {r.characters_in_scene!.join('/')} ({r.face_refs_used?.length || 0})
+                              </Badge>
+                            )}
+                            {r.product_appearance === true && (
+                              <Badge variant="outline" className="text-[10px]" title="产品出场">
+                                📦 ({r.product_refs_used?.length || 0})
+                              </Badge>
+                            )}
+                          </div>
+                          {r.asset_id && (
+                            <span className="text-[10px] text-muted-foreground">
+                              <code>{r.asset_id.slice(0, 8)}</code>
+                            </span>
+                          )}
+                        </div>
+                        {r.file_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={r.file_url}
+                            alt={`scene ${r.scene_no}`}
+                            className="w-full rounded border"
+                            style={{ maxHeight: 360, objectFit: 'contain' }}
+                          />
+                        ) : (
+                          <div className="text-xs text-red-500 p-3 border border-red-200 rounded bg-red-50/40">
+                            ❌ {r.error}
+                          </div>
+                        )}
+                        {r.prompt && (
+                          <details className="mt-2 text-[11px]">
+                            <summary className="cursor-pointer text-muted-foreground">prompt</summary>
+                            <pre className="whitespace-pre-wrap bg-muted/40 p-2 rounded mt-1 text-[10px]">{r.prompt}</pre>
+                          </details>
+                        )}
+                        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={running6}
+                            onClick={() => runStep6Storyboard([r.scene_no])}
+                            className="text-xs h-7"
+                          >
+                            {running6 ? <Loader2 className="w-3 h-3 animate-spin" /> : '🔄 重跑'}
+                          </Button>
+                          {r.asset_id && (() => {
+                            const isAdopted = adoptedAssetIds.has(r.asset_id!)
+                            const isAdoptingThis = adoptingAsset === r.asset_id
+                            return (
+                              <Button
+                                size="sm"
+                                variant={isAdopted ? 'default' : 'outline'}
+                                disabled={isAdoptingThis || isAdopted}
+                                onClick={() => adoptAsset(r.asset_id!)}
+                                className="text-xs h-7"
+                                title={isAdopted ? '已绑入血缘 — 下游可挂' : '审完 OK 后点这里：标 adopted 进血缘'}
+                              >
+                                {isAdoptingThis
+                                  ? <Loader2 className="w-3 h-3 animate-spin" />
+                                  : isAdopted
+                                    ? '✅ 已绑'
+                                    : '✓ 绑血缘'}
+                              </Button>
+                            )
+                          })()}
+                          {r.file_url && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const fname = `${resp6?.result?.sku_id || 'sku'}_${resp6?.result?.kind || 'asset'}_scene${r.scene_no}.png`
+                                downloadAsset(r.file_url!, fname)
+                              }}
+                              className="text-xs h-7"
+                            >
+                              ⬇ 下载
+                            </Button>
+                          )}
+                          {r.file_url && (
+                            <a
+                              href={r.file_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary hover:underline ml-auto"
+                            >
+                              原图 ↗
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {resp6?.trace && (
+                  <div className="mt-4 text-[11px] text-muted-foreground border-t pt-2">
+                    {resp6.trace.model_provider}/{resp6.trace.model} · {resp6.trace.cost_estimate}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ============== 血缘图（全局浏览 + 节点采纳 / 详情） ============== */}
+        <TabsContent value="lineage" className="mt-0 flex-1 min-w-0">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Network className="w-4 h-4" /> SKU 血缘图
+              </CardTitle>
+              <CardDescription>
+                整条链路一图看清：matrix → audience_run → record → pack → script → asset。
+                draft 灰 / adopted 绿 / published 蓝。可在节点上直接采纳（draft → adopted）。
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!skuId ? (
+                <div className="text-sm text-muted-foreground py-12 text-center border border-dashed rounded">
+                  顶部先选个 SKU。
+                </div>
+              ) : (
+                <LineageTree key={`${skuId}-${lineageKey}`} skuId={skuId} height="65vh" />
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      {/* 血缘图 pick 模态层（step 5 / phase D 输入区可调起） */}
+      {pickModalOpen && skuId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setPickModalOpen(false)}
+        >
+          <div
+            className="bg-background border rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Network className="w-4 h-4" /> 从血缘图选上游
+              </h3>
+              <button
+                onClick={() => setPickModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground text-lg leading-none px-2"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <LineageTree
+                key={`${skuId}-${lineageKey}`}
+                skuId={skuId}
+                height="60vh"
+                onPick={node => {
+                  // record / pack 都能回填 step 5
+                  if (node.kind === 'audience_record') {
+                    setSrcMode5('record')
+                    setRecord5Id(node.id)
+                    selectRecord4(node.id)  // 复用 step 4 的 detail 拉取（选用同款详情卡）
+                    setPickModalOpen(false)
+                  } else if (node.kind === 'audience_pack') {
+                    // pack 模式：拉圈包 + 关联 record/matrix 全链路（最完整）
+                    setSrcMode5('pack')
+                    setPack5Id(node.id)
+                    loadPack5Detail(node.id)  // 同步拉 pack_md 预览
+                    setPickModalOpen(false)
+                  } else if (node.kind === 'script') {
+                    alert('脚本节点是 step 5 输出，不是输入。phase D 起 step 6 分镜图会从这里选脚本。')
+                  } else {
+                    alert(`${node.kind} 节点不能作为 step 5 输入。请选 候选人群 / 圈包 节点。`)
+                  }
+                }}
+                onClose={() => setPickModalOpen(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
