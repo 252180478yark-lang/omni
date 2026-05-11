@@ -31,16 +31,16 @@ generate_brief:
 
 generate_image:
   # step 6 分镜图（generate_storyboard_images / 老 generate_image tool）
-  # 2026-05-12 Gemini 3 Pro + 2K + 显式 aspect（修 hub aspect_map 漏 9:16 的 bug）
-  # 老板反馈"分镜图质量不太符合现实" → 升级 2 处：
-  #   1. hub schema 加 aspect_ratio 字段（之前 KE 传"9:16"被 pydantic 静默丢，hub 用 size→aspect fallback 出横屏！）
-  #   2. size 1024x1536 → 1152x2048（imageSize 1K → 2K，画质细节翻倍，cost 也涨）
+  # 2026-05-12 老板切 OpenAI gpt-image-1.5（跟 step 6.5 生脸同款，真实感比 gemini-3-pro 强）
+  # gpt-image-1.5 只接 3 种 size：1024x1024 / 1024x1536 portrait / 1536x1024 landscape
+  # 9:16 短视频用 1024x1536 竖屏
   # 回切候选：
-  #   - seedream/doubao-seedream-5-0-260128 + size 2048x2048（已激活，国产高清备选）
-  #   - openai/gpt-image-2 + quality: high（等 OpenAI verify 真生效）
-  provider: gemini
-  model: gemini-3-pro-image-preview
-  size: "1152x2048"
+  #   - gemini/gemini-3-pro-image-preview + size 1152x2048（之前用的 2K 高清）
+  #   - seedream/doubao-seedream-5-0-260128 + size 2048x2048（国产高清备选）
+  #   - openai/gpt-image-2 + quality: high（等 OpenAI verify 真生效，2 锁脸更强）
+  provider: openai
+  model: gpt-image-1.5
+  size: "1024x1536"
 
 generate_character_sheets:
   # step 6.5 角色定妆白底像（生脸）— 2026-05-12 老板单独指定 gpt-image-1.5
