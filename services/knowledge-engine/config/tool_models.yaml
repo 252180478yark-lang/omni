@@ -30,16 +30,13 @@ generate_brief:
     user: generate_brief.user
 
 generate_image:
-  # 2026-05-11 OpenAI gpt-image-2 verify 未生效（老板 verify 后仍返 403 Forbidden），
-  # 临时切 Google Gemini gemini-3.1-flash-image-preview
-  # Gemini image-gen 特点：
-  #   - 自然语言长 prompt 表现好（11 维度 image_prompt 模板对口）
-  #   - 锁脸能力实测待校准（旧版 phase D 之前用过，没专门测多角色锁脸）
+  # 2026-05-12 老板切 Gemini 3 pro 版（锁脸 / 复杂构图 / 长 prompt 推理深度比 flash 强）
   # 回切候选：
-  #   - openai/gpt-image-2 + quality: high（等老板 verify 真生效后）
+  #   - gemini-3.1-flash-image-preview（之前用的快版，单张快但锁脸弱）
+  #   - openai/gpt-image-2 + quality: high（等 OpenAI verify 真生效）
   #   - openai/gpt-image-1.5（fallback，锁脸不准）
   provider: gemini
-  model: gemini-3.1-flash-image-preview
+  model: gemini-3-pro-image-preview
 
 generate_video:
   # W4-B 14.4 phase D step 7（2026-05-11，老板 Ark Console 已激活 2.0 后切）：
