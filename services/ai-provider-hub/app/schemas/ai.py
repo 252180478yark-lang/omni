@@ -57,6 +57,7 @@ class ImageGenerateRequest(BaseModel):
     model: str | None = Field(default="gpt-image-2")
     size: str = "1024x1024"
     quality: str = "standard"
+    aspect_ratio: str | None = Field(default=None, description="9:16 / 16:9 / 1:1 / 3:4 / 4:3 等；优先于 size 决定画幅")
     n: int = Field(default=1, ge=1, le=4)
     reference_images: list[dict[str, Any]] | None = Field(
         default=None,

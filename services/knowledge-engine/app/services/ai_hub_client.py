@@ -139,6 +139,7 @@ class AIHubClient:
         model: str = "gpt-image-2",
         provider: str = "openai",
         quality: str | None = None,
+        size: str | None = None,
         extra: dict[str, Any] | None = None,
     ) -> dict:
         """W2: image gen with multi-class refs (face / product / style)。
@@ -166,6 +167,8 @@ class AIHubClient:
         }
         if quality:
             body["quality"] = quality
+        if size:
+            body["size"] = size
         if refs:
             body["reference_images"] = refs
         if extra:

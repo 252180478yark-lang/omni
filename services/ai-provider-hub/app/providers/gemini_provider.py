@@ -294,12 +294,27 @@ class GeminiProvider(BaseProvider):
         model_id = model or "gemini-3.1-flash-image-preview"
         url = f"{_API_BASE}/models/{model_id}:generateContent"
 
-        size_map = {"1024x1024": "1K", "1536x1024": "1K", "1024x1536": "1K", "2048x2048": "2K", "4096x4096": "4K"}
+        # imageSize 等级（影响画质/cost，K 越高细节越多 token 越多）
+        size_map = {
+            "1024x1024": "1K", "1536x1024": "1K", "1024x1536": "1K",
+            "2048x2048": "2K", "2048x1152": "2K", "1152x2048": "2K",
+            "2048x1536": "2K", "1536x2048": "2K",
+            "4096x4096": "4K", "3840x2160": "4K", "2160x3840": "4K",
+        }
         raw_size = str(kwargs.get("size", "1536x1024"))
         image_size = size_map.get(raw_size, "1K")
 
-        aspect_map = {"1024x1024": "1:1", "1536x1024": "16:9", "1024x1536": "9:16"}
-        aspect = aspect_map.get(raw_size, "16:9")
+        # aspect 优先用 kwarg 显式传（KE 直接传"9:16"），缺失时退而从 size 推（fallback）
+        explicit_aspect = (kwargs.get("aspect_ratio") or "").strip()
+        if explicit_aspect:
+            aspect = explicit_aspect
+        else:
+            aspect_map = {
+                "1024x1024": "1:1", "1536x1024": "16:9", "1024x1536": "9:16",
+                "2048x2048": "1:1", "2048x1152": "16:9", "1152x2048": "9:16",
+                "2048x1536": "4:3", "1536x2048": "3:4",
+            }
+            aspect = aspect_map.get(raw_size, "1:1")
 
         # ── W4-B 14.4 phase D：多参考图（face_refs / product_refs / style_refs）支持 ──
         # 入参 reference_images: list[str | {url, type, weight}]，data URL 或 http(s) URL 都接受
@@ -341,7 +356,7 @@ class GeminiProvider(BaseProvider):
 
         # parts 顺序：先 text 再 reference images（让模型把后续 inline_data 当参考）
         parts: list[dict] = [{"text": prompt}, *ref_parts]
-        print(f"[IMG-DBG][gemini] → {model_id} parts: 1 text + {len(ref_parts)} refs", flush=True)
+        print(f"[IMG-DBG][gemini] → {model_id} parts: 1 text + {len(ref_parts)} refs | imageSize={image_size} aspect={aspect} raw_size={raw_size}", flush=True)
 
         body = {
             "contents": [{"parts": parts}],

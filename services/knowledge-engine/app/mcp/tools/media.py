@@ -196,6 +196,7 @@ async def generate_image(
                 model=model_cfg.get("model", "gpt-image-2"),
                 provider=model_cfg.get("provider", "openai"),
                 quality=model_cfg.get("quality"),
+                size=model_cfg.get("size"),
             )
             urls = []
             for img in resp.get("images") or resp.get("data") or []:
@@ -348,6 +349,7 @@ async def generate_character_sheets(
                 model=model_cfg.get("model", "gpt-image-2"),
                 provider=model_cfg.get("provider", "openai"),
                 quality=model_cfg.get("quality"),
+                size=model_cfg.get("size"),
             )
             urls: list[str] = []
             for img in resp.get("images") or resp.get("data") or []:
@@ -618,6 +620,7 @@ async def generate_storyboard_images(
                 model=model_cfg.get("model", "gpt-image-2"),
                 provider=model_cfg.get("provider", "openai"),
                 quality=model_cfg.get("quality"),
+                size=model_cfg.get("size"),
             )
             urls: list[str] = []
             for img in resp.get("images") or resp.get("data") or []:
