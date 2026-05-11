@@ -2388,7 +2388,34 @@ def _extract_metrics_json(script_md: str) -> dict | None:
         return None
 
 
-def _validate_creative_metrics(metrics: dict, kind: str) -> list[str]:
+def _compute_actual_scene_gaps(scenes: list[dict]) -> tuple[int | None, int, list[int]]:
+    """从 scenes 数组的 time_range 字段（如 "0-4s" / "23-30s"）算每段实际时长。
+
+    返回 (max_gap_seconds, segment_count, durations_list)；
+    某段 time_range 解析失败则跳过该段，不影响其他段。
+    全部解析失败返 (None, 0, [])。
+    """
+    pattern = re.compile(r'^\s*(\d+)\s*-\s*(\d+)\s*s\s*$', re.I)
+    durations: list[int] = []
+    for s in scenes or []:
+        tr = (s.get("time_range") or "").strip()
+        if not tr:
+            continue
+        m = pattern.match(tr)
+        if not m:
+            continue
+        try:
+            start, end = int(m.group(1)), int(m.group(2))
+            if end > start:
+                durations.append(end - start)
+        except (ValueError, TypeError):
+            continue
+    if not durations:
+        return (None, 0, [])
+    return (max(durations), len(durations), durations)
+
+
+def _validate_creative_metrics(metrics: dict, kind: str, scenes: list[dict] | None = None) -> list[str]:
     """按 kind 路由到对应 validator，返回 warnings list（空 = 全过）。
 
     设计：v1 只 warn 不 fail（不 retry / 不挂掉调用）。warnings 写到 result，
@@ -2400,13 +2427,13 @@ def _validate_creative_metrics(metrics: dict, kind: str) -> list[str]:
     - 其他 kind：暂未实现校验，返空列表
     """
     if kind == "video_soft_ad":
-        return _validate_video_soft_ad_metrics(metrics)
+        return _validate_video_soft_ad_metrics(metrics, scenes=scenes)
     if kind == "video_planting":
-        return _validate_video_planting_metrics(metrics)
+        return _validate_video_planting_metrics(metrics, scenes=scenes)
     return []
 
 
-def _validate_video_soft_ad_metrics(metrics: dict) -> list[str]:
+def _validate_video_soft_ad_metrics(metrics: dict, *, scenes: list[dict] | None = None) -> list[str]:
     """video_soft_ad（O→A1 软广 8 模块）metrics 校验。
 
     v8（W4-B 14.4 phase C v8 八模块）：按 selected_framework 分支校验
@@ -2536,12 +2563,34 @@ def _validate_video_soft_ad_metrics(metrics: dict) -> list[str]:
     except (TypeError, ValueError):
         pass
 
-    sg = metrics.get("scene_change_max_gap_seconds")
-    try:
-        if sg is not None and float(sg) > 5:
-            warnings.append(f"地板 4 · scene_change_max_gap_seconds={sg} 超过 5")
-    except (TypeError, ValueError):
-        pass
+    # 单段时长上限（反 LLM 自报自欺：用 scenes 实际 time_range 算）
+    sg_self = metrics.get("scene_change_max_gap_seconds")
+    actual_max_gap, actual_seg_count, actual_durations = _compute_actual_scene_gaps(scenes or [])
+    if actual_max_gap is not None:
+        if actual_max_gap > 8:
+            warnings.append(
+                f"地板 4 硬上限 · 实际最长段 {actual_max_gap}s（durations={actual_durations}）超过 8s—画面停滞断完播率"
+            )
+        # 软广 25-30s 段数下限 5（mini_documentary 例外 4 段）
+        target_min = 4 if framework == "mini_documentary" else 5
+        if actual_seg_count < target_min:
+            warnings.append(
+                f"地板 4 段数下限 · 实际段数 {actual_seg_count} < {target_min}（{framework} 框架）"
+            )
+        if sg_self is not None:
+            try:
+                if abs(int(sg_self) - actual_max_gap) > 1:
+                    warnings.append(
+                        f"地板 4 自报数据自欺 · LLM 自报 scene_change_max_gap_seconds={sg_self} 但 scenes 实际最长段 {actual_max_gap}s"
+                    )
+            except (TypeError, ValueError):
+                pass
+    else:
+        try:
+            if sg_self is not None and float(sg_self) > 8:
+                warnings.append(f"地板 4 · scene_change_max_gap_seconds={sg_self} 超过 8（无 scenes 数据反验，仅信自报）")
+        except (TypeError, ValueError):
+            pass
 
     if metrics.get("first_3s_mentions_product"):
         warnings.append("钩子前 3s 不准提产品（first_3s_mentions_product 必须 false）")
@@ -2729,7 +2778,7 @@ def _validate_video_soft_ad_metrics(metrics: dict) -> list[str]:
     return warnings
 
 
-def _validate_video_planting_metrics(metrics: dict) -> list[str]:
+def _validate_video_planting_metrics(metrics: dict, *, scenes: list[dict] | None = None) -> list[str]:
     """video_planting（A1/A2→A3 种草 9 模块双层体系）metrics 校验。
 
     v2（W4-B 14.4 phase C v2 九模块）：双层结构 — 必须 1 相关性层 (M1/M2) +
@@ -2836,12 +2885,44 @@ def _validate_video_planting_metrics(metrics: dict) -> list[str]:
             warnings.append(f"地板 3 · first_subtitle_chars={fsc} 超过 12（最佳 7-10）")
     except (TypeError, ValueError):
         pass
-    sg = metrics.get("scene_change_max_gap_seconds")
-    try:
-        if sg is not None and float(sg) > 5:
-            warnings.append(f"地板 4 · scene_change_max_gap_seconds={sg} 超过 5")
-    except (TypeError, ValueError):
-        pass
+    # 单段时长上限校验（反"LLM 自报数字自欺"陷阱：从 scenes 实际 time_range 算 max_gap）
+    sg_self = metrics.get("scene_change_max_gap_seconds")
+    actual_max_gap, actual_seg_count, actual_durations = _compute_actual_scene_gaps(scenes or [])
+    if actual_max_gap is not None:
+        # 硬上限：单段 > 8s 失败（M8 demonstration 完整动作镜头可豁免，但 prompt 已要求超 8 必拆）
+        if actual_max_gap > 8:
+            warnings.append(
+                f"地板 4 硬上限 · 实际最长段 {actual_max_gap}s（durations={actual_durations}）超过 8s 上限—画面停滞断完播率"
+            )
+        # 段数下限：30s/45s 视频段数不足（5/7）
+        duration_total = metrics.get("duration_seconds")
+        try:
+            dt = int(duration_total) if duration_total is not None else None
+        except (TypeError, ValueError):
+            dt = None
+        if dt is not None:
+            target = 5 if dt <= 35 else 7  # 30s 阈值 5 / 45s 阈值 7
+            if actual_seg_count < target:
+                warnings.append(
+                    f"地板 4 段数下限 · 实际段数 {actual_seg_count} < {target}（{dt}s 视频应 ≥ {target} 段）"
+                )
+        # 自报数据 vs 实际比对（反自欺）
+        if sg_self is not None:
+            try:
+                sg_int = int(sg_self)
+                if abs(sg_int - actual_max_gap) > 1:
+                    warnings.append(
+                        f"地板 4 自报数据自欺 · LLM 自报 scene_change_max_gap_seconds={sg_int} 但 scenes 实际最长段 {actual_max_gap}s"
+                    )
+            except (TypeError, ValueError):
+                pass
+    else:
+        # 无法从 scenes 解析（time_range 全空或格式坏）→ 退到 LLM 自报检查
+        try:
+            if sg_self is not None and float(sg_self) > 8:
+                warnings.append(f"地板 4 · scene_change_max_gap_seconds={sg_self} 超过 8（无 scenes 数据反验，仅信自报）")
+        except (TypeError, ValueError):
+            pass
     if metrics.get("hardad_words_present") is True:
         warnings.append(
             "地板 7 · 检测到硬广敏感词（最/第一/绝对/治愈/功效/根治/限时/仅剩/抢购）"
@@ -3278,11 +3359,16 @@ async def generate_creative_pack(
     ).strip()
 
     # === 拉 metrics_json + 跑后端硬约束校验（反"LLM 自检装饰") ===
+    # 同时 parse scenes 给 validator 用 time_range 实际算 max_gap（防 LLM 自报自欺）
     metrics = _extract_metrics_json(script_md)
+    try:
+        parsed_scenes = pipeline_lineage.parse_scenes_from_script_md(script_md, kind)
+    except Exception:
+        parsed_scenes = []
     if metrics is None:
         validation_warnings = ["⚠ LLM 没输出 metrics_json 代码块（或 JSON 解析失败），无法跑硬约束校验。改 prompt 或重跑。"]
     else:
-        validation_warnings = _validate_creative_metrics(metrics, kind)
+        validation_warnings = _validate_creative_metrics(metrics, kind, scenes=parsed_scenes)
 
     # === 落库 ===
     script_id = await pipeline_lineage.save_creative_pack(
