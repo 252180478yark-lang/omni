@@ -338,6 +338,7 @@ class PipelineGetSkuLineageRequest(BaseModel):
     sku_id: str
     limit_per_table: int = 100
     include_archived: bool = False
+    hide_draft_videos: bool = True
 
 
 @router.post("/exec/pipeline_get_sku_lineage")
@@ -347,7 +348,8 @@ async def exec_pipeline_get_sku_lineage(
     """SKU 全血缘嵌套树：matrix → audience_run → record → pack → script → asset。
 
     给前端血缘图组件用，含 status='draft' 的（前端按状态着色）；
-    默认隐藏 status='archived'，include_archived=True 时全返。
+    默认隐藏 status='archived'，include_archived=True 时全返；
+    默认隐藏 status='draft' 的 video asset（草稿视频段不挤血缘）。
     """
     from app.services.pipeline_lineage import get_sku_lineage
     try:
@@ -355,6 +357,7 @@ async def exec_pipeline_get_sku_lineage(
             sku_id=payload.sku_id,
             limit_per_table=payload.limit_per_table,
             include_archived=payload.include_archived,
+            hide_draft_videos=payload.hide_draft_videos,
         )
     except Exception as exc:
         logger.exception("pipeline_get_sku_lineage REST 异常")

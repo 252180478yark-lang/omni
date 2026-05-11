@@ -231,6 +231,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
   const [adopting, setAdopting] = useState<string | null>(null)
   const [archiving, setArchiving] = useState<string | null>(null)
   const [includeArchived, setIncludeArchived] = useState(false)
+  const [hideDraftVideos, setHideDraftVideos] = useState(true)
 
   const allowedPicks = pickKinds || ['audience_record', 'audience_pack']
 
@@ -245,7 +246,11 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
       const res = await fetch('/api/omni/sku-pipeline/lineage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku_id: skuId, limit_per_table: 100, include_archived: includeArchived }),
+        body: JSON.stringify({
+          sku_id: skuId, limit_per_table: 100,
+          include_archived: includeArchived,
+          hide_draft_videos: hideDraftVideos,
+        }),
       })
       const json = await res.json()
       if (json.success && json.data?.ok) {
@@ -276,7 +281,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
     } finally {
       setLoading(false)
     }
-  }, [skuId, includeArchived])
+  }, [skuId, includeArchived, hideDraftVideos])
 
   useEffect(() => {
     fetchLineage()
@@ -641,6 +646,14 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
           <Button size="sm" variant="outline" onClick={collapseAll} disabled={loading || !data} title="折叠所有节点">
             <ChevronRight className="w-3 h-3 mr-1" />全折
           </Button>
+          <label className="text-[11px] flex items-center gap-1 cursor-pointer select-none" title="默认隐藏未采纳的视频段（step 7 跑过没采纳的不挤血缘图）；勾上后草稿视频段也出现">
+            <input
+              type="checkbox"
+              checked={!hideDraftVideos}
+              onChange={e => setHideDraftVideos(!e.target.checked)}
+            />
+            <span>显示草稿视频</span>
+          </label>
           <label className="text-[11px] flex items-center gap-1 cursor-pointer select-none" title="勾上后已归档节点也出现在血缘图（默认隐藏）">
             <input
               type="checkbox"

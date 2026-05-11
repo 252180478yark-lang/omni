@@ -1435,20 +1435,24 @@ async def get_creative_pack(script_id: str) -> dict[str, Any] | None:
 # 全血缘聚合（W4-B 切片 14.4 phase C v3：血缘图前端用）
 # ════════════════════════════════════════════════════════════════
 
-async def get_sku_lineage(sku_id: str, *, limit_per_table: int = 100, include_archived: bool = False) -> dict[str, Any]:
+async def get_sku_lineage(sku_id: str, *, limit_per_table: int = 100, include_archived: bool = False, hide_draft_videos: bool = True) -> dict[str, Any]:
     """串某 SKU 的全血缘嵌套树，给前端血缘图用。
 
     返回 6 张表的嵌套：matrix_runs → audience_runs → audience_records
       → audience_packs → scripts；assets 单独列（phase D 起填，当前可能空）。
 
-    包含 status='draft' 的也返（前端按 status 着色 + 决定是否显示）。
-    默认 filter 掉 status='archived' 的节点；include_archived=True 时全返。
+    默认行为：
+    - 隐藏 status='archived'；include_archived=True 时全返
+    - 隐藏 asset_type='video' AND status='draft'（step 7 跑过没采纳的视频段不挤血缘图）；
+      hide_draft_videos=False 时也返
 
     实现：6 个 query 按 sku_id 一次拉全，Python 内存按 FK 嵌套（避免 N+1）。
     """
     pool = get_pool()
     # 默认隐藏 archived；老板想看已归档时传 include_archived=True
     arch_filter = "" if include_archived else " AND status != 'archived'"
+    # 默认隐藏 draft video asset（草稿视频段不挤血缘）；只对 asset 查询生效
+    draft_video_filter = "" if not hide_draft_videos else " AND NOT (asset_type = 'video' AND status = 'draft')"
 
     matrix_rows = await pool.fetch(
         f"""
@@ -1515,7 +1519,7 @@ async def get_sku_lineage(sku_id: str, *, limit_per_table: int = 100, include_ar
                asset_type, scene_no, file_url, thumbnail_url,
                external_video_id, external_creative_id, status, created_at
         FROM pipeline.assets
-        WHERE sku_id = $1{arch_filter}
+        WHERE sku_id = $1{arch_filter}{draft_video_filter}
         ORDER BY created_at DESC
         LIMIT $2
         """,
