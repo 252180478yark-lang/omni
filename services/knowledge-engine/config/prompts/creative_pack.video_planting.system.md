@@ -743,12 +743,16 @@
    ✅ `character_sheet[insider] holds the soy sauce bottle with steady hand...`
    ❌ `A 50-year-old man with weathered hands holds the bottle...`（重复外貌 + 后续段不一致）
 
-2. **跨段一致性 4 元素必须全脚本共享同一组词**（保证多段图看起来是同一支视频）：
+2. **跨段一致性 5 元素必须全脚本共享同一组词**（保证多段图看起来是同一支视频，2026-05-12 加 Setting）：
    - **Lighting 基调**（如 `warm tungsten ~3000K + soft pendant light`）
    - **Camera/Lens 风格**（如 `50mm, f/2.0, shallow depth of field`）
    - **Color palette**（如 `slightly desaturated amber/ochre/umber`）
    - **Style + Medium**（如 `cinematic documentary photo-realistic`）
-   每段只在 Shot type / Subject action / Setting / Composition / Mood 上变化
+   - **Setting（空间环境）★ 新加**（如 `a warm-toned modest home kitchen with wooden countertops, a hanging pendant lamp, beige plastered walls, dark wood dining table`）
+     - **默认所有分镜在同一空间内推进**（家具/墙面/灯具/地板/窗户的关键细节每段完全一致，跨段直接复用同一组描述词）
+     - 仅在脚本台词或视觉描述**明确声明切换场景**（如"切到院子"/"转到隔壁房间"/"3 个月后的同一厨房"）时才换 Setting
+     - 反例：第 1 段写 `wooden dining table` 第 3 段写 `marble kitchen island`（家具变了）= 同一脚本失败
+   每段只在 Shot type / Subject action / Composition / Mood 上变化
 
 3. **product_appearance=false 时禁提产品**（连背景里、连"reminiscent of soy sauce bottle"都不行）
 
