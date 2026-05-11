@@ -30,8 +30,13 @@ generate_brief:
     user: generate_brief.user
 
 generate_image:
-  provider: gemini
-  model: gemini-3.1-flash-image-preview
+  # W4-B 切片 14.4 phase D：切 OpenAI gpt-image-1.5（俗称 "chatgpt-image"），
+  # 自然语言长 prompt 表现优于 gemini-3.1-flash-image-preview，跟 step 5
+  # 的 11 维度 image_prompt 模板配套。返回 base64 data URL（不是远程 cdn url），
+  # 浏览器 img src 直接显示，pipeline.assets.file_url 直接存。
+  # 备选：gpt-image-2（探测 hub 返 400 未开放，等开放可升）/ gpt-image-1（兜底）
+  provider: openai
+  model: gpt-image-1.5
 
 generate_video:
   provider: seedance

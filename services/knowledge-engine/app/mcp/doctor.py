@@ -86,7 +86,7 @@ async def _check_tools_registered(report: DoctorReport) -> None:
     try:
         from app.mcp.server import mcp
         tools = await mcp.list_tools()
-        # W1 5 + W2 5 + W3a 3 + W3b 7 + W3c 3 + W4-A 4 + W4-B 切片 5/8/9/14.1/14.2/14.3 phase A+B+B+/14.4 phase C = 46
+        # W1 5 + W2 5 + W3a 3 + W3b 7 + W3c 3 + W4-A 4 + W4-B 切片 5/8/9/14.1/14.2/14.3 phase A+B+B+/14.4 phase C+D = 48
         wanted = {
             # W1
             "list_skus", "get_sku", "search_kb", "list_kbs", "list_briefs",
@@ -129,6 +129,10 @@ async def _check_tools_registered(report: DoctorReport) -> None:
             "generate_keyword_pack",
             # W4-B 切片 14.4 phase C（6 类素材脚本：视频软广/种草/收割 + 图文收割 + 主图 + 详情页）
             "generate_creative_pack",
+            # W4-B 切片 14.4 phase D（分镜图生成挂血缘）
+            "generate_storyboard_images",
+            # W4-B 切片 14.4 phase D step 6.5（角色定妆白底像锁脸）
+            "generate_character_sheets",
         }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names

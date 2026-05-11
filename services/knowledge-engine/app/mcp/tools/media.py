@@ -266,6 +266,445 @@ async def generate_image(
 
 
 @tool_with_audit(mcp, require_approval=False)
+async def generate_character_sheets(
+    script_id: str,
+    role_ids: list[str] | None = None,
+    aspect_ratio: str = "1:1",
+) -> dict:
+    """W4-B 切片 14.4 phase D · step 6.5：从 script.character_sheets 拉每个角色 → 自动 build 白底正面像 prompt → chatgpt-image-2 出图 → 落 pipeline.assets（asset_type='character_sheet', character_role=role_id）。
+
+    后续 step 6 跑分镜图按 scene.characters_in_scene 自动找同 script 的对应 character_sheet url 当 face_refs，实现锁脸。
+
+    Args:
+        script_id: pipeline.scripts.id（必须有 character_sheets 字段，即 v11+ 新格式脚本）
+        role_ids: 只跑某几个 role_id（如重跑 mother）；None = 全跑
+        aspect_ratio: 默认 1:1（角色定妆白底像最合适）
+
+    Returns:
+        {ok, result: {script_id, kind, sku_id, roles_total, success_count, error_count,
+                      results: [{role_id, name, asset_id, file_url, prompt} | {role_id, error, prompt}]},
+         trace, next_step_hint(generate_storyboard_images)}
+    """
+    from app.services.pipeline_lineage import get_creative_pack, save_storyboard_asset
+
+    script = await get_creative_pack(script_id)
+    if not script:
+        return {"ok": False, "error": "script_not_found", "script_id": script_id,
+                "hint": "script_id 不存在或已 archived"}
+
+    sheets = script.get("character_sheets") or []
+    if not sheets:
+        return {"ok": False, "error": "no_character_sheets", "script_id": script_id,
+                "hint": "脚本 character_sheets 为空。可能是 v10 老格式（无第 3.5 部分），或 backfill 没解析到。先重跑 step 5 出 v11+ 新格式。"}
+
+    if role_ids:
+        sheets = [s for s in sheets if s.get("role_id") in role_ids]
+    if not sheets:
+        return {"ok": False, "error": "no_matching_roles", "role_ids": role_ids,
+                "hint": f"指定 role_ids={role_ids} 在脚本里没匹配；脚本含 role_ids={[s.get('role_id') for s in (script.get('character_sheets') or [])]}"}
+
+    model_cfg = get_model_for_tool("generate_image")
+    client = AIHubClient(timeout=180.0)
+
+    def _build_character_prompt(sheet: dict) -> str:
+        """白底正面像统一 prompt 模板（character reference sheet 风格）。"""
+        age = (sheet.get("age") or "").strip()
+        gender_zh = (sheet.get("gender") or "").strip()
+        gender_en = "woman" if gender_zh == "女" else "man" if gender_zh == "男" else "person"
+        keywords = (sheet.get("appearance_keywords") or "").strip()
+        aura = (sheet.get("aura") or "").strip()
+        return (
+            f"A clean studio character reference portrait of a {age} {gender_en}. "
+            f"{keywords}. "
+            f"{aura} "
+            f"Front-facing pose, neutral expression, looking slightly past the camera, "
+            f"shoulders-up framing. "
+            f"Pure pristine white seamless background, even softbox lighting from the front, "
+            f"no harsh shadows, no environmental elements. "
+            f"Photo-realistic, sharp focus on face, natural skin tones, "
+            f"professional headshot quality. "
+            f"This is a character reference sheet for film production — strictly clean isolated subject on white. "
+            f"{aspect_ratio} aspect ratio."
+        )
+
+    async def _one(sheet: dict) -> dict:
+        role_id = sheet.get("role_id")
+        prompt = _build_character_prompt(sheet)
+        try:
+            resp = await client.generate_image_v2(
+                prompt=prompt,
+                aspect=aspect_ratio,
+                n=1,
+                model=model_cfg.get("model", "gpt-image-1"),
+                provider=model_cfg.get("provider", "openai"),
+            )
+            urls: list[str] = []
+            for img in resp.get("images") or resp.get("data") or []:
+                u = img.get("url") or img.get("image_url") or img.get("b64_json", "")
+                # b64_json 字段不带 data: 前缀，自己加
+                if u and not u.startswith(("http", "data:")):
+                    u = f"data:image/png;base64,{u}"
+                if u:
+                    urls.append(u)
+            if not urls:
+                return {"role_id": role_id, "name": sheet.get("name"),
+                        "error": "no_image_returned", "prompt": prompt}
+            url = urls[0]
+            asset_id = await save_storyboard_asset(
+                sku_id=script["sku_id"],
+                asset_type="character_sheet",
+                script_id=script_id,
+                audience_pack_id=script.get("audience_pack_id"),
+                audience_record_id=script.get("audience_record_id"),
+                matrix_run_id=script.get("matrix_run_id"),
+                character_role=role_id,
+                file_url=url,
+                prompt=prompt,
+            )
+            return {
+                "role_id": role_id,
+                "name": sheet.get("name"),
+                "asset_id": asset_id,
+                "file_url": url,
+                "prompt": prompt,
+            }
+        except Exception as exc:
+            return {"role_id": role_id, "name": sheet.get("name"),
+                    "error": f"{type(exc).__name__}: {exc}", "prompt": prompt}
+
+    results = await asyncio.gather(*(_one(s) for s in sheets))
+    success_count = sum(1 for r in results if r.get("asset_id"))
+    error_count = sum(1 for r in results if r.get("error"))
+
+    cost_per = "¥0.5" if model_cfg.get("provider") == "openai" else "未知"
+    cost_estimate = f"~{len(sheets)} × {cost_per}"
+
+    out = {
+        "ok": True,
+        "result": {
+            "script_id": script_id,
+            "kind": script.get("kind"),
+            "sku_id": script["sku_id"],
+            "roles_total": len(sheets),
+            "success_count": success_count,
+            "error_count": error_count,
+            "results": results,
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "openai"),
+            model=model_cfg.get("model", "gpt-image-1"),
+            prompt=f"script_id={script_id} → {len(sheets)} 个角色定妆并发出图",
+            params={
+                "role_ids": role_ids,
+                "aspect_ratio": aspect_ratio,
+            },
+            cost_estimate=cost_estimate,
+        ),
+    }
+
+    return attach_next_step(
+        out,
+        suggested_tool="generate_storyboard_images",
+        suggested_args={"script_id": script_id},
+        human_text=(
+            f"已落 {success_count}/{len(sheets)} 张角色定妆照（asset_type='character_sheet'）。"
+            f"接下来跑 step 6 分镜图，会自动按每段 scene.characters_in_scene 找对应 character_sheet 当 face_refs 锁脸。"
+        ),
+    )
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_storyboard_images(
+    script_id: str,
+    scene_nums: list[int] | None = None,
+    face_refs: list[str] | None = None,
+    product_refs: list[str] | None = None,
+    style_refs: list[str] | None = None,
+    aspect_ratio: str = "9:16",
+    extra_prompt_suffix: str | None = None,
+) -> dict:
+    """W4-B 切片 14.4 phase D：从 script.scenes 拉分镜，并发调 generate_image_v2 出图，落 pipeline.assets。
+
+    Args:
+        script_id: pipeline.scripts.id（已 adopted 的最佳；scenes 字段需非空）
+        scene_nums: 只跑这几段 scene_no（None = 全跑）；用于单段重跑
+        face_refs / product_refs / style_refs: 三类参考图 url（同 generate_image）
+        aspect_ratio: 画幅（默认 9:16）
+        extra_prompt_suffix: 每段 prompt 末尾追加（如风格 hint "photo-realistic, warm tone"）
+
+    Returns:
+        {ok, result: {script_id, kind, sku_id, scenes_total, success_count, error_count,
+                      results: [{scene_no, asset_id, file_url, prompt, face_refs_used, product_refs_used}
+                               | {scene_no, error, prompt}]},
+         trace, next_step_hint(generate_video — 把 image url 当 first_frame)}
+
+    phase D 升级（v2）：
+    - 优先用 scene.image_prompt（v11+ 新格式）；缺失才回退 scene.visual + shot
+    - 自动按 scene.characters_in_scene 找同 script 的 character_sheet asset url 当 face_refs
+      （老板传的 face_refs 跟自动找的合并，不重复）
+    - scene.product_appearance=False 时强制不传 product_refs（哪怕老板传了，也不传）
+    """
+    from app.services.pipeline_lineage import (
+        get_creative_pack, save_storyboard_asset, list_character_sheets_for_script,
+    )
+
+    script = await get_creative_pack(script_id)
+    if not script:
+        return {"ok": False, "error": "script_not_found", "script_id": script_id,
+                "hint": "script_id 不存在或已 archived；先在血缘图里确认 script 有效"}
+
+    scenes = script.get("scenes") or []
+    if not scenes:
+        return {"ok": False, "error": "no_scenes", "script_id": script_id,
+                "hint": "脚本 scenes 为空。改 script_md 加「第 4 部分：分镜脚本」段，或调 backfill_scenes_for_existing_scripts 重解析"}
+
+    if scene_nums:
+        scenes = [s for s in scenes if s.get("scene_no") in scene_nums]
+    if not scenes:
+        return {"ok": False, "error": "no_matching_scenes", "scene_nums": scene_nums,
+                "hint": f"指定 scene_nums={scene_nums} 在脚本里没匹配；脚本含 scene_no={[s.get('scene_no') for s in (script.get('scenes') or [])]}"}
+
+    model_cfg = get_model_for_tool("generate_image")
+    client = AIHubClient(timeout=180.0)
+
+    # 拉同 script 的 character_sheet asset → role_id → file_url 索引
+    character_sheets_assets = await list_character_sheets_for_script(script_id)
+    role_to_url: dict[str, str] = {}
+    for a in character_sheets_assets:
+        role = a.get("character_role")
+        url = a.get("file_url")
+        if role and url and role not in role_to_url:
+            role_to_url[role] = url
+
+    # 拉 script.character_sheets 里的 gender 信息（给占位符翻译用 woman/man/person）
+    char_sheets_meta = script.get("character_sheets") or []
+    role_to_gender: dict[str, str] = {}
+    for s in char_sheets_meta:
+        rid = s.get("role_id")
+        gender_zh = (s.get("gender") or "").strip()
+        gender_en = "woman" if gender_zh == "女" else "man" if gender_zh == "男" else "person"
+        if rid:
+            role_to_gender[rid] = gender_en
+
+    # 占位符翻译正则：character_sheet[role_id]（含可选空格）
+    _CHAR_SHEET_REF_RE = re.compile(r"character_sheet\s*\[\s*([a-z_][a-z0-9_]*)\s*\]", re.I)
+
+    def _replace_char_sheet_refs(prompt: str, scene: dict, manual_face_refs_count: int) -> str:
+        """把 prompt 里的 character_sheet[role_id] 占位符替换为
+        "the woman/man/person shown in reference image N"。
+
+        N = manual_face_refs_count + scene.characters_in_scene 里 role_id 索引 + 1（1-based）。
+        老板手填的 face_refs 占在前面（image[0]...），character_sheet 接其后。
+        """
+        chars = scene.get("characters_in_scene") or []
+        if not chars or "character_sheet[" not in prompt.lower():
+            return prompt
+        # 建 role_id → reference_image_index 映射
+        role_to_idx: dict[str, int] = {}
+        for i, role_id in enumerate(chars):
+            role_to_idx[role_id] = manual_face_refs_count + i + 1  # 1-based
+
+        def _sub(m: re.Match) -> str:
+            role_id = m.group(1)
+            idx = role_to_idx.get(role_id)
+            gender = role_to_gender.get(role_id, "person")
+            if idx is None:
+                # role 没在 characters_in_scene 里 → 不动占位符（数据不一致，保留原样让老板看到 bug）
+                return m.group(0)
+            return f"the {gender} shown in reference image {idx}"
+
+        return _CHAR_SHEET_REF_RE.sub(_sub, prompt)
+
+    def _build_prompt(scene: dict) -> str:
+        """优先用 v11+ image_prompt 字段；缺失才回退 v10 老格式拼装。
+        喂 hub 前做占位符翻译（character_sheet[role] → the woman/man in reference image N）。
+        """
+        ip = (scene.get("image_prompt") or "").strip()
+        if ip:
+            # 占位符翻译（OpenAI 不识别 character_sheet[xxx] 模板字符串，给它 reference image N 才能锁脸）
+            manual_count = len(face_refs or [])
+            ip = _replace_char_sheet_refs(ip, scene, manual_count)
+            if extra_prompt_suffix:
+                return f"{ip}\n\n{extra_prompt_suffix}".strip()
+            return ip
+        # 旧格式（v10）回退：visual + shot 拼接
+        parts: list[str] = []
+        if scene.get("name"):
+            parts.append(f"【{scene['name']}】")
+        if scene.get("visual"):
+            parts.append(scene["visual"])
+        if scene.get("shot"):
+            parts.append(f"镜头：{scene['shot']}")
+        if extra_prompt_suffix:
+            parts.append(extra_prompt_suffix)
+        return "\n".join(parts).strip()
+
+    def _append_strict_product_hint(prompt: str, face_count: int, product_count: int) -> str:
+        """如果该段真的传了产品参考图，prompt 末尾追加技术性指代说明，让 OpenAI 严格画产品外观。
+
+        face_refs 在前 → product_refs 紧接着，所以产品的 reference image 索引从
+        face_count+1 开始。多张产品时用 "images N to M" 区间。
+        """
+        if product_count <= 0:
+            return prompt
+        start_idx = face_count + 1
+        end_idx = face_count + product_count
+        ref_clause = (
+            f"reference image {start_idx}" if start_idx == end_idx
+            else f"reference images {start_idx} to {end_idx}"
+        )
+        hint = (
+            f"\n\nProduct fidelity constraint: Strictly reproduce the product shown in {ref_clause} "
+            f"(exact label, packaging design, color, proportions and any visible text — "
+            f"do not invent, restyle or modify any visual element of the product itself; "
+            f"only the surrounding scene, lighting and composition follow the main prompt)."
+        )
+        return prompt + hint
+
+    def _resolve_face_refs(scene: dict) -> list[str]:
+        """按 scene.characters_in_scene 找对应 character_sheet url。
+        + 老板手传 face_refs 合并去重（手传优先放前面）。
+        """
+        urls: list[str] = list(face_refs or [])
+        chars = scene.get("characters_in_scene") or []
+        for role in chars:
+            url = role_to_url.get(role)
+            if url and url not in urls:
+                urls.append(url)
+        return urls
+
+    def _resolve_product_refs(scene: dict) -> list[str] | None:
+        """scene.product_appearance=False 强制不传 product_refs（哪怕老板传了）。
+        =True 或缺失（v10）就用老板传的。
+        """
+        appears = scene.get("product_appearance")
+        if appears is False:
+            return None  # 强制不传
+        return list(product_refs) if product_refs else None
+
+    async def _one(scene: dict) -> dict:
+        scene_no = scene.get("scene_no")
+        prompt = _build_prompt(scene)
+        if not prompt:
+            return {"scene_no": scene_no, "error": "scene_visual_or_image_prompt_empty"}
+        scene_face_refs = _resolve_face_refs(scene)
+        scene_product_refs = _resolve_product_refs(scene)
+        # 如果该段真的传产品参考图，追加严格参考说明（让 OpenAI 知道 image[N] 是产品要照画）
+        if scene_product_refs:
+            prompt = _append_strict_product_hint(
+                prompt,
+                face_count=len(scene_face_refs or []),
+                product_count=len(scene_product_refs),
+            )
+        try:
+            resp = await client.generate_image_v2(
+                prompt=prompt,
+                face_refs=scene_face_refs or None,
+                product_refs=scene_product_refs,
+                style_refs=style_refs,
+                aspect=aspect_ratio,
+                n=1,
+                model=model_cfg.get("model", "gpt-image-1"),
+                provider=model_cfg.get("provider", "openai"),
+            )
+            urls: list[str] = []
+            for img in resp.get("images") or resp.get("data") or []:
+                u = img.get("url") or img.get("image_url") or img.get("b64_json", "")
+                if u and not u.startswith(("http", "data:")):
+                    u = f"data:image/png;base64,{u}"
+                if u:
+                    urls.append(u)
+            if not urls:
+                return {"scene_no": scene_no, "error": "no_image_returned", "prompt": prompt}
+            url = urls[0]
+            asset_id = await save_storyboard_asset(
+                sku_id=script["sku_id"],
+                asset_type="image",
+                script_id=script_id,
+                audience_pack_id=script.get("audience_pack_id"),
+                audience_record_id=script.get("audience_record_id"),
+                matrix_run_id=script.get("matrix_run_id"),
+                scene_no=scene_no,
+                file_url=url,
+                prompt=prompt,
+            )
+            return {
+                "scene_no": scene_no,
+                "asset_id": asset_id,
+                "file_url": url,
+                "prompt": prompt,
+                "face_refs_used": scene_face_refs,
+                "product_refs_used": scene_product_refs or [],
+                "characters_in_scene": scene.get("characters_in_scene") or [],
+                "product_appearance": scene.get("product_appearance"),
+            }
+        except Exception as exc:
+            return {"scene_no": scene_no, "error": f"{type(exc).__name__}: {exc}", "prompt": prompt}
+
+    results = await asyncio.gather(*(_one(s) for s in scenes))
+    success_count = sum(1 for r in results if r.get("asset_id"))
+    error_count = sum(1 for r in results if r.get("error"))
+
+    cost_per = "¥0.5" if model_cfg.get("provider") == "openai" else "未知"
+    cost_estimate = f"~{len(scenes)} × {cost_per}"
+
+    out = {
+        "ok": True,
+        "result": {
+            "script_id": script_id,
+            "kind": script.get("kind"),
+            "sku_id": script.get("sku_id"),
+            "scenes_total": len(scenes),
+            "success_count": success_count,
+            "error_count": error_count,
+            "results": results,
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "openai"),
+            model=model_cfg.get("model", "gpt-image-2"),
+            prompt=f"script_id={script_id} kind={script.get('kind')} → {len(scenes)} 段分镜并发出图",
+            params={
+                "scene_nums": scene_nums,
+                "face_refs": face_refs or [],
+                "product_refs": product_refs or [],
+                "style_refs": style_refs or [],
+                "aspect_ratio": aspect_ratio,
+                "extra_prompt_suffix": extra_prompt_suffix,
+            },
+            cost_estimate=cost_estimate,
+        ),
+    }
+
+    # next_step_hint：拿成功的图当 generate_video 的 first_frame
+    valid = [r for r in results if r.get("file_url")]
+    segments_hint = []
+    for i, r in enumerate(valid):
+        nxt = valid[i + 1].get("file_url") if i + 1 < len(valid) else None
+        segments_hint.append({
+            "prompt": f"第 {r['scene_no']} 段：从分镜图运镜",
+            "first_frame": r["file_url"],
+            "last_frame": nxt,
+            "duration_s": 8,
+            "scene_no": r["scene_no"],
+        })
+
+    return attach_next_step(
+        out,
+        suggested_tool="generate_video",
+        suggested_args={
+            "segments": segments_hint,
+            "face_refs": face_refs or [],
+            "product_refs": product_refs or [],
+            "aspect_ratio": aspect_ratio,
+        },
+        human_text=(
+            f"已落 {success_count}/{len(scenes)} 张分镜图到血缘（pipeline.assets, status=draft）；"
+            f"老板审完逐张采纳，再用这些图当 first_frame 跑 {len(segments_hint)} 段视频"
+        ),
+    )
+
+
+@tool_with_audit(mcp, require_approval=False)
 async def generate_video(
     segments: list[dict],
     face_refs: list[str] | None = None,
@@ -1265,7 +1704,7 @@ async def generate_audience_pack(
 
     # 6. 调 LLM
     model_cfg = get_model_for_tool("generate_audience_pack")
-    client = AIHubClient(timeout=180.0)
+    client = AIHubClient(timeout=300.0)
     resp = await client.chat(
         messages=[
             {"role": "system", "content": sys_msg},
@@ -1863,6 +2302,84 @@ def _validate_video_soft_ad_metrics(metrics: dict) -> list[str]:
         if metrics.get("doc_real_interview") is not True:
             warnings.append("M8 Mini-Doc · doc_real_interview=false（必须真实采访，禁配音/后期改语气）")
 
+    # === image_prompt + 角色清单（W4-B 切片 14.4 phase D：脚本=单一创意源）===
+    csc = metrics.get("character_sheet_count")
+    try:
+        csc_val = int(csc) if csc is not None else None
+        if csc_val is None or csc_val < 1:
+            warnings.append(
+                f"phase D · character_sheet_count={csc} 至少 1（出场 ≥ 2 段的角色都要列；"
+                "step 6.5 拿这清单先出锁脸定妆照）"
+            )
+        elif csc_val > 5:
+            warnings.append(
+                f"phase D · character_sheet_count={csc_val} 偏多（>5 个固定角色不利锁脸；"
+                "考虑合并次要角色为'路人'）"
+            )
+    except (TypeError, ValueError):
+        warnings.append(f"phase D · character_sheet_count={csc!r} 不是整数")
+
+    swip = metrics.get("scenes_with_image_prompt_count")
+    stc = metrics.get("scenes_total_count")
+    try:
+        swip_val = int(swip) if swip is not None else None
+        stc_val = int(stc) if stc is not None else None
+        if swip_val is None or stc_val is None:
+            warnings.append(
+                f"phase D · scenes_with_image_prompt_count={swip}/scenes_total_count={stc} "
+                "必填（每段都需 image_prompt 字段，step 6 直接喂图模型）"
+            )
+        elif swip_val != stc_val:
+            warnings.append(
+                f"phase D · scenes_with_image_prompt_count={swip_val} != scenes_total_count={stc_val} "
+                "（每段 scene 都必须有 image_prompt，少一段都不行）"
+            )
+    except (TypeError, ValueError):
+        warnings.append(f"phase D · scenes_with_image_prompt_count={swip!r}/scenes_total_count={stc!r} 不是整数")
+
+    ipac = metrics.get("image_prompt_avg_chars")
+    try:
+        ipac_val = float(ipac) if ipac is not None else None
+        if ipac_val is None or not (120 <= ipac_val <= 250):
+            warnings.append(
+                f"phase D · image_prompt_avg_chars={ipac} 不在 [120, 250] 区间 "
+                "（< 120 信息不够、> 250 chatgpt-image-2 易截断）"
+            )
+    except (TypeError, ValueError):
+        warnings.append(f"phase D · image_prompt_avg_chars={ipac!r} 不是数字")
+
+    spa = metrics.get("scene_product_appearance")
+    if not isinstance(spa, list):
+        warnings.append(
+            f"phase D · scene_product_appearance={spa!r} 必须是 boolean 数组 "
+            "（每段产品出不出场，长度 == scenes_total_count）"
+        )
+    else:
+        try:
+            stc_val_for_spa = int(stc) if stc is not None else None
+        except (TypeError, ValueError):
+            stc_val_for_spa = None
+        if stc_val_for_spa is not None and len(spa) != stc_val_for_spa:
+            warnings.append(
+                f"phase D · scene_product_appearance 长度 {len(spa)} != scenes_total_count {stc_val_for_spa}"
+            )
+        true_count = sum(1 for x in spa if x is True)
+        if true_count == 0:
+            warnings.append(
+                "phase D · scene_product_appearance 全 false（每个脚本至少 1 段产品出场，"
+                "否则品牌不入画 = 老板的酱油白做了）"
+            )
+        # 与 brand_total_mention_count 对得上（产品出场段数应 ≥ 品牌出现次数 - 1，因为 Brand Mark 字幕段不需要产品入画）
+        try:
+            bcv = int(metrics.get("brand_total_mention_count") or 0)
+            if bcv > 0 and true_count > bcv + 1:
+                warnings.append(
+                    f"phase D · scene_product_appearance true 计数 {true_count} 显著超过 "
+                    f"brand_total_mention_count {bcv}（产品太频繁出场但品牌不署名 = 廉价感）"
+                )
+        except (TypeError, ValueError):
+            pass
+
     return warnings
 
 
@@ -2181,6 +2698,70 @@ def _validate_video_planting_metrics(metrics: dict) -> list[str]:
             "需要平衡（路由 2.2 节）"
         )
 
+    # === image_prompt + 角色清单（W4-B 切片 14.4 phase D：脚本=单一创意源）===
+    csc = metrics.get("character_sheet_count")
+    try:
+        csc_val = int(csc) if csc is not None else None
+        if csc_val is None or csc_val < 1:
+            warnings.append(
+                f"phase D · character_sheet_count={csc} 至少 1（出场 ≥ 2 段的角色都要列；"
+                "step 6.5 拿这清单先出锁脸定妆照）"
+            )
+        elif csc_val > 5:
+            warnings.append(
+                f"phase D · character_sheet_count={csc_val} 偏多（>5 个固定角色不利锁脸）"
+            )
+    except (TypeError, ValueError):
+        warnings.append(f"phase D · character_sheet_count={csc!r} 不是整数")
+
+    swip = metrics.get("scenes_with_image_prompt_count")
+    stc = metrics.get("scenes_total_count")
+    try:
+        swip_val = int(swip) if swip is not None else None
+        stc_val = int(stc) if stc is not None else None
+        if swip_val is None or stc_val is None:
+            warnings.append(
+                f"phase D · scenes_with_image_prompt_count={swip}/scenes_total_count={stc} "
+                "必填（每段都需 image_prompt 字段，step 6 直接喂图模型）"
+            )
+        elif swip_val != stc_val:
+            warnings.append(
+                f"phase D · scenes_with_image_prompt_count={swip_val} != scenes_total_count={stc_val} "
+                "（每段 scene 都必须有 image_prompt，少一段都不行）"
+            )
+    except (TypeError, ValueError):
+        warnings.append(f"phase D · scenes_with_image_prompt_count={swip!r}/scenes_total_count={stc!r} 不是整数")
+
+    ipac = metrics.get("image_prompt_avg_chars")
+    try:
+        ipac_val = float(ipac) if ipac is not None else None
+        if ipac_val is None or not (120 <= ipac_val <= 250):
+            warnings.append(
+                f"phase D · image_prompt_avg_chars={ipac} 不在 [120, 250] 区间"
+            )
+    except (TypeError, ValueError):
+        warnings.append(f"phase D · image_prompt_avg_chars={ipac!r} 不是数字")
+
+    spa = metrics.get("scene_product_appearance")
+    if not isinstance(spa, list):
+        warnings.append(
+            f"phase D · scene_product_appearance={spa!r} 必须是 boolean 数组"
+        )
+    else:
+        try:
+            stc_val_for_spa = int(stc) if stc is not None else None
+        except (TypeError, ValueError):
+            stc_val_for_spa = None
+        if stc_val_for_spa is not None and len(spa) != stc_val_for_spa:
+            warnings.append(
+                f"phase D · scene_product_appearance 长度 {len(spa)} != scenes_total_count {stc_val_for_spa}"
+            )
+        true_count = sum(1 for x in spa if x is True)
+        if true_count == 0:
+            warnings.append(
+                "phase D · scene_product_appearance 全 false（每个脚本至少 1 段产品出场）"
+            )
+
     return warnings
 
 
@@ -2331,7 +2912,7 @@ async def generate_creative_pack(
 
     # === 调 LLM ===
     model_cfg = get_model_for_tool("generate_creative_pack")
-    client = AIHubClient(timeout=180.0)
+    client = AIHubClient(timeout=300.0)
     resp = await client.chat(
         messages=[
             {"role": "system", "content": sys_msg},

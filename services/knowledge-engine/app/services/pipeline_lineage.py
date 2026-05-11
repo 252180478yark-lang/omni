@@ -849,6 +849,232 @@ _KIND_TO_TARGET_PURPOSE = {
 }
 
 
+# ════════════════════════════════════════════════════════════════
+# scenes 解析（W4-B 切片 14.4 phase D：从 script_md 拆分镜清单）
+# ════════════════════════════════════════════════════════════════
+
+# 视频类 kind 通用：#### 节点 N · 名称（X-Xs）
+_VIDEO_SCENE_HEADER_RE = re.compile(
+    r"^#{3,4}\s*(?:节点|分镜|镜头|场景|节)\s*(?P<no>\d+)\s*[·\.\-]?\s*"
+    r"(?P<name>[^（(\n]*?)\s*"
+    r"(?:[（(](?P<time>[\d\-~至到]+\s*[s秒]?)[）)])?\s*$",
+    re.M,
+)
+# 字段抽取：- **画面**：xxx / - **台词/字幕**：xxx 等
+_VIDEO_FIELD_RES = {
+    "visual":       re.compile(r"\*\*\s*画面\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\s*$|$)", re.S),
+    "dialog":       re.compile(r"\*\*\s*台词[/／]?\s*字幕?\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\s*$|$)", re.S),
+    "shot":         re.compile(r"\*\*\s*镜头\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\s*$|$)", re.S),
+    "sound":        re.compile(r"\*\*\s*声音\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\s*$|$)", re.S),
+    "core":         re.compile(r"\*\*\s*(?:节点)?内核\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\s*$|$)", re.S),
+    "change_point": re.compile(r"\*\*\s*变化点\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\s*$|$)", re.S),
+}
+
+# phase D 新加 3 字段：本段角色 / 产品出场 / image_prompt
+_VIDEO_FIELD_RES_PHASE_D = {
+    # **本段角色**：[daughter, mother] — 抓 [...] 内的 role_id 列表
+    "characters_in_scene": re.compile(r"\*\*\s*本段角色\s*\*\*\s*[:：]\s*\[([^\]]*)\]"),
+    # **产品出场**：true / false（理由）— 抓 true/false bool
+    "product_appearance": re.compile(r"\*\*\s*产品出场\s*\*\*\s*[:：]\s*(true|false|是|否)", re.I),
+    # **image_prompt**(...): 自然语言长描述 — 抓 : 后到下一个 - **xxx** 之前 / 或段落末尾
+    "image_prompt": re.compile(
+        r"\*\*\s*image_prompt\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\n```|\Z)",
+        re.S,
+    ),
+}
+
+# character_sheet 段（第 3.5 部分）：#### 角色 {role_id} · {简称}
+_CHARACTER_HEADER_RE = re.compile(
+    r"^#{3,4}\s*角色\s+(?P<role_id>[a-z][a-z0-9_]*)\s*[·\.\-]?\s*(?P<name>[^\n]*?)\s*$",
+    re.M,
+)
+_CHARACTER_FIELD_RES = {
+    "age":                  re.compile(r"\*\*\s*年龄\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "gender":               re.compile(r"\*\*\s*性别\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "appearance_keywords":  re.compile(r"\*\*\s*外貌关键词\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\Z)", re.S),
+    "aura":                 re.compile(r"\*\*\s*气质\s*[/／]?\s*神韵?\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\Z)", re.S),
+    "audience_anchor":      re.compile(r"\*\*\s*人群锚点\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\n#|\Z)", re.S),
+}
+
+# 图文类 kind：每段图片 brief 简单格式（按 #### 图 N / #### 主图 N / #### 段 N）
+_GRAPHIC_SCENE_HEADER_RE = re.compile(
+    r"^#{3,4}\s*(?:图|主图|分镜图|段|配图)\s*(?P<no>\d+)\s*[·\.\-：:]?\s*"
+    r"(?P<name>[^\n]*?)\s*$",
+    re.M,
+)
+
+
+def _video_scene_block_kinds() -> set[str]:
+    return {"video_soft_ad", "video_planting", "video_harvest"}
+
+
+def _graphic_scene_block_kinds() -> set[str]:
+    return {"graphic_harvest", "product_main_image", "product_detail_page"}
+
+
+def parse_scenes_from_script_md(script_md: str, kind: str) -> list[dict[str, Any]]:
+    """从 script_md 拆出分镜清单。
+
+    视频类（video_soft_ad/video_planting/video_harvest）：拆 #### 节点 N · XXX（X-Xs）
+      段，提取 6 字段（画面/台词字幕/镜头/声音/内核/变化点）。
+    图文类（graphic_harvest/product_main_image/product_detail_page）：拆 #### 图 N
+      / 主图 N / 段 N 段，整段作 visual。
+
+    返回 list of dict。失败返 []，主流程继续（save_creative_pack 不阻塞）。
+    """
+    if not script_md or not script_md.strip():
+        return []
+
+    # 截到"### 第 X 部分：分镜" 段（若有），避免把"钩子变体"等其他段当 scene
+    # 不强制截 — 先全文匹配，scenes 自带 scene_no 唯一即可
+    text = script_md
+
+    if kind in _video_scene_block_kinds():
+        return _parse_video_scenes(text)
+    if kind in _graphic_scene_block_kinds():
+        return _parse_graphic_scenes(text, kind)
+    return []
+
+
+def _parse_video_scenes(text: str) -> list[dict[str, Any]]:
+    headers = list(_VIDEO_SCENE_HEADER_RE.finditer(text))
+    if not headers:
+        return []
+    scenes: list[dict[str, Any]] = []
+    seen_no: set[int] = set()
+    for i, h in enumerate(headers):
+        try:
+            scene_no = int(h.group("no"))
+        except (TypeError, ValueError):
+            continue
+        # 同 scene_no 多次出现（钩子变体也可能用"节点"），去重保第 1 次
+        if scene_no in seen_no:
+            continue
+        seen_no.add(scene_no)
+        start = h.end()
+        end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+        body = text[start:end]
+        scene: dict[str, Any] = {
+            "scene_no": scene_no,
+            "name": (h.group("name") or "").strip() or None,
+            "time_range": (h.group("time") or "").strip() or None,
+        }
+        # 老 6 字段（v10 / v11 都有）
+        for field_key, regex in _VIDEO_FIELD_RES.items():
+            m = regex.search(body)
+            if m:
+                value = m.group(1).strip().rstrip("- ").strip()
+                # 去掉行尾的 markdown 表格分隔符等噪声
+                value = re.sub(r"\s+", " ", value)
+                if value:
+                    scene[field_key] = value
+        # phase D 新 3 字段（v11+ 才有；v10 解析不到，留空不阻塞）
+        # characters_in_scene：[daughter, mother] → ['daughter', 'mother']
+        m_chars = _VIDEO_FIELD_RES_PHASE_D["characters_in_scene"].search(body)
+        if m_chars:
+            raw = m_chars.group(1).strip()
+            if raw:
+                roles = [r.strip().strip("'\"") for r in re.split(r"[,，、/\s]+", raw) if r.strip()]
+                scene["characters_in_scene"] = roles
+            else:
+                scene["characters_in_scene"] = []
+        # product_appearance：true/false → bool
+        m_prod = _VIDEO_FIELD_RES_PHASE_D["product_appearance"].search(body)
+        if m_prod:
+            v = m_prod.group(1).strip().lower()
+            scene["product_appearance"] = v in ("true", "是")
+        # image_prompt：自然语言长描述（保留换行 + 缩进）
+        m_ip = _VIDEO_FIELD_RES_PHASE_D["image_prompt"].search(body)
+        if m_ip:
+            ip = m_ip.group(1).strip()
+            # 去多余空白，但保留段落（image_prompt 可能多行）
+            ip = re.sub(r"\n\s+", " ", ip)
+            ip = re.sub(r"\s+", " ", ip).strip()
+            if ip:
+                scene["image_prompt"] = ip
+
+        scenes.append(scene)
+    # 按 scene_no 升序
+    scenes.sort(key=lambda s: s["scene_no"])
+    return scenes
+
+
+# ════════════════════════════════════════════════════════════════
+# character_sheet 段解析（W4-B 切片 14.4 phase D：脚本顶部锁脸清单）
+# ════════════════════════════════════════════════════════════════
+
+def parse_character_sheets_from_script_md(script_md: str) -> list[dict[str, Any]]:
+    """从 script_md 第 3.5 部分提取角色清单。
+
+    返回 [{role_id, name, age, gender, appearance_keywords, aura, audience_anchor}]。
+    解析失败返 []，主流程不阻塞。
+    """
+    if not script_md or not script_md.strip():
+        return []
+    # 截取第 3.5 部分到第 4 部分之间（防止抓到第 4/5 部分的别的 # 节点）
+    # 第 3.5 部分头：### 第 3.5 部分... 或 ### 第 3.5 部分：角色清单
+    section_re = re.compile(r"^#{2,4}\s*第\s*3\.5\s*部分", re.M)
+    end_re = re.compile(r"^#{2,4}\s*第\s*4\s*部分", re.M)
+    sm = section_re.search(script_md)
+    if not sm:
+        return []
+    em = end_re.search(script_md, pos=sm.end())
+    text = script_md[sm.end():em.start() if em else len(script_md)]
+
+    headers = list(_CHARACTER_HEADER_RE.finditer(text))
+    if not headers:
+        return []
+    sheets: list[dict[str, Any]] = []
+    seen_role: set[str] = set()
+    for i, h in enumerate(headers):
+        role_id = (h.group("role_id") or "").strip()
+        if not role_id or role_id in seen_role:
+            continue
+        seen_role.add(role_id)
+        start = h.end()
+        end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+        body = text[start:end]
+        sheet: dict[str, Any] = {
+            "role_id": role_id,
+            "name": (h.group("name") or "").strip().lstrip("·").strip() or None,
+        }
+        for field_key, regex in _CHARACTER_FIELD_RES.items():
+            m = regex.search(body)
+            if m:
+                value = m.group(1).strip().rstrip("- ").strip()
+                value = re.sub(r"\s+", " ", value)
+                if value:
+                    sheet[field_key] = value
+        sheets.append(sheet)
+    return sheets
+
+
+def _parse_graphic_scenes(text: str, kind: str) -> list[dict[str, Any]]:
+    headers = list(_GRAPHIC_SCENE_HEADER_RE.finditer(text))
+    if not headers:
+        return []
+    scenes: list[dict[str, Any]] = []
+    seen_no: set[int] = set()
+    for i, h in enumerate(headers):
+        try:
+            scene_no = int(h.group("no"))
+        except (TypeError, ValueError):
+            continue
+        if scene_no in seen_no:
+            continue
+        seen_no.add(scene_no)
+        start = h.end()
+        end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+        body = text[start:end].strip()
+        scenes.append({
+            "scene_no": scene_no,
+            "name": (h.group("name") or "").strip() or None,
+            "visual": body[:1500],  # 整段做 visual prompt
+        })
+    scenes.sort(key=lambda s: s["scene_no"])
+    return scenes
+
+
 async def save_creative_pack(
     *,
     sku_id: str,
@@ -860,6 +1086,7 @@ async def save_creative_pack(
     matrix_run_id: str | None = None,
     hooks: list | None = None,
     scenes: list | None = None,
+    character_sheets: list | None = None,
     extra_context: str | None = None,
     model_provider: str | None = None,
     model: str | None = None,
@@ -900,21 +1127,37 @@ async def save_creative_pack(
 
     target_purpose = _KIND_TO_TARGET_PURPOSE.get(kind)
 
+    # scenes 没显式传 → 自动从 script_md 解析（视频类拆"节点 N"，图文类拆"图/段 N"）
+    if not scenes:
+        try:
+            scenes = parse_scenes_from_script_md(script_md, kind)
+        except Exception as exc:
+            logger.warning("parse_scenes_from_script_md failed (kind=%s): %s", kind, exc)
+            scenes = []
+
+    # character_sheets 没显式传 → 自动从 script_md 第 3.5 部分解析
+    if not character_sheets:
+        try:
+            character_sheets = parse_character_sheets_from_script_md(script_md)
+        except Exception as exc:
+            logger.warning("parse_character_sheets_from_script_md failed: %s", exc)
+            character_sheets = []
+
     try:
         rec = await pool.fetchrow(
             """
             INSERT INTO pipeline.scripts (
                 audience_pack_id, audience_record_id, matrix_run_id, sku_id,
-                script_md, hooks, scenes, target_purpose, kind,
+                script_md, hooks, scenes, character_sheets, target_purpose, kind,
                 extra_context,
                 model_provider, model, prompt_hash, cost_estimate,
                 status, version, parent_script_id
             ) VALUES (
                 $1::uuid, $2::uuid, $3::uuid, $4,
-                $5, $6::jsonb, $7::jsonb, $8, $9,
-                $10,
-                $11, $12, $13, $14,
-                'draft', $15, $16::uuid
+                $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10,
+                $11,
+                $12, $13, $14, $15,
+                'draft', $16, $17::uuid
             ) RETURNING id::text AS id
             """,
             audience_pack_id,
@@ -924,6 +1167,7 @@ async def save_creative_pack(
             script_md.strip(),
             json.dumps(hooks or [], ensure_ascii=False),
             json.dumps(scenes or [], ensure_ascii=False),
+            json.dumps(character_sheets or [], ensure_ascii=False),
             target_purpose,
             kind,
             extra_context,
@@ -938,6 +1182,194 @@ async def save_creative_pack(
     except Exception as exc:
         logger.exception("save_creative_pack failed: %s", exc)
         return None
+
+
+# ════════════════════════════════════════════════════════════════
+# step 6 资产落库（W4-B 切片 14.4 phase D：分镜图/视频生成挂血缘）
+# ════════════════════════════════════════════════════════════════
+
+async def save_storyboard_asset(
+    *,
+    sku_id: str,
+    asset_type: str,                   # 'image' / 'video' / 'character_sheet'
+    script_id: str | None = None,
+    audience_pack_id: str | None = None,
+    audience_record_id: str | None = None,
+    matrix_run_id: str | None = None,
+    scene_no: int | None = None,
+    character_role: str | None = None,  # asset_type='character_sheet' 时填 daughter/mother 等
+    file_url: str | None = None,
+    thumbnail_url: str | None = None,
+    prompt: str | None = None,
+    duration_seconds: float | None = None,
+    external_video_id: str | None = None,
+    notes: str | None = None,
+) -> str | None:
+    """落 1 行 pipeline.assets（status='draft'），返 id。失败返 None 不抛。"""
+    if asset_type not in ("image", "video", "character_sheet"):
+        logger.warning("save_storyboard_asset: invalid asset_type=%s", asset_type)
+        return None
+    pool = get_pool()
+    try:
+        rec = await pool.fetchrow(
+            """
+            INSERT INTO pipeline.assets (
+                script_id, audience_pack_id, audience_record_id, matrix_run_id, sku_id,
+                asset_type, character_role,
+                file_url, thumbnail_url, prompt,
+                duration_seconds, scene_no, external_video_id,
+                status, notes
+            ) VALUES (
+                $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5,
+                $6, $7,
+                $8, $9, $10,
+                $11, $12, $13,
+                'draft', $14
+            ) RETURNING id::text AS id
+            """,
+            script_id,
+            audience_pack_id,
+            audience_record_id,
+            matrix_run_id,
+            sku_id,
+            asset_type,
+            character_role,
+            file_url,
+            thumbnail_url,
+            prompt,
+            duration_seconds,
+            scene_no,
+            external_video_id,
+            notes,
+        )
+        return rec["id"] if rec else None
+    except Exception as exc:
+        logger.exception("save_storyboard_asset failed: %s", exc)
+        return None
+
+
+async def list_character_sheets_for_script(script_id: str) -> list[dict[str, Any]]:
+    """拉同 script_id 的所有 character_sheet asset（按 character_role 字典序）。
+
+    给 step 6 用：scene.characters_in_scene=['daughter','mother'] → 找对应 url 当 face_refs。
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id::text, character_role, file_url, status, created_at
+        FROM pipeline.assets
+        WHERE script_id = $1::uuid AND asset_type = 'character_sheet'
+        ORDER BY character_role, created_at DESC
+        """,
+        script_id,
+    )
+    out = []
+    for r in rows:
+        d = dict(r)
+        if d.get("created_at"):
+            d["created_at"] = d["created_at"].isoformat()
+        out.append(d)
+    return out
+
+
+async def list_assets(
+    *,
+    sku_id: str | None = None,
+    script_id: str | None = None,
+    asset_type: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    pool = get_pool()
+    where: list[str] = []
+    params: list[Any] = []
+    if sku_id:
+        params.append(sku_id)
+        where.append(f"sku_id = ${len(params)}")
+    if script_id:
+        params.append(script_id)
+        where.append(f"script_id = ${len(params)}::uuid")
+    if asset_type:
+        params.append(asset_type)
+        where.append(f"asset_type = ${len(params)}")
+    params.append(limit)
+    where_sql = "WHERE " + " AND ".join(where) if where else ""
+    rows = await pool.fetch(
+        f"""
+        SELECT id::text, script_id::text, audience_pack_id::text,
+               audience_record_id::text, matrix_run_id::text, sku_id,
+               asset_type, scene_no, file_url, thumbnail_url, prompt,
+               duration_seconds, external_video_id, external_creative_id,
+               status, notes, created_at
+        FROM pipeline.assets
+        {where_sql}
+        ORDER BY scene_no NULLS LAST, created_at DESC
+        LIMIT ${len(params)}
+        """,
+        *params,
+    )
+    out = []
+    for r in rows:
+        d = dict(r)
+        if d.get("created_at"):
+            d["created_at"] = d["created_at"].isoformat()
+        out.append(d)
+    return out
+
+
+async def backfill_scenes_for_existing_scripts() -> dict[str, Any]:
+    """一次性回填：扫所有 pipeline.scripts 中 scenes=[] 或 character_sheets=[] 的，按 kind 重解析 script_md 写回。
+
+    给 phase D 起手用，让历史 adopted scripts 也能拉分镜清单 + 角色清单。
+    解析 v11+ 的脚本能拿到 9 字段（含 image_prompt / characters_in_scene / product_appearance）+ character_sheets；
+    v10 老脚本只能拿到 6 字段（缺 phase D 那 3 个，character_sheets=[]）。
+
+    返 {scanned, scripts_updated, scenes_parsed_total, character_sheets_parsed_total, by_kind}。
+    """
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id::text AS id, kind, script_md
+        FROM pipeline.scripts
+        WHERE (scenes::text = '[]' OR character_sheets::text = '[]')
+          AND script_md IS NOT NULL AND script_md != ''
+        """
+    )
+    scanned = len(rows)
+    scenes_total = 0
+    sheets_total = 0
+    updated_total = 0
+    per_kind: dict[str, int] = {}
+    for r in rows:
+        try:
+            scenes = parse_scenes_from_script_md(r["script_md"], r["kind"])
+        except Exception as exc:
+            logger.warning("backfill: parse_scenes failed id=%s kind=%s: %s", r["id"], r["kind"], exc)
+            scenes = []
+        try:
+            sheets = parse_character_sheets_from_script_md(r["script_md"])
+        except Exception as exc:
+            logger.warning("backfill: parse_character_sheets failed id=%s: %s", r["id"], exc)
+            sheets = []
+        if not scenes and not sheets:
+            continue
+        scenes_total += len(scenes)
+        sheets_total += len(sheets)
+        await pool.execute(
+            "UPDATE pipeline.scripts SET scenes = $1::jsonb, character_sheets = $2::jsonb WHERE id = $3::uuid",
+            json.dumps(scenes, ensure_ascii=False),
+            json.dumps(sheets, ensure_ascii=False),
+            r["id"],
+        )
+        updated_total += 1
+        per_kind[r["kind"]] = per_kind.get(r["kind"], 0) + 1
+    return {
+        "ok": True,
+        "scanned": scanned,
+        "scripts_updated": updated_total,
+        "scenes_parsed_total": scenes_total,
+        "character_sheets_parsed_total": sheets_total,
+        "by_kind": per_kind,
+    }
 
 
 async def list_creative_packs(
@@ -981,7 +1413,8 @@ async def get_creative_pack(script_id: str) -> dict[str, Any] | None:
     row = await pool.fetchrow(
         """
         SELECT id::text, sku_id, kind, audience_record_id::text, audience_pack_id::text,
-               matrix_run_id::text, script_md, hooks, scenes, target_purpose,
+               matrix_run_id::text, script_md, hooks, scenes, character_sheets,
+               target_purpose,
                extra_context, model_provider, model, version, status,
                parent_script_id::text, created_at, updated_at
         FROM pipeline.scripts
@@ -994,15 +1427,191 @@ async def get_creative_pack(script_id: str) -> dict[str, Any] | None:
     d = dict(row)
     d["hooks"] = _coerce_jsonb_list(d.get("hooks"))
     d["scenes"] = _coerce_jsonb_list(d.get("scenes"))
+    d["character_sheets"] = _coerce_jsonb_list(d.get("character_sheets"))
     return d
 
 
+# ════════════════════════════════════════════════════════════════
+# 全血缘聚合（W4-B 切片 14.4 phase C v3：血缘图前端用）
+# ════════════════════════════════════════════════════════════════
+
+async def get_sku_lineage(sku_id: str, *, limit_per_table: int = 100) -> dict[str, Any]:
+    """串某 SKU 的全血缘嵌套树，给前端血缘图用。
+
+    返回 6 张表的嵌套：matrix_runs → audience_runs → audience_records
+      → audience_packs → scripts；assets 单独列（phase D 起填，当前可能空）。
+
+    包含 status='draft' 的也返（前端按 status 着色 + 决定是否显示）。
+
+    实现：6 个 query 按 sku_id 一次拉全，Python 内存按 FK 嵌套（避免 N+1）。
+    """
+    pool = get_pool()
+
+    matrix_rows = await pool.fetch(
+        """
+        SELECT id::text, sku_id, version, status, model_provider, model,
+               created_at, parent_run_id::text
+        FROM pipeline.matrix_runs
+        WHERE sku_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        sku_id, limit_per_table,
+    )
+    arun_rows = await pool.fetch(
+        """
+        SELECT id::text, matrix_run_id::text, sku_id, version, status,
+               record_count, model_provider, model, created_at, parent_run_id::text
+        FROM pipeline.audience_runs
+        WHERE sku_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        sku_id, limit_per_table,
+    )
+    arec_rows = await pool.fetch(
+        """
+        SELECT id::text, audience_run_id::text, matrix_run_id::text, sku_id,
+               ordinal, name, kb_doc, layer_tags, status, selected_for_pack,
+               created_at
+        FROM pipeline.audience_records
+        WHERE sku_id = $1
+        ORDER BY audience_run_id, ordinal
+        LIMIT $2
+        """,
+        sku_id, limit_per_table * 5,  # records 拆 N 倍多
+    )
+    pack_rows = await pool.fetch(
+        """
+        SELECT id::text, audience_record_id::text, audience_run_id::text,
+               matrix_run_id::text, sku_id, version, status,
+               model_provider, model, created_at, parent_pack_id::text
+        FROM pipeline.audience_packs
+        WHERE sku_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        sku_id, limit_per_table,
+    )
+    script_rows = await pool.fetch(
+        """
+        SELECT id::text, audience_pack_id::text, audience_record_id::text,
+               matrix_run_id::text, sku_id, kind, version, status, target_purpose,
+               model_provider, model, created_at, parent_script_id::text
+        FROM pipeline.scripts
+        WHERE sku_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        sku_id, limit_per_table,
+    )
+    asset_rows = await pool.fetch(
+        """
+        SELECT id::text, script_id::text, audience_pack_id::text,
+               audience_record_id::text, matrix_run_id::text, sku_id,
+               asset_type, scene_no, file_url, thumbnail_url,
+               external_video_id, external_creative_id, status, created_at
+        FROM pipeline.assets
+        WHERE sku_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        sku_id, limit_per_table,
+    )
+
+    # ── 转 dict + 处理 JSONB ───────────────────────────────────
+    def _row(r) -> dict:
+        d = dict(r)
+        if "layer_tags" in d:
+            d["layer_tags"] = _coerce_jsonb_list(d.get("layer_tags"))
+        if "created_at" in d and d["created_at"]:
+            d["created_at"] = d["created_at"].isoformat()
+        return d
+
+    matrix_list = [_row(r) for r in matrix_rows]
+    arun_list = [_row(r) for r in arun_rows]
+    arec_list = [_row(r) for r in arec_rows]
+    pack_list = [_row(r) for r in pack_rows]
+    script_list = [_row(r) for r in script_rows]
+    asset_list = [_row(r) for r in asset_rows]
+
+    # ── 按 FK 嵌套（自下而上） ────────────────────────────────
+    # assets 挂 script
+    assets_by_script: dict[str, list[dict]] = {}
+    orphan_assets: list[dict] = []
+    for a in asset_list:
+        if a.get("script_id"):
+            assets_by_script.setdefault(a["script_id"], []).append(a)
+        else:
+            orphan_assets.append(a)
+
+    # scripts 挂 pack 或 record（pack 优先，record 次之，sku 兜底）
+    scripts_by_pack: dict[str, list[dict]] = {}
+    scripts_by_record: dict[str, list[dict]] = {}
+    orphan_scripts: list[dict] = []  # 没挂 pack 也没挂 record（sku 模式直跑）
+    for s in script_list:
+        s["assets"] = assets_by_script.get(s["id"], [])
+        if s.get("audience_pack_id"):
+            scripts_by_pack.setdefault(s["audience_pack_id"], []).append(s)
+        elif s.get("audience_record_id"):
+            scripts_by_record.setdefault(s["audience_record_id"], []).append(s)
+        else:
+            orphan_scripts.append(s)
+
+    # packs 挂 record
+    packs_by_record: dict[str, list[dict]] = {}
+    orphan_packs: list[dict] = []
+    for p in pack_list:
+        p["scripts"] = scripts_by_pack.get(p["id"], [])
+        if p.get("audience_record_id"):
+            packs_by_record.setdefault(p["audience_record_id"], []).append(p)
+        else:
+            orphan_packs.append(p)
+
+    # records 挂 audience_run
+    records_by_arun: dict[str, list[dict]] = {}
+    for r in arec_list:
+        # record 节点下挂 packs；scripts 走 pack（如果没经 pack 直接挂 record，走 scripts_by_record）
+        r["audience_packs"] = packs_by_record.get(r["id"], [])
+        r["scripts_direct"] = scripts_by_record.get(r["id"], [])  # 绕过 pack 直接挂 record 的脚本
+        if r.get("audience_run_id"):
+            records_by_arun.setdefault(r["audience_run_id"], []).append(r)
+
+    # audience_runs 挂 matrix_run
+    aruns_by_matrix: dict[str, list[dict]] = {}
+    for ar in arun_list:
+        ar["audience_records"] = records_by_arun.get(ar["id"], [])
+        if ar.get("matrix_run_id"):
+            aruns_by_matrix.setdefault(ar["matrix_run_id"], []).append(ar)
+
+    # matrix_runs 顶层
+    for m in matrix_list:
+        m["audience_runs"] = aruns_by_matrix.get(m["id"], [])
+
+    return {
+        "ok": True,
+        "sku_id": sku_id,
+        "matrix_runs": matrix_list,
+        "orphan_packs": orphan_packs,
+        "orphan_scripts": orphan_scripts,
+        "orphan_assets": orphan_assets,
+        "counts": {
+            "matrix_runs": len(matrix_list),
+            "audience_runs": len(arun_list),
+            "audience_records": len(arec_list),
+            "audience_packs": len(pack_list),
+            "scripts": len(script_list),
+            "assets": len(asset_list),
+        },
+    }
+
+
 async def adopt_run(table: str, run_id: str, *, set_selected: bool = False) -> dict[str, Any]:
-    """把 status 从 draft 改 adopted。table 在 {matrix_runs, audience_runs, audience_records, audience_packs, scripts}。
+    """把 status 从 draft 改 adopted。table 在 {matrix_runs, audience_runs, audience_records, audience_packs, scripts, assets}。
 
     audience_records 额外可选 set_selected_for_pack=TRUE。
     """
-    if table not in {"matrix_runs", "audience_runs", "audience_records", "audience_packs", "scripts"}:
+    if table not in {"matrix_runs", "audience_runs", "audience_records", "audience_packs", "scripts", "assets"}:
         return {"ok": False, "error": f"未知 table: {table}"}
 
     pool = get_pool()

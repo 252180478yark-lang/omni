@@ -332,3 +332,200 @@ async def exec_pipeline_adopt(
     except Exception as exc:
         logger.exception("pipeline_adopt REST 异常")
         return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineGetSkuLineageRequest(BaseModel):
+    sku_id: str
+    limit_per_table: int = 100
+
+
+@router.post("/exec/pipeline_get_sku_lineage")
+async def exec_pipeline_get_sku_lineage(
+    payload: PipelineGetSkuLineageRequest,
+) -> Any:
+    """SKU 全血缘嵌套树：matrix → audience_run → record → pack → script → asset。
+
+    给前端血缘图组件用，含 status='draft' 的（前端按状态着色）。
+    """
+    from app.services.pipeline_lineage import get_sku_lineage
+    try:
+        return await get_sku_lineage(
+            sku_id=payload.sku_id,
+            limit_per_table=payload.limit_per_table,
+        )
+    except Exception as exc:
+        logger.exception("pipeline_get_sku_lineage REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+# ───────────────────────────────────────────────────────────────
+# W4-B 切片 14.4 phase D：分镜图生成 + 资产管理
+# ───────────────────────────────────────────────────────────────
+
+class GenerateCharacterSheetsRequest(BaseModel):
+    script_id: str
+    role_ids: list[str] | None = None
+    aspect_ratio: str = "1:1"
+
+
+@router.post("/exec/generate_character_sheets")
+async def exec_generate_character_sheets(
+    payload: GenerateCharacterSheetsRequest,
+) -> Any:
+    """step 6.5：从 script.character_sheets 出每个角色的白底正面像（chatgpt-image-2）。"""
+    from app.mcp.tools.media import generate_character_sheets
+    try:
+        return await generate_character_sheets(
+            script_id=payload.script_id,
+            role_ids=payload.role_ids,
+            aspect_ratio=payload.aspect_ratio,
+        )
+    except Exception as exc:
+        logger.exception("generate_character_sheets REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class GenerateStoryboardImagesRequest(BaseModel):
+    script_id: str
+    scene_nums: list[int] | None = None
+    face_refs: list[str] | None = None
+    product_refs: list[str] | None = None
+    style_refs: list[str] | None = None
+    aspect_ratio: str = "9:16"
+    extra_prompt_suffix: str | None = None
+
+
+@router.post("/exec/generate_storyboard_images")
+async def exec_generate_storyboard_images(
+    payload: GenerateStoryboardImagesRequest,
+) -> Any:
+    """从 script.scenes 拆分镜，并发出图，落 pipeline.assets。"""
+    from app.mcp.tools.media import generate_storyboard_images
+    try:
+        return await generate_storyboard_images(
+            script_id=payload.script_id,
+            scene_nums=payload.scene_nums,
+            face_refs=payload.face_refs,
+            product_refs=payload.product_refs,
+            style_refs=payload.style_refs,
+            aspect_ratio=payload.aspect_ratio,
+            extra_prompt_suffix=payload.extra_prompt_suffix,
+        )
+    except Exception as exc:
+        logger.exception("generate_storyboard_images REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+@router.post("/exec/pipeline_backfill_scenes")
+async def exec_pipeline_backfill_scenes() -> Any:
+    """一次性回填：扫所有 scenes=[] 的 scripts 按 kind 重解析填回。"""
+    from app.services.pipeline_lineage import backfill_scenes_for_existing_scripts
+    try:
+        return await backfill_scenes_for_existing_scripts()
+    except Exception as exc:
+        logger.exception("pipeline_backfill_scenes REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineListAssetsRequest(BaseModel):
+    sku_id: str | None = None
+    script_id: str | None = None
+    asset_type: str | None = None
+    limit: int = 50
+
+
+@router.post("/exec/pipeline_list_assets")
+async def exec_pipeline_list_assets(
+    payload: PipelineListAssetsRequest,
+) -> Any:
+    """列 pipeline.assets，可按 sku/script/asset_type 过滤。"""
+    from app.services.pipeline_lineage import list_assets
+    try:
+        rows = await list_assets(
+            sku_id=payload.sku_id,
+            script_id=payload.script_id,
+            asset_type=payload.asset_type,
+            limit=payload.limit,
+        )
+        return {"ok": True, "assets": rows, "count": len(rows)}
+    except Exception as exc:
+        logger.exception("pipeline_list_assets REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineListCreativePacksRequest(BaseModel):
+    sku_id: str | None = None
+    kind: str | None = None
+    audience_record_id: str | None = None
+    limit: int = 30
+
+
+@router.post("/exec/pipeline_list_creative_packs")
+async def exec_pipeline_list_creative_packs(
+    payload: PipelineListCreativePacksRequest,
+) -> Any:
+    """列 pipeline.scripts（按 sku/kind/record 过滤）— step 6 选 script 用。"""
+    from app.services.pipeline_lineage import list_creative_packs
+    try:
+        rows = await list_creative_packs(
+            sku_id=payload.sku_id,
+            kind=payload.kind,
+            audience_record_id=payload.audience_record_id,
+            limit=payload.limit,
+        )
+        # 转 created_at 为 isoformat
+        for r in rows:
+            if r.get("created_at"):
+                r["created_at"] = r["created_at"].isoformat()
+        return {"ok": True, "scripts": rows, "count": len(rows)}
+    except Exception as exc:
+        logger.exception("pipeline_list_creative_packs REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineGetAudiencePackRequest(BaseModel):
+    pack_id: str
+
+
+@router.post("/exec/pipeline_get_audience_pack")
+async def exec_pipeline_get_audience_pack(
+    payload: PipelineGetAudiencePackRequest,
+) -> Any:
+    """单条圈包全字段（含 pack_md / dmp_tags / budget_suggestion）— step 5 pack 模式选完后预览用。"""
+    from app.services.pipeline_lineage import get_audience_pack
+    try:
+        d = await get_audience_pack(payload.pack_id)
+        if not d:
+            return {"ok": False, "error": "not_found", "pack_id": payload.pack_id}
+        if d.get("created_at"):
+            d["created_at"] = d["created_at"].isoformat()
+        if d.get("updated_at"):
+            d["updated_at"] = d["updated_at"].isoformat()
+        return {"ok": True, "pack": d}
+    except Exception as exc:
+        logger.exception("pipeline_get_audience_pack REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineGetCreativePackRequest(BaseModel):
+    script_id: str
+
+
+@router.post("/exec/pipeline_get_creative_pack")
+async def exec_pipeline_get_creative_pack(
+    payload: PipelineGetCreativePackRequest,
+) -> Any:
+    """单条脚本全字段（含 scenes/hooks JSONB）— step 6 选 script 后展示分镜清单用。"""
+    from app.services.pipeline_lineage import get_creative_pack
+    try:
+        d = await get_creative_pack(payload.script_id)
+        if not d:
+            return {"ok": False, "error": "not_found", "script_id": payload.script_id}
+        if d.get("created_at"):
+            d["created_at"] = d["created_at"].isoformat()
+        if d.get("updated_at"):
+            d["updated_at"] = d["updated_at"].isoformat()
+        return {"ok": True, "script": d}
+    except Exception as exc:
+        logger.exception("pipeline_get_creative_pack REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
