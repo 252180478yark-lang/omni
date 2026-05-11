@@ -304,7 +304,16 @@ async def generate_character_sheets(
         return {"ok": False, "error": "no_matching_roles", "role_ids": role_ids,
                 "hint": f"指定 role_ids={role_ids} 在脚本里没匹配；脚本含 role_ids={[s.get('role_id') for s in (script.get('character_sheets') or [])]}"}
 
-    model_cfg = get_model_for_tool("generate_image")
+    # step 6.5 优先用 generate_character_sheets keyed override（老板可单独指定生脸模型）
+    # 没配则回退 generate_image（跟 step 6 分镜图同款）
+    # 检测方式：model 名包含 'image' / 'seedream' 才算 image-gen model；
+    # 否则说明 yaml 没配 generate_character_sheets 落到 __default__（chat 模型），回退
+    cs_cfg_raw = get_model_for_tool("generate_character_sheets")
+    cs_model = (cs_cfg_raw.get("model") or "").lower()
+    if "image" in cs_model or "seedream" in cs_model:
+        model_cfg = cs_cfg_raw
+    else:
+        model_cfg = get_model_for_tool("generate_image")
     client = AIHubClient(timeout=180.0)
 
     def _build_character_prompt(sheet: dict) -> str:

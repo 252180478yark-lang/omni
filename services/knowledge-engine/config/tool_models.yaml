@@ -30,13 +30,22 @@ generate_brief:
     user: generate_brief.user
 
 generate_image:
+  # step 6 分镜图（generate_storyboard_images / 老 generate_image tool）
   # 2026-05-12 老板切 Gemini 3 pro 版（锁脸 / 复杂构图 / 长 prompt 推理深度比 flash 强）
   # 回切候选：
   #   - gemini-3.1-flash-image-preview（之前用的快版，单张快但锁脸弱）
   #   - openai/gpt-image-2 + quality: high（等 OpenAI verify 真生效）
-  #   - openai/gpt-image-1.5（fallback，锁脸不准）
+  #   - openai/gpt-image-1.5（fallback）
   provider: gemini
   model: gemini-3-pro-image-preview
+
+generate_character_sheets:
+  # step 6.5 角色定妆白底像（生脸）— 2026-05-12 老板单独指定 gpt-image-1.5
+  # 跟 step 6 分镜图（gemini-3-pro）解耦，定妆照用 OpenAI 出更稳的白底正面像
+  # 之前已 verify 通过的 1.5 不需要再 verify，直接用
+  # 回切候选：gemini-3-pro-image-preview（跟 step 6 同款）
+  provider: openai
+  model: gpt-image-1.5
 
 generate_video:
   # W4-B 14.4 phase D step 7（2026-05-11，老板 Ark Console 已激活 2.0 后切）：
