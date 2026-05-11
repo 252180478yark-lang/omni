@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
@@ -234,6 +234,9 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
 
   const allowedPicks = pickKinds || ['audience_record', 'audience_pack']
 
+  // 记录"已经做过首次自动展开"的 skuId，避免后续 fetchLineage 重置 expanded
+  const autoExpandedSkuRef = useRef<string | null>(null)
+
   const fetchLineage = useCallback(async () => {
     if (!skuId) return
     setLoading(true)
@@ -247,21 +250,24 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
       const json = await res.json()
       if (json.success && json.data?.ok) {
         setData(json.data)
-        // 默认展开 adopted 的节点（让老板看到主链路）
-        const auto = new Set<string>()
-        for (const m of json.data.matrix_runs || []) {
-          if (m.status === 'adopted') auto.add(`m:${m.id}`)
-          for (const ar of m.audience_runs || []) {
-            if (ar.status === 'adopted') auto.add(`ar:${ar.id}`)
-            for (const r of ar.audience_records || []) {
-              if (r.status === 'adopted') auto.add(`r:${r.id}`)
-              for (const p of r.audience_packs || []) {
-                if (p.status === 'adopted') auto.add(`p:${p.id}`)
+        // 只在该 SKU 首次加载时自动展开 adopted 节点；后续 adopt/archive 刷新保留老板手动展开状态
+        if (autoExpandedSkuRef.current !== skuId) {
+          autoExpandedSkuRef.current = skuId
+          const auto = new Set<string>()
+          for (const m of json.data.matrix_runs || []) {
+            if (m.status === 'adopted') auto.add(`m:${m.id}`)
+            for (const ar of m.audience_runs || []) {
+              if (ar.status === 'adopted') auto.add(`ar:${ar.id}`)
+              for (const r of ar.audience_records || []) {
+                if (r.status === 'adopted') auto.add(`r:${r.id}`)
+                for (const p of r.audience_packs || []) {
+                  if (p.status === 'adopted') auto.add(`p:${p.id}`)
+                }
               }
             }
           }
+          setExpanded(auto)
         }
-        setExpanded(auto)
       } else {
         setError(json.data?.error || json.error || '拉血缘失败')
       }
