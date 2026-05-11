@@ -1032,6 +1032,22 @@ async def generate_video_segments(
     # 按 scene_no 升序排（last_frame 串场需要顺序）
     sorted_scenes = sorted(scenes, key=lambda s: int(s.get("scene_no") or 0))
 
+    # 从 scene.time_range 解析每段实际时长（"0-4s" → 4，"23-30s" → 7）
+    # 失败 fallback 到 duration_s 参数。seedance 限制 [4, 15]：< 4 拉到 4，> 15 截到 15
+    _TIME_RANGE_RE_LOCAL = re.compile(r'^\s*(\d+)\s*-\s*(\d+)\s*s?\s*$', re.I)
+
+    def _compute_scene_duration(scene: dict, fallback: int) -> int:
+        tr = (scene.get("time_range") or "").strip()
+        m = _TIME_RANGE_RE_LOCAL.match(tr)
+        if m:
+            try:
+                start, end = int(m.group(1)), int(m.group(2))
+                if end > start:
+                    return max(4, min(15, end - start))
+            except (TypeError, ValueError):
+                pass
+        return max(4, min(15, fallback))
+
     # 全局 next_scene_map：按脚本所有 scene_no 升序排，scene N → scene N+1 的 image_url
     # 即使老板只选 1 段单跑，也能拿全局下一段图作 last_frame 串场（之前 bug：只看本次跑列表
     # 的下一段，单跑时 last_frame=None 失去串场）
@@ -1059,6 +1075,9 @@ async def generate_video_segments(
             nxt_sn = next_scene_map.get(scene_no)
             if nxt_sn is not None:
                 last_frame = scene_to_first_frame.get(nxt_sn)
+
+        # 每段从 scene.time_range 解析实际时长（无则 fallback duration_s 参数）
+        scene_duration = _compute_scene_duration(scene, duration_s)
 
         scene_face_refs = _resolve_face_refs(scene)
         scene_product_refs = _resolve_product_refs(scene)
@@ -1091,7 +1110,7 @@ async def generate_video_segments(
                 prompt=prompt,
                 first_frame=first_frame,
                 last_frame=last_frame,
-                duration_sec=duration_s,
+                duration_sec=scene_duration,
                 face_refs=scene_face_refs or None,
                 product_refs=scene_product_refs,
                 aspect=aspect_ratio,
@@ -1131,7 +1150,7 @@ async def generate_video_segments(
                 matrix_run_id=script.get("matrix_run_id"),
                 scene_no=scene_no,
                 file_url=video_url,
-                duration_seconds=float(duration_s),
+                duration_seconds=float(scene_duration),
                 external_video_id=task_id_out,
                 prompt=prompt,
             )
@@ -1147,7 +1166,8 @@ async def generate_video_segments(
                 "refs_blocked_reason": _refs_blocked_reason,  # i2v 互斥或 model 不支持 r2v 时填
                 "characters_in_scene": scene.get("characters_in_scene") or [],
                 "product_appearance": scene.get("product_appearance"),
-                "duration_s": duration_s,
+                "duration_s": scene_duration,
+                "scene_time_range": (scene.get("time_range") or "").strip() or None,
                 "task_id": task_id_out,
             }
         except Exception as exc:

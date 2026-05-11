@@ -350,7 +350,7 @@ export default function SkuPipelinePage() {
   const [loadingImageAssets7, setLoadingImageAssets7] = useState(false)
   // step 7 段选择 + 参数
   const [selectedScenes7, setSelectedScenes7] = useState<Set<number>>(new Set())
-  const [duration7, setDuration7] = useState<number>(8)
+  const [duration7, setDuration7] = useState<number>(5)  // 回退默认；优先 scene.time_range
   const [aspect7, setAspect7] = useState('9:16')
   const [useLastFrame7, setUseLastFrame7] = useState(true)
   const [extraSuffix7, setExtraSuffix7] = useState('')
@@ -380,6 +380,7 @@ export default function SkuPipelinePage() {
         characters_in_scene?: string[]
         product_appearance?: boolean
         duration_s?: number
+        scene_time_range?: string | null
         task_id?: string | null
       }>
     }
@@ -3738,7 +3739,7 @@ export default function SkuPipelinePage() {
                       ) : selectedScenes7.size === 0 ? (
                         '先选要跑的段'
                       ) : (
-                        `★ 出 ${selectedScenes7.size} 段视频（${selectedScenes7.size > 1 ? '并发 ' : ''}seedance-2-0，每段 ${duration7}s）`
+                        `★ 出 ${selectedScenes7.size} 段视频（${selectedScenes7.size > 1 ? '并发 ' : ''}seedance-2-0，按脚本 time_range 每段独立时长）`
                       )}
                     </Button>
                     <div className="text-[11px] text-muted-foreground">
@@ -3818,14 +3819,18 @@ export default function SkuPipelinePage() {
                     <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 视频参数</summary>
                     <div className="mt-2 space-y-3">
                       <div>
-                        <label className="text-xs font-medium">每段时长（秒）</label>
+                        <label className="text-xs font-medium">回退默认时长（秒）— 仅在 scene 缺 time_range 时用</label>
+                        <div className="text-[10px] text-muted-foreground mb-1">
+                          每段视频时长**优先从脚本 scene.time_range 解析**（如"0-4s"→4s，"23-30s"→7s）。
+                          seedance 限制 [4, 15]，超出自动 clamp。此处仅为脚本无 time_range 时的兜底值。
+                        </div>
                         <select
                           className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
                           value={duration7}
                           onChange={e => setDuration7(Number(e.target.value))}
                         >
                           {[4, 5, 6, 8, 10, 12, 15].map(d => (
-                            <option key={d} value={d}>{d}s {d === 8 && '(seedance 默认)'}</option>
+                            <option key={d} value={d}>{d}s {d === 5 && '(回退默认)'}</option>
                           ))}
                         </select>
                       </div>
@@ -3976,7 +3981,12 @@ export default function SkuPipelinePage() {
                       {resp7.result.results.map(r => (
                         <div key={r.scene_no} className="border rounded p-2 space-y-2 bg-card">
                           <div className="flex items-center justify-between gap-1 flex-wrap">
-                            <div className="text-sm font-medium">第 {r.scene_no} 段 · {r.duration_s}s</div>
+                            <div className="text-sm font-medium">
+                              第 {r.scene_no} 段 · {r.duration_s}s
+                              {r.scene_time_range && (
+                                <span className="text-[10px] text-muted-foreground ml-1">[{r.scene_time_range}]</span>
+                              )}
+                            </div>
                             <div className="flex flex-wrap gap-1">
                               {(r.characters_in_scene?.length || 0) > 0 && (
                                 <Badge variant="outline" className="text-[10px]">
