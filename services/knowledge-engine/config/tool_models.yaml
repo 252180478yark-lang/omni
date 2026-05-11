@@ -31,18 +31,16 @@ generate_brief:
 
 generate_image:
   # step 6 分镜图（generate_storyboard_images / 老 generate_image tool）
-  # 2026-05-12 老板在 Ark Console 激活 Seedream 后切 5.0-260128（国产顶级图模型，
-  # 对中文电商场景表达 / 跨段一致性 / 锁脸理论上比 Gemini 强；强制 ≥ 2K 2048x2048）
-  # 实测可用：5-0-260128 / 5-0-lite-260128 / 4-5-251128 全 ✓
+  # 2026-05-12 老板回切 Gemini 3 Pro（seedream-5.0 已激活但老板拍板用 gemini-3-pro）
+  # Gemini 3 Pro 锁脸 / 复杂构图 / 长 prompt 推理深度强，base64 data URL 输出便于本地保存
   #
   # 回切候选：
-  #   - seedream/doubao-seedream-5-0-lite-260128（lite 单张更便宜）
-  #   - seedream/doubao-seedream-4-5-251128（4.5 备选）
-  #   - gemini/gemini-3-pro-image-preview（之前用的）
+  #   - seedream/doubao-seedream-5-0-260128 + size 2048x2048（已激活，国产高清备选）
+  #   - seedream/doubao-seedream-5-0-lite-260128（lite 便宜）
+  #   - seedream/doubao-seedream-4-5-251128（4.5）
   #   - openai/gpt-image-2 + quality: high（等 OpenAI verify 真生效）
-  provider: seedream
-  model: doubao-seedream-5-0-260128
-  size: "2048x2048"
+  provider: gemini
+  model: gemini-3-pro-image-preview
 
 generate_character_sheets:
   # step 6.5 角色定妆白底像（生脸）— 2026-05-12 老板单独指定 gpt-image-1.5
