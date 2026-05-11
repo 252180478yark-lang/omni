@@ -817,7 +817,7 @@ async def generate_video_segments(
     product_refs: list[str] | None = None,
     aspect_ratio: str = "9:16",
     duration_s: int = 8,
-    use_last_frame: bool = False,
+    use_last_frame: bool = True,
     extra_prompt_suffix: str | None = None,
 ) -> dict:
     """W4-B 切片 14.4 phase D step 7：拉 script.scenes，用 step 6 出的分镜图当
@@ -876,13 +876,21 @@ async def generate_video_segments(
                 "hint": f"指定 scene_nums={scene_nums} 在脚本里没匹配；脚本含 scene_no={[s.get('scene_no') for s in (script.get('scenes') or [])]}"}
 
     # 拉同 script 的 image asset（step 6 出的分镜图）→ scene_no → first_frame url
+    # 同一 scene 可能跑多次累积多张图 → 优先用 adopted 那张，fallback 最新 draft
     image_assets = await list_assets(script_id=script_id, asset_type="image", limit=200)
-    scene_to_first_frame: dict[int, str] = {}
+    # list_assets 已按 scene_no + created_at DESC 排序，相同 scene_no 第一张是最新
+    from collections import defaultdict
+    by_scene: dict[int, list[dict]] = defaultdict(list)
     for a in image_assets:
         sn = a.get("scene_no")
-        url = a.get("file_url")
-        if sn is not None and url and int(sn) not in scene_to_first_frame:
-            scene_to_first_frame[int(sn)] = url
+        if sn is not None and a.get("file_url"):
+            by_scene[int(sn)].append(a)
+    scene_to_first_frame: dict[int, str] = {}
+    for sn, assets in by_scene.items():
+        # 优先 adopted（采纳那张），fallback 最新 draft
+        adopted = [x for x in assets if x.get("status") == "adopted"]
+        chosen = adopted[0] if adopted else assets[0]
+        scene_to_first_frame[sn] = chosen["file_url"]
 
     # 校验：要跑的 scene_no 必须都有 image asset；缺哪几段先提示
     missing_images = [s.get("scene_no") for s in scenes
@@ -1024,6 +1032,16 @@ async def generate_video_segments(
     # 按 scene_no 升序排（last_frame 串场需要顺序）
     sorted_scenes = sorted(scenes, key=lambda s: int(s.get("scene_no") or 0))
 
+    # 全局 next_scene_map：按脚本所有 scene_no 升序排，scene N → scene N+1 的 image_url
+    # 即使老板只选 1 段单跑，也能拿全局下一段图作 last_frame 串场（之前 bug：只看本次跑列表
+    # 的下一段，单跑时 last_frame=None 失去串场）
+    all_scenes_sorted = sorted(
+        [int(s.get("scene_no") or 0) for s in (script.get("scenes") or []) if s.get("scene_no") is not None]
+    )
+    next_scene_map: dict[int, int | None] = {}
+    for i, sn in enumerate(all_scenes_sorted):
+        next_scene_map[sn] = all_scenes_sorted[i + 1] if i + 1 < len(all_scenes_sorted) else None
+
     async def _one(idx: int, scene: dict) -> dict:
         scene_no = int(scene.get("scene_no") or 0)
         prompt = _build_prompt(scene)
@@ -1035,10 +1053,12 @@ async def generate_video_segments(
             return {"scene_no": scene_no, "error": "no_first_frame_image_asset",
                     "hint": f"scene {scene_no} 缺 step 6 分镜图 — 先跑 generate_storyboard_images"}
 
+        # 全局下一段图作 last_frame（用 next_scene_map，不再用本次跑列表的下一段）
         last_frame: str | None = None
-        if use_last_frame and idx + 1 < len(sorted_scenes):
-            next_scene_no = int(sorted_scenes[idx + 1].get("scene_no") or 0)
-            last_frame = scene_to_first_frame.get(next_scene_no)
+        if use_last_frame:
+            nxt_sn = next_scene_map.get(scene_no)
+            if nxt_sn is not None:
+                last_frame = scene_to_first_frame.get(nxt_sn)
 
         scene_face_refs = _resolve_face_refs(scene)
         scene_product_refs = _resolve_product_refs(scene)

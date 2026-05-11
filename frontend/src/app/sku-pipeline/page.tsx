@@ -352,7 +352,7 @@ export default function SkuPipelinePage() {
   const [selectedScenes7, setSelectedScenes7] = useState<Set<number>>(new Set())
   const [duration7, setDuration7] = useState<number>(8)
   const [aspect7, setAspect7] = useState('9:16')
-  const [useLastFrame7, setUseLastFrame7] = useState(false)
+  const [useLastFrame7, setUseLastFrame7] = useState(true)
   const [extraSuffix7, setExtraSuffix7] = useState('')
   const [faceRefs7, setFaceRefs7] = useState('')
   const [productRefs7, setProductRefs7] = useState('')
@@ -892,7 +892,23 @@ export default function SkuPipelinePage() {
       })
       const json = await res.json()
       if (json.success && json.data?.ok) {
-        setImageAssets7(json.data.assets || [])
+        // 按 scene_no 去重：同一段多次重跑只保留 1 张（优先 adopted，fallback 第一张/最新）
+        // 后端 list_assets 已按 scene_no + created_at DESC 排过序
+        const raw = (json.data.assets || []) as Array<{
+          id: string; scene_no: number | null; file_url: string | null; status: string
+        }>
+        const bySn = new Map<number, typeof raw[number]>()
+        for (const a of raw) {
+          if (typeof a.scene_no !== 'number') continue
+          const existing = bySn.get(a.scene_no)
+          if (!existing) {
+            bySn.set(a.scene_no, a)
+          } else if (a.status === 'adopted' && existing.status !== 'adopted') {
+            bySn.set(a.scene_no, a)  // adopted 优先替换
+          }
+        }
+        const deduped = Array.from(bySn.values()).sort((a, b) => (a.scene_no ?? 0) - (b.scene_no ?? 0))
+        setImageAssets7(deduped)
       } else {
         setError(`拉分镜图列表失败：${json.data?.error || json.error || '未知'}`)
         setImageAssets7([])
@@ -3829,7 +3845,7 @@ export default function SkuPipelinePage() {
                           checked={useLastFrame7}
                           onChange={e => setUseLastFrame7(e.target.checked)}
                         />
-                        <span>串场：下段 first_frame 当本段 last_frame（默认不串，每段独立运镜）</span>
+                        <span>串场：自动用脚本下一段图当本段 last_frame（默认开，单段跑也用全局下一段图，相邻段视觉过渡平滑）</span>
                       </label>
                       <div>
                         <label className="text-xs font-medium">额外 prompt 后缀（运镜 hint，全段共用）</label>
@@ -3921,6 +3937,41 @@ export default function SkuPipelinePage() {
                         </Badge>
                       )}
                     </div>
+
+                    {/* ⚠ 火山方舟 cdn url 24h 过期警告 + 一键下载全部主按钮 */}
+                    {resp7.result.success_count > 0 && (() => {
+                      const downloadableVideos = resp7.result!.results
+                        .filter(r => r.video_url)
+                        .map(r => ({
+                          url: r.video_url!,
+                          filename: `${resp7?.result?.sku_id || 'sku'}_${resp7?.result?.kind || 'video'}_scene${r.scene_no}.mp4`,
+                        }))
+                      if (downloadableVideos.length === 0) return null
+                      const downloadAll = () => {
+                        downloadableVideos.forEach((v, i) => {
+                          setTimeout(() => downloadAsset(v.url, v.filename), i * 400)
+                        })
+                      }
+                      return (
+                        <div className="border-2 border-red-400 dark:border-red-700 rounded-lg p-3 bg-red-50/40 dark:bg-red-950/20 space-y-2">
+                          <div className="text-sm font-semibold text-red-700 dark:text-red-400">
+                            ⚠ 火山方舟 cdn url 24 小时过期 — 现在不下载 24h 后链接失效，跑视频的 ¥ 白花
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            点下面按钮一次性下载全部 {downloadableVideos.length} 段视频到本地（浏览器可能弹一次"是否允许多文件下载"提示，点允许）。
+                          </div>
+                          <Button
+                            size="lg"
+                            variant="destructive"
+                            className="w-full h-11 text-base"
+                            onClick={downloadAll}
+                          >
+                            ⬇ 一键下载全部 {downloadableVideos.length} 段视频（{Math.round(downloadableVideos.length * 0.4)}s 内逐个触发）
+                          </Button>
+                        </div>
+                      )
+                    })()}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {resp7.result.results.map(r => (
                         <div key={r.scene_no} className="border rounded p-2 space-y-2 bg-card">
