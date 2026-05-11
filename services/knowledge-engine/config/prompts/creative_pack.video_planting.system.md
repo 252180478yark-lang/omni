@@ -651,6 +651,30 @@
 | 品牌出现次数 | xxx |
 | 传播动机（具体的人）| 用户会想让谁看到（妈妈/伴侣/闺蜜/自己等）|
 
+### 第 3.5 部分：角色清单（character_sheet · 锁脸用 · 1-3 个）
+
+按本脚本涉及的固定角色（出场 ≥ 2 段的就要列），每个一段：
+
+```
+#### 角色 {role_id} · {简称}（英文 id，如 mother / daughter / friend / shopkeeper / insider）
+- **年龄**：xx 岁（精确到 5 岁带，如 60-65）
+- **性别**：女 / 男
+- **外貌关键词**（中英混合，5-8 个，**画师/图模型能直接画的具体描述**）：
+  hair / build / face shape / skin / clothing / aura
+  例：mid-60s, low gray bun, slim build, slightly hunched posture, gentle wrinkled face, soft warm complexion, traditional gray cotton-linen blouse, weathered hands
+- **气质 / 神韵**（1 句不写衣服细节，写"给人的感觉"）：
+  例：A retired mother whose love manifests through cooking but is now quietly defeated by aging taste buds.
+- **人群锚点**：来自第 0 部分人群画像哪句（如"30-50 岁夹心层女性 → 60+ 母亲是她们的关怀对象"）
+
+```
+
+**强制规则**：
+1. 出场 ≥ 2 段的角色都必须列出（避免每段重复描外貌）
+2. 外貌关键词必须**具象到能画**（写"短卷发"不写"洋气"，写"棉麻衬衫"不写"得体"）
+3. 每个角色必须能从 [audience.name] 人群画像直接推出（不能编无依据的角色）
+4. **step 6.5 会拿这个清单先生成每个角色的白底正面像（asset_type='character_sheet'），后续 step 6 分镜图把对应 url 当 face_refs 实现锁脸**
+5. 角色 role_id 必须英文小写 + 下划线（让 step 6 程序化引用）
+
 ### 第 4 部分：分镜脚本（**主辅融合，不分段切**）
 
 **关键**：不是先 M{N} 4 段然后 M{M} 4 段（那是堆砌）—— 是**主模块的节点结构里融入辅模块的元素**。
@@ -661,17 +685,68 @@
 - M1 Moment + **M3 Misconception/Standard 融合**（10-22s）— 真实生活瞬间里行家给出判断标准
 - M1 Closure + **M3 Default 融合**（22-30s）— 余韵画面 + "我自己用的就是这个"
 
-每个节点：
+每个节点 10 字段（前 7 给老板/导演看，后 3 给图模型用）：
+
 ```
 #### 节点 N · {主辅融合点名}（{时间区间}）
-- **画面**：xxx（具体到人物/动作/道具/环境/光线）
+- **画面**：xxx（导演视角 · 30-80 字 · 剧情+情绪+演员动作 · 老板审脚本看这个）
 - **台词/字幕**：xxx（区分对白、画外音独白、屏幕字幕）
 - **镜头**：xxx（景别+运镜+角度）
 - **声音**：xxx（环境音 + BGM 节点）
 - **节点内核**：主模块 M{N} 的 {段名} + 辅模块 M{M} 的 {段名}
 - **变化点**：xxx（地板第 4 条 — 跟上一节点比变了什么）
 - **真实身份披露细节**：xxx（如适用，中段必有）
+- **本段角色**：[role_id, role_id, ...]（引用第 3.5 部分的；可空 = 物件/环境特写无人物）
+- **产品出场**：true / false + 1 句理由（如"产品作为剧情道具自然在场"或"纯人物特写不出现产品"）
+- **image_prompt**（120-200 字 · image-ready · 中英混合 · 直接喂 chatgpt-image-2，不再二次加工）：
+  xxx
 ```
+
+**image_prompt 11 维度模板（chatgpt-image-2 / DALL-E 3 官方推荐结构）**
+
+每段 image_prompt 必须用**自然语言长描述**（不是 SD 关键词堆砌），按以下 11 维度组织、用逗号/句子串成 1-2 段连贯英文（中文人物名+少量中文意境词可保留），覆盖 ≥ 9 个维度：
+
+| # | 维度 | 内容 | 示例词 |
+|---|---|---|---|
+| 1 | **Style + Medium** | 摄影 / 电影感 / 纪录片 / 插画风等 | `cinematic photograph` / `documentary still` / `editorial portrait` |
+| 2 | **Shot type** | 景别 + 拍摄距离 | `close-up` / `medium shot` / `wide shot` / `over-the-shoulder` |
+| 3 | **Subject** | 主体（用 character_sheet 引用，禁重复外貌） | `character_sheet[mother]` / `character_sheet[insider]` |
+| 4 | **Action + Expression** | 当下动作 + 微表情 | `holding a soy sauce bottle, expression of quiet authority` |
+| 5 | **Setting** | 地点 + 时间 + 季节 + 氛围线索 | `at a modest family kitchen, late autumn evening` |
+| 6 | **Lighting** | 主光源方向 + 色温 K + 软硬 + 阴影 | `soft warm tungsten light from camera-right ~3000K, gentle shadows` |
+| 7 | **Composition** | 构图法 + 主体位置 + 画面留白 | `rule of thirds, subject occupying left third, negative space right` |
+| 8 | **Camera + Lens** | 焦距 mm + 光圈 f-stop + 景深 | `50mm lens, f/2.0, shallow depth of field` |
+| 9 | **Color + Tone** | 主色调 + 饱和度 + 对比度 | `slightly desaturated warm palette, amber and umber tones` |
+| 10 | **Mood** | 整体情绪氛围 | `quietly authoritative, contemplative, trustworthy` |
+| 11 | **Aspect ratio** | 必跟脚本元信息一致 | `9:16 vertical aspect` |
+
+**8 条强制规则（chatgpt-image-2 特性 + 跨段一致性）**
+
+1. **角色 = character_sheet[role_id] 引用**，禁在 image_prompt 重写外貌
+   ✅ `character_sheet[insider] holds the soy sauce bottle with steady hand...`
+   ❌ `A 50-year-old man with weathered hands holds the bottle...`（重复外貌 + 后续段不一致）
+
+2. **跨段一致性 4 元素必须全脚本共享同一组词**（保证多段图看起来是同一支视频）：
+   - **Lighting 基调**（如 `warm tungsten ~3000K + soft pendant light`）
+   - **Camera/Lens 风格**（如 `50mm, f/2.0, shallow depth of field`）
+   - **Color palette**（如 `slightly desaturated amber/ochre/umber`）
+   - **Style + Medium**（如 `cinematic documentary photo-realistic`）
+   每段只在 Shot type / Subject action / Setting / Composition / Mood 上变化
+
+3. **product_appearance=false 时禁提产品**（连背景里、连"reminiscent of soy sauce bottle"都不行）
+
+4. **chatgpt-image-2 不擅长画文字**：禁让画面里有字幕、对白、产品 logo 文字、品牌名汉字、价签、菜单等任何文字内容
+
+5. **禁 SD 风提示词污染**：
+   - ❌ `masterpiece, best quality, 4k, 8k, ultra-detailed, hyperrealistic, octane render`
+   - ❌ `(weight:1.2)` LoRA-style 权重括号
+   - ❌ negative prompt 段（chatgpt-image-2 没 negative，用 "without X" 描述代替）
+
+6. **每段独立完整**：不写"接上段"/"continuing from previous shot"/"the same mother as before" — 图模型每段独立生成
+
+7. **画幅词必跟脚本元信息一致** — 默认 `9:16 vertical aspect`（抖音竖版）
+
+8. **prompt 整体 120-200 中英混合字符**（chatgpt-image-2 长描述吃，但 > 250 字易截断；< 120 信息不足）；优先英文写技术维度（lighting/camera/composition），中文写不可英译的意境
 
 ### 第 5 部分：3 个开头钩子变体
 
@@ -765,7 +840,13 @@
 
   "authority_real_verifiable": false,
   "authority_recognition_evidence_provided": false,
-  "authority_translation_user_lang": false
+  "authority_translation_user_lang": false,
+
+  "character_sheet_count": 2,
+  "scenes_with_image_prompt_count": 6,
+  "scenes_total_count": 6,
+  "image_prompt_avg_chars": 165,
+  "scene_product_appearance": [false, false, true, true, false, false]
 }
 ```
 
@@ -786,6 +867,14 @@
 - `transmission_target` 必须**单一**具体的人/群，**严禁**用"或""和""/"等连接多目标
 - `brand_total_mention_count`：A1/A2→A3 控制在 1-3 次（不像软广严限 ≤ 1，但也不能轰炸）
 - `brand_first_appearance_second`：**必须 ≥ 5**（前 5 秒禁品牌名）
+
+image_prompt + 角色清单（W4-B 切片 14.4 phase D 加，给 step 6 分镜图直接喂用）：
+- `character_sheet_count` ≥ 1（出场 ≥ 2 段的角色都要列；通常 1-3 个）
+- `scenes_with_image_prompt_count` == `scenes_total_count`（每段都必须有 image_prompt 字段）
+- `image_prompt_avg_chars` 在 [120, 250] 区间（太短信息不够、太长 chatgpt-image-2 易截断）
+- `scene_product_appearance` 是 boolean 数组，长度 == `scenes_total_count`
+  - 数组 true 计数应 ≤ `brand_total_mention_count`
+  - true 计数不能 = 0（每个脚本至少 1 段产品出场，否则品牌不入画）
 
 模块独有（按主辅各自校验）：
 - M1 Slice：`slice_setting_specificity_high` = true / `slice_brand_appearance_seconds_le_2` = true / `slice_routine_disclosure_count` ≥ 2

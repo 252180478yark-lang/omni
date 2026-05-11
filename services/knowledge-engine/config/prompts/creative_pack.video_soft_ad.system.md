@@ -563,18 +563,99 @@ CER 是 Slice of Life 的**剧情化升级版** —— 多了情感弧线和释�
 | 产品在场次数 | xxx |
 | 传播动机（具体的人）| 用户会想让谁看到（妈妈/伴侣/闺蜜/自己）|
 
+### 第 3.5 部分：角色清单（character_sheet · 锁脸用 · 1-3 个）
+
+按本脚本涉及的固定角色（出场 ≥ 2 段的就要列），每个一段：
+
+```
+#### 角色 {role_id} · {简称}（英文 id，如 mother / daughter / friend / shopkeeper）
+- **年龄**：xx 岁（精确到 5 岁带，如 60-65）
+- **性别**：女 / 男
+- **外貌关键词**（中英混合，5-8 个，**画师/图模型能直接画的具体描述**）：
+  hair / build / face shape / skin / clothing / aura
+  例：mid-60s, low gray bun, slim build, slightly hunched posture, gentle wrinkled face, soft warm complexion, traditional gray cotton-linen blouse, weathered hands
+- **气质 / 神韵**（1 句不写衣服细节，写"给人的感觉"）：
+  例：A retired mother whose love manifests through cooking but is now quietly defeated by aging taste buds.
+- **人群锚点**：来自第 0 部分人群画像哪句（如"30-50 岁夹心层女性 → 60+ 母亲是她们的关怀对象"）
+
+```
+
+**强制规则**：
+1. 出场 ≥ 2 段的角色都必须列出（避免每段重复描外貌）
+2. 外貌关键词必须**具象到能画**（写"短卷发"不写"洋气"，写"棉麻衬衫"不写"得体"）
+3. 每个角色必须能从 [audience.name] 人群画像直接推出（不能编无依据的角色）
+4. **step 6.5 会拿这个清单先生成每个角色的白底正面像（asset_type='character_sheet'），后续 step 6 分镜图把对应 url 当 face_refs 实现锁脸**
+5. 角色 role_id 必须英文小写 + 下划线（让 step 6 程序化引用）
+
 ### 第 4 部分：分镜脚本
 
-按选定模块的节点结构展开，每个节点：
+按选定模块的节点结构展开，每个节点 9 字段（前 6 给老板/导演看，后 3 给图模型用）：
 
 ```
 #### 节点 N · {节点名}（{时间区间}）
-- **画面**：xxx（具体到人物/动作/道具/环境/光线）
+- **画面**：xxx（导演视角 · 30-80 字 · 剧情+情绪+演员动作 · 老板审脚本看这个）
 - **台词/字幕**：xxx（区分对白、画外音独白、屏幕字幕）
 - **镜头**：xxx（景别+运镜+角度）
 - **声音**：xxx（环境音 + BGM 节点）
 - **节点内核**：xxx（这段在做什么情感/叙事工作）
 - **变化点**：xxx（地板第 4 条 — 跟上一节点比变了什么）
+- **本段角色**：[role_id, role_id, ...]（引用第 3.5 部分的；可空 = 物件/环境特写无人物）
+- **产品出场**：true / false + 1 句理由（如"产品作为剧情道具自然在场"或"纯人物特写不出现产品"）
+- **image_prompt**（120-200 字 · image-ready · 中英混合 · 直接喂 chatgpt-image-2，不再二次加工）：
+  xxx
+```
+
+**image_prompt 11 维度模板（chatgpt-image-2 / DALL-E 3 官方推荐结构）**
+
+每段 image_prompt 必须用**自然语言长描述**（不是 SD 关键词堆砌），按以下 11 维度组织、用逗号/句子串成 1-2 段连贯英文（中文人物名+少量中文意境词可保留），覆盖 ≥ 9 个维度：
+
+| # | 维度 | 内容 | 示例词 |
+|---|---|---|---|
+| 1 | **Style + Medium** | 摄影 / 电影感 / 纪录片 / 插画风等 | `cinematic photograph` / `documentary still` / `editorial portrait` / `slice-of-life film still` |
+| 2 | **Shot type** | 景别 + 拍摄距离 | `close-up` / `medium close-up` / `medium shot` / `wide shot` / `over-the-shoulder` / `extreme close-up of hands` |
+| 3 | **Subject** | 主体（用 character_sheet 引用，禁重复外貌） | `character_sheet[mother]` / `character_sheet[daughter]` |
+| 4 | **Action + Expression** | 当下动作 + 微表情 | `lifting a chopstick of braised pork toward her mouth, brow subtly furrowing in disappointment` |
+| 5 | **Setting** | 地点 + 时间 + 季节 + 氛围线索 | `at a modest family dining table, late autumn evening, dimly lit kitchen visible in background` |
+| 6 | **Lighting** | 主光源方向 + 色温 K + 软硬 + 阴影 | `soft warm tungsten light from camera-right ceiling pendant ~3000K, gentle shadows on the wall behind` |
+| 7 | **Composition** | 构图法 + 主体位置 + 画面留白 | `rule of thirds, subject occupying left third, negative space to the right showing blurred mother in foreground` |
+| 8 | **Camera + Lens** | 焦距 mm + 光圈 f-stop + 景深 | `shot on 50mm lens, f/2.0, shallow depth of field, mother in soft foreground bokeh` |
+| 9 | **Color + Tone** | 主色调 + 饱和度 + 对比度 | `slightly desaturated warm palette dominated by amber and brown tones, gentle contrast` |
+| 10 | **Mood** | 整体情绪氛围 | `quietly tender, contemplative, a moment of unspoken family realization` |
+| 11 | **Aspect ratio** | 必跟脚本元信息一致 | `9:16 vertical aspect` / `1:1 square` / `16:9 widescreen` |
+
+**完整范例（v10 婆媳 节点 1 重写版）**：
+
+```
+A cinematic close-up photograph of character_sheet[daughter] lifting a chopstick of braised pork toward her mouth at a modest family dining table during a late autumn evening, her brow subtly furrowing in quiet disappointment as she registers an unfamiliar saltiness. Across from her, character_sheet[mother] sits in soft out-of-focus foreground, hands clasped on the table in subtle anxious anticipation. Soft warm tungsten light from a single overhead pendant lamp ~3000K casts gentle shadows on the wall behind, with faint kitchen ambient light bleeding in from camera-left. Composition follows rule of thirds with the daughter occupying the left third, negative space to the right framing the mother's blurred presence. Shot on a 50mm lens at f/2.0 for shallow depth of field, daughter in tack-sharp focus while mother dissolves into warm bokeh. Slightly desaturated warm color palette dominated by amber, ochre and umber tones with gentle contrast. Mood is quietly tender and contemplative, a moment of unspoken family realization. 9:16 vertical aspect, photo-realistic documentary style.
+```
+
+**8 条强制规则（chatgpt-image-2 特性 + 跨段一致性）**
+
+1. **角色 = character_sheet[role_id] 引用**，禁在 image_prompt 重写外貌
+   ✅ `character_sheet[mother] sits at dining table, gently watching...`
+   ❌ `A 60-year-old woman with gray bun sits at dining table...`（重复外貌 + 后续段不一致）
+
+2. **跨段一致性 4 元素必须全脚本共享同一组词**（保证 6 段图看起来是同一支视频）：
+   - **Lighting 基调**：如 `warm tungsten ~3000K + soft pendant light`
+   - **Camera/Lens 风格**：如 `50mm, f/2.0, shallow depth of field`
+   - **Color palette**：如 `slightly desaturated amber/ochre/umber`
+   - **Style + Medium**：如 `cinematic documentary photo-realistic`
+   每段只在 Shot type / Subject action / Setting / Composition / Mood 上变化
+
+3. **product_appearance=false 时禁提产品**（连背景里、连"reminiscent of soy sauce bottle"都不行）
+
+4. **chatgpt-image-2 不擅长画文字**：禁让画面里有字幕、对白、产品 logo 文字、品牌名汉字、价签、菜单等任何文字内容（除非该段就是 Brand Mark 字幕段，那种用纯黑底白字直接后期做不走 image gen）
+
+5. **禁 SD 风提示词污染**：
+   - ❌ `masterpiece, best quality, 4k, 8k, ultra-detailed, hyperrealistic, octane render, trending on artstation, intricate details`
+   - ❌ `(weight:1.2)` LoRA-style 权重括号
+   - ❌ negative prompt 段（chatgpt-image-2 没 negative，用 "without X" 描述代替；尽量正面写）
+
+6. **每段独立完整**：不写"接上段"/"continuing from previous shot"/"the same mother as before" — 图模型每段独立生成，不看上下文（一致性靠 character_sheet 引用 + 跨段共享 4 元素 + face_refs）
+
+7. **画幅词必跟脚本元信息一致** — 默认 `9:16 vertical aspect`（抖音竖版）
+
+8. **prompt 整体 120-200 中英混合字符**（chatgpt-image-2 长描述吃，但 > 250 字易截断；< 120 信息不足）；优先英文写技术维度（lighting/camera/composition），中文写不可英译的意境（如"水墨留白""家常烟火气"）
 ```
 
 ### 第 5 部分：3 个开头钩子变体
@@ -637,7 +718,13 @@ CER 是 Slice of Life 的**剧情化升级版** —— 多了情感弧线和释�
   "cultural_tension_real": false,
   "aspirational_middle_class_reachable": false,
   "doc_real_subject": false,
-  "doc_real_interview": false
+  "doc_real_interview": false,
+
+  "character_sheet_count": 2,
+  "scenes_with_image_prompt_count": 6,
+  "scenes_total_count": 6,
+  "image_prompt_avg_chars": 165,
+  "scene_product_appearance": [false, false, true, true, false, false]
 }
 ```
 
@@ -655,6 +742,14 @@ CER 是 Slice of Life 的**剧情化升级版** —— 多了情感弧线和释�
 - `brand_first_appearance_second`：**品牌名（如「和田宽」）/ logo / 字幕署名**首次出现的秒位 — **不是产品瓶身**！瓶身/包装可以早出现作为剧情道具，但品牌名只能最后 Brand Mark 时刻署名。Slice of Life 不强求 / Pixar ≥ 25 / CER ≥ 28 / Mini-Doc ≥ 60
 - `brand_total_mention_count`：品牌名在整条素材出现总次数（口播 + 字幕 + logo）。**A1A2/节日/品牌资产 ≥ 1（最后 Brand Mark 算 1 次） / O→A1 可以 = 0 但有 ≥ 1 更好 / 上限：M8 ≤ 1 / O→A1 ≤ 1 / 其他 ≤ 2**
 - `brand_signature_format`：`content_credit`（"和田宽 · 出品"创作者水印）/ `brand_mark`（标准品牌 logo 字幕，M2 片尾用）/ `ad_slogan`（广告口号，**禁，仅 M6 例外可有 Manifesto**）/ `none`（无署名）。**M1/M2/M3/M4/M5/M7/M8 都必须 content_credit 或 brand_mark，不能 none**
+
+image_prompt + 角色清单（W4-B 切片 14.4 phase D 加，给 step 6 分镜图直接喂用）：
+- `character_sheet_count` ≥ 1（出场 ≥ 2 段的角色都要列；通常 1-3 个）
+- `scenes_with_image_prompt_count` == `scenes_total_count`（每段都必须有 image_prompt 字段）
+- `image_prompt_avg_chars` 在 [120, 250] 区间（太短 = 信息不够，太长 = chatgpt-image-2 截断）
+- `scene_product_appearance` 是 boolean 数组，长度 == `scenes_total_count`
+  - 数组里 `true` 计数应 ≤ `brand_total_mention_count`（品牌出现次数 ≤ 产品出场段数 + 1）
+  - 但 `true` 计数也不能 = 0（每个脚本至少 1 段产品出场，否则品牌不入画）
 
 模块独有：
 - M1：`pixar_six_sentence_count` = 6
