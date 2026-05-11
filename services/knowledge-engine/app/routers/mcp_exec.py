@@ -416,6 +416,41 @@ async def exec_generate_storyboard_images(
         return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
 
+class GenerateVideoSegmentsRequest(BaseModel):
+    script_id: str
+    scene_nums: list[int] | None = None
+    face_refs: list[str] | None = None
+    product_refs: list[str] | None = None
+    aspect_ratio: str = "9:16"
+    duration_s: int = 8
+    use_last_frame: bool = False
+    extra_prompt_suffix: str | None = None
+
+
+@router.post("/exec/generate_video_segments")
+async def exec_generate_video_segments(
+    payload: GenerateVideoSegmentsRequest,
+) -> Any:
+    """W4-B 14.4 phase D step 7：拉 script.scenes，用 step 6 出的分镜图当 first_frame
+    + character_sheet 锁脸，并发调 seedance-2-0 出每段视频，落 pipeline.assets(asset_type='video')。
+    """
+    from app.mcp.tools.media import generate_video_segments
+    try:
+        return await generate_video_segments(
+            script_id=payload.script_id,
+            scene_nums=payload.scene_nums,
+            face_refs=payload.face_refs,
+            product_refs=payload.product_refs,
+            aspect_ratio=payload.aspect_ratio,
+            duration_s=payload.duration_s,
+            use_last_frame=payload.use_last_frame,
+            extra_prompt_suffix=payload.extra_prompt_suffix,
+        )
+    except Exception as exc:
+        logger.exception("generate_video_segments REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
 @router.post("/exec/pipeline_backfill_scenes")
 async def exec_pipeline_backfill_scenes() -> Any:
     """一次性回填：扫所有 scenes=[] 的 scripts 按 kind 重解析填回。"""

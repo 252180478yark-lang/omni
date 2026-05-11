@@ -303,6 +303,57 @@ export default function SkuPipelinePage() {
     error?: string
     hint?: string
   } | null>(null)
+
+  // ── Step 7：视频段生成（W4-B 切片 14.4 phase D step 7） ─────────
+  // 复用 step 6 选的 script6Id / script6Detail（同脚本，step 7 = step 6 的视频版）
+  // 拉同 script 已出的 image asset（哪几段有图能跑视频）
+  const [imageAssets7, setImageAssets7] = useState<Array<{
+    id: string
+    scene_no: number | null
+    file_url: string | null
+    status: string
+  }> | null>(null)
+  const [loadingImageAssets7, setLoadingImageAssets7] = useState(false)
+  // step 7 段选择 + 参数
+  const [selectedScenes7, setSelectedScenes7] = useState<Set<number>>(new Set())
+  const [duration7, setDuration7] = useState<number>(8)
+  const [aspect7, setAspect7] = useState('9:16')
+  const [useLastFrame7, setUseLastFrame7] = useState(false)
+  const [extraSuffix7, setExtraSuffix7] = useState('')
+  const [faceRefs7, setFaceRefs7] = useState('')
+  const [productRefs7, setProductRefs7] = useState('')
+  const [running7, setRunning7] = useState(false)
+  const [resp7, setResp7] = useState<{
+    ok: boolean
+    result?: {
+      script_id: string
+      kind: string
+      sku_id: string
+      scenes_total: number
+      success_count: number
+      error_count: number
+      results: Array<{
+        scene_no: number
+        asset_id?: string
+        video_url?: string
+        prompt?: string
+        error?: string
+        first_frame_used?: string
+        last_frame_used?: string | null
+        face_refs_used?: string[]
+        product_refs_used?: string[]
+        characters_in_scene?: string[]
+        product_appearance?: boolean
+        duration_s?: number
+        task_id?: string | null
+      }>
+    }
+    trace?: TraceShape
+    error?: string
+    hint?: string
+    scene_nums_missing_image?: number[]
+  } | null>(null)
+
   // SKU 已收藏人群池（跨多次 audience_run 的 status=adopted 累积）
   const [poolRecords, setPoolRecords] = useState<AudienceRecordSummary[] | null>(null)
   const [poolLoading, setPoolLoading] = useState(false)
@@ -793,6 +844,107 @@ export default function SkuPipelinePage() {
     })
   }
 
+  // ── Step 7 handlers ─────────
+  // 拉同 script_id 的 image asset（哪几段已出图能跑视频）
+  const loadImageAssets7 = async () => {
+    if (!script6Id) return
+    setLoadingImageAssets7(true)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/list-assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script_id: script6Id, asset_type: 'image', limit: 200 }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok) {
+        setImageAssets7(json.data.assets || [])
+      } else {
+        setError(`拉分镜图列表失败：${json.data?.error || json.error || '未知'}`)
+        setImageAssets7([])
+      }
+    } catch (e) {
+      setError(`拉分镜图列表异常：${String(e)}`)
+      setImageAssets7([])
+    } finally {
+      setLoadingImageAssets7(false)
+    }
+  }
+
+  // step 7 主动作：调 generate_video_segments
+  const runStep7Video = async () => {
+    if (!script6Id || running7) return
+    setRunning7(true)
+    setError(null)
+    try {
+      // 默认全跑（selectedScenes7 空 = 不传 scene_nums = 后端全跑）
+      const scene_nums =
+        selectedScenes7.size === 0 || selectedScenes7.size === (imageAssets7?.length || 0)
+          ? undefined
+          : Array.from(selectedScenes7)
+      const face_refs = faceRefs7.split(/\n/).map(s => s.trim()).filter(Boolean)
+      const product_refs = productRefs7.split(/\n/).map(s => s.trim()).filter(Boolean)
+      const res = await fetch('/api/omni/sku-pipeline/video-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script_id: script6Id,
+          scene_nums,
+          face_refs: face_refs.length ? face_refs : null,
+          product_refs: product_refs.length ? product_refs : null,
+          aspect_ratio: aspect7,
+          duration_s: duration7,
+          use_last_frame: useLastFrame7,
+          extra_prompt_suffix: extraSuffix7 || null,
+        }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setResp7(json.data)
+        bumpLineage()  // 触发 LineageTree refetch（视频 asset 已落 db）
+      } else {
+        setError(`视频生成失败：${json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`视频生成异常：${String(e)}`)
+    } finally {
+      setRunning7(false)
+    }
+  }
+
+  // step 7 单段重跑
+  const rerunOneScene7 = async (sceneNo: number) => {
+    setSelectedScenes7(new Set([sceneNo]))
+    // 等 state 更新一拍后再跑（用 setTimeout 简化，避免 state 未及时同步导致全跑）
+    setTimeout(() => {
+      void runStep7Video()
+    }, 0)
+  }
+
+  // 老板切到 step 7 时自动拉 image asset 列表（如果还没拉过）
+  useEffect(() => {
+    if (script6Id && imageAssets7 === null && !loadingImageAssets7) {
+      loadImageAssets7()
+    }
+    // 切换 script6Id 时清空旧列表
+  }, [script6Id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 切换 script6Id 时清空 step 7 state
+  useEffect(() => {
+    setImageAssets7(null)
+    setSelectedScenes7(new Set())
+    setResp7(null)
+  }, [script6Id])
+
+  // step 7 默认全选有图的 scene
+  useEffect(() => {
+    if (imageAssets7 && imageAssets7.length > 0) {
+      const validNos = imageAssets7
+        .map(a => a.scene_no)
+        .filter((n): n is number => typeof n === 'number')
+      setSelectedScenes7(new Set(validNos))
+    }
+  }, [imageAssets7])
+
   // 老板点了"看人群池"或者本次新收藏一条 → 自动 refresh pool（保证池数据是最新的）
   useEffect(() => {
     if (showPool && poolRecords === null && !poolLoading) {
@@ -1195,6 +1347,9 @@ export default function SkuPipelinePage() {
           </TabsTrigger>
           <TabsTrigger value="step6" className="text-sm font-medium w-full justify-start py-2">
             <ImageIcon className="w-4 h-4 mr-1.5" /> Step 6 · 分镜图
+          </TabsTrigger>
+          <TabsTrigger value="step7" className="text-sm font-medium w-full justify-start py-2">
+            <Film className="w-4 h-4 mr-1.5" /> Step 7 · 视频段
           </TabsTrigger>
           <TabsTrigger value="lineage" className="text-sm font-medium w-full justify-start py-2">
             <Network className="w-4 h-4 mr-1.5" /> 血缘图
@@ -3186,6 +3341,450 @@ export default function SkuPipelinePage() {
                 {resp6?.trace && (
                   <div className="mt-4 text-[11px] text-muted-foreground border-t pt-2">
                     {resp6.trace.model_provider}/{resp6.trace.model} · {resp6.trace.cost_estimate}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ============== STEP 7：视频段生成（W4-B 切片 14.4 phase D step 7） ============== */}
+        <TabsContent value="step7" className="mt-0 flex-1 min-w-0">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            {/* 左：选脚本（复用 step 6 选好的）+ 参数 + 主操作 */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Film className="w-4 h-4" /> 输入
+                </CardTitle>
+                <CardDescription>
+                  承接 step 6 选好的脚本 → 拉已出分镜图 → 选要跑视频的段 + 时长 → 并发调
+                  seedance-2-0 出每段 8s 视频（每段约 60-180s，6 段总 5-10min），落入血缘。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!script6Id && (
+                  <div className="border border-dashed border-orange-300 dark:border-orange-700 rounded p-3 text-xs bg-orange-50/30 dark:bg-orange-950/10">
+                    ⚠ 先到 <strong>Step 6 · 分镜图</strong> 选一个脚本（kind 需 video_*），
+                    step 7 复用同一个脚本。
+                  </div>
+                )}
+                {script6Id && script6Detail && !script6Detail.kind.startsWith('video_') && (
+                  <div className="border border-dashed border-orange-300 dark:border-orange-700 rounded p-3 text-xs bg-orange-50/30 dark:bg-orange-950/10">
+                    ⚠ 当前脚本 kind=<code>{script6Detail.kind}</code>，不是视频脚本。
+                    回 step 6 切个 <code>video_*</code> 脚本（soft_ad / planting / harvest）。
+                  </div>
+                )}
+                {script6Detail && script6Detail.kind.startsWith('video_') && (
+                  <div className="border rounded p-2 bg-muted/30 text-xs space-y-1">
+                    <div>
+                      <Badge variant="secondary" className="text-[10px]">{script6Detail.kind}</Badge>
+                      <Badge variant="outline" className="text-[10px] ml-1">第 {script6Detail.version} 版</Badge>
+                      <Badge
+                        variant={script6Detail.status === 'adopted' ? 'default' : 'outline'}
+                        className="text-[10px] ml-1"
+                      >
+                        {script6Detail.status === 'adopted' ? '已采纳' : '草稿'}
+                      </Badge>
+                    </div>
+                    <div className="text-muted-foreground">
+                      共 <strong>{script6Detail.scenes?.length || 0}</strong> 段分镜
+                      {(script6Detail.character_sheets?.length || 0) > 0 && (
+                        <span> · <strong>{script6Detail.character_sheets!.length}</strong> 个固定角色</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 拉已出分镜图列表（哪几段能跑视频） */}
+                {script6Id && script6Detail?.kind?.startsWith('video_') && (
+                  <div className="border rounded p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-sm font-medium">已出分镜图（step 6）</label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={loadImageAssets7}
+                        disabled={loadingImageAssets7}
+                      >
+                        {loadingImageAssets7 ? <Loader2 className="w-3 h-3 animate-spin" /> : '刷新'}
+                      </Button>
+                    </div>
+                    {imageAssets7 === null && (
+                      <div className="text-xs text-muted-foreground">点刷新拉这个脚本已落库的分镜图（asset_type=image）。</div>
+                    )}
+                    {imageAssets7 && imageAssets7.length === 0 && (
+                      <div className="text-xs text-orange-500">
+                        ⚠ 还没跑分镜图。先到 step 6 跑 <code>generate_storyboard_images</code> 再回来跑视频。
+                      </div>
+                    )}
+                    {imageAssets7 && imageAssets7.length > 0 && (
+                      <div className="text-xs text-muted-foreground space-y-1">
+                        <div>已出 <strong className="text-foreground">{imageAssets7.length}</strong> 张分镜图（按 scene_no 自动当 first_frame）。</div>
+                        {script6Detail && (script6Detail.scenes?.length || 0) > imageAssets7.length && (
+                          <div className="text-orange-500">
+                            ⚠ 脚本有 {script6Detail.scenes!.length} 段但只有 {imageAssets7.length} 张图；
+                            缺图的段会返 missing_storyboard_images，先到 step 6 补齐。
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 主操作按钮（置顶） */}
+                {script6Id && imageAssets7 && imageAssets7.length > 0 && (
+                  <div className="border-2 border-primary/50 rounded-lg p-3 bg-primary/5 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="text-sm font-medium">
+                        ▶ 出视频：已选 <strong className="text-primary">{selectedScenes7.size}</strong> / {imageAssets7.length} 段
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            const first = imageAssets7
+                              .map(a => a.scene_no)
+                              .filter((n): n is number => typeof n === 'number')[0]
+                            if (typeof first === 'number') setSelectedScenes7(new Set([first]))
+                          }}
+                          title="只跑第 1 段（先小范围测，省钱）"
+                        >
+                          只第 1 段
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            const all = imageAssets7
+                              .map(a => a.scene_no)
+                              .filter((n): n is number => typeof n === 'number')
+                            setSelectedScenes7(new Set(all))
+                          }}
+                        >
+                          全选 {imageAssets7.length}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs"
+                          onClick={() => setSelectedScenes7(new Set())}
+                        >
+                          全清
+                        </Button>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={runStep7Video}
+                      disabled={running7 || selectedScenes7.size === 0}
+                      className="w-full text-base h-11"
+                      size="lg"
+                    >
+                      {running7 ? (
+                        <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> 跑中（{selectedScenes7.size} 段并发，约 5-10min）</>
+                      ) : selectedScenes7.size === 0 ? (
+                        '先选要跑的段'
+                      ) : (
+                        `★ 出 ${selectedScenes7.size} 段视频（${selectedScenes7.size > 1 ? '并发 ' : ''}seedance-2-0，每段 ${duration7}s）`
+                      )}
+                    </Button>
+                    <div className="text-[11px] text-muted-foreground">
+                      ¥15/段 · 分镜图自动当 first_frame · 角色 face_refs 自动按 character_sheet 找。
+                    </div>
+                  </div>
+                )}
+
+                {/* 段选清单 */}
+                {imageAssets7 && imageAssets7.length > 0 && (
+                  <details className="text-sm" open>
+                    <summary className="cursor-pointer text-sm font-medium text-muted-foreground">
+                      ▼ 多选段（当前选 {selectedScenes7.size} / {imageAssets7.length}）
+                    </summary>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      {imageAssets7.map(a => {
+                        if (typeof a.scene_no !== 'number') return null
+                        const sn = a.scene_no
+                        const checked = selectedScenes7.has(sn)
+                        const scene = script6Detail?.scenes?.find(s => s.scene_no === sn)
+                        return (
+                          <label
+                            key={a.id}
+                            className={`border rounded p-2 cursor-pointer transition flex gap-2 ${
+                              checked ? 'border-primary bg-primary/5' : 'border-muted hover:border-muted-foreground/50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={checked}
+                              onChange={() => {
+                                setSelectedScenes7(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has(sn)) next.delete(sn)
+                                  else next.add(sn)
+                                  return next
+                                })
+                              }}
+                            />
+                            {a.file_url && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={a.file_url}
+                                alt={`scene ${sn}`}
+                                className="w-12 h-12 object-cover rounded border shrink-0"
+                              />
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium">第 {sn} 段</div>
+                              <div className="text-[10px] text-muted-foreground truncate">
+                                {scene?.name || scene?.visual?.slice(0, 40) || '—'}
+                              </div>
+                              {scene && (
+                                <div className="flex flex-wrap gap-1 mt-0.5">
+                                  {(scene.characters_in_scene?.length || 0) > 0 && (
+                                    <Badge variant="outline" className="text-[9px] px-1 py-0">
+                                      👤 {scene.characters_in_scene!.join('/')}
+                                    </Badge>
+                                  )}
+                                  {scene.product_appearance && (
+                                    <Badge variant="outline" className="text-[9px] px-1 py-0">📦</Badge>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </details>
+                )}
+
+                {/* 参数：duration / aspect / use_last_frame / extra_suffix */}
+                {script6Id && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 视频参数</summary>
+                    <div className="mt-2 space-y-3">
+                      <div>
+                        <label className="text-xs font-medium">每段时长（秒）</label>
+                        <select
+                          className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                          value={duration7}
+                          onChange={e => setDuration7(Number(e.target.value))}
+                        >
+                          {[4, 5, 6, 8, 10, 12, 15].map(d => (
+                            <option key={d} value={d}>{d}s {d === 8 && '(seedance 默认)'}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium">画幅</label>
+                        <select
+                          className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                          value={aspect7}
+                          onChange={e => setAspect7(e.target.value)}
+                        >
+                          {['9:16', '16:9', '1:1', '3:4', '4:3'].map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useLastFrame7}
+                          onChange={e => setUseLastFrame7(e.target.checked)}
+                        />
+                        <span>串场：下段 first_frame 当本段 last_frame（默认不串，每段独立运镜）</span>
+                      </label>
+                      <div>
+                        <label className="text-xs font-medium">额外 prompt 后缀（运镜 hint，全段共用）</label>
+                        <Textarea
+                          value={extraSuffix7}
+                          onChange={e => setExtraSuffix7(e.target.value)}
+                          rows={2}
+                          className="text-xs mt-1"
+                          placeholder="如：slow handheld motion, breathy ambient sound, slight zoom-in"
+                        />
+                      </div>
+                    </div>
+                  </details>
+                )}
+
+                {/* 手动 face / product refs（每行一个 url） */}
+                {script6Id && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 人脸 / 产品参考图（可选；自动 character_sheet 之外）</summary>
+                    <div className="mt-2 space-y-3">
+                      <div>
+                        <label className="text-xs font-medium">人脸参考图（每行一个 url）</label>
+                        <Textarea
+                          value={faceRefs7}
+                          onChange={e => setFaceRefs7(e.target.value)}
+                          rows={3}
+                          className="text-xs mt-1 font-mono"
+                          placeholder="https://...&#10;data:image/..."
+                        />
+                        <div className="text-[11px] text-muted-foreground mt-1">
+                          这里手动加的 face_refs 在 image[0]、image[1]... 排前；character_sheet 自动找的接后面。
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium">产品参考图（每行一个 url）</label>
+                        <Textarea
+                          value={productRefs7}
+                          onChange={e => setProductRefs7(e.target.value)}
+                          rows={3}
+                          className="text-xs mt-1 font-mono"
+                          placeholder="https://...（产品白底图）"
+                        />
+                        <div className="text-[11px] text-muted-foreground mt-1">
+                          scene.product_appearance=False 段强制不传（哪怕填了）。
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 右：输出 grid */}
+            <Card className="lg:col-span-3">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" /> 输出（视频段）
+                </CardTitle>
+                <CardDescription>
+                  每段单独 video element；点 ✓ 绑血缘 / ⬇ 下载 / 🔄 单段重跑。
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!resp7 && (
+                  <div className="text-sm text-muted-foreground p-4 border border-dashed rounded">
+                    左侧选段 + 跑后这里显示视频 grid。
+                  </div>
+                )}
+                {resp7?.error && (
+                  <div className="text-sm p-3 border border-red-300 rounded bg-red-50 dark:bg-red-950/20 space-y-1">
+                    <div className="text-red-600 font-medium">❌ {resp7.error}</div>
+                    {resp7.hint && <div className="text-xs text-muted-foreground">{resp7.hint}</div>}
+                    {resp7.scene_nums_missing_image && (
+                      <div className="text-xs">
+                        缺图的段：{resp7.scene_nums_missing_image.join(', ')}（先到 step 6 跑这几段）
+                      </div>
+                    )}
+                  </div>
+                )}
+                {resp7?.result && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Badge variant="default">
+                        ✓ {resp7.result.success_count} / {resp7.result.scenes_total} 段成功
+                      </Badge>
+                      {resp7.result.error_count > 0 && (
+                        <Badge variant="destructive">
+                          ❌ {resp7.result.error_count} 段失败
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {resp7.result.results.map(r => (
+                        <div key={r.scene_no} className="border rounded p-2 space-y-2 bg-card">
+                          <div className="flex items-center justify-between gap-1 flex-wrap">
+                            <div className="text-sm font-medium">第 {r.scene_no} 段 · {r.duration_s}s</div>
+                            <div className="flex flex-wrap gap-1">
+                              {(r.characters_in_scene?.length || 0) > 0 && (
+                                <Badge variant="outline" className="text-[10px]">
+                                  👤 {r.characters_in_scene!.join('/')} ({(r.face_refs_used?.length || 0)})
+                                </Badge>
+                              )}
+                              {(r.product_refs_used?.length || 0) > 0 && (
+                                <Badge variant="outline" className="text-[10px]">
+                                  📦 ({r.product_refs_used!.length})
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          {r.error ? (
+                            <div className="text-xs p-2 border border-red-300 rounded bg-red-50 dark:bg-red-950/20 text-red-600">
+                              {r.error}
+                            </div>
+                          ) : r.video_url ? (
+                            <video
+                              src={r.video_url}
+                              controls
+                              className="w-full rounded border"
+                              preload="metadata"
+                            />
+                          ) : (
+                            <div className="text-xs text-muted-foreground italic">无视频 url</div>
+                          )}
+                          {r.prompt && (
+                            <details className="text-xs">
+                              <summary className="cursor-pointer text-muted-foreground">▼ prompt</summary>
+                              <pre className="mt-1 p-2 bg-muted/50 rounded whitespace-pre-wrap text-[10px]">{r.prompt}</pre>
+                            </details>
+                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={running7}
+                              onClick={() => rerunOneScene7(r.scene_no)}
+                              className="text-[10px] h-7 px-2"
+                            >
+                              🔄 重跑此段
+                            </Button>
+                            {r.asset_id && (
+                              <Button
+                                size="sm"
+                                variant={adoptedAssetIds.has(r.asset_id) ? 'default' : 'outline'}
+                                disabled={!r.asset_id || adoptingAsset === r.asset_id}
+                                onClick={() => adoptAsset(r.asset_id!)}
+                                className="text-[10px] h-7 px-2"
+                              >
+                                {adoptingAsset === r.asset_id ? (
+                                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 采纳中</>
+                                ) : adoptedAssetIds.has(r.asset_id) ? (
+                                  '✅ 已绑'
+                                ) : (
+                                  '✓ 绑血缘'
+                                )}
+                              </Button>
+                            )}
+                            {r.video_url && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const fname = `${resp7?.result?.sku_id || 'sku'}_${resp7?.result?.kind || 'video'}_scene${r.scene_no}.mp4`
+                                  downloadAsset(r.video_url!, fname)
+                                }}
+                                className="text-[10px] h-7 px-2"
+                              >
+                                <Download className="w-3 h-3 mr-1" /> 下载
+                              </Button>
+                            )}
+                            {r.video_url && (
+                              <a
+                                href={r.video_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-blue-600 hover:underline px-1"
+                              >
+                                原视频 ↗
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {resp7?.trace && (
+                  <div className="mt-4 text-[11px] text-muted-foreground border-t pt-2">
+                    {resp7.trace.model_provider}/{resp7.trace.model} · {resp7.trace.cost_estimate}
                   </div>
                 )}
               </CardContent>

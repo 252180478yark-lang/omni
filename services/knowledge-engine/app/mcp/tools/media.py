@@ -794,6 +794,332 @@ async def generate_video(
     )
 
 
+@tool_with_audit(mcp, require_approval=False)
+async def generate_video_segments(
+    script_id: str,
+    scene_nums: list[int] | None = None,
+    face_refs: list[str] | None = None,
+    product_refs: list[str] | None = None,
+    aspect_ratio: str = "9:16",
+    duration_s: int = 8,
+    use_last_frame: bool = False,
+    extra_prompt_suffix: str | None = None,
+) -> dict:
+    """W4-B 切片 14.4 phase D step 7：拉 script.scenes，用 step 6 出的分镜图当
+    first_frame + character_sheet 锁脸 face_refs，并发调 seedance-2-0 出每段视频。
+
+    跟 step 6 generate_storyboard_images 对照（同结构、同占位翻译规则、同严格参考
+    产品 hint）；区别只是把 client.generate_image_v2 换成 generate_video_v2 + 加
+    first_frame 注入 + 输出 落 pipeline.assets(asset_type='video', duration_seconds)。
+
+    Args:
+        script_id: pipeline.scripts.id（kind 须 startswith 'video_'）
+        scene_nums: 只跑这几段（None = 全跑）；用于单段重跑
+        face_refs / product_refs: 全段共用人工补充参考（自动 character_sheet 之外）
+        aspect_ratio: 画幅（默认 9:16）
+        duration_s: 每段时长秒（seedance 接受 4-15，默认 8）
+        use_last_frame: True 则把下段 first_frame 当本段 last_frame 串场（默认不串）
+        extra_prompt_suffix: 每段 prompt 末尾追加（如"slow handheld motion, breathy ambient sound"）
+
+    Returns:
+        {ok, result: {script_id, kind, sku_id, scenes_total, success_count, error_count,
+                      results: [{scene_no, asset_id, video_url, prompt, first_frame_used,
+                                 last_frame_used, face_refs_used, product_refs_used,
+                                 characters_in_scene, product_appearance, duration_s, task_id}
+                              | {scene_no, error, prompt}]},
+         trace, next_step_hint(None — 链路终点，下载交剪辑)}
+
+    前置：
+    - script.scenes 非空（v11+ 含 image_prompt / characters_in_scene / product_appearance）
+    - script_id 的 image asset 非空（先跑 step 6 generate_storyboard_images）；
+      不够会返 missing_storyboard_images + 缺哪几段
+    """
+    from app.services.pipeline_lineage import (
+        get_creative_pack, save_storyboard_asset, list_character_sheets_for_script,
+        list_assets,
+    )
+
+    script = await get_creative_pack(script_id)
+    if not script:
+        return {"ok": False, "error": "script_not_found", "script_id": script_id,
+                "hint": "script_id 不存在或已 archived"}
+
+    kind = script.get("kind") or ""
+    if not kind.startswith("video_"):
+        return {"ok": False, "error": "non_video_kind", "kind": kind,
+                "hint": f"step 7 只能跑 video_* kind 脚本；当前 kind={kind}（图文/主图/详情页等没有视频段）"}
+
+    scenes = script.get("scenes") or []
+    if not scenes:
+        return {"ok": False, "error": "no_scenes", "script_id": script_id,
+                "hint": "脚本 scenes 为空。先 backfill 或重跑 step 5"}
+
+    if scene_nums:
+        scenes = [s for s in scenes if s.get("scene_no") in scene_nums]
+    if not scenes:
+        return {"ok": False, "error": "no_matching_scenes", "scene_nums": scene_nums,
+                "hint": f"指定 scene_nums={scene_nums} 在脚本里没匹配；脚本含 scene_no={[s.get('scene_no') for s in (script.get('scenes') or [])]}"}
+
+    # 拉同 script 的 image asset（step 6 出的分镜图）→ scene_no → first_frame url
+    image_assets = await list_assets(script_id=script_id, asset_type="image", limit=200)
+    scene_to_first_frame: dict[int, str] = {}
+    for a in image_assets:
+        sn = a.get("scene_no")
+        url = a.get("file_url")
+        if sn is not None and url and int(sn) not in scene_to_first_frame:
+            scene_to_first_frame[int(sn)] = url
+
+    # 校验：要跑的 scene_no 必须都有 image asset；缺哪几段先提示
+    missing_images = [s.get("scene_no") for s in scenes
+                      if int(s.get("scene_no") or -1) not in scene_to_first_frame]
+    if missing_images:
+        return {"ok": False, "error": "missing_storyboard_images",
+                "scene_nums_missing_image": missing_images,
+                "hint": (
+                    f"以下分镜还没出图（image asset）：{missing_images}。"
+                    f"先跑 generate_storyboard_images(script_id='{script_id}', "
+                    f"scene_nums={missing_images}) 再回来跑 step 7 视频"
+                )}
+
+    model_cfg = get_model_for_tool("generate_video")
+    provider = model_cfg.get("provider", "seedance")
+    model = model_cfg.get("model", "seedance-2-0")
+    # 视频生成 timeout 长（单段 60-180s + 排队 + 轮询，给 5min 余量）
+    client = AIHubClient(timeout=300.0)
+
+    # 拉同 script 的 character_sheet asset → role → face_ref url
+    character_sheets_assets = await list_character_sheets_for_script(script_id)
+    role_to_url: dict[str, str] = {}
+    for a in character_sheets_assets:
+        role = a.get("character_role")
+        url = a.get("file_url")
+        if role and url and role not in role_to_url:
+            role_to_url[role] = url
+
+    # 性别映射（占位翻译用）
+    char_sheets_meta = script.get("character_sheets") or []
+    role_to_gender: dict[str, str] = {}
+    for s in char_sheets_meta:
+        rid = s.get("role_id")
+        gender_zh = (s.get("gender") or "").strip()
+        gender_en = "woman" if gender_zh == "女" else "man" if gender_zh == "男" else "person"
+        if rid:
+            role_to_gender[rid] = gender_en
+
+    _CHAR_SHEET_REF_RE = re.compile(r"character_sheet\s*\[\s*([a-z_][a-z0-9_]*)\s*\]", re.I)
+
+    def _replace_char_sheet_refs(prompt: str, scene: dict, manual_face_refs_count: int) -> str:
+        chars = scene.get("characters_in_scene") or []
+        if not chars or "character_sheet[" not in prompt.lower():
+            return prompt
+        role_to_idx: dict[str, int] = {}
+        for i, role_id in enumerate(chars):
+            role_to_idx[role_id] = manual_face_refs_count + i + 1
+
+        def _sub(m: re.Match) -> str:
+            role_id = m.group(1)
+            idx = role_to_idx.get(role_id)
+            gender = role_to_gender.get(role_id, "person")
+            if idx is None:
+                return m.group(0)
+            return f"the {gender} shown in reference image {idx}"
+
+        return _CHAR_SHEET_REF_RE.sub(_sub, prompt)
+
+    def _build_prompt(scene: dict) -> str:
+        ip = (scene.get("image_prompt") or "").strip()
+        if ip:
+            manual_count = len(face_refs or [])
+            ip = _replace_char_sheet_refs(ip, scene, manual_count)
+            if extra_prompt_suffix:
+                return f"{ip}\n\n{extra_prompt_suffix}".strip()
+            return ip
+        # v10 回退：visual + shot
+        parts: list[str] = []
+        if scene.get("name"):
+            parts.append(f"【{scene['name']}】")
+        if scene.get("visual"):
+            parts.append(scene["visual"])
+        if scene.get("shot"):
+            parts.append(f"镜头：{scene['shot']}")
+        if extra_prompt_suffix:
+            parts.append(extra_prompt_suffix)
+        return "\n".join(parts).strip()
+
+    def _append_strict_product_hint(prompt: str, face_count: int, product_count: int) -> str:
+        if product_count <= 0:
+            return prompt
+        start_idx = face_count + 1
+        end_idx = face_count + product_count
+        ref_clause = (
+            f"reference image {start_idx}" if start_idx == end_idx
+            else f"reference images {start_idx} to {end_idx}"
+        )
+        hint = (
+            f"\n\nProduct fidelity constraint: Strictly reproduce the product shown in {ref_clause} "
+            f"(exact label, packaging design, color, proportions and any visible text — "
+            f"do not invent, restyle or modify any visual element of the product itself; "
+            f"only the surrounding scene, lighting and composition follow the main prompt)."
+        )
+        return prompt + hint
+
+    def _resolve_face_refs(scene: dict) -> list[str]:
+        urls: list[str] = list(face_refs or [])
+        chars = scene.get("characters_in_scene") or []
+        for role in chars:
+            url = role_to_url.get(role)
+            if url and url not in urls:
+                urls.append(url)
+        return urls
+
+    def _resolve_product_refs(scene: dict) -> list[str] | None:
+        appears = scene.get("product_appearance")
+        if appears is False:
+            return None
+        return list(product_refs) if product_refs else None
+
+    # 按 scene_no 升序排（last_frame 串场需要顺序）
+    sorted_scenes = sorted(scenes, key=lambda s: int(s.get("scene_no") or 0))
+
+    async def _one(idx: int, scene: dict) -> dict:
+        scene_no = int(scene.get("scene_no") or 0)
+        prompt = _build_prompt(scene)
+        if not prompt:
+            return {"scene_no": scene_no, "error": "scene_prompt_empty"}
+
+        first_frame = scene_to_first_frame.get(scene_no)
+        if not first_frame:
+            return {"scene_no": scene_no, "error": "no_first_frame_image_asset",
+                    "hint": f"scene {scene_no} 缺 step 6 分镜图 — 先跑 generate_storyboard_images"}
+
+        last_frame: str | None = None
+        if use_last_frame and idx + 1 < len(sorted_scenes):
+            next_scene_no = int(sorted_scenes[idx + 1].get("scene_no") or 0)
+            last_frame = scene_to_first_frame.get(next_scene_no)
+
+        scene_face_refs = _resolve_face_refs(scene)
+        scene_product_refs = _resolve_product_refs(scene)
+
+        if scene_product_refs:
+            prompt = _append_strict_product_hint(
+                prompt,
+                face_count=len(scene_face_refs or []),
+                product_count=len(scene_product_refs),
+            )
+
+        try:
+            start_resp = await client.generate_video_v2(
+                prompt=prompt,
+                first_frame=first_frame,
+                last_frame=last_frame,
+                duration_sec=duration_s,
+                face_refs=scene_face_refs or None,
+                product_refs=scene_product_refs,
+                aspect=aspect_ratio,
+                model=model,
+                provider=provider,
+            )
+            task_id = (
+                start_resp.get("task_id")
+                or (start_resp.get("data") or {}).get("task_id")
+            )
+            if not task_id:
+                url = start_resp.get("video_url") or (start_resp.get("data") or {}).get("video_url")
+                if not url:
+                    return {"scene_no": scene_no, "error": "no_task_id_no_url", "prompt": prompt}
+                video_url, task_id_out = url, None
+            else:
+                done = await client.wait_for_video(task_id, max_seconds=600, poll=5.0)
+                data = done.get("data") or done
+                if data.get("status") in ("failed", "error"):
+                    return {"scene_no": scene_no,
+                            "error": f"seedance {data.get('status')}: "
+                                     f"{data.get('error') or data.get('message') or ''}",
+                            "prompt": prompt, "task_id": task_id}
+                video_url = data.get("video_url") or data.get("url")
+                task_id_out = task_id
+
+            if not video_url:
+                return {"scene_no": scene_no, "error": "no_video_url_returned",
+                        "prompt": prompt, "task_id": task_id_out}
+
+            asset_id = await save_storyboard_asset(
+                sku_id=script["sku_id"],
+                asset_type="video",
+                script_id=script_id,
+                audience_pack_id=script.get("audience_pack_id"),
+                audience_record_id=script.get("audience_record_id"),
+                matrix_run_id=script.get("matrix_run_id"),
+                scene_no=scene_no,
+                file_url=video_url,
+                duration_seconds=float(duration_s),
+                external_video_id=task_id_out,
+                prompt=prompt,
+            )
+            return {
+                "scene_no": scene_no,
+                "asset_id": asset_id,
+                "video_url": video_url,
+                "prompt": prompt,
+                "first_frame_used": first_frame,
+                "last_frame_used": last_frame,
+                "face_refs_used": scene_face_refs,
+                "product_refs_used": scene_product_refs or [],
+                "characters_in_scene": scene.get("characters_in_scene") or [],
+                "product_appearance": scene.get("product_appearance"),
+                "duration_s": duration_s,
+                "task_id": task_id_out,
+            }
+        except Exception as exc:
+            return {"scene_no": scene_no, "error": f"{type(exc).__name__}: {exc}",
+                    "prompt": prompt}
+
+    results = await asyncio.gather(*(_one(i, s) for i, s in enumerate(sorted_scenes)))
+    success_count = sum(1 for r in results if r.get("asset_id"))
+    error_count = sum(1 for r in results if r.get("error"))
+
+    cost_per = "¥15" if provider == "seedance" else "未知"
+    cost_estimate = f"~{len(sorted_scenes)} × {cost_per}"
+
+    out = {
+        "ok": True,
+        "result": {
+            "script_id": script_id,
+            "kind": kind,
+            "sku_id": script.get("sku_id"),
+            "scenes_total": len(sorted_scenes),
+            "success_count": success_count,
+            "error_count": error_count,
+            "results": results,
+        },
+        "trace": build_trace(
+            provider=provider,
+            model=model,
+            prompt=f"script_id={script_id} kind={kind} → {len(sorted_scenes)} 段视频并发出（first_frame from step 6 images）",
+            params={
+                "scene_nums": scene_nums,
+                "face_refs": face_refs or [],
+                "product_refs": product_refs or [],
+                "aspect_ratio": aspect_ratio,
+                "duration_s": duration_s,
+                "use_last_frame": use_last_frame,
+                "extra_prompt_suffix": extra_prompt_suffix,
+            },
+            cost_estimate=cost_estimate,
+        ),
+    }
+
+    return attach_next_step(
+        out,
+        suggested_tool=None,
+        suggested_args={},
+        human_text=(
+            f"已落 {success_count}/{len(sorted_scenes)} 段视频到血缘（pipeline.assets, status=draft）；"
+            f"老板逐段下载交剪辑（不自动拼接）。"
+        ),
+    )
+
+
 # ============================================================
 # W4-B 切片 14：sku-pipeline step 2 — 5 维卖点 + 3 心智矩阵
 # ============================================================
