@@ -170,12 +170,13 @@ interface NodeShellProps {
   header: React.ReactNode
   pickButton?: React.ReactNode
   adoptButton?: React.ReactNode
+  archiveButton?: React.ReactNode
   children?: React.ReactNode  // 折叠内容
   childCount?: number
   hasChildren?: boolean       // 即使无 children 渲染，也可显示展开图标（懒加载场景）
 }
 
-function NodeShell({ status, layer, expanded, onToggle, header, pickButton, adoptButton, children, childCount, hasChildren }: NodeShellProps) {
+function NodeShell({ status, layer, expanded, onToggle, header, pickButton, adoptButton, archiveButton, children, childCount, hasChildren }: NodeShellProps) {
   const c = statusColor(status)
   const accent = LAYER_ACCENT[layer]
   // 显示折叠图标条件：显式传 hasChildren 优先；否则按 childCount > 0；否则按 children 是否存在
@@ -207,6 +208,7 @@ function NodeShell({ status, layer, expanded, onToggle, header, pickButton, adop
         <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
           {adoptButton}
           {pickButton}
+          {archiveButton}
         </div>
       </div>
       {expanded && showToggle && children && (
@@ -227,6 +229,8 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [adopting, setAdopting] = useState<string | null>(null)
+  const [archiving, setArchiving] = useState<string | null>(null)
+  const [includeArchived, setIncludeArchived] = useState(false)
 
   const allowedPicks = pickKinds || ['audience_record', 'audience_pack']
 
@@ -238,7 +242,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
       const res = await fetch('/api/omni/sku-pipeline/lineage', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sku_id: skuId, limit_per_table: 100 }),
+        body: JSON.stringify({ sku_id: skuId, limit_per_table: 100, include_archived: includeArchived }),
       })
       const json = await res.json()
       if (json.success && json.data?.ok) {
@@ -266,7 +270,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
     } finally {
       setLoading(false)
     }
-  }, [skuId])
+  }, [skuId, includeArchived])
 
   useEffect(() => {
     fetchLineage()
@@ -332,6 +336,42 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
     }
   }
 
+  const renderArchiveBtn = (table: string, id: string, label: string) => (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-7 px-2 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+      disabled={archiving === id}
+      onClick={() => archiveNode(table, id, label)}
+      title="归档（从血缘图隐藏，data 不删可恢复）"
+    >
+      {archiving === id ? <Loader2 className="w-3 h-3 animate-spin" /> : '🗑'}
+    </Button>
+  )
+
+  const archiveNode = async (table: string, id: string, label: string) => {
+    if (archiving) return
+    if (!confirm(`归档此节点？\n\n${label}\n\n归档后从血缘图默认视图隐藏（可恢复，data 不删）。\n要彻底删除需手动到数据库 DELETE。`)) return
+    setArchiving(id)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table, run_id: id }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok) {
+        await fetchLineage()
+      } else {
+        setError(`归档失败：${json.data?.error || json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`归档异常：${String(e)}`)
+    } finally {
+      setArchiving(null)
+    }
+  }
+
   const pickNode = (node: PickableNode) => {
     if (!onPick) return
     onPick(node)
@@ -369,6 +409,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
             {adopting === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '✓ 采纳'}
           </Button>
         ) : undefined}
+        archiveButton={renderArchiveBtn('assets', a.id, `${assetTypeText(a.asset_type)} #${a.scene_no || '?'}`)}
       />
     )
   }
@@ -406,6 +447,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
             {adopting === s.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '✓ 采纳'}
           </Button>
         ) : undefined}
+        archiveButton={renderArchiveBtn('scripts', s.id, `${scriptKindText(s.kind)} 第${s.version}版`)}
         childCount={s.assets.length}
       >
         {hasAssets && s.assets.map(renderAsset)}
@@ -444,6 +486,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
             {adopting === p.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '✓ 采纳'}
           </Button>
         ) : undefined}
+        archiveButton={renderArchiveBtn('audience_packs', p.id, `圈包第${p.version}版`)}
         childCount={p.scripts.length}
       >
         {p.scripts.map(renderScript)}
@@ -486,6 +529,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
             {adopting === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '⭐ 加入人群池'}
           </Button>
         ) : undefined}
+        archiveButton={renderArchiveBtn('audience_records', r.id, `候选人群 #${r.ordinal} ${r.name}`)}
         childCount={childN}
       >
         {r.audience_packs.map(renderPack)}
@@ -525,6 +569,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
             {adopting === ar.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '✓ 采纳'}
           </Button>
         ) : undefined}
+        archiveButton={renderArchiveBtn('audience_runs', ar.id, `人群匹配第${ar.version}版`)}
         childCount={ar.audience_records.length}
       >
         {ar.audience_records.map(renderRecord)}
@@ -557,6 +602,7 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
             {adopting === m.id ? <Loader2 className="w-3 h-3 animate-spin" /> : '✓ 采纳'}
           </Button>
         ) : undefined}
+        archiveButton={renderArchiveBtn('matrix_runs', m.id, `卖点矩阵第${m.version}版`)}
         childCount={m.audience_runs.length}
       >
         {m.audience_runs.map(renderAudienceRun)}
@@ -589,6 +635,14 @@ export default function LineageTree({ skuId, onPick, pickKinds, onClose, height 
           <Button size="sm" variant="outline" onClick={collapseAll} disabled={loading || !data} title="折叠所有节点">
             <ChevronRight className="w-3 h-3 mr-1" />全折
           </Button>
+          <label className="text-[11px] flex items-center gap-1 cursor-pointer select-none" title="勾上后已归档节点也出现在血缘图（默认隐藏）">
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={e => setIncludeArchived(e.target.checked)}
+            />
+            <span>显示已归档</span>
+          </label>
           <Button size="sm" variant="outline" onClick={fetchLineage} disabled={loading} title="刷新">
             {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           </Button>

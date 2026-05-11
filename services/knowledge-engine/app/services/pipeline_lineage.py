@@ -1435,84 +1435,87 @@ async def get_creative_pack(script_id: str) -> dict[str, Any] | None:
 # 全血缘聚合（W4-B 切片 14.4 phase C v3：血缘图前端用）
 # ════════════════════════════════════════════════════════════════
 
-async def get_sku_lineage(sku_id: str, *, limit_per_table: int = 100) -> dict[str, Any]:
+async def get_sku_lineage(sku_id: str, *, limit_per_table: int = 100, include_archived: bool = False) -> dict[str, Any]:
     """串某 SKU 的全血缘嵌套树，给前端血缘图用。
 
     返回 6 张表的嵌套：matrix_runs → audience_runs → audience_records
       → audience_packs → scripts；assets 单独列（phase D 起填，当前可能空）。
 
     包含 status='draft' 的也返（前端按 status 着色 + 决定是否显示）。
+    默认 filter 掉 status='archived' 的节点；include_archived=True 时全返。
 
     实现：6 个 query 按 sku_id 一次拉全，Python 内存按 FK 嵌套（避免 N+1）。
     """
     pool = get_pool()
+    # 默认隐藏 archived；老板想看已归档时传 include_archived=True
+    arch_filter = "" if include_archived else " AND status != 'archived'"
 
     matrix_rows = await pool.fetch(
-        """
+        f"""
         SELECT id::text, sku_id, version, status, model_provider, model,
                created_at, parent_run_id::text
         FROM pipeline.matrix_runs
-        WHERE sku_id = $1
+        WHERE sku_id = $1{arch_filter}
         ORDER BY created_at DESC
         LIMIT $2
         """,
         sku_id, limit_per_table,
     )
     arun_rows = await pool.fetch(
-        """
+        f"""
         SELECT id::text, matrix_run_id::text, sku_id, version, status,
                record_count, model_provider, model, created_at, parent_run_id::text
         FROM pipeline.audience_runs
-        WHERE sku_id = $1
+        WHERE sku_id = $1{arch_filter}
         ORDER BY created_at DESC
         LIMIT $2
         """,
         sku_id, limit_per_table,
     )
     arec_rows = await pool.fetch(
-        """
+        f"""
         SELECT id::text, audience_run_id::text, matrix_run_id::text, sku_id,
                ordinal, name, kb_doc, layer_tags, status, selected_for_pack,
                created_at
         FROM pipeline.audience_records
-        WHERE sku_id = $1
+        WHERE sku_id = $1{arch_filter}
         ORDER BY audience_run_id, ordinal
         LIMIT $2
         """,
         sku_id, limit_per_table * 5,  # records 拆 N 倍多
     )
     pack_rows = await pool.fetch(
-        """
+        f"""
         SELECT id::text, audience_record_id::text, audience_run_id::text,
                matrix_run_id::text, sku_id, version, status,
                model_provider, model, created_at, parent_pack_id::text
         FROM pipeline.audience_packs
-        WHERE sku_id = $1
+        WHERE sku_id = $1{arch_filter}
         ORDER BY created_at DESC
         LIMIT $2
         """,
         sku_id, limit_per_table,
     )
     script_rows = await pool.fetch(
-        """
+        f"""
         SELECT id::text, audience_pack_id::text, audience_record_id::text,
                matrix_run_id::text, sku_id, kind, version, status, target_purpose,
                model_provider, model, created_at, parent_script_id::text
         FROM pipeline.scripts
-        WHERE sku_id = $1
+        WHERE sku_id = $1{arch_filter}
         ORDER BY created_at DESC
         LIMIT $2
         """,
         sku_id, limit_per_table,
     )
     asset_rows = await pool.fetch(
-        """
+        f"""
         SELECT id::text, script_id::text, audience_pack_id::text,
                audience_record_id::text, matrix_run_id::text, sku_id,
                asset_type, scene_no, file_url, thumbnail_url,
                external_video_id, external_creative_id, status, created_at
         FROM pipeline.assets
-        WHERE sku_id = $1
+        WHERE sku_id = $1{arch_filter}
         ORDER BY created_at DESC
         LIMIT $2
         """,
@@ -1604,6 +1607,27 @@ async def get_sku_lineage(sku_id: str, *, limit_per_table: int = 100) -> dict[st
             "assets": len(asset_list),
         },
     }
+
+
+async def archive_node(table: str, run_id: str) -> dict[str, Any]:
+    """归档节点：status='archived'，从血缘图默认视图隐藏（include_archived=True 才显示）。
+
+    软删除（可恢复）：data 保留，外键引用不破坏；后续可手动 UPDATE status='draft' 恢复。
+
+    table 在 {matrix_runs, audience_runs, audience_records, audience_packs, scripts, assets, keyword_packs}.
+    """
+    if table not in {"matrix_runs", "audience_runs", "audience_records", "audience_packs", "scripts", "assets", "keyword_packs"}:
+        return {"ok": False, "error": f"未知 table: {table}"}
+    pool = get_pool()
+    sql = (
+        f"UPDATE pipeline.{table} SET status='archived' "
+        "WHERE id = $1::uuid AND status != 'archived' "
+        "RETURNING id::text, status"
+    )
+    row = await pool.fetchrow(sql, run_id)
+    if not row:
+        return {"ok": False, "error": "not_found_or_already_archived", "run_id": run_id}
+    return {"ok": True, **dict(row)}
 
 
 async def adopt_run(table: str, run_id: str, *, set_selected: bool = False) -> dict[str, Any]:

@@ -337,6 +337,7 @@ async def exec_pipeline_adopt(
 class PipelineGetSkuLineageRequest(BaseModel):
     sku_id: str
     limit_per_table: int = 100
+    include_archived: bool = False
 
 
 @router.post("/exec/pipeline_get_sku_lineage")
@@ -345,16 +346,40 @@ async def exec_pipeline_get_sku_lineage(
 ) -> Any:
     """SKU 全血缘嵌套树：matrix → audience_run → record → pack → script → asset。
 
-    给前端血缘图组件用，含 status='draft' 的（前端按状态着色）。
+    给前端血缘图组件用，含 status='draft' 的（前端按状态着色）；
+    默认隐藏 status='archived'，include_archived=True 时全返。
     """
     from app.services.pipeline_lineage import get_sku_lineage
     try:
         return await get_sku_lineage(
             sku_id=payload.sku_id,
             limit_per_table=payload.limit_per_table,
+            include_archived=payload.include_archived,
         )
     except Exception as exc:
         logger.exception("pipeline_get_sku_lineage REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineArchiveNodeRequest(BaseModel):
+    table: str  # matrix_runs / audience_runs / audience_records / audience_packs / scripts / assets / keyword_packs
+    run_id: str
+
+
+@router.post("/exec/pipeline_archive_node")
+async def exec_pipeline_archive_node(
+    payload: PipelineArchiveNodeRequest,
+) -> Any:
+    """归档血缘节点：status='archived'。从血缘图默认视图隐藏（可恢复，data 保留）。
+
+    适用场景：脚本跑出多版分镜图都采纳后想丢一批 / 不要某一版圈包 / 早期人群匹配
+    误圈想清理。data 不删，只是 status 变 archived 让 UI 不显示。
+    """
+    from app.services.pipeline_lineage import archive_node
+    try:
+        return await archive_node(table=payload.table, run_id=payload.run_id)
+    except Exception as exc:
+        logger.exception("pipeline_archive_node REST 异常")
         return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
 
 
