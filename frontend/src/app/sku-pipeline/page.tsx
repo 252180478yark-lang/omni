@@ -4124,10 +4124,12 @@ export default function SkuPipelinePage() {
                 draft 灰 / adopted 绿 / published 蓝。可在节点上直接采纳（draft → adopted）。
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {SkuPicker}
+
               {!skuId ? (
                 <div className="text-sm text-muted-foreground py-12 text-center border border-dashed rounded">
-                  顶部先选个 SKU。
+                  上方先选个 SKU。
                 </div>
               ) : (
                 <>
