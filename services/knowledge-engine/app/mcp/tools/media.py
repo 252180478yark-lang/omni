@@ -939,24 +939,52 @@ async def generate_video_segments(
         return _CHAR_SHEET_REF_RE.sub(_sub, prompt)
 
     def _build_prompt(scene: dict) -> str:
-        ip = (scene.get("image_prompt") or "").strip()
-        if ip:
-            manual_count = len(face_refs or [])
-            ip = _replace_char_sheet_refs(ip, scene, manual_count)
-            if extra_prompt_suffix:
-                return f"{ip}\n\n{extra_prompt_suffix}".strip()
-            return ip
-        # v10 回退：visual + shot
-        parts: list[str] = []
-        if scene.get("name"):
-            parts.append(f"【{scene['name']}】")
-        if scene.get("visual"):
-            parts.append(scene["visual"])
-        if scene.get("shot"):
-            parts.append(f"镜头：{scene['shot']}")
+        """seedance 2.0 中文 prompt 模板（2026-05-12 老板拍板 A 方案）。
+
+        把 step 5 写的中文 scene 字段拼成 seedance 风格 prompt：
+          [时间] 镜头：xxx；画面：xxx；变化点：xxx；声音：xxx；环境音：xxx
+
+        i2v 模式下 first_frame（step 6 分镜图）已锁脸，prompt 用具体角色称呼
+        （女儿/妈妈）即可，不需要 character_sheet[] 占位翻译。
+
+        v10 老脚本无中文字段时回退 image_prompt（英文 11 维度，兼容性兜底）。
+        """
+        tr = (scene.get("time_range") or f"0-{duration_s}s").strip()
+        parts: list[str] = [f"[{tr}]"]
+
+        shot = (scene.get("shot") or "").strip()
+        if shot:
+            parts.append(f"镜头：{shot}")
+        visual = (scene.get("visual") or "").strip()
+        if visual:
+            parts.append(f"画面：{visual}")
+        change = (scene.get("change_point") or "").strip()
+        if change:
+            parts.append(f"变化点：{change}")
+        dialog = (scene.get("dialog") or "").strip()
+        if dialog:
+            parts.append(f"声音：{dialog}")
+        sound = (scene.get("sound") or "").strip()
+        if sound:
+            parts.append(f"环境音：{sound}")
+
+        # 中文字段全空（v10 老脚本）→ 回退 image_prompt + 占位翻译
+        if len(parts) <= 1:
+            ip = (scene.get("image_prompt") or "").strip()
+            if ip:
+                manual_count = len(face_refs or [])
+                ip = _replace_char_sheet_refs(ip, scene, manual_count)
+                prompt = f"{tr} {ip}"
+            elif scene.get("visual"):
+                prompt = f"{tr} {scene['visual']}"
+            else:
+                prompt = tr
+        else:
+            prompt = "；".join(parts)
+
         if extra_prompt_suffix:
-            parts.append(extra_prompt_suffix)
-        return "\n".join(parts).strip()
+            prompt = f"{prompt}\n{extra_prompt_suffix}".strip()
+        return prompt
 
     def _append_strict_product_hint(prompt: str, face_count: int, product_count: int) -> str:
         if product_count <= 0:
