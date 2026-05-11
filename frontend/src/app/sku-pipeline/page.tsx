@@ -200,6 +200,7 @@ function buildStandalonePrompt(
 }
 
 export default function SkuPipelinePage() {
+  const [activeTab, setActiveTab] = useState<string>('step2')
   const [skus, setSkus] = useState<SkuRow[]>([])
   const [skuId, setSkuId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
@@ -1365,7 +1366,7 @@ export default function SkuPipelinePage() {
         </p>
       </div>
 
-      <Tabs defaultValue="step2" orientation="vertical" className="w-full gap-4 items-start">
+      <Tabs value={activeTab} onValueChange={setActiveTab} orientation="vertical" className="w-full gap-4 items-start">
         <TabsList variant="line" className="w-40 shrink-0 h-fit p-2 sticky top-4">
           <TabsTrigger value="step2" className="text-sm font-medium w-full justify-start py-2">
             <Sparkles className="w-4 h-4 mr-1.5" /> Step 2 · 卖点矩阵
@@ -3548,21 +3549,64 @@ export default function SkuPipelinePage() {
                   <Film className="w-4 h-4" /> 输入
                 </CardTitle>
                 <CardDescription>
-                  承接 step 6 选好的脚本 → 拉已出分镜图 → 选要跑视频的段 + 时长 → 并发调
-                  seedance-2-0 出每段 8s 视频（每段约 60-180s，6 段总 5-10min），落入血缘。
+                  选脚本（跟 step 6 共享）→ 拉已出分镜图 → 选要跑视频的段 + 时长 → 并发调
+                  seedance 2.0 出每段视频（60-180s/段，6 段总 5-10min），落入血缘。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {!script6Id && (
-                  <div className="border border-dashed border-orange-300 dark:border-orange-700 rounded p-3 text-xs bg-orange-50/30 dark:bg-orange-950/10">
-                    ⚠ 先到 <strong>Step 6 · 分镜图</strong> 选一个脚本（kind 需 video_*），
-                    step 7 复用同一个脚本。
+                {SkuPicker}
+
+                {/* step 7 独立脚本选择器（共享 script6Id / scriptsForSku6 / selectScript6） */}
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium">脚本（kind 须为 video_*）</label>
+                  <Button size="sm" variant="outline" onClick={loadScriptsForStep6} disabled={!skuId || loadingScripts6}>
+                    {loadingScripts6 ? <Loader2 className="w-3 h-3 animate-spin" /> : (scriptsForSku6 !== null ? '刷新' : '加载脚本')}
+                  </Button>
+                </div>
+                {scriptsForSku6 === null && (
+                  <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                    点上方"加载脚本"拉这个 SKU 跑过的所有脚本（按时间倒序）。或到 <strong>血缘图</strong> tab 点 video_* 脚本节点直接跳到这里。
+                  </div>
+                )}
+                {scriptsForSku6 && scriptsForSku6.length === 0 && (
+                  <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                    这个 SKU 还没跑过 step 5 创意脚本。
+                  </div>
+                )}
+                {scriptsForSku6 && scriptsForSku6.length > 0 && (() => {
+                  const videoScripts = scriptsForSku6.filter(s => s.kind.startsWith('video_'))
+                  return (
+                    <>
+                      <select
+                        className="w-full border rounded px-2 py-2 text-sm bg-background"
+                        value={script6Id}
+                        onChange={e => selectScript6(e.target.value)}
+                      >
+                        <option value="">— 请选择脚本 —</option>
+                        {videoScripts.map(s => (
+                          <option key={s.id} value={s.id}>
+                            [{s.status === 'adopted' ? '✅' : '·'}] {s.kind} v{s.version} · {s.id.slice(0, 8)}
+                          </option>
+                        ))}
+                      </select>
+                      {videoScripts.length === 0 && (
+                        <div className="text-xs text-orange-500 -mt-1">
+                          ⚠ 此 SKU 跑过 {scriptsForSku6.length} 个脚本但都是非 video 类型（如 graphic_harvest / product_main_image），step 7 只能跑 video_*。先到 step 5 出一个 video_soft_ad / video_planting / video_harvest 脚本。
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+
+                {loadingScript6Detail && (
+                  <div className="text-xs text-muted-foreground">
+                    <Loader2 className="w-3 h-3 inline animate-spin mr-1" /> 拉脚本详情...
                   </div>
                 )}
                 {script6Id && script6Detail && !script6Detail.kind.startsWith('video_') && (
                   <div className="border border-dashed border-orange-300 dark:border-orange-700 rounded p-3 text-xs bg-orange-50/30 dark:bg-orange-950/10">
                     ⚠ 当前脚本 kind=<code>{script6Detail.kind}</code>，不是视频脚本。
-                    回 step 6 切个 <code>video_*</code> 脚本（soft_ad / planting / harvest）。
+                    上面下拉换个 <code>video_*</code> 脚本（soft_ad / planting / harvest）。
                   </div>
                 )}
                 {script6Detail && script6Detail.kind.startsWith('video_') && (
@@ -4086,7 +4130,31 @@ export default function SkuPipelinePage() {
                   顶部先选个 SKU。
                 </div>
               ) : (
-                <LineageTree key={`${skuId}-${lineageKey}`} skuId={skuId} height="65vh" />
+                <>
+                  <div className="text-[11px] text-muted-foreground mb-2 p-2 rounded bg-muted/30 border border-dashed">
+                    💡 点 <strong>video_*</strong> 脚本节点的 "← 用作 step 7" 按钮，可直接把此脚本绑到 step 7 跑视频。
+                  </div>
+                  <LineageTree
+                    key={`${skuId}-${lineageKey}`}
+                    skuId={skuId}
+                    height="65vh"
+                    pickKinds={['script']}
+                    onPick={node => {
+                      if (node.kind !== 'script') return
+                      // 校验脚本 kind 必须是 video_*（无法在 LineageTree 内直接知，让 page 这边校验 + 提示）
+                      if (!node.label.includes('视频')) {
+                        alert('step 7 只能跑 video_* 脚本（视频软广 / 种草 / 收割）；该脚本不是视频类型，无法在 step 7 跑。')
+                        return
+                      }
+                      setScript6Id(node.id)
+                      selectScript6(node.id)  // 同步拉脚本详情
+                      if (scriptsForSku6 === null) {
+                        loadScriptsForStep6()  // 也加载列表方便下拉
+                      }
+                      setActiveTab('step7')
+                    }}
+                  />
+                </>
               )}
             </CardContent>
           </Card>
