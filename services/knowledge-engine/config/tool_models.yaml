@@ -30,32 +30,27 @@ generate_brief:
     user: generate_brief.user
 
 generate_image:
-  # W4-B 切片 14.4 phase D step 6（2026-05-11 升级）：
-  # gpt-image-1.5 实测锁脸不准（v4 video_planting 6 段单角色 mother 全失败），
-  # 是 OpenAI 模型本身天花板——/images/edits 默认 low input_fidelity，
-  # reference image 被低质压缩处理。
-  # gpt-image-2 关键升级（OpenAI 官方文档 2026-05）：
-  #   - 自动 high input_fidelity，每张参考图都按高保真处理（不能关，不能传 input_fidelity 参数）
-  #   - quality: high 锁脸效果最佳（¥1.2/张 1536x1024，5x medium）
-  # OpenAI Image API base alias 用 'gpt-image-2'（不带 dated suffix）
+  # 2026-05-11 老板临时回切 1.5 — 暂不等 gpt-image-2 verify 15min 传播，先把 step 7 视频测试跑通
+  # gpt-image-2 切换文档保留：
+  #   - 切 model: gpt-image-2 + quality: high 即可（KE / hub / ai_hub_client 已透 quality）
+  #   - 前提：OpenAI Organization Verification 已通过
+  #     (platform.openai.com/settings/organization/general)
+  #   - gpt-image-2 自动 high input_fidelity 处理每张参考图，锁脸明显优于 1.5
   provider: openai
-  model: gpt-image-2
-  quality: high
+  model: gpt-image-1.5
 
 generate_video:
-  # W4-B 14.4 phase D step 7 实测（2026-05-11，火山方舟账号 2101056731）：
-  # 实测能力：
-  #   - doubao-seedance-2-0-260128 / 2-0-fast-260128 → ModelNotOpen（账号未激活，需 Ark Console 激活模型推理服务）
-  #   - doubao-seedance-1-5-pro-251215 → ✓ 已激活（当前最强可用）
-  #   - doubao-seedance-1-0-pro-250528 → ✓ 已激活（老版本）
+  # W4-B 14.4 phase D step 7（2026-05-11，老板 Ark Console 已激活 2.0 后切）：
+  # 火山方舟账号 2101056731 能力对照：
+  #   - doubao-seedance-2-0-260128 ← 当前用（2.0，老板拍板）
+  #   - doubao-seedance-2-0-fast-260128（备选 fast 版）
+  #   - doubao-seedance-1-5-pro-251215（fallback）
   # 能力差异：
-  #   - 1.x 系列只支持 t2v + i2v（first_frame），不支持 r2v（reference_images 多模态）
-  #   - 2.0 系列才有 r2v（人脸+产品多参考图同传）
-  #   - 火山方舟硬约束：first_frame + reference_images 任何 model 都互斥（不能混传）
-  # → step 7 当前走 i2v 模式：first_frame = step 6 分镜图，锁脸靠分镜图本身已按 character_sheet 锁过
-  # → 等老板去 Ark Console 激活 2.0 后切 doubao-seedance-2-0-260128 + 开放 r2v 模式
+  #   - 1.x 系列只支持 t2v + i2v；2.0 系列才有 r2v 多模态参考
+  #   - 火山方舟硬约束：first_frame + reference_images 任何 model 都互斥（实测仍生效）
+  # → step 7 仍走 i2v 模式（first_frame = step 6 分镜图，face_refs 自动清避免 mixed 400）
   provider: seedance
-  model: doubao-seedance-1-5-pro-251215
+  model: doubao-seedance-2-0-260128
   duration: 8
 
 summarize_text:
