@@ -1204,11 +1204,36 @@ async def save_storyboard_asset(
     duration_seconds: float | None = None,
     external_video_id: str | None = None,
     notes: str | None = None,
+    persist_to_disk: bool = True,
 ) -> str | None:
-    """落 1 行 pipeline.assets（status='draft'），返 id。失败返 None 不抛。"""
+    """落 1 行 pipeline.assets（status='draft'），返 id。失败返 None 不抛。
+
+    persist_to_disk=True（默认）：先把 file_url 转存到本地磁盘（解决 cdn 24h 过期）。
+    落盘失败 fallback 用原 url（不挡链路）；notes 自动追加错误描述供复盘。
+    """
     if asset_type not in ("image", "video", "character_sheet"):
         logger.warning("save_storyboard_asset: invalid asset_type=%s", asset_type)
         return None
+
+    # W4-B 14.4 phase D 候选 D：cdn url 24h 过期 → 落本地磁盘
+    if persist_to_disk and file_url:
+        from app.services.asset_storage import persist_or_fallback
+        new_url, persist_err = await persist_or_fallback(
+            file_url, sku_id=sku_id, asset_type=asset_type,
+        )
+        file_url = new_url
+        if persist_err:
+            notes = (notes + " | " if notes else "") + f"persist_err={persist_err}"
+    # thumbnail 同样转存（步骤数据量小，串行 OK）
+    if persist_to_disk and thumbnail_url:
+        from app.services.asset_storage import persist_or_fallback
+        new_thumb, thumb_err = await persist_or_fallback(
+            thumbnail_url, sku_id=sku_id, asset_type=asset_type,
+        )
+        thumbnail_url = new_thumb
+        if thumb_err:
+            notes = (notes + " | " if notes else "") + f"thumb_persist_err={thumb_err}"
+
     pool = get_pool()
     try:
         rec = await pool.fetchrow(

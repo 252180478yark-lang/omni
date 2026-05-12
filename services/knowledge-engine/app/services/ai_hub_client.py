@@ -11,11 +11,59 @@ W1 仅留接口；W2 起在 generate_brief / generate_image / generate_video too
 """
 from __future__ import annotations
 
+import base64
+import logging
+import mimetypes
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+# W4-B 14.4 phase D 候选 D：本地资产 url 喂 hub 前自动转 base64 data url
+# 背景：cdn url 24h 过期 → asset_storage 把 file_url 落本地（/api/v1/knowledge/static/...）
+#       但 hub → OpenAI / Seedance 拿到相对 url 没法 fetch → 锁脸/i2v 链路断
+# 解决：发请求前把本地 url 透明转 data:image/png;base64,... 喂下游
+_LOCAL_STATIC_PREFIX = "/api/v1/knowledge/static/"
+_LOCAL_DISK_ROOT = Path("/app/data/assets")
+
+
+def _localize_url(url: Any) -> Any:
+    """本地资产 url → base64 data url；其他原样返。
+
+    不抛异常：磁盘缺文件 / 路径越界都返原 url，让 hub 自己报错（不挡链路）。
+    """
+    if not isinstance(url, str) or not url.startswith(_LOCAL_STATIC_PREFIX):
+        return url
+    rel = url[len(_LOCAL_STATIC_PREFIX):]
+    if not rel or ".." in rel or rel.startswith("/"):
+        return url
+    try:
+        path = _LOCAL_DISK_ROOT / rel
+        if not path.exists():
+            logger.warning("_localize_url: disk file missing %s", path)
+            return url
+        mime, _ = mimetypes.guess_type(str(path))
+        if not mime:
+            mime = "image/png" if path.suffix.lower() in {".png", ".webp", ".gif"} else \
+                   "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else \
+                   "video/mp4" if path.suffix.lower() == ".mp4" else \
+                   "application/octet-stream"
+        b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:{mime};base64,{b64}"
+    except Exception as exc:
+        logger.warning("_localize_url failed (fallback to original): %s err=%s", url, exc)
+        return url
+
+
+def _localize_list(urls: Any) -> Any:
+    if not isinstance(urls, list):
+        return urls
+    return [_localize_url(u) for u in urls]
 
 
 class AIHubClient:
@@ -71,7 +119,7 @@ class AIHubClient:
     ) -> dict:
         body: dict[str, Any] = {"prompt": prompt, "model": model, "n": n}
         if refs:
-            body["reference_images"] = refs
+            body["reference_images"] = _localize_list(refs)
         if aspect:
             body["aspect_ratio"] = aspect
         if extra:
@@ -94,7 +142,7 @@ class AIHubClient:
         if model:
             body["model"] = model
         if refs:
-            body["reference_images"] = refs
+            body["reference_images"] = _localize_list(refs)
         if extra:
             body.update(extra)
         async with httpx.AsyncClient(timeout=self.timeout) as cli:
@@ -151,11 +199,11 @@ class AIHubClient:
           - quality: 'low' / 'medium' / 'high' / 'auto'（gpt-image-2 推荐 'high' 锁脸）
         """
         refs: list[dict[str, Any]] = []
-        for r in face_refs or []:
+        for r in _localize_list(face_refs) or []:
             refs.append({"url": r, "type": "face", "weight": 1.0})
-        for r in product_refs or []:
+        for r in _localize_list(product_refs) or []:
             refs.append({"url": r, "type": "product", "weight": 1.0})
-        for r in style_refs or []:
+        for r in _localize_list(style_refs) or []:
             refs.append({"url": r, "type": "style", "weight": 0.5})
 
         body: dict[str, Any] = {
@@ -205,13 +253,13 @@ class AIHubClient:
             "aspect_ratio": aspect,
         }
         if first_frame:
-            body["first_frame"] = first_frame
+            body["first_frame"] = _localize_url(first_frame)
         if last_frame:
-            body["last_frame"] = last_frame
+            body["last_frame"] = _localize_url(last_frame)
         refs: list[dict[str, Any]] = []
-        for r in face_refs or []:
+        for r in _localize_list(face_refs) or []:
             refs.append({"url": r, "type": "face", "weight": 1.0})
-        for r in product_refs or []:
+        for r in _localize_list(product_refs) or []:
             refs.append({"url": r, "type": "product", "weight": 1.0})
         if refs:
             body["reference_images"] = refs

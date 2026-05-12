@@ -2,8 +2,10 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -108,6 +110,16 @@ app.include_router(mcp_exec_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)
+
+# W4-B 切片 14.4 phase D 候选 D：资产磁盘存储（cdn url 24h 过期 → 落本地）
+# 挂载点跟 asset_storage.PUBLIC_URL_PREFIX 必须严格一致
+_assets_root = Path("/app/data/assets")
+_assets_root.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/api/v1/knowledge/static",
+    StaticFiles(directory=str(_assets_root), check_dir=False),
+    name="static_assets",
+)
 
 
 @app.get("/health")
