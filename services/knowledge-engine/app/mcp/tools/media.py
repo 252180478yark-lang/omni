@@ -895,9 +895,10 @@ async def generate_video_segments(
         scene_to_first_frame[sn] = chosen["file_url"]
 
     # 校验：要跑的 scene_no 必须都有 image asset；缺哪几段先提示
+    # dry_run 跳过（调 prompt 不依赖图）
     missing_images = [s.get("scene_no") for s in scenes
                       if int(s.get("scene_no") or -1) not in scene_to_first_frame]
-    if missing_images:
+    if missing_images and not dry_run:
         return {"ok": False, "error": "missing_storyboard_images",
                 "scene_nums_missing_image": missing_images,
                 "hint": (
@@ -964,8 +965,38 @@ async def generate_video_segments(
 
         return _CHAR_SHEET_REF_RE.sub(_sub, prompt)
 
+    # ── dialog 字段三类标注解析（step 5 prompt 约定：对白 / 画外音独白 / 屏幕字幕）──
+    _SUBTITLE_TOKENS = ("屏幕字幕", "字幕居中", "字幕浮现", "字幕弹出", "字幕显示",
+                        "屏幕文字", "字幕标题", "字幕")
+    _VOICEOVER_TOKENS = ("画外音独白", "画外音", "v.o.", "voice-over", "voiceover",
+                         "独白", "旁白", "narration")
+    _DIALOG_ANNOTATION_RE = re.compile(
+        r"[（(]\s*([^）)]*?(?:屏幕字幕|字幕[^）)]*|画外音[^）)]*|独白|旁白|v\.?o\.?|voice[-\s]?over|voiceover|narration)[^）)]*)\s*[）)]",
+        re.I,
+    )
+
+    def _classify_dialog(raw: str) -> tuple[str, str]:
+        """返 (kind, cleaned_text)。
+        kind ∈ {'speech' 对白嘴要动 / 'voiceover' 画外音嘴不动 / 'subtitle' 字幕嘴不动 / 'none'}。
+        step 5 prompt 明确要求 dialog 字段"区分对白、画外音独白、屏幕字幕"，本函数按这个约定 parse。
+        """
+        d = (raw or "").strip()
+        if not d:
+            return ("none", "")
+        # 提取标注（去括号留纯台词）
+        lower = d.lower()
+        is_subtitle = any(tok.lower() in lower for tok in _SUBTITLE_TOKENS)
+        is_voiceover = any(tok.lower() in lower for tok in _VOICEOVER_TOKENS)
+        cleaned = _DIALOG_ANNOTATION_RE.sub("", d).strip()
+        # 末尾省略号/句末标点保留
+        if is_subtitle:
+            return ("subtitle", cleaned)
+        if is_voiceover:
+            return ("voiceover", cleaned)
+        return ("speech", cleaned)
+
     def _build_prompt(scene: dict, *, has_last_frame: bool) -> str:
-        """seedance i2v 模式中文 prompt（火山方舟官方推荐结构 · 2026-05-13 重写）。
+        """seedance i2v 模式中文 prompt（火山方舟官方推荐结构 · 严格参考 step 5）。
 
         参考资料：
         - 火山方舟《Seedance-1.0-pro 提示词指南》(docs/82379/1631633)
@@ -975,17 +1006,18 @@ async def generate_video_segments(
         i2v 模式核心认知（跟 t2v 完全不同）：
         - 首帧图本身已包含构图/光线/色调/角色外观全部视觉信息 → prompt 不重复
         - 重点：motion（动作）+ camera（镜头）+ 一致性强调 + 转场过渡 + negative prompt
-        - 60-100 字目标长度（分段镜头比长段落稳）
-        - **不喂 dialog / sound 字段**：seedance 无 TTS，喂 dialog 会让模型画"嘴在动"
-          但口型同步极难拉低质量；老板项目无配音管线（feedback_no_recording_pipeline）
 
-        官方 6 要素结构 → omni 字段映射：
-          主体 ← characters_in_scene + character_sheets.name（中文）
-          动作 ← visual + change_point
-          场景 ← "沿用首帧"（i2v 模式靠图本身锁，不重复描述）
-          镜头 ← shot
-          约束 ← 一致性 + 转场 + 标准 negative prompt
-          风格 ← 不强调（首帧已锁；强调反而漂）
+        严格参考 step 5 创意素材（10 字段全用 / 不丢任何标注）：
+          time_range / characters_in_scene / visual / change_point / shot /
+          dialog (区分对白/画外音/字幕 3 类) / product_appearance
+          + image_prompt（v10 老脚本兜底）
+
+        dialog 字段处理（老板硬规则："如果有台词，可以没声音，但要有口型变化"）：
+          - kind='speech' 对白 → 画面中说话角色嘴部自然张合（无音轨，纯视觉）
+          - kind='voiceover' 画外音/独白 → 角色嘴部静止（后期配画外音）
+          - kind='subtitle' 屏幕字幕 → 角色嘴部静止 + 视频本身不渲染字幕文字（后期合成）
+
+        sound 字段不喂（seedance 无 TTS + omni 无配音管线 feedback_no_recording_pipeline）。
 
         v10 老脚本无中文字段时回退 image_prompt + 占位翻译（兼容性兜底）。
         """
@@ -995,6 +1027,7 @@ async def generate_video_segments(
         shot = (scene.get("shot") or "").strip()
         chars = scene.get("characters_in_scene") or []
         product_in = scene.get("product_appearance")
+        dialog_kind, dialog_text = _classify_dialog(scene.get("dialog") or "")
 
         # 老格式兜底：中文字段全空才走 image_prompt 兼容路径
         if not visual and not change and not shot:
@@ -1037,6 +1070,30 @@ async def generate_video_segments(
         if shot:
             parts.append(f"镜头：{shot}（运镜平稳缓慢，无抖动无快速切换）")
 
+        # ── 台词与口型（老板硬规则：有台词可以没声音，但要有口型变化）──
+        if dialog_kind == "speech":
+            speaker = "、".join(_zh_role_label(c) for c in chars) if chars else "画面中的说话角色"
+            parts.append(
+                f"台词与口型：本段为对白，{speaker} 的嘴部按以下台词节奏自然张合"
+                f"（口型变化柔和不夸张，配合短语节拍；视频本身静音无音轨）："
+                f"「{dialog_text}」"
+            )
+        elif dialog_kind == "voiceover":
+            speaker = "、".join(_zh_role_label(c) for c in chars) if chars else "画面中的角色"
+            parts.append(
+                f"台词与口型：本段台词以画外音/独白形式呈现（后期外部配音），"
+                f"{speaker} 的嘴部保持自然状态、不张合不说话。"
+                f"画外音原文（仅供画面节奏参考，不出现在视频里）：「{dialog_text}」"
+            )
+        elif dialog_kind == "subtitle":
+            speaker = "、".join(_zh_role_label(c) for c in chars) if chars else "画面中的角色"
+            parts.append(
+                f"台词与口型：本段台词以后期屏幕字幕形式呈现，"
+                f"{speaker} 的嘴部保持自然状态、不张合；"
+                f"视频本身不渲染任何字幕文字（字幕后期合成）。"
+                f"屏幕字幕原文（仅供画面节奏参考，不出现在视频里）：「{dialog_text}」"
+            )
+
         # ── 产品（product_appearance=true 锁产品；false 这段禁止出现）──
         if product_in is True:
             parts.append("产品：标签、包装、颜色、形状与参考图完全一致，不变形不重画")
@@ -1048,9 +1105,11 @@ async def generate_video_segments(
             parts.append("结尾过渡：本段镜头自然收束到下一段画面的构图，过渡平滑无生硬切换")
 
         # ── 标准 negative prompt（seedance 官方推荐避免词 + 项目特定）──
+        # 注意：speech 类有"嘴自然张合"指令，negative 里只禁"不自然抽搐/规则乱"
         parts.append(
             "避免：脸型/身份漂移、肢体扭曲（多手指、断肢、关节错位）、画面抖动、时序闪烁、"
-            "光线色温突变、文字水印、品牌 logo 文字、字幕、生硬的口型张合"
+            "光线色温突变、文字水印、品牌 logo 文字、屏幕字幕（字幕后期加）、"
+            "嘴型抽搐/咬字过猛/与台词节奏脱节"
         )
 
         prompt = "\n".join(parts)
@@ -1124,7 +1183,8 @@ async def generate_video_segments(
         scene_no = int(scene.get("scene_no") or 0)
 
         first_frame = scene_to_first_frame.get(scene_no)
-        if not first_frame:
+        # dry_run 跳过 first_frame 必须存在的检查（调 prompt 不依赖图）
+        if not first_frame and not dry_run:
             return {"scene_no": scene_no, "error": "no_first_frame_image_asset",
                     "hint": f"scene {scene_no} 缺 step 6 分镜图 — 先跑 generate_storyboard_images"}
 
