@@ -453,6 +453,7 @@ class GenerateVideoSegmentsRequest(BaseModel):
     duration_s: int = 8
     use_last_frame: bool = False
     extra_prompt_suffix: str | None = None
+    dry_run: bool = False
 
 
 @router.post("/exec/generate_video_segments")
@@ -461,6 +462,8 @@ async def exec_generate_video_segments(
 ) -> Any:
     """W4-B 14.4 phase D step 7：拉 script.scenes，用 step 6 出的分镜图当 first_frame
     + character_sheet 锁脸，并发调 seedance-2-0 出每段视频，落 pipeline.assets(asset_type='video')。
+
+    dry_run=True 时只拼 prompt 不调 seedance（调 prompt 调试用，零费用）。
     """
     from app.mcp.tools.media import generate_video_segments
     try:
@@ -473,6 +476,7 @@ async def exec_generate_video_segments(
             duration_s=payload.duration_s,
             use_last_frame=payload.use_last_frame,
             extra_prompt_suffix=payload.extra_prompt_suffix,
+            dry_run=payload.dry_run,
         )
     except Exception as exc:
         logger.exception("generate_video_segments REST 异常")

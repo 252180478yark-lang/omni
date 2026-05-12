@@ -819,6 +819,7 @@ async def generate_video_segments(
     duration_s: int = 8,
     use_last_frame: bool = True,
     extra_prompt_suffix: str | None = None,
+    dry_run: bool = False,
 ) -> dict:
     """W4-B 切片 14.4 phase D step 7：拉 script.scenes，用 step 6 出的分镜图当
     first_frame + character_sheet 锁脸 face_refs，并发调 seedance-2-0 出每段视频。
@@ -835,6 +836,7 @@ async def generate_video_segments(
         duration_s: 每段时长秒（seedance 接受 4-15，默认 8）
         use_last_frame: True 则把下段 first_frame 当本段 last_frame 串场（默认不串）
         extra_prompt_suffix: 每段 prompt 末尾追加（如"slow handheld motion, breathy ambient sound"）
+        dry_run: True 时只拼 prompt 不调 seedance 不落库（用于调试 prompt，零费用）
 
     Returns:
         {ok, result: {script_id, kind, sku_id, scenes_total, success_count, error_count,
@@ -919,15 +921,28 @@ async def generate_video_segments(
         if role and url and role not in role_to_url:
             role_to_url[role] = url
 
-    # 性别映射（占位翻译用）
+    # 角色元信息：role_id → {zh_name, gender_en, gender_zh}
+    # 来源 pipeline.scripts.character_sheets（step 5 LLM 写的，含中文名）
     char_sheets_meta = script.get("character_sheets") or []
     role_to_gender: dict[str, str] = {}
+    role_to_zh_name: dict[str, str] = {}
     for s in char_sheets_meta:
         rid = s.get("role_id")
         gender_zh = (s.get("gender") or "").strip()
         gender_en = "woman" if gender_zh == "女" else "man" if gender_zh == "男" else "person"
         if rid:
             role_to_gender[rid] = gender_en
+            zh = (s.get("name") or "").strip()
+            if zh:
+                role_to_zh_name[rid] = zh
+
+    def _zh_role_label(role_id: str) -> str:
+        """role_id → 中文标签，优先 character_sheets.name，回退按 gender 给"那位女士/那位男士"。"""
+        zh = role_to_zh_name.get(role_id)
+        if zh:
+            return zh
+        g = role_to_gender.get(role_id, "person")
+        return "那位女士" if g == "woman" else "那位男士" if g == "man" else f"角色 {role_id}"
 
     _CHAR_SHEET_REF_RE = re.compile(r"character_sheet\s*\[\s*([a-z_][a-z0-9_]*)\s*\]", re.I)
 
@@ -949,49 +964,96 @@ async def generate_video_segments(
 
         return _CHAR_SHEET_REF_RE.sub(_sub, prompt)
 
-    def _build_prompt(scene: dict) -> str:
-        """seedance 2.0 中文 prompt 模板（2026-05-12 老板拍板 A 方案）。
+    def _build_prompt(scene: dict, *, has_last_frame: bool) -> str:
+        """seedance i2v 模式中文 prompt（火山方舟官方推荐结构 · 2026-05-13 重写）。
 
-        把 step 5 写的中文 scene 字段拼成 seedance 风格 prompt：
-          [时间] 镜头：xxx；画面：xxx；变化点：xxx；声音：xxx；环境音：xxx
+        参考资料：
+        - 火山方舟《Seedance-1.0-pro 提示词指南》(docs/82379/1631633)
+        - 社区《1940 个 Seedance 2.0 prompt 总结》8 种实战写法
+        - apiyi.com Seedance 2.0 Ultimate Prompt Guide
 
-        i2v 模式下 first_frame（step 6 分镜图）已锁脸，prompt 用具体角色称呼
-        （女儿/妈妈）即可，不需要 character_sheet[] 占位翻译。
+        i2v 模式核心认知（跟 t2v 完全不同）：
+        - 首帧图本身已包含构图/光线/色调/角色外观全部视觉信息 → prompt 不重复
+        - 重点：motion（动作）+ camera（镜头）+ 一致性强调 + 转场过渡 + negative prompt
+        - 60-100 字目标长度（分段镜头比长段落稳）
+        - **不喂 dialog / sound 字段**：seedance 无 TTS，喂 dialog 会让模型画"嘴在动"
+          但口型同步极难拉低质量；老板项目无配音管线（feedback_no_recording_pipeline）
 
-        v10 老脚本无中文字段时回退 image_prompt（英文 11 维度，兼容性兜底）。
+        官方 6 要素结构 → omni 字段映射：
+          主体 ← characters_in_scene + character_sheets.name（中文）
+          动作 ← visual + change_point
+          场景 ← "沿用首帧"（i2v 模式靠图本身锁，不重复描述）
+          镜头 ← shot
+          约束 ← 一致性 + 转场 + 标准 negative prompt
+          风格 ← 不强调（首帧已锁；强调反而漂）
+
+        v10 老脚本无中文字段时回退 image_prompt + 占位翻译（兼容性兜底）。
         """
         tr = (scene.get("time_range") or f"0-{duration_s}s").strip()
-        parts: list[str] = [f"[{tr}]"]
-
-        shot = (scene.get("shot") or "").strip()
-        if shot:
-            parts.append(f"镜头：{shot}")
         visual = (scene.get("visual") or "").strip()
-        if visual:
-            parts.append(f"画面：{visual}")
         change = (scene.get("change_point") or "").strip()
-        if change:
-            parts.append(f"变化点：{change}")
-        dialog = (scene.get("dialog") or "").strip()
-        if dialog:
-            parts.append(f"声音：{dialog}")
-        sound = (scene.get("sound") or "").strip()
-        if sound:
-            parts.append(f"环境音：{sound}")
+        shot = (scene.get("shot") or "").strip()
+        chars = scene.get("characters_in_scene") or []
+        product_in = scene.get("product_appearance")
 
-        # 中文字段全空（v10 老脚本）→ 回退 image_prompt + 占位翻译
-        if len(parts) <= 1:
+        # 老格式兜底：中文字段全空才走 image_prompt 兼容路径
+        if not visual and not change and not shot:
             ip = (scene.get("image_prompt") or "").strip()
             if ip:
                 manual_count = len(face_refs or [])
                 ip = _replace_char_sheet_refs(ip, scene, manual_count)
-                prompt = f"{tr} {ip}"
-            elif scene.get("visual"):
-                prompt = f"{tr} {scene['visual']}"
+                prompt = f"[{tr}] {ip}"
             else:
-                prompt = tr
+                prompt = f"[{tr}]"
+            if extra_prompt_suffix:
+                prompt = f"{prompt}\n{extra_prompt_suffix}".strip()
+            return prompt
+
+        parts: list[str] = [f"[时长 {tr}]"]
+
+        # ── 画面延续（i2v 模式核心标识 · 对应官方 "Animate the provided image,
+        #     preserve composition and colors, keep consistent lighting"）──
+        if chars:
+            char_labels = "、".join(_zh_role_label(c) for c in chars)
+            parts.append(
+                f"画面延续：基于参考首帧生成动画，画面中的{char_labels}保持五官、发型、服装、神态完全不变；"
+                f"沿用首帧的构图、空间环境、光线方向、色温、整体色调"
+            )
         else:
-            prompt = "；".join(parts)
+            parts.append(
+                "画面延续：基于参考首帧生成动画，沿用首帧的构图、空间环境、光线方向、色温、整体色调"
+            )
+
+        # ── 动作（核心 · camera/subject 分离原则 · 把 visual 当完整动作流喂）──
+        action_pieces: list[str] = []
+        if visual:
+            action_pieces.append(visual)
+        if change and change not in visual:
+            action_pieces.append(f"动作衔接点：{change}")
+        if action_pieces:
+            parts.append("动作：" + "；".join(action_pieces))
+
+        # ── 镜头（参考官方运镜术语 · 显式注入"平稳缓慢"避免 seedance 自加快镜头/抖动）──
+        if shot:
+            parts.append(f"镜头：{shot}（运镜平稳缓慢，无抖动无快速切换）")
+
+        # ── 产品（product_appearance=true 锁产品；false 这段禁止出现）──
+        if product_in is True:
+            parts.append("产品：标签、包装、颜色、形状与参考图完全一致，不变形不重画")
+        elif product_in is False:
+            parts.append("产品：本段不出现产品，画面中不要任何瓶身/包装/品牌字样")
+
+        # ── 转场（仅当下一段有图作 last_frame 时启用）──
+        if has_last_frame:
+            parts.append("结尾过渡：本段镜头自然收束到下一段画面的构图，过渡平滑无生硬切换")
+
+        # ── 标准 negative prompt（seedance 官方推荐避免词 + 项目特定）──
+        parts.append(
+            "避免：脸型/身份漂移、肢体扭曲（多手指、断肢、关节错位）、画面抖动、时序闪烁、"
+            "光线色温突变、文字水印、品牌 logo 文字、字幕、生硬的口型张合"
+        )
+
+        prompt = "\n".join(parts)
 
         if extra_prompt_suffix:
             prompt = f"{prompt}\n{extra_prompt_suffix}".strip()
@@ -1060,9 +1122,6 @@ async def generate_video_segments(
 
     async def _one(idx: int, scene: dict) -> dict:
         scene_no = int(scene.get("scene_no") or 0)
-        prompt = _build_prompt(scene)
-        if not prompt:
-            return {"scene_no": scene_no, "error": "scene_prompt_empty"}
 
         first_frame = scene_to_first_frame.get(scene_no)
         if not first_frame:
@@ -1076,8 +1135,28 @@ async def generate_video_segments(
             if nxt_sn is not None:
                 last_frame = scene_to_first_frame.get(nxt_sn)
 
+        # prompt 拼装需要知道 has_last_frame（决定加不加转场段）
+        prompt = _build_prompt(scene, has_last_frame=last_frame is not None)
+        if not prompt:
+            return {"scene_no": scene_no, "error": "scene_prompt_empty"}
+
         # 每段从 scene.time_range 解析实际时长（无则 fallback duration_s 参数）
+        # seedance clamp [4, 15]
         scene_duration = _compute_scene_duration(scene, duration_s)
+
+        # dry_run 短路：只返 prompt + 时长 + 引用，零费用 / 不落库（调 prompt 用）
+        if dry_run:
+            return {
+                "scene_no": scene_no,
+                "prompt": prompt,
+                "first_frame_used": first_frame,
+                "last_frame_used": last_frame,
+                "duration_s": scene_duration,
+                "scene_time_range": (scene.get("time_range") or "").strip() or None,
+                "characters_in_scene": scene.get("characters_in_scene") or [],
+                "product_appearance": scene.get("product_appearance"),
+                "dry_run": True,
+            }
 
         scene_face_refs = _resolve_face_refs(scene)
         scene_product_refs = _resolve_product_refs(scene)

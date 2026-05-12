@@ -382,6 +382,7 @@ export default function SkuPipelinePage() {
         duration_s?: number
         scene_time_range?: string | null
         task_id?: string | null
+        dry_run?: boolean
       }>
     }
     trace?: TraceShape
@@ -922,8 +923,9 @@ export default function SkuPipelinePage() {
     }
   }
 
-  // step 7 主动作：调 generate_video_segments
-  const runStep7Video = async () => {
+  // step 7 主动作：调 generate_video_segments。
+  // dry_run=true 时只拼 prompt 不调 seedance（调试 prompt 用，零费用）
+  const runStep7Video = async (dryRun = false) => {
     if (!script6Id || running7) return
     setRunning7(true)
     setError(null)
@@ -947,17 +949,18 @@ export default function SkuPipelinePage() {
           duration_s: duration7,
           use_last_frame: useLastFrame7,
           extra_prompt_suffix: extraSuffix7 || null,
+          dry_run: dryRun,
         }),
       })
       const json = await res.json()
       if (json.success) {
         setResp7(json.data)
-        bumpLineage()  // 触发 LineageTree refetch（视频 asset 已落 db）
+        if (!dryRun) bumpLineage()  // dry_run 不落库，不用触发血缘 refetch
       } else {
-        setError(`视频生成失败：${json.error || '未知'}`)
+        setError(`${dryRun ? '提示词预览' : '视频生成'}失败：${json.error || '未知'}`)
       }
     } catch (e) {
-      setError(`视频生成异常：${String(e)}`)
+      setError(`${dryRun ? '提示词预览' : '视频生成'}异常：${String(e)}`)
     } finally {
       setRunning7(false)
     }
@@ -3729,7 +3732,7 @@ export default function SkuPipelinePage() {
                       </div>
                     </div>
                     <Button
-                      onClick={runStep7Video}
+                      onClick={() => runStep7Video(false)}
                       disabled={running7 || selectedScenes7.size === 0}
                       className="w-full text-base h-11"
                       size="lg"
@@ -3741,6 +3744,14 @@ export default function SkuPipelinePage() {
                       ) : (
                         `★ 出 ${selectedScenes7.size} 段视频（${selectedScenes7.size > 1 ? '并发 ' : ''}seedance-2-0，按脚本 time_range 每段独立时长）`
                       )}
+                    </Button>
+                    <Button
+                      onClick={() => runStep7Video(true)}
+                      disabled={running7 || selectedScenes7.size === 0}
+                      className="w-full h-9 text-xs"
+                      variant="outline"
+                    >
+                      🔍 仅预览提示词（零费用，调 prompt 用）
                     </Button>
                     <div className="text-[11px] text-muted-foreground">
                       ¥15/段 · 分镜图自动当 first_frame · 角色 face_refs 自动按 character_sheet 找。
@@ -4022,12 +4033,18 @@ export default function SkuPipelinePage() {
                               className="w-full rounded border"
                               preload="metadata"
                             />
+                          ) : r.dry_run ? (
+                            <div className="text-xs p-2 border border-blue-300 rounded bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300">
+                              🔍 预览模式（未真跑 seedance）· 仅展示 prompt 用于调试 · 时长 {r.duration_s || '?'}s
+                            </div>
                           ) : (
                             <div className="text-xs text-muted-foreground italic">无视频 url</div>
                           )}
                           {r.prompt && (
-                            <details className="text-xs">
-                              <summary className="cursor-pointer text-muted-foreground">▼ prompt (omni 内部，带占位翻译)</summary>
+                            <details className="text-xs" open={!!r.dry_run}>
+                              <summary className="cursor-pointer text-muted-foreground">
+                                ▼ 实际喂 seedance 的 prompt（中文 i2v 模板）
+                              </summary>
                               <pre className="mt-1 p-2 bg-muted/50 rounded whitespace-pre-wrap text-[10px]">{r.prompt}</pre>
                             </details>
                           )}
