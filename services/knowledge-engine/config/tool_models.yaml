@@ -51,17 +51,17 @@ generate_character_sheets:
   model: gpt-image-1.5
 
 generate_video:
-  # W4-B 14.4 phase D step 7（2026-05-11，老板 Ark Console 已激活 2.0 后切）：
-  # 火山方舟账号 2101056731 能力对照：
-  #   - doubao-seedance-2-0-260128 ← 当前用（2.0，老板拍板）
-  #   - doubao-seedance-2-0-fast-260128（备选 fast 版）
-  #   - doubao-seedance-1-5-pro-251215（fallback）
-  # 能力差异：
-  #   - 1.x 系列只支持 t2v + i2v；2.0 系列才有 r2v 多模态参考
-  #   - 火山方舟硬约束：first_frame + reference_images 任何 model 都互斥（实测仍生效）
-  # → step 7 仍走 i2v 模式（first_frame = step 6 分镜图，face_refs 自动清避免 mixed 400）
-  provider: seedance
-  model: doubao-seedance-2-0-260128
+  # 2026-05-13 老板切 Veo 3.1（Google Gemini API）：
+  #   - veo-3.1-generate-preview（当前用，Gemini Developer API 可用）
+  #   - 备选 Vertex AI：veo-3.1-generate-001
+  # 能力：
+  #   - t2v + i2v（first_frame = base64 data: URI）
+  #   - 时长只支持 4 / 6 / 8s，其余自动 clamp
+  #   - 画幅：9:16 或 16:9
+  # 认证：GEMINI_API_KEY（与 Gemini chat 同一个 key，无额外配置）
+  # 回切候选：seedance/doubao-seedance-2-0-260128
+  provider: veo
+  model: veo-3.1-generate-preview
   duration: 8
 
 summarize_text:

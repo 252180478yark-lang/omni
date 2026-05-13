@@ -7,6 +7,7 @@ from app.providers import (
     OpenAIProvider,
     SeedanceProvider,
     SeedreamProvider,
+    VeoProvider,
     ProviderRegistry,
 )
 from app.services.analyze_service import AnalyzeService
@@ -36,4 +37,5 @@ def bootstrap_providers() -> None:
     registry.register("seedance", SeedanceProvider())
     registry.register("seedream", SeedreamProvider())
     registry.register("kling", KlingProvider())
+    registry.register("veo", VeoProvider())
     apply_persisted_provider_config(registry)

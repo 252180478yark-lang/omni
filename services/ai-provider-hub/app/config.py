@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     seedream_model: str = "doubao-seedream-4-0-250828"
     seedream_model_fallback: str = "doubao-seedream-3-0-t2i-250415"
     kling_api_key: str = ""
+    veo_model: str = "veo-3.1-generate-preview"
     image_provider_chain: str = "seedream,kling,openai"
 
     # Defaults
