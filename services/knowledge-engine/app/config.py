@@ -92,6 +92,11 @@ class Settings(BaseSettings):
     avatar_promote_min_ctr: float = 0.03
     avatar_archive_consecutive_low: int = 3
 
+    # Volcengine Visual API（realman 真实人物视频；图像生成大模型 service 86081）
+    # 账号级 AK/SK，不同于 ARK Bearer Token；在 console.volcengine.com → 访问控制 → API 密钥 获取
+    volcengine_access_key: str = ""
+    volcengine_secret_key: str = ""
+
     # W4-B 切片 7：成本两版口令解锁
     # 老板的真实成本（visibility='real'）只对持有此口令的调用方可见。
     # 留空 → 不启用口令保护（开发环境用，老板自己电脑）。

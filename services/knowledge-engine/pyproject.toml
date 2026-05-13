@@ -30,6 +30,10 @@ dependencies = [
   "pysrt>=1.1.2",
   # MCP server (Anthropic Model Context Protocol)
   "fastmcp>=3.2,<4",
+  # Volcengine Visual API (realman portrait video / 单图音频驱动)
+  "volcengine>=1.0.0",
+  # 图片处理（人脸网格覆盖，step 7 content_sensitive 绕路）
+  "Pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]

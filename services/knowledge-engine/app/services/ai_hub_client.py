@@ -66,6 +66,82 @@ def _localize_list(urls: Any) -> Any:
     return [_localize_url(u) for u in urls]
 
 
+class HubError(Exception):
+    """Hub 调用失败 — 保留 status_code + detail（含火山方舟/OpenAI 原始 error code）。
+
+    classify() 把 detail 文本里的 provider 错误码识别成上层能消费的 category：
+      - 'account_overdue'（火山方舟欠费/余额不足）
+      - 'content_sensitive'（火山方舟内容审查命中：真实人物/隐私/敏感词）
+      - 'model_not_open'（模型未在 console 激活）
+      - 'rate_limited' / 'quota_exhausted'
+      - 'unknown'（兜底）
+    """
+
+    _CATEGORY_PATTERNS: list[tuple[str, str]] = [
+        ("account_overdue", "AccountOverdueError"),
+        ("account_overdue", "overdue balance"),
+        ("content_sensitive", "InputImageSensitiveContentDetected"),
+        ("content_sensitive", "ContentSensitive"),
+        ("content_sensitive", "real person"),
+        ("content_sensitive", "敏感内容"),
+        ("model_not_open", "ModelNotOpen"),
+        ("rate_limited", "RateLimit"),
+        ("rate_limited", "429"),
+        ("quota_exhausted", "QuotaExhausted"),
+        ("quota_exhausted", "quota_exceeded"),
+    ]
+
+    def __init__(self, *, status_code: int, detail: str, response_text: str = "") -> None:
+        self.status_code = status_code
+        self.detail = detail or ""
+        self.response_text = response_text or ""
+        super().__init__(f"hub_error status={status_code}: {self.detail[:200]}")
+
+    def classify(self) -> str:
+        haystack = (self.detail + " " + self.response_text).lower()
+        for cat, key in self._CATEGORY_PATTERNS:
+            if key.lower() in haystack:
+                return cat
+        return "unknown"
+
+    def actionable_hint(self) -> str:
+        cat = self.classify()
+        if cat == "account_overdue":
+            return "火山方舟账号余额不足 — 去 console.volcengine.com/finance/account 充值后重跑"
+        if cat == "content_sensitive":
+            return (
+                "首帧图含真实人脸被 Seedance 内容审查拦截（平台硬规则，AI 生成图也会触发）。"
+                "✅ 要保留人物：重跑 step 7 时加 skip_first_frame_scene_nums=[<失败的 scene_no>]，"
+                "改 t2v 模式让 Seedance 自己从 prompt 生成角色（不传首帧）。"
+                "⚠️ 要固定特定真人脸：需走火山方舟数字人 API（不同流程，需单独申请）。"
+            )
+        if cat == "model_not_open":
+            return "火山方舟模型未激活 — 去 console.volcengine.com/ark 开通 inference 服务"
+        if cat == "rate_limited":
+            return "频率限制 — 等 1-2min 重跑，或降低并发段数"
+        if cat == "quota_exhausted":
+            return "配额耗尽 — 检查火山方舟控制台月度配额"
+        return f"未知错误（HTTP {self.status_code}）— 详情见 detail"
+
+
+async def _post_hub(cli: httpx.AsyncClient, url: str, body: dict) -> dict:
+    """统一 hub POST：失败时把详情 dump 到 HubError，调用方负责 classify。"""
+    r = await cli.post(url, json=body)
+    if r.status_code >= 400:
+        detail = ""
+        try:
+            payload = r.json() or {}
+            detail = payload.get("detail") or payload.get("error") or payload.get("message", "")
+        except Exception:
+            detail = r.text[:500]
+        raise HubError(
+            status_code=r.status_code,
+            detail=str(detail),
+            response_text=r.text[:1000],
+        )
+    return r.json()
+
+
 class AIHubClient:
     def __init__(self, base_url: str | None = None, timeout: float = 120.0) -> None:
         self.base_url = (base_url or settings.ai_provider_hub_url).rstrip("/")
@@ -146,9 +222,7 @@ class AIHubClient:
         if extra:
             body.update(extra)
         async with httpx.AsyncClient(timeout=self.timeout) as cli:
-            r = await cli.post(f"{self.base_url}/api/v1/ai/videos/generate", json=body)
-            r.raise_for_status()
-            return r.json()
+            return await _post_hub(cli, f"{self.base_url}/api/v1/ai/videos/generate", body)
 
     async def wait_for_video(self, task_id: str, *, max_seconds: int = 600, poll: float = 5.0) -> dict:
         import asyncio
@@ -266,6 +340,4 @@ class AIHubClient:
         if extra:
             body.update(extra)
         async with httpx.AsyncClient(timeout=self.timeout) as cli:
-            r = await cli.post(f"{self.base_url}/api/v1/ai/videos/generate", json=body)
-            r.raise_for_status()
-            return r.json()
+            return await _post_hub(cli, f"{self.base_url}/api/v1/ai/videos/generate", body)

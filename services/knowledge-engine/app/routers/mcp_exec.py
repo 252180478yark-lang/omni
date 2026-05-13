@@ -421,6 +421,7 @@ class GenerateStoryboardImagesRequest(BaseModel):
     style_refs: list[str] | None = None
     aspect_ratio: str = "9:16"
     extra_prompt_suffix: str | None = None
+    deidentify_faces: bool = False
 
 
 @router.post("/exec/generate_storyboard_images")
@@ -438,6 +439,7 @@ async def exec_generate_storyboard_images(
             style_refs=payload.style_refs,
             aspect_ratio=payload.aspect_ratio,
             extra_prompt_suffix=payload.extra_prompt_suffix,
+            deidentify_faces=payload.deidentify_faces,
         )
     except Exception as exc:
         logger.exception("generate_storyboard_images REST 异常")
@@ -454,6 +456,10 @@ class GenerateVideoSegmentsRequest(BaseModel):
     use_last_frame: bool = False
     extra_prompt_suffix: str | None = None
     dry_run: bool = False
+    force_t2v: bool = False
+    character_anchor: str | None = None
+    model_override: str | None = None
+    skip_first_frame_scene_nums: list[int] | None = None
 
 
 @router.post("/exec/generate_video_segments")
@@ -477,6 +483,10 @@ async def exec_generate_video_segments(
             use_last_frame=payload.use_last_frame,
             extra_prompt_suffix=payload.extra_prompt_suffix,
             dry_run=payload.dry_run,
+            force_t2v=payload.force_t2v,
+            character_anchor=payload.character_anchor,
+            model_override=payload.model_override,
+            skip_first_frame_scene_nums=payload.skip_first_frame_scene_nums,
         )
     except Exception as exc:
         logger.exception("generate_video_segments REST 异常")
@@ -595,4 +605,23 @@ async def exec_pipeline_get_creative_pack(
         return {"ok": True, "script": d}
     except Exception as exc:
         logger.exception("pipeline_get_creative_pack REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class GenerateVideoAnchorRequest(BaseModel):
+    script_id: str
+
+
+@router.post("/exec/generate_video_anchor")
+async def exec_generate_video_anchor(
+    payload: GenerateVideoAnchorRequest,
+) -> Any:
+    """W4-B 14.4 phase D step 7（t2v 模式）：从 script 拉人群/卖点/场景，LLM 生成
+    Seedance t2v 三行关键词锚点（[人物][场景][风格]）。
+    """
+    from app.mcp.tools.media import generate_video_anchor
+    try:
+        return await generate_video_anchor(script_id=payload.script_id)
+    except Exception as exc:
+        logger.exception("generate_video_anchor REST 异常")
         return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})

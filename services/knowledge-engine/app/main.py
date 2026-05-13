@@ -4,7 +4,10 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+import time
+import uuid
+
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 if sys.platform == "win32":
@@ -120,6 +123,24 @@ app.mount(
     StaticFiles(directory=str(_assets_root), check_dir=False),
     name="static_assets",
 )
+
+# ── 产品参考图上传端点（t2v 白底图锁产品）──────────────────────────────────────
+_UPLOAD_DIR = _assets_root / "product_refs"
+_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_MAX_SIZE = 10 * 1024 * 1024  # 10 MB
+
+@app.post("/api/v1/knowledge/upload-product-ref")
+async def upload_product_ref(file: UploadFile = File(...)):
+    if file.content_type not in _ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="只支持 JPEG/PNG/WebP")
+    raw = await file.read()
+    if len(raw) > _MAX_SIZE:
+        raise HTTPException(status_code=400, detail="文件超过 10 MB 上限")
+    ext = (file.filename or "img").rsplit(".", 1)[-1].lower() or "png"
+    fname = f"{int(time.time())}_{uuid.uuid4().hex[:8]}.{ext}"
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    (_UPLOAD_DIR / fname).write_bytes(raw)
+    return {"url": f"/api/v1/knowledge/static/product_refs/{fname}"}
 
 
 @app.get("/health")

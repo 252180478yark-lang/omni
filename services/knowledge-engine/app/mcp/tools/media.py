@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_pool
 from app.mcp import prompts
@@ -21,7 +24,7 @@ from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
 from app.services import pipeline_lineage, rag_chain
-from app.services.ai_hub_client import AIHubClient
+from app.services.ai_hub_client import AIHubClient, HubError
 
 
 def _channel_profile(channel: str) -> str:
@@ -435,6 +438,7 @@ async def generate_storyboard_images(
     style_refs: list[str] | None = None,
     aspect_ratio: str = "9:16",
     extra_prompt_suffix: str | None = None,
+    deidentify_faces: bool = False,
 ) -> dict:
     """W4-B 切片 14.4 phase D：从 script.scenes 拉分镜，并发调 generate_image_v2 出图，落 pipeline.assets。
 
@@ -444,6 +448,8 @@ async def generate_storyboard_images(
         face_refs / product_refs / style_refs: 三类参考图 url（同 generate_image）
         aspect_ratio: 画幅（默认 9:16）
         extra_prompt_suffix: 每段 prompt 末尾追加（如风格 hint "photo-realistic, warm tone"）
+        deidentify_faces: True 时对含人物的 scene 自动追加去识别化 prompt，降低 Seedance
+            step 7 首帧人脸内容审查概率（遮挡/角度/虚焦/普通外貌/产品为主体）。
 
     Returns:
         {ok, result: {script_id, kind, sku_id, scenes_total, success_count, error_count,
@@ -528,18 +534,33 @@ async def generate_storyboard_images(
 
         return _CHAR_SHEET_REF_RE.sub(_sub, prompt)
 
+    # 去识别化 prompt suffix — 含角色的 scene 才加，降低 Seedance 首帧人脸审查概率
+    _DEIDENTIFY_SUFFIX = (
+        "face partially occluded by steam or hair or hand or shadow, "
+        "soft focus on face with sharp focus on product, "
+        "shot from behind or three-quarter back view or profile angle preferred, "
+        "no celebrity likeness, ordinary unremarkable appearance, "
+        "product as main visual subject, person as background element"
+    )
+
     def _build_prompt(scene: dict) -> str:
         """优先用 v11+ image_prompt 字段；缺失才回退 v10 老格式拼装。
         喂 hub 前做占位符翻译（character_sheet[role] → the woman/man in reference image N）。
         """
+        has_chars = bool(scene.get("characters_in_scene"))
+        deidentify_suffix = _DEIDENTIFY_SUFFIX if (deidentify_faces and has_chars) else None
+
         ip = (scene.get("image_prompt") or "").strip()
         if ip:
             # 占位符翻译（OpenAI 不识别 character_sheet[xxx] 模板字符串，给它 reference image N 才能锁脸）
             manual_count = len(face_refs or [])
             ip = _replace_char_sheet_refs(ip, scene, manual_count)
+            parts = [ip]
             if extra_prompt_suffix:
-                return f"{ip}\n\n{extra_prompt_suffix}".strip()
-            return ip
+                parts.append(extra_prompt_suffix)
+            if deidentify_suffix:
+                parts.append(deidentify_suffix)
+            return "\n\n".join(parts).strip()
         # 旧格式（v10）回退：visual + shot 拼接
         parts: list[str] = []
         if scene.get("name"):
@@ -550,6 +571,8 @@ async def generate_storyboard_images(
             parts.append(f"镜头：{scene['shot']}")
         if extra_prompt_suffix:
             parts.append(extra_prompt_suffix)
+        if deidentify_suffix:
+            parts.append(deidentify_suffix)
         return "\n".join(parts).strip()
 
     def _append_strict_product_hint(prompt: str, face_count: int, product_count: int) -> str:
@@ -820,6 +843,10 @@ async def generate_video_segments(
     use_last_frame: bool = True,
     extra_prompt_suffix: str | None = None,
     dry_run: bool = False,
+    skip_first_frame_scene_nums: list[int] | None = None,
+    force_t2v: bool = False,
+    character_anchor: str | None = None,
+    model_override: str | None = None,
 ) -> dict:
     """W4-B 切片 14.4 phase D step 7：拉 script.scenes，用 step 6 出的分镜图当
     first_frame + character_sheet 锁脸 face_refs，并发调 seedance-2-0 出每段视频。
@@ -837,6 +864,11 @@ async def generate_video_segments(
         use_last_frame: True 则把下段 first_frame 当本段 last_frame 串场（默认不串）
         extra_prompt_suffix: 每段 prompt 末尾追加（如"slow handheld motion, breathy ambient sound"）
         dry_run: True 时只拼 prompt 不调 seedance 不落库（用于调试 prompt，零费用）
+        skip_first_frame_scene_nums: 指定 scene_no 列表跳过 first_frame，降级到 t2v 模式。
+            用于 content_sensitive 报错后重跑含真人脸的 scene（Seedance 硬规则）。
+        force_t2v: True 时全段跳过 first_frame，纯文生视频（不依赖 step 6 分镜图）。
+        character_anchor: 每段 prompt 开头注入的角色+场景锚点，维持跨镜一致性。
+            示例："40岁日本主妇，齐肩黑发，米色围裙，温柔笑容，温馨厨房，暖黄灯光，柔和色调"
 
     Returns:
         {ok, result: {script_id, kind, sku_id, scenes_total, success_count, error_count,
@@ -895,21 +927,22 @@ async def generate_video_segments(
         scene_to_first_frame[sn] = chosen["file_url"]
 
     # 校验：要跑的 scene_no 必须都有 image asset；缺哪几段先提示
-    # dry_run 跳过（调 prompt 不依赖图）
+    # dry_run / force_t2v 跳过（不依赖分镜图）
     missing_images = [s.get("scene_no") for s in scenes
                       if int(s.get("scene_no") or -1) not in scene_to_first_frame]
-    if missing_images and not dry_run:
+    if missing_images and not dry_run and not force_t2v:
         return {"ok": False, "error": "missing_storyboard_images",
                 "scene_nums_missing_image": missing_images,
                 "hint": (
                     f"以下分镜还没出图（image asset）：{missing_images}。"
                     f"先跑 generate_storyboard_images(script_id='{script_id}', "
-                    f"scene_nums={missing_images}) 再回来跑 step 7 视频"
+                    f"scene_nums={missing_images}) 再回来跑 step 7 视频。"
+                    f"或者开启 force_t2v=True 跳过分镜图直接文生视频。"
                 )}
 
     model_cfg = get_model_for_tool("generate_video")
     provider = model_cfg.get("provider", "seedance")
-    model = model_cfg.get("model", "seedance-2-0")
+    model = model_override or model_cfg.get("model", "seedance-2-0")
     # 视频生成 timeout 长（单段 60-180s + 排队 + 轮询，给 5min 余量）
     client = AIHubClient(timeout=300.0)
 
@@ -995,8 +1028,8 @@ async def generate_video_segments(
             return ("voiceover", cleaned)
         return ("speech", cleaned)
 
-    def _build_prompt(scene: dict, *, has_last_frame: bool) -> str:
-        """seedance i2v 模式中文 prompt（火山方舟官方推荐结构 · 严格参考 step 5）。
+    def _build_prompt(scene: dict, *, has_last_frame: bool, is_t2v: bool = False) -> str:
+        """seedance prompt（i2v / t2v 双模式 · 火山方舟官方推荐结构 · 严格参考 step 5）。
 
         参考资料：
         - 火山方舟《Seedance-1.0-pro 提示词指南》(docs/82379/1631633)
@@ -1006,6 +1039,11 @@ async def generate_video_segments(
         i2v 模式核心认知（跟 t2v 完全不同）：
         - 首帧图本身已包含构图/光线/色调/角色外观全部视觉信息 → prompt 不重复
         - 重点：motion（动作）+ camera（镜头）+ 一致性强调 + 转场过渡 + negative prompt
+
+        t2v 模式核心认知：
+        - 无首帧参考 → 必须用 image_prompt 把场景/角色外观描述完整
+        - character_anchor 前置注入统一角色描述（调用层加，非本函数职责）
+        - 去掉"画面延续"块，改为"场景"完整描述；negative 去掉"首帧漂移"类约束
 
         严格参考 step 5 创意素材（10 字段全用 / 不丢任何标注）：
           time_range / characters_in_scene / visual / change_point / shot /
@@ -1044,33 +1082,48 @@ async def generate_video_segments(
 
         parts: list[str] = [f"[时长 {tr}]"]
 
-        # ── 画面延续（i2v 模式核心标识 · 对应官方 "Animate the provided image,
-        #     preserve composition and colors, keep consistent lighting"）──
-        if chars:
-            char_labels = "、".join(_zh_role_label(c) for c in chars)
-            parts.append(
-                f"画面延续：基于参考首帧生成动画，画面中的{char_labels}保持五官、发型、服装、神态完全不变；"
-                f"沿用首帧的构图、空间环境、光线方向、色温、整体色调"
-            )
+        if is_t2v:
+            # ── t2v 模式：无首帧 → 用 image_prompt 完整描述场景（character_anchor 已在调用层前置）──
+            ip = (scene.get("image_prompt") or "").strip()
+            if ip:
+                manual_count = len(face_refs or [])
+                ip = _replace_char_sheet_refs(ip, scene, manual_count)
+                parts.append(f"场景：{ip}")
+            elif visual:
+                parts.append(f"场景：{visual}")
+
+            # 动作
+            action_pieces: list[str] = []
+            if change:
+                action_pieces.append(change)
+            if action_pieces:
+                parts.append("动作：" + "；".join(action_pieces))
         else:
-            parts.append(
-                "画面延续：基于参考首帧生成动画，沿用首帧的构图、空间环境、光线方向、色温、整体色调"
-            )
+            # ── i2v 模式：画面延续块 + 动作──
+            if chars:
+                char_labels = "、".join(_zh_role_label(c) for c in chars)
+                parts.append(
+                    f"画面延续：基于参考首帧生成动画，画面中的{char_labels}保持五官、发型、服装、神态完全不变；"
+                    f"沿用首帧的构图、空间环境、光线方向、色温、整体色调"
+                )
+            else:
+                parts.append(
+                    "画面延续：基于参考首帧生成动画，沿用首帧的构图、空间环境、光线方向、色温、整体色调"
+                )
 
-        # ── 动作（核心 · camera/subject 分离原则 · 把 visual 当完整动作流喂）──
-        action_pieces: list[str] = []
-        if visual:
-            action_pieces.append(visual)
-        if change and change not in visual:
-            action_pieces.append(f"动作衔接点：{change}")
-        if action_pieces:
-            parts.append("动作：" + "；".join(action_pieces))
+            action_pieces2: list[str] = []
+            if visual:
+                action_pieces2.append(visual)
+            if change and change not in visual:
+                action_pieces2.append(f"动作衔接点：{change}")
+            if action_pieces2:
+                parts.append("动作：" + "；".join(action_pieces2))
 
-        # ── 镜头（参考官方运镜术语 · 显式注入"平稳缓慢"避免 seedance 自加快镜头/抖动）──
+        # ── 镜头（两种模式共用）──
         if shot:
             parts.append(f"镜头：{shot}（运镜平稳缓慢，无抖动无快速切换）")
 
-        # ── 台词与口型（老板硬规则：有台词可以没声音，但要有口型变化）──
+        # ── 台词与口型（两种模式共用）──
         if dialog_kind == "speech":
             speaker = "、".join(_zh_role_label(c) for c in chars) if chars else "画面中的说话角色"
             parts.append(
@@ -1094,23 +1147,30 @@ async def generate_video_segments(
                 f"屏幕字幕原文（仅供画面节奏参考，不出现在视频里）：「{dialog_text}」"
             )
 
-        # ── 产品（product_appearance=true 锁产品；false 这段禁止出现）──
+        # ── 产品（两种模式共用）──
         if product_in is True:
             parts.append("产品：标签、包装、颜色、形状与参考图完全一致，不变形不重画")
         elif product_in is False:
             parts.append("产品：本段不出现产品，画面中不要任何瓶身/包装/品牌字样")
 
-        # ── 转场（仅当下一段有图作 last_frame 时启用）──
-        if has_last_frame:
+        # ── 转场（仅 i2v 有 last_frame 时启用；t2v 无分镜图序列，不转场）──
+        if has_last_frame and not is_t2v:
             parts.append("结尾过渡：本段镜头自然收束到下一段画面的构图，过渡平滑无生硬切换")
 
-        # ── 标准 negative prompt（seedance 官方推荐避免词 + 项目特定）──
-        # 注意：speech 类有"嘴自然张合"指令，negative 里只禁"不自然抽搐/规则乱"
-        parts.append(
-            "避免：脸型/身份漂移、肢体扭曲（多手指、断肢、关节错位）、画面抖动、时序闪烁、"
-            "光线色温突变、文字水印、品牌 logo 文字、屏幕字幕（字幕后期加）、"
-            "嘴型抽搐/咬字过猛/与台词节奏脱节"
-        )
+        # ── Negative prompt（t2v 去掉首帧漂移类约束，换成跨镜一致性约束）──
+        if is_t2v:
+            parts.append(
+                "避免：角色外貌跨镜漂移（必须与 prompt 开头的角色描述保持一致）、"
+                "肢体扭曲（多手指、断肢、关节错位）、画面抖动、时序闪烁、"
+                "光线色温突变、文字水印、品牌 logo 文字、屏幕字幕（字幕后期加）、"
+                "嘴型抽搐/咬字过猛/与台词节奏脱节"
+            )
+        else:
+            parts.append(
+                "避免：脸型/身份漂移、肢体扭曲（多手指、断肢、关节错位）、画面抖动、时序闪烁、"
+                "光线色温突变、文字水印、品牌 logo 文字、屏幕字幕（字幕后期加）、"
+                "嘴型抽搐/咬字过猛/与台词节奏脱节"
+            )
 
         prompt = "\n".join(parts)
 
@@ -1183,22 +1243,32 @@ async def generate_video_segments(
         scene_no = int(scene.get("scene_no") or 0)
 
         first_frame = scene_to_first_frame.get(scene_no)
+        # force_t2v：全段跳过 first_frame，纯文生视频
+        if force_t2v:
+            first_frame = None
+        # skip_first_frame_scene_nums：指定 scene 强制 t2v（content_sensitive 重跑时用）
+        elif skip_first_frame_scene_nums and scene_no in skip_first_frame_scene_nums:
+            first_frame = None
         # dry_run 跳过 first_frame 必须存在的检查（调 prompt 不依赖图）
-        if not first_frame and not dry_run:
+        elif not first_frame and not dry_run:
             return {"scene_no": scene_no, "error": "no_first_frame_image_asset",
-                    "hint": f"scene {scene_no} 缺 step 6 分镜图 — 先跑 generate_storyboard_images"}
+                    "hint": f"scene {scene_no} 缺 step 6 分镜图 — 先跑 generate_storyboard_images，或开启 force_t2v=True"}
 
-        # 全局下一段图作 last_frame（用 next_scene_map，不再用本次跑列表的下一段）
+        # force_t2v 时 last_frame 也无意义（没有分镜图序列）
         last_frame: str | None = None
-        if use_last_frame:
+        if use_last_frame and not force_t2v:
             nxt_sn = next_scene_map.get(scene_no)
             if nxt_sn is not None:
                 last_frame = scene_to_first_frame.get(nxt_sn)
 
-        # prompt 拼装需要知道 has_last_frame（决定加不加转场段）
-        prompt = _build_prompt(scene, has_last_frame=last_frame is not None)
+        # prompt 拼装需要知道 has_last_frame + 当前是否 t2v 模式
+        prompt = _build_prompt(scene, has_last_frame=last_frame is not None, is_t2v=force_t2v)
         if not prompt:
             return {"scene_no": scene_no, "error": "scene_prompt_empty"}
+
+        # character_anchor：角色+场景描述前置注入，维持跨镜一致性（t2v 模式核心手段）
+        if character_anchor:
+            prompt = character_anchor.strip() + ". " + prompt
 
         # 每段从 scene.time_range 解析实际时长（无则 fallback duration_s 参数）
         # seedance clamp [4, 15]
@@ -1216,6 +1286,7 @@ async def generate_video_segments(
                 "characters_in_scene": scene.get("characters_in_scene") or [],
                 "product_appearance": scene.get("product_appearance"),
                 "dry_run": True,
+                "t2v_mode": first_frame is None,
             }
 
         scene_face_refs = _resolve_face_refs(scene)
@@ -1228,7 +1299,13 @@ async def generate_video_segments(
         # → 等 2.0 激活后看是否开放 r2v + i2v 混合（火山方舟可能仍互斥），届时再调
         _model_supports_r2v = "seedance-2-" in (model or "")
         _refs_blocked_reason: str | None = None
-        if first_frame and (scene_face_refs or scene_product_refs):
+        if force_t2v and scene_face_refs:
+            # t2v 模式：人脸图（character_sheet / 手传 face_refs）传给 Seedance 会触发
+            # content_sensitive face 检测；character_anchor 文字锚点负责跨镜一致性，
+            # 不需要 reference_images 锁脸。产品图（product_refs）不含人脸，保留。
+            _refs_blocked_reason = "t2v_mode_skips_face_refs"
+            scene_face_refs = []
+        elif first_frame and (scene_face_refs or scene_product_refs):
             _refs_blocked_reason = "first_frame_i2v_excludes_refs"
             scene_face_refs = []
             scene_product_refs = None
@@ -1308,6 +1385,16 @@ async def generate_video_segments(
                 "duration_s": scene_duration,
                 "scene_time_range": (scene.get("time_range") or "").strip() or None,
                 "task_id": task_id_out,
+            }
+        except HubError as he:
+            # 火山方舟原始错误透传 + 分类（余额 / 内容审查 / 模型未激活 / 频率限制 / 其他）
+            return {
+                "scene_no": scene_no,
+                "error": f"hub_{he.classify()}: HTTP {he.status_code}",
+                "error_category": he.classify(),
+                "error_detail": he.detail[:500],
+                "hint": he.actionable_hint(),
+                "prompt": prompt,
             }
         except Exception as exc:
             return {"scene_no": scene_no, "error": f"{type(exc).__name__}: {exc}",
@@ -3657,3 +3744,159 @@ async def generate_creative_pack(
         suggested_args={"sku_id": sku_id, "script_id": script_id},
         human_text=next_hint,
     )
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_video_anchor(script_id: str) -> dict:
+    """t2v 模式一键生成角色锚点：拉血缘全链路（人群画像+卖点矩阵+SKU+脚本场景），
+    用 LLM 设计目标人群共鸣的出镜角色，输出 Seedance t2v 专用关键词串。
+
+    Args:
+        script_id: pipeline.scripts.id（须为 video_* kind）
+
+    Returns:
+        {ok, result: {anchor, script_kind, sku_id, audience_name}, trace}
+    """
+    from app.services.pipeline_lineage import (
+        get_creative_pack, get_audience_record, get_audience_run, get_matrix_run,
+    )
+
+    # ── 1. 拉脚本 ──────────────────────────────────────────────────────────
+    script = await get_creative_pack(script_id)
+    if not script:
+        return {"ok": False, "error": "script_not_found", "script_id": script_id}
+
+    script_kind = script.get("kind", "video_soft_ad")
+    sku_id = script.get("sku_id", "")
+    audience_record_id = script.get("audience_record_id")
+    matrix_run_id = script.get("matrix_run_id")
+    character_sheets = script.get("character_sheets") or []
+    scenes = script.get("scenes") or []
+
+    # ── 2. 拉 SKU 名称 ──────────────────────────────────────────────────────
+    sku_name = sku_id
+    if sku_id:
+        try:
+            pool = get_pool()
+            sku_row = await pool.fetchrow("SELECT name FROM mvp_sku WHERE id = $1", sku_id)
+            if sku_row:
+                sku_name = sku_row["name"] or sku_id
+        except Exception:
+            pass
+
+    # ── 3. 拉人群画像 ───────────────────────────────────────────────────────
+    audience_name = ""
+    audience_profile = "（未关联人群记录，按产品品类推断）"
+    if audience_record_id:
+        rec = await get_audience_record(audience_record_id)
+        if rec:
+            audience_name = rec.get("name", "")
+            # raw_md_segment 是 step 3 LLM 写的完整人群段落，信息最丰富
+            raw_seg = (rec.get("raw_md_segment") or "").strip()
+            layer_tags = rec.get("layer_tags") or []
+            match_reasons = rec.get("match_reasons") or []
+            parts = []
+            if audience_name:
+                parts.append(f"人群名：{audience_name}")
+            if layer_tags:
+                parts.append(f"标签：{', '.join(str(t) for t in layer_tags)}")
+            if match_reasons:
+                parts.append(f"匹配理由：{'; '.join(str(r) for r in match_reasons[:3])}")
+            if raw_seg:
+                parts.append(f"\n详细画像：\n{raw_seg[:1200]}")
+            audience_profile = "\n".join(parts) if parts else audience_profile
+
+            # 尝试拿 audience_run 的完整 audience_md 补充
+            audience_run_id = rec.get("audience_run_id")
+            if audience_run_id:
+                run_data = await get_audience_run(audience_run_id)
+                if run_data:
+                    full_md = (run_data.get("run") or {}).get("audience_md", "")
+                    if full_md and len(full_md) > len(raw_seg):
+                        # 截取前 1500 字补充上下文（完整报告太长）
+                        audience_profile += f"\n\n人群完整分析（节选）：\n{full_md[:1500]}"
+
+    # ── 4. 拉卖点矩阵 ───────────────────────────────────────────────────────
+    selling_points = "（未关联卖点矩阵）"
+    if matrix_run_id:
+        mx = await get_matrix_run(matrix_run_id)
+        if mx:
+            mx_md = (mx.get("matrix_md") or "").strip()
+            selling_points = mx_md[:1500] if mx_md else selling_points
+
+    # ── 5. 提取前三段场景的 image_prompt ────────────────────────────────────
+    scene_parts = []
+    for s in scenes[:3]:
+        sno = s.get("scene_no", "?")
+        ip = (s.get("image_prompt") or s.get("visual") or "").strip()
+        if ip:
+            scene_parts.append(f"第{sno}段：{ip[:300]}")
+    scene_descriptions = "\n".join(scene_parts) if scene_parts else "（脚本场景描述为空）"
+
+    # ── 6. 整理 character_sheets ────────────────────────────────────────────
+    if character_sheets:
+        cs_lines = []
+        for cs in character_sheets:
+            role = cs.get("role_id") or cs.get("role", "")
+            desc = cs.get("description") or cs.get("appearance") or ""
+            if role or desc:
+                cs_lines.append(f"- {role}：{desc[:200]}" if desc else f"- {role}")
+        char_sheets_text = "\n".join(cs_lines) if cs_lines else "（无 character_sheets）"
+    else:
+        char_sheets_text = "（无 character_sheets，由人群画像推断）"
+
+    # ── 7. LLM 生成锚点 ─────────────────────────────────────────────────────
+    kind_label_map = {
+        "video_soft_ad": "软广（生活场景自然植入）",
+        "video_planting": "种草（痛点共鸣+卖点呈现）",
+        "video_harvest": "收割（直接利益驱动转化）",
+    }
+    kind_label = kind_label_map.get(script_kind, script_kind)
+
+    system_prompt = prompts.load("video_anchor.system")
+    user_prompt = prompts.render(
+        "video_anchor.user",
+        sku_name=sku_name,
+        script_kind=kind_label,
+        audience_profile=audience_profile,
+        selling_points=selling_points,
+        scene_descriptions=scene_descriptions,
+        character_sheets=char_sheets_text,
+    )
+
+    cfg = get_model_for_tool("summarize_text")  # 复用轻量模型配置
+    client = AIHubClient()
+    try:
+        resp = await client.chat(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            provider=cfg["provider"],
+            model=cfg["model"],
+            temperature=0.7,
+            max_tokens=300,
+        )
+    except Exception as exc:
+        logger.exception("generate_video_anchor llm failed")
+        return {"ok": False, "error": "llm_call_failed", "hint": str(exc)}
+
+    anchor = resp.get("content", "").strip()
+
+    return {
+        "ok": True,
+        "result": {
+            "anchor": anchor,
+            "script_kind": script_kind,
+            "sku_id": sku_id,
+            "sku_name": sku_name,
+            "audience_name": audience_name,
+        },
+        "trace": build_trace(
+            provider=cfg["provider"],
+            model=cfg["model"],
+            prompt=f"video_anchor: script={script_id} sku={sku_id} audience={audience_name}",
+            params={"script_kind": script_kind},
+            cost_estimate="~300 tokens",
+        ),
+    }
