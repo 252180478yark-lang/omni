@@ -348,12 +348,9 @@ export default function SkuPipelinePage() {
   }> | null>(null)
   const [loadingImageAssets7, setLoadingImageAssets7] = useState(false)
   const [selectedScenes7, setSelectedScenes7] = useState<Set<number>>(new Set())
-  const [duration7i, setDuration7i] = useState<number>(5)
+  const [duration7i, setDuration7i] = useState<number>(8)
   const [aspect7i, setAspect7i] = useState('9:16')
-  const [useLastFrame7, setUseLastFrame7] = useState(true)
   const [extraSuffix7i, setExtraSuffix7i] = useState('')
-  const [faceRefs7i, setFaceRefs7i] = useState('')
-  const [productRefs7i, setProductRefs7i] = useState('')
   const [running7i, setRunning7i] = useState(false)
 
   type VideoSegResp = {
@@ -398,14 +395,11 @@ export default function SkuPipelinePage() {
 
   // ── Step 7.2：t2v 视频段生成（文字→视频） ─────────────────────────
   const [selectedScenes7t, setSelectedScenes7t] = useState<Set<number>>(new Set())
-  const [duration7t, setDuration7t] = useState<number>(5)
+  const [duration7t, setDuration7t] = useState<number>(8)
   const [aspect7t, setAspect7t] = useState('9:16')
   const [characterAnchor7t, setCharacterAnchor7t] = useState('')
   const [generatingAnchor7t, setGeneratingAnchor7t] = useState(false)
   const [extraSuffix7t, setExtraSuffix7t] = useState('')
-  const [faceRefs7t, setFaceRefs7t] = useState('')
-  const [productRefs7t, setProductRefs7t] = useState('')
-  const [uploadingProductRef7t, setUploadingProductRef7t] = useState(false)
   const [running7t, setRunning7t] = useState(false)
   const [resp7t, setResp7t] = useState<VideoSegResp | null>(null)
 
@@ -952,19 +946,14 @@ export default function SkuPipelinePage() {
         selectedScenes7.size === 0 || selectedScenes7.size === (imageAssets7?.length || 0)
           ? undefined
           : Array.from(selectedScenes7)
-      const face_refs = faceRefs7i.split(/\n/).map(s => s.trim()).filter(Boolean)
-      const product_refs = productRefs7i.split(/\n/).map(s => s.trim()).filter(Boolean)
       const res = await fetch('/api/omni/sku-pipeline/video-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           script_id: script6Id,
           scene_nums,
-          face_refs: face_refs.length ? face_refs : null,
-          product_refs: product_refs.length ? product_refs : null,
           aspect_ratio: aspect7i,
           duration_s: duration7i,
-          use_last_frame: useLastFrame7,
           extra_prompt_suffix: extraSuffix7i || null,
           dry_run: dryRun,
         }),
@@ -1022,20 +1011,14 @@ export default function SkuPipelinePage() {
         selectedScenes7t.size === 0 || selectedScenes7t.size === totalScenes
           ? undefined
           : Array.from(selectedScenes7t)
-      const face_refs = faceRefs7t.split(/\n/).map(s => s.trim()).filter(Boolean)
-      const product_refs = productRefs7t.split(/\n/).map(s => s.trim()).filter(Boolean)
       const res = await fetch('/api/omni/sku-pipeline/video-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           script_id: script6Id,
           scene_nums,
-          face_refs: face_refs.length ? face_refs : null,
-          product_refs: product_refs.length ? product_refs : null,
           aspect_ratio: aspect7t,
           duration_s: duration7t,
-          use_last_frame: false,
-          model_override: 'seedance-2-0',
           force_t2v: true,
           character_anchor: characterAnchor7t.trim() || null,
           extra_prompt_suffix: extraSuffix7t || null,
@@ -3681,8 +3664,8 @@ export default function SkuPipelinePage() {
                   <Film className="w-4 h-4" /> Step 7.1 · i2v 输入
                 </CardTitle>
                 <CardDescription>
-                  分镜图（step 6）→ first_frame → seedance 2.0 按图运镜出每段视频。
-                  需先跑 step 6；真实人脸图可能触发 Seedance 内容审查，改走 7.2 t2v。
+                  分镜图（step 6）→ first_frame → Veo 3.1 按图运镜出每段视频。
+                  需先跑 step 6；每段约 60-120s，并发跑总时间约等于单段。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -3850,11 +3833,11 @@ export default function SkuPipelinePage() {
                       size="lg"
                     >
                       {running7i ? (
-                        <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> 跑中（{selectedScenes7.size} 段并发，约 5-10min）</>
+                        <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> 跑中（{selectedScenes7.size} 段并发，~{selectedScenes7.size * 1.5} min）</>
                       ) : selectedScenes7.size === 0 ? (
                         '先选要跑的段'
                       ) : (
-                        `★ i2v 出 ${selectedScenes7.size} 段视频（分镜图→seedance-2-0）`
+                        `★ i2v 出 ${selectedScenes7.size} 段视频（分镜图→Veo 3.1）`
                       )}
                     </Button>
                     <Button
@@ -3866,7 +3849,7 @@ export default function SkuPipelinePage() {
                       🔍 仅预览提示词（零费用，调 prompt 用）
                     </Button>
                     <div className="text-[11px] text-muted-foreground">
-                      ¥15/段 · 分镜图自动当 first_frame · 角色 face_refs 按 character_sheet 自动注入
+                      分镜图自动当 first_frame · 约 60-120s/段 · Veo 3.1 via GEMINI_API_KEY
                     </div>
                   </div>
                 )}
@@ -3941,65 +3924,27 @@ export default function SkuPipelinePage() {
                   <details className="text-sm" open>
                     <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 视频参数</summary>
                     <div className="mt-2 space-y-3">
-                      <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input type="checkbox" checked={useLastFrame7} onChange={e => setUseLastFrame7(e.target.checked)} />
-                        <span>串场：下一段图自动当本段 last_frame，相邻段视觉过渡平滑</span>
-                      </label>
                       <div>
-                        <label className="text-xs font-medium">画幅</label>
+                        <label className="text-xs font-medium">画幅（Veo 3.1 仅支持竖屏 / 横屏）</label>
                         <select className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1" value={aspect7i} onChange={e => setAspect7i(e.target.value)}>
-                          {['9:16', '16:9', '1:1', '3:4', '4:3'].map(r => <option key={r} value={r}>{r}</option>)}
+                          {['9:16', '16:9'].map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="text-xs font-medium">回退默认时长（秒）</label>
-                        <div className="text-[10px] text-muted-foreground mb-1">优先 scene.time_range；无则用此值兜底</div>
+                        <div className="text-[10px] text-muted-foreground mb-1">优先 scene.time_range；无则用此值兜底。Veo 3.1 仅支持 4 / 6 / 8s，其他值自动 clamp。</div>
                         <select className="w-full border rounded px-2 py-1.5 text-sm bg-background" value={duration7i} onChange={e => setDuration7i(Number(e.target.value))}>
-                          {[4, 5, 6, 8, 10, 12, 15].map(d => <option key={d} value={d}>{d}s {d === 5 && '(默认)'}</option>)}
+                          {[4, 6, 8].map(d => <option key={d} value={d}>{d}s{d === 8 ? ' (默认)' : ''}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="text-xs font-medium">额外 prompt 后缀（运镜 hint，全段共用）</label>
-                        <Textarea value={extraSuffix7i} onChange={e => setExtraSuffix7i(e.target.value)} rows={2} className="text-xs mt-1" placeholder="如：slow handheld motion, breathy ambient sound" />
+                        <Textarea value={extraSuffix7i} onChange={e => setExtraSuffix7i(e.target.value)} rows={2} className="text-xs mt-1" placeholder="如：slow handheld motion, warm cinematic lighting" />
                       </div>
                     </div>
                   </details>
                 )}
 
-                {/* i2v face / product refs */}
-                {script6Id && (
-                  <details className="text-sm">
-                    <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 人脸 / 产品参考图（可选；character_sheet 之外额外追加）</summary>
-                    <div className="mt-2 space-y-3">
-                      <div>
-                        <label className="text-xs font-medium">人脸参考图（每行一个 url）</label>
-                        <Textarea
-                          value={faceRefs7i}
-                          onChange={e => setFaceRefs7i(e.target.value)}
-                          rows={3}
-                          className="text-xs mt-1 font-mono"
-                          placeholder="https://...&#10;data:image/..."
-                        />
-                        <div className="text-[11px] text-muted-foreground mt-1">
-                          ⚠ i2v 模式下火山方舟 first_frame 与 reference_images 互斥；face_refs 在 content_sensitive 时自动屏蔽。
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium">产品参考图（每行一个 url）</label>
-                        <Textarea
-                          value={productRefs7i}
-                          onChange={e => setProductRefs7i(e.target.value)}
-                          rows={3}
-                          className="text-xs mt-1 font-mono"
-                          placeholder="https://...（产品白底图）"
-                        />
-                        <div className="text-[11px] text-muted-foreground mt-1">
-                          scene.product_appearance=False 段强制不传。
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                )}
               </CardContent>
             </Card>
 
@@ -4057,20 +4002,17 @@ export default function SkuPipelinePage() {
                         })
                       }
                       return (
-                        <div className="border-2 border-red-400 dark:border-red-700 rounded-lg p-3 bg-red-50/40 dark:bg-red-950/20 space-y-2">
-                          <div className="text-sm font-semibold text-red-700 dark:text-red-400">
-                            ⚠ 火山方舟 cdn url 24h 过期 — 现在不下载链接失效，跑视频的 ¥ 白花
-                          </div>
+                        <div className="border rounded-lg p-3 space-y-2">
                           <div className="text-xs text-muted-foreground">
-                            浏览器可能弹"是否允许多文件下载"提示，点允许。
+                            视频已落盘，可随时下载。浏览器可能弹"允许多文件下载"提示，点允许。
                           </div>
                           <Button
                             size="lg"
-                            variant="destructive"
-                            className="w-full h-11 text-base"
+                            variant="default"
+                            className="w-full h-10 text-sm"
                             onClick={downloadAll}
                           >
-                            ⬇ 一键下载全部 {downloadableVideos.length} 段（{Math.round(downloadableVideos.length * 0.4)}s 内逐个触发）
+                            ⬇ 一键下载全部 {downloadableVideos.length} 段视频
                           </Button>
                         </div>
                       )
@@ -4098,13 +4040,7 @@ export default function SkuPipelinePage() {
                                 </Badge>
                               )}
                               {r.refs_blocked_reason && (
-                                <Badge variant="secondary" className="text-[10px]" title={
-                                  r.refs_blocked_reason === 'first_frame_i2v_excludes_refs'
-                                    ? '火山方舟硬约束：first_frame 跟 reference_images 互斥，i2v 模式下 face/product refs 不传。锁脸靠 step 6 分镜图已按 character_sheet 锁过脸间接传递。'
-                                    : r.refs_blocked_reason === 'model_does_not_support_r2v'
-                                      ? '当前 model（1.x 系列）不支持 r2v 多模态参考；2.0 激活后才能用 face/product refs。'
-                                      : r.refs_blocked_reason
-                                }>
+                                <Badge variant="secondary" className="text-[10px]" title={r.refs_blocked_reason}>
                                   ⓘ refs 已绕开
                                 </Badge>
                               )}
@@ -4116,7 +4052,7 @@ export default function SkuPipelinePage() {
                               {r.hint && <div className="text-[11px]">💡 {r.hint}</div>}
                               {r.error_detail && (
                                 <details className="text-[10px]">
-                                  <summary className="cursor-pointer opacity-70">▼ 火山方舟原始 detail</summary>
+                                  <summary className="cursor-pointer opacity-70">▼ 原始 detail</summary>
                                   <pre className="mt-1 whitespace-pre-wrap break-words">{r.error_detail}</pre>
                                 </details>
                               )}
@@ -4130,7 +4066,7 @@ export default function SkuPipelinePage() {
                             />
                           ) : r.dry_run ? (
                             <div className="text-xs p-2 border border-blue-300 rounded bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300">
-                              🔍 预览模式（未真跑 seedance）· 仅展示 prompt 用于调试 · 时长 {r.duration_s || '?'}s
+                              🔍 预览模式（干跑，未调 Veo）· 仅展示 prompt 用于调试 · 时长 {r.duration_s || '?'}s
                             </div>
                           ) : (
                             <div className="text-xs text-muted-foreground italic">无视频 url</div>
@@ -4138,7 +4074,7 @@ export default function SkuPipelinePage() {
                           {r.prompt && (
                             <details className="text-xs" open={!!r.dry_run}>
                               <summary className="cursor-pointer text-muted-foreground">
-                                ▼ 实际喂 seedance 的 prompt（中文 i2v 模板）
+                                ▼ 实际喂 Veo 3.1 的 prompt（i2v 模式）
                               </summary>
                               <pre className="mt-1 p-2 bg-muted/50 rounded whitespace-pre-wrap text-[10px]">{r.prompt}</pre>
                             </details>
@@ -4295,8 +4231,8 @@ export default function SkuPipelinePage() {
                   <Sparkles className="w-4 h-4" /> Step 7.2 · t2v 输入
                 </CardTitle>
                 <CardDescription>
-                  跳过 step 6 分镜图，Seedance 2.0 纯按文字生成画面。
-                  用角色锚点维持跨镜人物一致性（约 70-80%），适合真人脸被内容审查拦截的场景。
+                  跳过 step 6 分镜图，Veo 3.1 纯按文字生成画面。
+                  character_anchor 前置注入每段 prompt，维持跨镜人物一致性。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -4454,11 +4390,11 @@ export default function SkuPipelinePage() {
                       size="lg"
                     >
                       {running7t ? (
-                        <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> 跑中（{selectedScenes7t.size} 段并发，约 5-10min）</>
+                        <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> 跑中（{selectedScenes7t.size} 段并发，~{selectedScenes7t.size * 1.5} min）</>
                       ) : selectedScenes7t.size === 0 ? (
                         '先选要跑的段'
                       ) : (
-                        `★ t2v 出 ${selectedScenes7t.size} 段视频（seedance-2-0 纯文字生成）`
+                        `★ t2v 出 ${selectedScenes7t.size} 段视频（Veo 3.1 纯文字生成）`
                       )}
                     </Button>
                     <Button
@@ -4470,7 +4406,7 @@ export default function SkuPipelinePage() {
                       🔍 仅预览提示词（零费用，调 prompt 用）
                     </Button>
                     <div className="text-[11px] text-muted-foreground">
-                      ¥15/段 · 无需 step 6 分镜图 · 跨镜一致性约 70-80%
+                      无需 step 6 分镜图 · character_anchor 锁跨镜角色 · 约 60-120s/段
                     </div>
                   </div>
                 )}
@@ -4481,85 +4417,21 @@ export default function SkuPipelinePage() {
                     <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 视频参数</summary>
                     <div className="mt-2 space-y-3">
                       <div>
-                        <label className="text-xs font-medium">画幅</label>
+                        <label className="text-xs font-medium">画幅（Veo 3.1 仅支持竖屏 / 横屏）</label>
                         <select className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1" value={aspect7t} onChange={e => setAspect7t(e.target.value)}>
-                          {['9:16', '16:9', '1:1', '3:4', '4:3'].map(r => <option key={r} value={r}>{r}</option>)}
+                          {['9:16', '16:9'].map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="text-xs font-medium">回退默认时长（秒）</label>
-                        <div className="text-[10px] text-muted-foreground mb-1">优先 scene.time_range；无则用此值兜底</div>
+                        <div className="text-[10px] text-muted-foreground mb-1">优先 scene.time_range；无则用此值兜底。Veo 3.1 仅支持 4 / 6 / 8s，其他值自动 clamp。</div>
                         <select className="w-full border rounded px-2 py-1.5 text-sm bg-background" value={duration7t} onChange={e => setDuration7t(Number(e.target.value))}>
-                          {[4, 5, 6, 8, 10, 12, 15].map(d => <option key={d} value={d}>{d}s {d === 5 && '(默认)'}</option>)}
+                          {[4, 6, 8].map(d => <option key={d} value={d}>{d}s{d === 8 ? ' (默认)' : ''}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className="text-xs font-medium">额外 prompt 后缀（全段共用）</label>
                         <Textarea value={extraSuffix7t} onChange={e => setExtraSuffix7t(e.target.value)} rows={2} className="text-xs mt-1" placeholder="如：slow handheld motion, warm cinematic tone" />
-                      </div>
-                    </div>
-                  </details>
-                )}
-
-                {/* t2v refs（可选，仅 2.0 r2v 支持） */}
-                {script6Id && (
-                  <details className="text-sm">
-                    <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 参考图（可选，需 seedance 2.0 r2v 激活）</summary>
-                    <div className="mt-2 space-y-3">
-                      <div>
-                        <label className="text-xs font-medium">人脸参考图（每行一个 url）</label>
-                        <Textarea
-                          value={faceRefs7t}
-                          onChange={e => setFaceRefs7t(e.target.value)}
-                          rows={3}
-                          className="text-xs mt-1 font-mono"
-                          placeholder="https://..."
-                        />
-                      </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="text-xs font-medium">产品参考图（每行一个 url）</label>
-                          <label className={`text-xs cursor-pointer hover:underline ${uploadingProductRef7t ? 'text-muted-foreground' : 'text-primary'}`}>
-                            {uploadingProductRef7t ? <Loader2 className="inline w-3 h-3 animate-spin" /> : '⬆ 上传'}
-                            <input
-                              type="file"
-                              multiple
-                              accept="image/png,image/jpeg,image/webp"
-                              className="hidden"
-                              disabled={uploadingProductRef7t}
-                              onChange={async e => {
-                                const files = Array.from(e.target.files || [])
-                                if (!files.length) return
-                                setUploadingProductRef7t(true)
-                                const uploaded: string[] = []
-                                for (const f of files) {
-                                  try {
-                                    const fd = new FormData()
-                                    fd.append('file', f)
-                                    const r = await fetch('/api/omni/sku-pipeline/upload-product-ref', { method: 'POST', body: fd })
-                                    const d = await r.json()
-                                    if (d.success && d.url) uploaded.push(d.url)
-                                  } catch (err) {
-                                    console.error('product ref upload failed', f.name, err)
-                                  }
-                                }
-                                if (uploaded.length) {
-                                  const existing = productRefs7t.trim()
-                                  setProductRefs7t(existing ? `${existing}\n${uploaded.join('\n')}` : uploaded.join('\n'))
-                                }
-                                setUploadingProductRef7t(false)
-                                e.target.value = ''
-                              }}
-                            />
-                          </label>
-                        </div>
-                        <Textarea
-                          value={productRefs7t}
-                          onChange={e => setProductRefs7t(e.target.value)}
-                          rows={3}
-                          className="text-xs mt-1 font-mono"
-                          placeholder="https://... 或点「⬆ 上传」"
-                        />
                       </div>
                     </div>
                   </details>
@@ -4609,11 +4481,11 @@ export default function SkuPipelinePage() {
                       }))
                       if (vids.length === 0) return null
                       return (
-                        <div className="border-2 border-red-400 dark:border-red-700 rounded-lg p-3 bg-red-50/40 dark:bg-red-950/20 space-y-2">
-                          <div className="text-sm font-semibold text-red-700 dark:text-red-400">
-                            ⚠ cdn url 24h 过期 — 现在不下载链接失效
+                        <div className="border rounded-lg p-3 space-y-2">
+                          <div className="text-xs text-muted-foreground">
+                            视频已落盘，可随时下载。浏览器可能弹"允许多文件下载"提示，点允许。
                           </div>
-                          <Button size="lg" variant="destructive" className="w-full h-11 text-base"
+                          <Button size="lg" variant="default" className="w-full h-10 text-sm"
                             onClick={() => vids.forEach((v, i) => setTimeout(() => downloadAsset(v.url, v.filename), i * 400))}>
                             ⬇ 一键下载全部 {vids.length} 段 t2v 视频
                           </Button>
@@ -4648,7 +4520,7 @@ export default function SkuPipelinePage() {
                             <video src={r.video_url} controls className="w-full rounded border" preload="metadata" />
                           ) : r.dry_run ? (
                             <div className="text-xs p-2 border border-blue-300 rounded bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300">
-                              🔍 预览模式（未真跑 seedance）· 时长 {r.duration_s || '?'}s
+                              🔍 预览模式（干跑，未调 Veo）· 时长 {r.duration_s || '?'}s
                             </div>
                           ) : (
                             <div className="text-xs text-muted-foreground italic">无视频 url</div>
@@ -4656,7 +4528,7 @@ export default function SkuPipelinePage() {
                           {r.prompt && (
                             <details className="text-xs" open={!!r.dry_run}>
                               <summary className="cursor-pointer text-muted-foreground">
-                                ▼ 实际喂 seedance 的 prompt（t2v 模式）
+                                ▼ 实际喂 Veo 3.1 的 prompt（t2v 模式）
                               </summary>
                               <pre className="mt-1 p-2 bg-muted/50 rounded whitespace-pre-wrap text-[10px]">{r.prompt}</pre>
                             </details>
