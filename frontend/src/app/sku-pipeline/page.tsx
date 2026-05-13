@@ -350,7 +350,9 @@ export default function SkuPipelinePage() {
   const [selectedScenes7, setSelectedScenes7] = useState<Set<number>>(new Set())
   const [duration7i, setDuration7i] = useState<number>(8)
   const [aspect7i, setAspect7i] = useState('9:16')
+  const [useLastFrame7, setUseLastFrame7] = useState(true)
   const [extraSuffix7i, setExtraSuffix7i] = useState('')
+  const [negativeSuffix7i, setNegativeSuffix7i] = useState('')
   const [running7i, setRunning7i] = useState(false)
 
   type VideoSegResp = {
@@ -399,7 +401,11 @@ export default function SkuPipelinePage() {
   const [aspect7t, setAspect7t] = useState('9:16')
   const [characterAnchor7t, setCharacterAnchor7t] = useState('')
   const [generatingAnchor7t, setGeneratingAnchor7t] = useState(false)
+  const [faceRefs7t, setFaceRefs7t] = useState('')
+  const [productRefs7t, setProductRefs7t] = useState('')
+  const [uploadingProductRef7t, setUploadingProductRef7t] = useState(false)
   const [extraSuffix7t, setExtraSuffix7t] = useState('')
+  const [negativeSuffix7t, setNegativeSuffix7t] = useState('')
   const [running7t, setRunning7t] = useState(false)
   const [resp7t, setResp7t] = useState<VideoSegResp | null>(null)
 
@@ -954,7 +960,9 @@ export default function SkuPipelinePage() {
           scene_nums,
           aspect_ratio: aspect7i,
           duration_s: duration7i,
+          use_last_frame: useLastFrame7,
           extra_prompt_suffix: extraSuffix7i || null,
+          negative_prompt: negativeSuffix7i.trim() || null,
           dry_run: dryRun,
         }),
       })
@@ -1011,6 +1019,8 @@ export default function SkuPipelinePage() {
         selectedScenes7t.size === 0 || selectedScenes7t.size === totalScenes
           ? undefined
           : Array.from(selectedScenes7t)
+      const face_refs = faceRefs7t.split(/\n/).map(s => s.trim()).filter(Boolean)
+      const product_refs = productRefs7t.split(/\n/).map(s => s.trim()).filter(Boolean)
       const res = await fetch('/api/omni/sku-pipeline/video-generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1021,7 +1031,10 @@ export default function SkuPipelinePage() {
           duration_s: duration7t,
           force_t2v: true,
           character_anchor: characterAnchor7t.trim() || null,
+          face_refs: face_refs.length ? face_refs : null,
+          product_refs: product_refs.length ? product_refs : null,
           extra_prompt_suffix: extraSuffix7t || null,
+          negative_prompt: negativeSuffix7t.trim() || null,
           dry_run: dryRun,
         }),
       })
@@ -3924,6 +3937,10 @@ export default function SkuPipelinePage() {
                   <details className="text-sm" open>
                     <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 视频参数</summary>
                     <div className="mt-2 space-y-3">
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="checkbox" checked={useLastFrame7} onChange={e => setUseLastFrame7(e.target.checked)} />
+                        <span>串场：下一段图自动当本段结束帧（Veo last_frame，衔接过渡更自然）</span>
+                      </label>
                       <div>
                         <label className="text-xs font-medium">画幅（Veo 3.1 仅支持竖屏 / 横屏）</label>
                         <select className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1" value={aspect7i} onChange={e => setAspect7i(e.target.value)}>
@@ -3938,8 +3955,12 @@ export default function SkuPipelinePage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs font-medium">额外 prompt 后缀（运镜 hint，全段共用）</label>
+                        <label className="text-xs font-medium">正向 prompt 后缀（运镜 hint，全段共用）</label>
                         <Textarea value={extraSuffix7i} onChange={e => setExtraSuffix7i(e.target.value)} rows={2} className="text-xs mt-1" placeholder="如：slow handheld motion, warm cinematic lighting" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium">负向 prompt（negative_prompt，全段共用）</label>
+                        <Textarea value={negativeSuffix7i} onChange={e => setNegativeSuffix7i(e.target.value)} rows={2} className="text-xs mt-1" placeholder="如：blurry, distorted hands, logo, text, watermark" />
                       </div>
                     </div>
                   </details>
@@ -4430,8 +4451,80 @@ export default function SkuPipelinePage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs font-medium">额外 prompt 后缀（全段共用）</label>
+                        <label className="text-xs font-medium">正向 prompt 后缀（全段共用）</label>
                         <Textarea value={extraSuffix7t} onChange={e => setExtraSuffix7t(e.target.value)} rows={2} className="text-xs mt-1" placeholder="如：slow handheld motion, warm cinematic tone" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium">负向 prompt（negative_prompt，全段共用）</label>
+                        <Textarea value={negativeSuffix7t} onChange={e => setNegativeSuffix7t(e.target.value)} rows={2} className="text-xs mt-1" placeholder="如：blurry, distorted hands, logo, text, watermark" />
+                      </div>
+                    </div>
+                  </details>
+                )}
+
+                {/* t2v 参考图（Veo reference_images ASSET 类型，与 first_frame 互斥，t2v 可用） */}
+                {script6Id && (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-sm font-medium text-muted-foreground">▼ 参考图（Veo reference_images · t2v 模式专用）</summary>
+                    <div className="mt-2 space-y-3">
+                      <div className="text-[11px] text-muted-foreground p-2 border border-dashed rounded">
+                        Veo 3.1 reference_images（ASSET 类型）：传入角色脸 + 产品图，Veo 在生成时参考风格/外观。
+                        仅 t2v 模式有效；i2v 模式（7.1 tab）与 first_frame 互斥，传了也不生效。
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium">人脸参考图（每行一个 url / data: URI）</label>
+                        <Textarea
+                          value={faceRefs7t}
+                          onChange={e => setFaceRefs7t(e.target.value)}
+                          rows={3}
+                          className="text-xs mt-1 font-mono"
+                          placeholder="https://... 或 data:image/jpeg;base64,..."
+                        />
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-medium">产品参考图（每行一个 url）</label>
+                          <label className={`text-xs cursor-pointer hover:underline ${uploadingProductRef7t ? 'text-muted-foreground' : 'text-primary'}`}>
+                            {uploadingProductRef7t ? <Loader2 className="inline w-3 h-3 animate-spin" /> : '⬆ 上传'}
+                            <input
+                              type="file"
+                              multiple
+                              accept="image/png,image/jpeg,image/webp"
+                              className="hidden"
+                              disabled={uploadingProductRef7t}
+                              onChange={async e => {
+                                const files = Array.from(e.target.files || [])
+                                if (!files.length) return
+                                setUploadingProductRef7t(true)
+                                const uploaded: string[] = []
+                                for (const f of files) {
+                                  try {
+                                    const fd = new FormData()
+                                    fd.append('file', f)
+                                    const r = await fetch('/api/omni/sku-pipeline/upload-product-ref', { method: 'POST', body: fd })
+                                    const d = await r.json()
+                                    if (d.success && d.url) uploaded.push(d.url)
+                                  } catch (err) {
+                                    console.error('product ref upload failed', f.name, err)
+                                  }
+                                }
+                                if (uploaded.length) {
+                                  const existing = productRefs7t.trim()
+                                  setProductRefs7t(existing ? `${existing}\n${uploaded.join('\n')}` : uploaded.join('\n'))
+                                }
+                                setUploadingProductRef7t(false)
+                                e.target.value = ''
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <Textarea
+                          value={productRefs7t}
+                          onChange={e => setProductRefs7t(e.target.value)}
+                          rows={3}
+                          className="text-xs mt-1 font-mono"
+                          placeholder="https://... 或点「⬆ 上传」"
+                        />
                       </div>
                     </div>
                   </details>

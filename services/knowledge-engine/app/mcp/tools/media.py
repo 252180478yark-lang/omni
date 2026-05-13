@@ -1292,27 +1292,29 @@ async def generate_video_segments(
         scene_face_refs = _resolve_face_refs(scene)
         scene_product_refs = _resolve_product_refs(scene)
 
-        # 火山方舟硬约束（2026-05-11 实测）：first_frame 跟 reference_images 任何 model 互斥；
-        # 1.x 系列（含 1.5-pro-251215）只支持 t2v + i2v，不支持 r2v（reference_images）。
-        # → step 7 走 i2v 模式：first_frame 优先，reference_images 全清掉（face/product 锁脸
-        #   靠 step 6 分镜图本身已按 character_sheet 锁过脸间接传递）
-        # → 等 2.0 激活后看是否开放 r2v + i2v 混合（火山方舟可能仍互斥），届时再调
+        # reference_images 互斥约束（Veo + Seedance 行为不同）：
+        # - i2v 模式（first_frame 存在）：两者均不支持 reference_images（API 层互斥）
+        # - Veo t2v：reference_images ASSET 类型完全支持（人脸+产品）
+        # - Seedance t2v：face_refs 触发内容审查，清掉；product_refs 保留
+        # - Seedance 1.x：不支持 r2v，全清
+        _is_veo = provider == "veo"
         _model_supports_r2v = "seedance-2-" in (model or "")
         _refs_blocked_reason: str | None = None
-        if force_t2v and scene_face_refs:
-            # t2v 模式：人脸图（character_sheet / 手传 face_refs）传给 Seedance 会触发
-            # content_sensitive face 检测；character_anchor 文字锚点负责跨镜一致性，
-            # 不需要 reference_images 锁脸。产品图（product_refs）不含人脸，保留。
-            _refs_blocked_reason = "t2v_mode_skips_face_refs"
-            scene_face_refs = []
-        elif first_frame and (scene_face_refs or scene_product_refs):
+        if first_frame and (scene_face_refs or scene_product_refs):
+            # i2v 模式：所有 provider 的 first_frame + reference_images 均互斥
             _refs_blocked_reason = "first_frame_i2v_excludes_refs"
             scene_face_refs = []
             scene_product_refs = None
-        elif not _model_supports_r2v and (scene_face_refs or scene_product_refs):
+        elif not _is_veo and force_t2v and scene_face_refs:
+            # Seedance t2v：face_refs 含真人脸触发内容审查，清掉
+            _refs_blocked_reason = "t2v_mode_skips_face_refs"
+            scene_face_refs = []
+        elif not _is_veo and not _model_supports_r2v and (scene_face_refs or scene_product_refs):
+            # Seedance 1.x 不支持 r2v
             _refs_blocked_reason = "model_does_not_support_r2v"
             scene_face_refs = []
             scene_product_refs = None
+        # Veo t2v：scene_face_refs + scene_product_refs 直接透传 → ASSET reference_images
 
         if scene_product_refs:
             prompt = _append_strict_product_hint(
@@ -1347,7 +1349,7 @@ async def generate_video_segments(
                 data = done.get("data") or done
                 if data.get("status") in ("failed", "error"):
                     return {"scene_no": scene_no,
-                            "error": f"seedance {data.get('status')}: "
+                            "error": f"video_{data.get('status')}: "
                                      f"{data.get('error') or data.get('message') or ''}",
                             "prompt": prompt, "task_id": task_id}
                 video_url = data.get("video_url") or data.get("url")
@@ -1404,8 +1406,7 @@ async def generate_video_segments(
     success_count = sum(1 for r in results if r.get("asset_id"))
     error_count = sum(1 for r in results if r.get("error"))
 
-    cost_per = "¥15" if provider == "seedance" else "未知"
-    cost_estimate = f"~{len(sorted_scenes)} × {cost_per}"
+    cost_estimate = f"~{len(sorted_scenes)} 段（{provider}/{model}）"
 
     out = {
         "ok": True,

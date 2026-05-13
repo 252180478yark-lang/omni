@@ -43,8 +43,8 @@ def _clamp_duration(d: int) -> int:
     return 8
 
 
-def _decode_first_frame(data_uri: str) -> "object | None":
-    """base64 data: URI → google.genai.types.Image (for i2v first frame).
+def _decode_image(data_uri: str, label: str = "image") -> "object | None":
+    """base64 data: URI → google.genai.types.Image.
 
     Returns None if parsing fails or data_uri is empty.
     """
@@ -58,7 +58,40 @@ def _decode_first_frame(data_uri: str) -> "object | None":
         raw = base64.b64decode(b64_data)
         return genai_types.Image(image_bytes=raw, mime_type=mime)
     except Exception as exc:
-        logger.warning("veo: cannot decode first_frame data URI: %s", exc)
+        logger.warning("veo: cannot decode %s data URI: %s", label, exc)
+        return None
+
+
+# Keep old name as alias for callers
+_decode_first_frame = _decode_image
+
+
+def _decode_reference_images(ref_list: list[dict]) -> "list | None":
+    """Convert hub reference_images list → Veo VideoGenerationReferenceImage list.
+
+    ref_list entries: {"url": "data:image/...", "type": "face"|"product", ...}
+    All are mapped to ASSET reference_type (face + product consistency).
+    Returns None if list is empty or all entries fail to decode.
+    """
+    if not ref_list:
+        return None
+    try:
+        from google.genai import types as genai_types
+
+        results = []
+        for entry in ref_list:
+            url = entry.get("url") or entry.get("data") or ""
+            img = _decode_image(url, label=f"ref[{entry.get('type', '?')}]")
+            if img is not None:
+                results.append(
+                    genai_types.VideoGenerationReferenceImage(
+                        image=img,
+                        reference_type=genai_types.VideoGenerationReferenceType.ASSET,
+                    )
+                )
+        return results or None
+    except Exception as exc:
+        logger.warning("veo: cannot build reference_images: %s", exc)
         return None
 
 
@@ -105,12 +138,24 @@ class VeoProvider(BaseProvider):
 
         duration = _clamp_duration(int(kwargs.get("duration") or 8))
         aspect_ratio = str(kwargs.get("aspect_ratio") or kwargs.get("ratio") or "9:16")
-        first_frame_b64 = kwargs.get("first_frame") or None  # base64 data: URI
+        first_frame_b64 = kwargs.get("first_frame") or None
+        last_frame_b64 = kwargs.get("last_frame") or None
+        # reference_images: list[{"url": "data:...", "type": "face"|"product"}]
+        # Only used in t2v mode (mutually exclusive with first_frame/last_frame per Veo API)
+        reference_images_raw: list[dict] = list(kwargs.get("reference_images") or [])
+        negative_prompt = str(kwargs.get("negative_prompt") or "").strip() or None
+        generate_audio = bool(kwargs.get("generate_audio"))
+        resolution = str(kwargs.get("resolution") or "").strip() or None  # "720p" / "1080p"
         chosen_model = self._pick_model(model)
 
+        i2v = bool(first_frame_b64)
+        use_refs = not i2v and bool(reference_images_raw)
+
         logger.info(
-            "veo: submit model=%s duration=%ds aspect=%s i2v=%s",
-            chosen_model, duration, aspect_ratio, bool(first_frame_b64),
+            "veo: submit model=%s duration=%ds aspect=%s i2v=%s last_frame=%s refs=%d neg=%s audio=%s",
+            chosen_model, duration, aspect_ratio, i2v,
+            bool(last_frame_b64), len(reference_images_raw),
+            bool(negative_prompt), generate_audio,
         )
 
         video_bytes = await asyncio.to_thread(
@@ -120,6 +165,11 @@ class VeoProvider(BaseProvider):
             duration=duration,
             aspect_ratio=aspect_ratio,
             first_frame_b64=first_frame_b64 or "",
+            last_frame_b64=last_frame_b64 or "" if i2v else "",
+            reference_images_raw=reference_images_raw if use_refs else [],
+            negative_prompt=negative_prompt,
+            generate_audio=generate_audio,
+            resolution=resolution,
         )
 
         b64 = base64.b64encode(video_bytes).decode()
@@ -144,6 +194,11 @@ class VeoProvider(BaseProvider):
         duration: int,
         aspect_ratio: str,
         first_frame_b64: str,
+        last_frame_b64: str = "",
+        reference_images_raw: list = None,
+        negative_prompt: str | None = None,
+        generate_audio: bool = False,
+        resolution: str | None = None,
     ) -> bytes:
         """Synchronous Veo generation + poll. Run via asyncio.to_thread."""
         from google import genai
@@ -151,17 +206,34 @@ class VeoProvider(BaseProvider):
 
         client = genai.Client(api_key=self._get_api_key())
 
-        config = genai_types.GenerateVideosConfig(
-            aspect_ratio=aspect_ratio,
-            duration_seconds=duration,
-            number_of_videos=1,
-        )
+        first_frame = _decode_image(first_frame_b64, "first_frame") if first_frame_b64 else None
+        last_frame = _decode_image(last_frame_b64, "last_frame") if last_frame_b64 else None
+        ref_images = _decode_reference_images(reference_images_raw or [])
 
-        image = _decode_first_frame(first_frame_b64) if first_frame_b64 else None
+        config_kwargs: dict = {
+            "aspect_ratio": aspect_ratio,
+            "duration_seconds": duration,
+            "number_of_videos": 1,
+            "person_generation": "allow_adult",
+        }
+        if negative_prompt:
+            config_kwargs["negative_prompt"] = negative_prompt
+        if generate_audio:
+            config_kwargs["generate_audio"] = True
+        if resolution in ("720p", "1080p"):
+            config_kwargs["resolution"] = resolution
+        # last_frame only valid in i2v mode (when first_frame is set)
+        if last_frame is not None and first_frame is not None:
+            config_kwargs["last_frame"] = last_frame
+        # reference_images only valid when NOT using first_frame (t2v ref mode)
+        if ref_images and first_frame is None:
+            config_kwargs["reference_images"] = ref_images
+
+        config = genai_types.GenerateVideosConfig(**config_kwargs)
 
         generate_kwargs: dict = {"model": model, "config": config}
-        if image is not None:
-            generate_kwargs["image"] = image
+        if first_frame is not None:
+            generate_kwargs["image"] = first_frame
         if prompt:
             generate_kwargs["prompt"] = prompt
 
