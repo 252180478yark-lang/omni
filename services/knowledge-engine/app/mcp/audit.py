@@ -79,6 +79,7 @@ def tool_with_audit(
                 summary = summary_fn(args_dict) if summary_fn else f"{tool_name}({args_dict})"
                 decision = await human_gate.request_approval(
                     tool_call_id=tool_call_id,
+                    tool_name=tool_name,
                     summary=summary,
                     timeout_seconds=timeout_seconds or 3600,
                 )
