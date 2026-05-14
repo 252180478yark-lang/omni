@@ -308,6 +308,21 @@ async def generate_character_sheets(
         return {"ok": False, "error": "no_matching_roles", "role_ids": role_ids,
                 "hint": f"指定 role_ids={role_ids} 在脚本里没匹配；脚本含 role_ids={[s.get('role_id') for s in (script.get('character_sheets') or [])]}"}
 
+    # Enrich character sheets from upstream lineage
+    from app.services.pipeline_lineage import gather_lineage_context, build_audience_visual_hint
+    lineage_ctx = await gather_lineage_context(script)
+    _audience_hint = build_audience_visual_hint(lineage_ctx)
+    for _s in sheets:
+        # Fill missing v12 structured fields from audience context when step 5 used v11 format
+        if not _s.get("scene_type"):
+            _s["scene_type"] = "domestic_kitchen"  # safe default for food SKU
+        if not _s.get("realism_level"):
+            _s["realism_level"] = "documentary"
+        if not _s.get("life_context") and lineage_ctx.get("audience_persona"):
+            _s.setdefault("life_context", lineage_ctx["audience_persona"])
+        if _audience_hint and not _s.get("_audience_hint"):
+            _s["_audience_hint"] = _audience_hint  # pass-through for build_character_anchor_prompt
+
     # step 6.5 优先用 generate_character_sheets keyed override（老板可单独指定生脸模型）
     # 没配则回退 generate_image（跟 step 6 分镜图同款）
     # 检测方式：model 名包含 'image' / 'seedream' 才算 image-gen model；
@@ -321,25 +336,13 @@ async def generate_character_sheets(
     client = AIHubClient(timeout=180.0)
 
     def _build_character_prompt(sheet: dict) -> str:
-        """白底正面像统一 prompt 模板（character reference sheet 风格）。"""
-        age = (sheet.get("age") or "").strip()
-        gender_zh = (sheet.get("gender") or "").strip()
-        gender_en = "woman" if gender_zh == "女" else "man" if gender_zh == "男" else "person"
-        keywords = (sheet.get("appearance_keywords") or "").strip()
-        aura = (sheet.get("aura") or "").strip()
-        return (
-            f"A clean studio character reference portrait of a {age} {gender_en}. "
-            f"{keywords}. "
-            f"{aura} "
-            f"Front-facing pose, neutral expression, looking slightly past the camera, "
-            f"shoulders-up framing. "
-            f"Pure pristine white seamless background, even softbox lighting from the front, "
-            f"no harsh shadows, no environmental elements. "
-            f"Photo-realistic, sharp focus on face, natural skin tones, "
-            f"professional headshot quality. "
-            f"This is a character reference sheet for film production — strictly clean isolated subject on white. "
-            f"{aspect_ratio} aspect ratio."
-        )
+        """5-layer character anchor prompt（character reference sheet · step 6.5 用）。
+
+        v12+ 新格式：调 character_anchor.build_character_anchor_prompt，输出 ~400 词。
+        v11 旧格式（无 role/personality 字段）：自动回退，仍能生成可用 prompt。
+        """
+        from app.services.character_anchor import build_character_anchor_prompt
+        return build_character_anchor_prompt(sheet, for_portrait=True)
 
     async def _one(sheet: dict) -> dict:
         role_id = sheet.get("role_id")
@@ -505,6 +508,14 @@ async def generate_storyboard_images(
         if rid:
             role_to_gender[rid] = gender_en
 
+    # Lineage context for product visual accuracy + audience atmosphere
+    from app.services.pipeline_lineage import (
+        gather_lineage_context, build_product_visual_anchor, build_audience_visual_hint,
+    )
+    _lineage_ctx = await gather_lineage_context(script)
+    _product_anchor = build_product_visual_anchor(_lineage_ctx)
+    _audience_style = build_audience_visual_hint(_lineage_ctx)
+
     # 占位符翻译正则：character_sheet[role_id]（含可选空格）
     _CHAR_SHEET_REF_RE = re.compile(r"character_sheet\s*\[\s*([a-z_][a-z0-9_]*)\s*\]", re.I)
 
@@ -575,6 +586,21 @@ async def generate_storyboard_images(
             parts.append(deidentify_suffix)
         return "\n".join(parts).strip()
 
+    def _build_last_frame_prompt(scene: dict) -> str | None:
+        """尾帧 prompt：用 last_frame_prompt 字段；缺失时返 None（跳过尾帧生成）。"""
+        lp = (scene.get("last_frame_prompt") or "").strip()
+        if not lp:
+            return None
+        manual_count = len(face_refs or [])
+        lp = _replace_char_sheet_refs(lp, scene, manual_count)
+        parts = [lp]
+        if extra_prompt_suffix:
+            parts.append(extra_prompt_suffix)
+        # 尾帧也注入产品视觉锚（不注入 audience style，尾帧是视觉桥接不是气氛渲染）
+        if _product_anchor and scene.get("product_appearance"):
+            parts.append(f"[Product visual reference: {_product_anchor}]")
+        return "\n\n".join(parts).strip()
+
     def _append_strict_product_hint(prompt: str, face_count: int, product_count: int) -> str:
         """如果该段真的传了产品参考图，prompt 末尾追加技术性指代说明，让 OpenAI 严格画产品外观。
 
@@ -618,25 +644,17 @@ async def generate_storyboard_images(
             return None  # 强制不传
         return list(product_refs) if product_refs else None
 
-    async def _one(scene: dict) -> dict:
-        scene_no = scene.get("scene_no")
-        prompt = _build_prompt(scene)
-        if not prompt:
-            return {"scene_no": scene_no, "error": "scene_visual_or_image_prompt_empty"}
-        scene_face_refs = _resolve_face_refs(scene)
-        scene_product_refs = _resolve_product_refs(scene)
-        # 如果该段真的传产品参考图，追加严格参考说明（让 OpenAI 知道 image[N] 是产品要照画）
-        if scene_product_refs:
-            prompt = _append_strict_product_hint(
-                prompt,
-                face_count=len(scene_face_refs or []),
-                product_count=len(scene_product_refs),
-            )
+    async def _gen_frame(prompt: str, scene: dict) -> tuple[str | None, str | None]:
+        """生成单帧图像，返回 (url, error_msg)。"""
+        s_face = _resolve_face_refs(scene)
+        s_prod = _resolve_product_refs(scene)
+        if s_prod:
+            prompt = _append_strict_product_hint(prompt, face_count=len(s_face or []), product_count=len(s_prod))
         try:
             resp = await client.generate_image_v2(
                 prompt=prompt,
-                face_refs=scene_face_refs or None,
-                product_refs=scene_product_refs,
+                face_refs=s_face or None,
+                product_refs=s_prod,
                 style_refs=style_refs,
                 aspect=aspect_ratio,
                 n=1,
@@ -645,39 +663,89 @@ async def generate_storyboard_images(
                 quality=model_cfg.get("quality"),
                 size=model_cfg.get("size"),
             )
-            urls: list[str] = []
             for img in resp.get("images") or resp.get("data") or []:
                 u = img.get("url") or img.get("image_url") or img.get("b64_json", "")
                 if u and not u.startswith(("http", "data:")):
                     u = f"data:image/png;base64,{u}"
                 if u:
-                    urls.append(u)
-            if not urls:
-                return {"scene_no": scene_no, "error": "no_image_returned", "prompt": prompt}
-            url = urls[0]
-            asset_id = await save_storyboard_asset(
+                    return u, None
+            return None, "no_image_returned"
+        except Exception as exc:
+            return None, f"{type(exc).__name__}: {exc}"
+
+    async def _one(scene: dict) -> dict:
+        scene_no = scene.get("scene_no")
+
+        # 首帧 prompt（image_prompt，语义已改为入帧静止态）
+        first_prompt = _build_prompt(scene)
+        if not first_prompt:
+            return {"scene_no": scene_no, "error": "scene_visual_or_image_prompt_empty"}
+        # 注入血缘上下文
+        lineage_parts: list[str] = []
+        if _product_anchor and scene.get("product_appearance"):
+            lineage_parts.append(f"[Product visual reference: {_product_anchor}]")
+        if _audience_style:
+            lineage_parts.append(f"[Audience visual context: {_audience_style}]")
+        if lineage_parts:
+            first_prompt = first_prompt.rstrip() + "\n" + " ".join(lineage_parts)
+
+        # 尾帧 prompt（last_frame_prompt）
+        last_prompt = _build_last_frame_prompt(scene)
+
+        # 并行生成首帧 + 尾帧
+        tasks = [_gen_frame(first_prompt, scene)]
+        if last_prompt:
+            tasks.append(_gen_frame(last_prompt, scene))
+
+        frame_results = await asyncio.gather(*tasks)
+        first_url, first_err = frame_results[0]
+        last_url, last_err = (frame_results[1] if len(frame_results) > 1 else (None, None))
+
+        if first_err and not first_url:
+            return {"scene_no": scene_no, "error": first_err, "prompt": first_prompt}
+
+        # 保存首帧（image_first）
+        first_asset_id = await save_storyboard_asset(
+            sku_id=script["sku_id"],
+            asset_type="image_first",
+            script_id=script_id,
+            audience_pack_id=script.get("audience_pack_id"),
+            audience_record_id=script.get("audience_record_id"),
+            matrix_run_id=script.get("matrix_run_id"),
+            scene_no=scene_no,
+            file_url=first_url,
+            prompt=first_prompt,
+        )
+        result: dict = {
+            "scene_no": scene_no,
+            "asset_id": first_asset_id,
+            "file_url": first_url,
+            "prompt": first_prompt,
+            "face_refs_used": _resolve_face_refs(scene),
+            "product_refs_used": _resolve_product_refs(scene) or [],
+            "characters_in_scene": scene.get("characters_in_scene") or [],
+            "product_appearance": scene.get("product_appearance"),
+        }
+
+        # 保存尾帧（image_last）
+        if last_url:
+            last_asset_id = await save_storyboard_asset(
                 sku_id=script["sku_id"],
-                asset_type="image",
+                asset_type="image_last",
                 script_id=script_id,
                 audience_pack_id=script.get("audience_pack_id"),
                 audience_record_id=script.get("audience_record_id"),
                 matrix_run_id=script.get("matrix_run_id"),
                 scene_no=scene_no,
-                file_url=url,
-                prompt=prompt,
+                file_url=last_url,
+                prompt=last_prompt,
             )
-            return {
-                "scene_no": scene_no,
-                "asset_id": asset_id,
-                "file_url": url,
-                "prompt": prompt,
-                "face_refs_used": scene_face_refs,
-                "product_refs_used": scene_product_refs or [],
-                "characters_in_scene": scene.get("characters_in_scene") or [],
-                "product_appearance": scene.get("product_appearance"),
-            }
-        except Exception as exc:
-            return {"scene_no": scene_no, "error": f"{type(exc).__name__}: {exc}", "prompt": prompt}
+            result["last_frame_asset_id"] = last_asset_id
+            result["last_frame_url"] = last_url
+        elif last_err:
+            result["last_frame_error"] = last_err
+
+        return result
 
     results = await asyncio.gather(*(_one(s) for s in scenes))
     success_count = sum(1 for r in results if r.get("asset_id"))
@@ -909,22 +977,31 @@ async def generate_video_segments(
         return {"ok": False, "error": "no_matching_scenes", "scene_nums": scene_nums,
                 "hint": f"指定 scene_nums={scene_nums} 在脚本里没匹配；脚本含 scene_no={[s.get('scene_no') for s in (script.get('scenes') or [])]}"}
 
-    # 拉同 script 的 image asset（step 6 出的分镜图）→ scene_no → first_frame url
-    # 同一 scene 可能跑多次累积多张图 → 优先用 adopted 那张，fallback 最新 draft
-    image_assets = await list_assets(script_id=script_id, asset_type="image", limit=200)
-    # list_assets 已按 scene_no + created_at DESC 排序，相同 scene_no 第一张是最新
+    # 拉首帧：优先 image_first（新架构），fallback image（旧脚本兼容）
     from collections import defaultdict
-    by_scene: dict[int, list[dict]] = defaultdict(list)
-    for a in image_assets:
-        sn = a.get("scene_no")
-        if sn is not None and a.get("file_url"):
-            by_scene[int(sn)].append(a)
-    scene_to_first_frame: dict[int, str] = {}
-    for sn, assets in by_scene.items():
-        # 优先 adopted（采纳那张），fallback 最新 draft
-        adopted = [x for x in assets if x.get("status") == "adopted"]
-        chosen = adopted[0] if adopted else assets[0]
-        scene_to_first_frame[sn] = chosen["file_url"]
+    image_first_assets = await list_assets(script_id=script_id, asset_type="image_first", limit=200)
+    image_assets = await list_assets(script_id=script_id, asset_type="image", limit=200)
+
+    def _pick_best(asset_list: list[dict]) -> dict[int, str]:
+        by: dict[int, list[dict]] = defaultdict(list)
+        for a in asset_list:
+            sn = a.get("scene_no")
+            if sn is not None and a.get("file_url"):
+                by[int(sn)].append(a)
+        out: dict[int, str] = {}
+        for sn, items in by.items():
+            adopted = [x for x in items if x.get("status") == "adopted"]
+            out[sn] = (adopted[0] if adopted else items[0])["file_url"]
+        return out
+
+    scene_to_first_frame: dict[int, str] = _pick_best(image_first_assets)
+    # fallback：旧脚本只有 image 类型
+    for sn, url in _pick_best(image_assets).items():
+        scene_to_first_frame.setdefault(sn, url)
+
+    # 尾帧（image_last）
+    image_last_assets = await list_assets(script_id=script_id, asset_type="image_last", limit=200)
+    scene_to_last_frame: dict[int, str] = _pick_best(image_last_assets)
 
     # 校验：要跑的 scene_no 必须都有 image asset；缺哪几段先提示
     # dry_run / force_t2v 跳过（不依赖分镜图）
@@ -954,6 +1031,15 @@ async def generate_video_segments(
         url = a.get("file_url")
         if role and url and role not in role_to_url:
             role_to_url[role] = url
+
+    # Lineage context for video motion/atmosphere enrichment
+    from app.services.pipeline_lineage import (
+        gather_lineage_context, build_product_visual_anchor,
+        build_audience_visual_hint, build_selling_point_motion_hint,
+    )
+    _lineage_ctx_v = await gather_lineage_context(script)
+    _product_anchor_v = build_product_visual_anchor(_lineage_ctx_v)
+    _audience_style_v = build_audience_visual_hint(_lineage_ctx_v)
 
     # 角色元信息：role_id → {zh_name, gender_en, gender_zh}
     # 来源 pipeline.scripts.character_sheets（step 5 LLM 写的，含中文名）
@@ -1029,35 +1115,18 @@ async def generate_video_segments(
         return ("speech", cleaned)
 
     def _build_prompt(scene: dict, *, has_last_frame: bool, is_t2v: bool = False) -> str:
-        """seedance prompt（i2v / t2v 双模式 · 火山方舟官方推荐结构 · 严格参考 step 5）。
+        """Veo / Seedance 视频 prompt（i2v / t2v 双模式）。
 
-        参考资料：
-        - 火山方舟《Seedance-1.0-pro 提示词指南》(docs/82379/1631633)
-        - 社区《1940 个 Seedance 2.0 prompt 总结》8 种实战写法
-        - apiyi.com Seedance 2.0 Ultimate Prompt Guide
+        Veo i2v 模式（首帧+尾帧）：
+        - 首帧/尾帧已包含全部视觉信息（人脸/产品/场景），prompt 只描述运动过程
+        - 优先用 scene.motion_prompt（step 5 专门为 Veo 生成的运动描述）
+        - 人脸/产品一致性由两帧图像本身保证，无需 reference_images（Veo i2v 不支持混用）
+        - 强一致性约束：maintain exact appearance of all subjects from first frame
 
-        i2v 模式核心认知（跟 t2v 完全不同）：
-        - 首帧图本身已包含构图/光线/色调/角色外观全部视觉信息 → prompt 不重复
-        - 重点：motion（动作）+ camera（镜头）+ 一致性强调 + 转场过渡 + negative prompt
+        t2v 模式（无帧）：
+        - 用 image_prompt 完整描述场景 + character_anchor 前置注入角色描述
 
-        t2v 模式核心认知：
-        - 无首帧参考 → 必须用 image_prompt 把场景/角色外观描述完整
-        - character_anchor 前置注入统一角色描述（调用层加，非本函数职责）
-        - 去掉"画面延续"块，改为"场景"完整描述；negative 去掉"首帧漂移"类约束
-
-        严格参考 step 5 创意素材（10 字段全用 / 不丢任何标注）：
-          time_range / characters_in_scene / visual / change_point / shot /
-          dialog (区分对白/画外音/字幕 3 类) / product_appearance
-          + image_prompt（v10 老脚本兜底）
-
-        dialog 字段处理（老板硬规则："如果有台词，可以没声音，但要有口型变化"）：
-          - kind='speech' 对白 → 画面中说话角色嘴部自然张合（无音轨，纯视觉）
-          - kind='voiceover' 画外音/独白 → 角色嘴部静止（后期配画外音）
-          - kind='subtitle' 屏幕字幕 → 角色嘴部静止 + 视频本身不渲染字幕文字（后期合成）
-
-        sound 字段不喂（seedance 无 TTS + omni 无配音管线 feedback_no_recording_pipeline）。
-
-        v10 老脚本无中文字段时回退 image_prompt + 占位翻译（兼容性兜底）。
+        dialog 字段三类：speech（嘴动）/ voiceover（嘴静）/ subtitle（嘴静不渲染字幕）
         """
         tr = (scene.get("time_range") or f"0-{duration_s}s").strip()
         visual = (scene.get("visual") or "").strip()
@@ -1099,25 +1168,34 @@ async def generate_video_segments(
             if action_pieces:
                 parts.append("动作：" + "；".join(action_pieces))
         else:
-            # ── i2v 模式：画面延续块 + 动作──
+            # ── i2v 模式（Veo 首帧→尾帧）：一致性锁 + motion_prompt 驱动 ──
+            # 人脸/产品/场景一致性由首尾两帧图像保证，prompt 只描述运动过程
             if chars:
                 char_labels = "、".join(_zh_role_label(c) for c in chars)
                 parts.append(
-                    f"画面延续：基于参考首帧生成动画，画面中的{char_labels}保持五官、发型、服装、神态完全不变；"
-                    f"沿用首帧的构图、空间环境、光线方向、色温、整体色调"
+                    f"Consistency lock: maintain exact face, hair, clothing, expression of {char_labels} "
+                    f"as shown in first frame — no identity drift, no appearance change across frames. "
+                    f"Maintain identical product design, label, color. "
+                    f"Maintain scene environment, lighting direction, color temperature from first frame."
                 )
             else:
                 parts.append(
-                    "画面延续：基于参考首帧生成动画，沿用首帧的构图、空间环境、光线方向、色温、整体色调"
+                    "Consistency lock: maintain identical product design, label, color, scene environment, "
+                    "lighting direction and color temperature as shown in first frame."
                 )
 
-            action_pieces2: list[str] = []
-            if visual:
-                action_pieces2.append(visual)
-            if change and change not in visual:
-                action_pieces2.append(f"动作衔接点：{change}")
-            if action_pieces2:
-                parts.append("动作：" + "；".join(action_pieces2))
+            # motion_prompt 优先（step 5 专为 Veo 生成），fallback visual + change_point
+            motion = (scene.get("motion_prompt") or "").strip()
+            if motion:
+                parts.append(f"Motion: {motion}")
+            else:
+                action_pieces2: list[str] = []
+                if visual:
+                    action_pieces2.append(visual)
+                if change and change not in visual:
+                    action_pieces2.append(change)
+                if action_pieces2:
+                    parts.append("Motion: " + "; ".join(action_pieces2))
 
         # ── 镜头（两种模式共用）──
         if shot:
@@ -1257,9 +1335,12 @@ async def generate_video_segments(
         # force_t2v 时 last_frame 也无意义（没有分镜图序列）
         last_frame: str | None = None
         if use_last_frame and not force_t2v:
-            nxt_sn = next_scene_map.get(scene_no)
-            if nxt_sn is not None:
-                last_frame = scene_to_first_frame.get(nxt_sn)
+            # 优先用专属尾帧（step 6 双图模式产出）；无则 fallback 下一段首帧
+            last_frame = scene_to_last_frame.get(scene_no)
+            if not last_frame:
+                nxt_sn = next_scene_map.get(scene_no)
+                if nxt_sn is not None:
+                    last_frame = scene_to_first_frame.get(nxt_sn)
 
         # prompt 拼装需要知道 has_last_frame + 当前是否 t2v 模式
         prompt = _build_prompt(scene, has_last_frame=last_frame is not None, is_t2v=force_t2v)
@@ -1269,6 +1350,19 @@ async def generate_video_segments(
         # character_anchor：角色+场景描述前置注入，维持跨镜一致性（t2v 模式核心手段）
         if character_anchor:
             prompt = character_anchor.strip() + ". " + prompt
+
+        # Lineage enrichment for video
+        _v_scene_no = scene.get("scene_no") or 1
+        _sp_hint = build_selling_point_motion_hint(_lineage_ctx_v, _v_scene_no)
+        _v_lineage = []
+        if _product_anchor_v and scene.get("product_appearance"):
+            _v_lineage.append(f"product: {_product_anchor_v}")
+        if _audience_style_v:
+            _v_lineage.append(_audience_style_v)
+        if _sp_hint:
+            _v_lineage.append(_sp_hint)
+        if _v_lineage:
+            prompt = prompt.rstrip() + " — " + "; ".join(_v_lineage)
 
         # 每段从 scene.time_range 解析实际时长（无则 fallback duration_s 参数）
         # seedance clamp [4, 15]
@@ -3506,6 +3600,7 @@ async def generate_creative_pack(
     audience_record_id: str | None = None,
     audience_pack_id: str | None = None,
     extra_context: str | None = None,
+    num_variants: int = 1,
 ) -> dict:
     """生成 6 类素材之一：视频软广/种草/收割 + 图文收割 + 主图 + 详情页（sku-pipeline step 5）。
 
@@ -3528,10 +3623,11 @@ async def generate_creative_pack(
         audience_record_id: 推荐 — 从 SKU 人群池选 1 条
         audience_pack_id: 最完整 — 已跑过 step 4 圈包时挂上
         extra_context: 临时要求（"主推送礼场景""避开同行已饱和卖点"等）
+        num_variants: 并行生成几个方案（1-3，默认 1）；方案间 temperature 递增 +0.1
 
     Returns:
-        {ok, result: {script_md, script_id, kind, sku_id, audience_record_id?,
-                      audience_pack_id?, matrix_run_id?}, trace, next_step_hint}
+        {ok, result: {script_md, script_id, variants: [{script_id, script_md, variant_label,
+                      metrics, validation_warnings}], kind, sku_id, ...}, trace, next_step_hint}
     """
     if kind not in pipeline_lineage.CREATIVE_KINDS:
         return {
@@ -3644,56 +3740,71 @@ async def generate_creative_pack(
     )
     final_prompt = sys_msg + "\n\n" + user_msg
 
-    # === 调 LLM ===
+    # === 调 LLM（支持并行多方案）===
     model_cfg = get_model_for_tool("generate_creative_pack")
-    client = AIHubClient(timeout=300.0)
-    resp = await client.chat(
-        messages=[
-            {"role": "system", "content": sys_msg},
-            {"role": "user", "content": user_msg},
-        ],
-        provider=model_cfg.get("provider", "gemini"),
-        model=model_cfg.get("model", "gemini-3-flash-preview"),
-        temperature=model_cfg.get("temperature", 0.4),
-        max_tokens=model_cfg.get("max_tokens", 8000),
-        enforce_human_voice=True,
-    )
-    script_md = (
-        ((resp.get("choices") or [{}])[0].get("message") or {}).get("content")
-        or resp.get("text")
-        or resp.get("content")
-        or ""
-    ).strip()
+    _n = max(1, min(3, int(num_variants or 1)))
+    _base_temp = float(model_cfg.get("temperature", 0.4))
+    _provider = model_cfg.get("provider", "gemini")
+    _model = model_cfg.get("model", "gemini-3-flash-preview")
+    _max_tokens = model_cfg.get("max_tokens", 8000)
 
-    # === 拉 metrics_json + 跑后端硬约束校验（反"LLM 自检装饰") ===
-    # 同时 parse scenes 给 validator 用 time_range 实际算 max_gap（防 LLM 自报自欺）
-    metrics = _extract_metrics_json(script_md)
-    try:
-        parsed_scenes = pipeline_lineage.parse_scenes_from_script_md(script_md, kind)
-    except Exception:
-        parsed_scenes = []
-    if metrics is None:
-        validation_warnings = ["⚠ LLM 没输出 metrics_json 代码块（或 JSON 解析失败），无法跑硬约束校验。改 prompt 或重跑。"]
-    else:
-        validation_warnings = _validate_creative_metrics(metrics, kind, scenes=parsed_scenes)
+    async def _call_one(variant_idx: int) -> dict:
+        temp = round(_base_temp + variant_idx * 0.1, 2)
+        _client = AIHubClient(timeout=300.0)
+        _resp = await _client.chat(
+            messages=[
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            provider=_provider,
+            model=_model,
+            temperature=temp,
+            max_tokens=_max_tokens,
+            enforce_human_voice=True,
+        )
+        md = (
+            ((_resp.get("choices") or [{}])[0].get("message") or {}).get("content")
+            or _resp.get("text")
+            or _resp.get("content")
+            or ""
+        ).strip()
+        _metrics = _extract_metrics_json(md)
+        try:
+            _scenes = pipeline_lineage.parse_scenes_from_script_md(md, kind)
+        except Exception:
+            _scenes = []
+        if _metrics is None:
+            _warnings = ["⚠ LLM 没输出 metrics_json 代码块（或 JSON 解析失败），无法跑硬约束校验。改 prompt 或重跑。"]
+        else:
+            _warnings = _validate_creative_metrics(_metrics, kind, scenes=_scenes)
+        _sid = await pipeline_lineage.save_creative_pack(
+            sku_id=sku_id,
+            kind=kind,
+            script_md=md,
+            audience_record_id=audience_record_id,
+            audience_pack_id=audience_pack_id,
+            audience_run_id=audience_run_id,
+            matrix_run_id=matrix_run_id,
+            hooks=[],
+            scenes=[],
+            extra_context=extra_context,
+            model_provider=_provider,
+            model=_model,
+            final_prompt=final_prompt,
+            cost_estimate=f"1 quota call (~3-6k tokens, temp={temp})",
+        )
+        label = chr(ord("A") + variant_idx)  # "A", "B", "C"
+        return {"script_id": _sid, "script_md": md, "variant_label": f"方案 {label}",
+                "metrics": _metrics, "validation_warnings": _warnings}
 
-    # === 落库 ===
-    script_id = await pipeline_lineage.save_creative_pack(
-        sku_id=sku_id,
-        kind=kind,
-        script_md=script_md,
-        audience_record_id=audience_record_id,
-        audience_pack_id=audience_pack_id,
-        audience_run_id=audience_run_id,
-        matrix_run_id=matrix_run_id,
-        hooks=[],   # phase C v1 先存整段 markdown，后续切片再加 hooks/scenes 解析
-        scenes=[],
-        extra_context=extra_context,
-        model_provider=model_cfg.get("provider", "gemini"),
-        model=model_cfg.get("model", "gemini-3-flash-preview"),
-        final_prompt=final_prompt,
-        cost_estimate="1 quota call (~3-6k tokens)",
-    )
+    raw_variants = await asyncio.gather(*[_call_one(i) for i in range(_n)])
+    variants = list(raw_variants)
+
+    # backward-compat: expose first variant's fields at top level
+    script_id = variants[0]["script_id"]
+    script_md = variants[0]["script_md"]
+    metrics = variants[0]["metrics"]
+    validation_warnings = variants[0]["validation_warnings"]
 
     next_hint = {
         "video_soft_ad": "step 6 拿主脚本里的分镜清单调 generate_image 出 5-7 张分镜图",
@@ -3709,14 +3820,15 @@ async def generate_creative_pack(
         "result": {
             "script_md": script_md,
             "script_id": script_id,
+            "variants": variants,
             "kind": kind,
             "kind_label": _KIND_LABELS.get(kind, kind),
             "sku_id": sku_id,
             "audience_record_id": audience_record_id,
             "audience_pack_id": audience_pack_id,
             "matrix_run_id": matrix_run_id,
-            "metrics": metrics,  # LLM 自报的结构化指标（None = 没输出 JSON）
-            "validation_warnings": validation_warnings,  # 后端硬约束校验失败项；空 = 全过
+            "metrics": metrics,
+            "validation_warnings": validation_warnings,
         },
         "trace": build_trace(
             provider=model_cfg.get("provider", "gemini"),
@@ -3726,7 +3838,9 @@ async def generate_creative_pack(
                 "temperature": model_cfg.get("temperature", 0.4),
                 "max_tokens": model_cfg.get("max_tokens", 8000),
                 "kind": kind,
+                "num_variants": _n,
                 "script_id": script_id,
+                "script_ids": [v["script_id"] for v in variants],
                 "validation_warnings_count": len(validation_warnings),
                 "metrics_extracted": metrics is not None,
                 "lineage": {

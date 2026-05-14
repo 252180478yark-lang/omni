@@ -63,13 +63,73 @@
 
 ### 第 4 部分：分镜清单（4-6 段）
 
+**依次输出：① 节奏线 ② 全局视觉锚（写一次）③ 每段分镜 ④ 序列连贯性自检表**。
+
+> **节奏线**：{段1动作词} → {段2} → ... → {最后段}（用 4-6 个动作/情绪词一行概括收割节奏，如"亮卖点 → 算账对比 → 用法演示 → 强 CTA"）
+
+```
+#### 全局视觉锚（写一次，全部分镜的 image_prompt 复用此锚）
+- **G1 视觉风格锚**：xxx（商品感写实 / 电商质感，如 product commercial still / clean studio light）
+- **G2 场景一致性锚**：xxx（主拍摄场景固定描述 — 背景/桌面/道具风格，跨段原文完全复用相同词组）
+- **G3 调色锚**：xxx（主色调 + 饱和度风格，如：明亮高饱和、白底商业感、暖家居调）
+- **G4 光线锚**：xxx（主光性质 + 方向，如：正面柔光补光、自然侧窗光、环形补光）
+- **G5 产品一致性锚**：xxx（瓶型/包装朝向/标签颜色/比例固定描述）
+- **G7 真实感锚**：natural texture, no plastic surface, authentic food styling, no AI over-smooth
+- **G8 画幅**：9:16 vertical aspect
+- **G9 画质**：photo-realistic, commercial-quality, 4K, sharp focus
+- **G10 全局负向词**：AI face, plastic skin, oversaturated, distorted hands, extra fingers, blurry text, watermark, brand logo text, cartoon rendering, 3D render
+```
+
 每段：
+
 ```
 #### 分镜 N（X-Ys）
-- **画面**：xxx
+- **画面**：xxx（导演视角 · 20-50 字 · 主体动作/产品/字幕内容）
 - **台词或字幕**：xxx（≤ 15 字）
-- **首帧 hint**：xxx
+- **接下段**：xxx（这段结束时的状态/动作如何自然承接下一段开头；最后一段写「收尾」）
+- **image_prompt**（首帧 first frame · 80-150 字 · 英文为主）：本段**第 0 秒静止入帧**——主体在动作开始前的预备态。作为 Veo i2v 起始帧，不描述运动过程。
+  xxx
+- **last_frame_prompt**（尾帧 last frame · 英文为主 · 60-120字）：本段动作完成的**静止出帧**，作为 Veo i2v 结束帧。最后一段出帧为产品 hold 帧。
+  xxx
+- **motion_prompt**（运动描述 · 英文 · 20-60字）：首帧→尾帧之间的可见运动，喂给 Veo。只写动作+镜头，不写情绪。
+  xxx
 ```
+
+**image_prompt 71 维度框架（收割版 — 产品优先，节奏紧凑）**
+
+按**认知流顺序**连成 150-350 字段落（英文为主）：
+
+| 层 | 维度 | 收割场景常用值 |
+|---|---|---|
+| **A 镜头** | S1 景别 · S4 焦段 · S5 景深 | extreme close-up / medium shot, 50-85mm, f/2.8 |
+| **B 主体** | S8 动作 · S11 手部（食品必填）| pouring sauce over dish, fingers steady holding bottle |
+| **G 决定性瞬间** | S33 精确瞬间 | the instant sauce hits food surface, glossy stream mid-air |
+| **C 场景道具** | S13 场景 · S15 关键道具 · S17 空气感 | clean white marble counter, two sauce bottles side by side, thin steam |
+| **D 光线** | S19 主光 · S21 色温 | front soft-box diffused light, 5500K neutral white |
+| **E 色彩** | S24 主色调 · S25 饱和度 | bright clean commercial palette, vivid saturation |
+| **F 构图** | S28 构图 · S29 产品位置 | centered composition, product occupying center-left third |
+| **H 质感** | S38 液体特性（食品必填）· S39 蒸汽 | viscous glossy soy flow, rich dark amber, thin wispng steam |
+| **J 情绪叙事** | S43 情绪基调 · S45 叙事功能 | confident urgency, conversion beat |
+| **K 技术** | S47 画幅 · S48 画质 · S49 本镜负向 | 9:16 vertical, 4K sharp · no price text overlay |
+| **L 参考图** | S51 产品（每段必填）| soy sauce bottle as product reference |
+
+**4 条硬约束**
+
+1. **产品每段必填**：收割视频产品始终在场，S51 产品参考每段都写
+2. **禁文字入画**：价格/利益点/CTA 是后期字幕叠加，image_prompt 不写任何文字
+3. **全局锚词组原文复用**：G2/G3/G4 关键词每段完全相同，只在景别/动作/构图上变化
+4. **禁 SD 风**：❌ `masterpiece, best quality, (weight:1.2), octane render`
+
+**序列连贯性自检（全部分镜写完后输出此表，任一否 → 修对应 image_prompt）**
+
+| # | 检查项 | 结论 |
+|---|---|---|
+| C1 | 产品一致性：每段 image_prompt 含 G5 产品锚 + S51 产品参考调用？ | 是/否 |
+| C2 | 场景一致性：G2 场景锚的关键词组每段完全相同，无背景漂移？ | 是/否 |
+| C3 | 光线连贯性：G4 光线锚的方向/色温全段一致？ | 是/否 |
+| C4 | 节奏递进：景别从中景→特写→CTA 大景，符合收割节奏线？ | 是/否 |
+| C5 | 剪辑衔接：相邻分镜存在动作匹配/产品连续性视觉连接？ | 是/否 |
+| C6 | 钩子帧：第 1 分镜 image_prompt 独立看就能传递卖点冲击力？ | 是/否 |
 
 ## 四、自检（输出前必过）
 
@@ -79,5 +139,8 @@
 - 价格/利益点话术：老板给了就用真实，没给就用通用，**没编假数据**？
 - 没 AI 化套话？
 - 卖点引 matrix 节号？
+- **叙事连贯**：每段结尾状态能自然接下一段开头，没跳跃感？
+- **image_prompt**：全部分镜有 image_prompt，C1-C6 序列自检全过？
+- [ ] last_frame_prompt 不为空，长度 [60,200] 字符
 
 任一项不过 → 改。

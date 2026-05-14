@@ -43,12 +43,11 @@ generate_image:
   size: "1152x2048"
 
 generate_character_sheets:
-  # step 6.5 角色定妆白底像（生脸）— 2026-05-12 老板单独指定 gpt-image-1.5
-  # 跟 step 6 分镜图（gemini-3-pro）解耦，定妆照用 OpenAI 出更稳的白底正面像
-  # 之前已 verify 通过的 1.5 不需要再 verify，直接用
-  # 回切候选：gemini-3-pro-image-preview（跟 step 6 同款）
-  provider: openai
-  model: gpt-image-1.5
+  # step 6.5 角色定妆白底像（生脸）— 2026-05-14 切 doubao-seedream-5-0-lite
+  # 回切候选：gemini-3.1-flash-image-preview / dall-e-3 / gpt-image-1.5
+  provider: gemini
+  model: gemini-3.1-flash-image-preview
+  size: "1024x1024"
 
 generate_video:
   # 2026-05-13 老板切 Veo 3.1（Google Gemini API）：

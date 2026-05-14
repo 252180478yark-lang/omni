@@ -670,27 +670,33 @@
 
 ### 第 3.5 部分：角色清单（character_sheet · 锁脸用 · 1-3 个）
 
-按本脚本涉及的固定角色（出场 ≥ 2 段的就要列），每个一段：
+按本脚本涉及的固定角色（出场 ≥ 2 段的就要列），每个一段。**v12 格式：8 结构字段 + 专属瑕疵，step 6.5 用 5-layer 规则引擎自动生成 ~400 词锁脸 prompt**：
 
 ```
 #### 角色 {role_id} · {简称}（英文 id，如 mother / daughter / friend / shopkeeper / insider）
-- **年龄**：xx 岁（精确到 5 岁带，如 60-65）
-- **性别**：女 / 男
-- **外貌关键词**（中英混合，5-8 个，**画师/图模型能直接画的具体描述**）：
-  hair / build / face shape / skin / clothing / aura
-  例：mid-60s, low gray bun, slim build, slightly hunched posture, gentle wrinkled face, soft warm complexion, traditional gray cotton-linen blouse, weathered hands
-- **气质 / 神韵**（1 句不写衣服细节，写"给人的感觉"）：
-  例：A retired mother whose love manifests through cooking but is now quietly defeated by aging taste buds.
+- **年龄**：62（精确整数）
+- **性别**：女
+- **体型**：average（slim / average / sturdy / heavy）
+- **族裔**：Chinese
+- **社会角色**：内行妈妈（一句话社会定位）
+- **生活语境**：退休、当家三十年（一句话）
+- **性格关键词**：安静的权威感、内敛（影响表情倾向）
+- **场景类型**：domestic_kitchen（domestic_kitchen / office_professional / outdoor_natural / cafe_social / studio_portrait）
+- **写实程度**：documentary（documentary / commercial / cinematic / casual）
+- **专属瑕疵**（2-3 个，决定角色唯一性 — 写具体解剖位置）：
+  - 左下颌颧骨下方 1cm 处一颗 3mm 深色老人斑
+  - 右眉上方 1.5cm 淡白旧横疤
 - **人群锚点**：来自第 0 部分人群画像哪句（如"30-50 岁夹心层女性 → 60+ 母亲是她们的关怀对象"）
 
 ```
 
 **强制规则**：
 1. 出场 ≥ 2 段的角色都必须列出（避免每段重复描外貌）
-2. 外貌关键词必须**具象到能画**（写"短卷发"不写"洋气"，写"棉麻衬衫"不写"得体"）
+2. **专属瑕疵必须写具体解剖位置**（"左下颌 1cm 处 3mm 老人斑"，不是"有些老年斑"）— 这是"这个具体的人"而不是"一个老太太"的关键
 3. 每个角色必须能从 [audience.name] 人群画像直接推出（不能编无依据的角色）
-4. **step 6.5 会拿这个清单先生成每个角色的白底正面像（asset_type='character_sheet'），后续 step 6 分镜图把对应 url 当 face_refs 实现锁脸**
+4. **step 6.5 会拿这个清单调 5-layer 规则引擎自动生成 ~400 词 character anchor prompt，白底正面像（asset_type='character_sheet'），后续 step 6 分镜图把对应 url 当 face_refs 实现锁脸**
 5. 角色 role_id 必须英文小写 + 下划线（让 step 6 程序化引用）
+6. 不要在 image_prompt 里重写外貌 — 用 `character_sheet[role_id]` 引用锁脸（锁脸靠 step 6.5 生成的参考图，不靠重复描述）
 
 ### 第 4 部分：分镜脚本（**主辅融合，不分段切**）
 
@@ -702,7 +708,25 @@
 - M1 Moment + **M3 Misconception/Standard 融合**（10-22s）— 真实生活瞬间里行家给出判断标准
 - M1 Closure + **M3 Default 融合**（22-30s）— 余韵画面 + "我自己用的就是这个"
 
-每个节点 10 字段（前 7 给老板/导演看，后 3 给图模型用）：
+**依次输出：① 叙事弧线 ② 全局视觉锚（写一次，全部节点继承）③ 每个节点 ④ 序列连贯性自检表**。
+
+> **叙事弧线**：{节点1情绪词} → {节点2情绪词} → ... → {最后节点情绪词}（用 4-6 个情绪/动作关键词一行概括全片情感路径，如"日常 → 疑惑 → 行家验货 → 认同 → 共鸣 → 行动"）
+
+```
+#### 全局视觉锚（写一次，全部节点的 image_prompt 复用此锚）
+- **G1 视觉风格锚**：xxx（写实电影感 / 胶片型号，如 Kodak Portra 400 / 摄影机暗示）
+- **G2 场景一致性锚**：xxx（主场景固定描述 — 家具/墙面/灯具/地板/窗户关键细节，跨段原文完全复用相同词组；明确切换场景时才换此锚）
+- **G3 调色锚**：xxx（色温 + 主色调 + 饱和度 + 对比度，如：3000K 暖色，暖琥珀-米白-原木，低饱和，中对比）
+- **G4 光线锚**：xxx（全片主光方向 + 性质 + 时段，如：镜头右侧窗光，柔射光，午后）
+- **G5 产品一致性锚**：xxx（瓶型/标签朝向/液体颜色/比例固定描述；脚本无产品则写"无"）
+- **G6 角色一致性锚**：xxx（有 character_sheet 后写"见 character_sheet[role_id]"；否则写主角外观）
+- **G7 真实感锚**：ordinary natural skin texture, visible pores and fine lines, no plastic skin, no AI face smoothing, authentic lived-in appearance
+- **G8 画幅**：9:16 vertical aspect
+- **G9 画质**：photo-realistic, cinematic, 4K, sharp focus
+- **G10 全局负向词**：AI face, plastic skin, oversaturated, distorted hands, extra fingers, blurry text, watermark, brand logo text, motion blur, cartoon rendering, 3D render
+```
+
+然后每个节点：
 
 ```
 #### 节点 N · {主辅融合点名}（{时间区间}）
@@ -712,62 +736,92 @@
 - **声音**：xxx（环境音 + BGM 节点）
 - **节点内核**：主模块 M{N} 的 {段名} + 辅模块 M{M} 的 {段名}
 - **变化点**：xxx（地板第 4 条 — 跟上一节点比变了什么）
+- **衔接下段**：xxx（本段最后 1-2s 的状态/动作/情绪 → 如何自然承接下一节点的开头；最后一段写「全片收尾」）
 - **真实身份披露细节**：xxx（如适用，中段必有）
 - **本段角色**：[role_id, role_id, ...]（引用第 3.5 部分的；可空 = 物件/环境特写无人物）
 - **产品出场**：true / false + 1 句理由（如"产品作为剧情道具自然在场"或"纯人物特写不出现产品"）
-- **image_prompt**（120-200 字 · image-ready · 中英混合 · 直接喂 chatgpt-image-2，不再二次加工）：
+- **image_prompt**（首帧 first frame · 100-200 字 · 英文为主）：本段**第 0 秒静止入帧**——角色/产品处于动作开始前的预备态，构图稳定，主体清晰。这张图将作为 Veo i2v 视频的起始帧。格式：镜头+主体位置+静止姿态+光线。**不描述动作过程**。
+  xxx
+- **last_frame_prompt**（尾帧 last frame · 英文为主 · 80-150字）：本段最后 0.5 秒的**静止出帧**——动作完成态，构图收势，作为 Veo i2v 的结束帧。若本段是最后一段，出帧应是产品或品牌标识的 hold 帧。
+  xxx
+- **motion_prompt**（运动描述 · 英文 · 30-80字）：首帧→尾帧之间的**可见运动过程**，喂给 Veo 视频模型。只写主体动作 + 镜头运动，不写情绪/叙事。
   xxx
 ```
 
-**image_prompt 11 维度模板（chatgpt-image-2 / DALL-E 3 官方推荐结构）**
+**image_prompt 71 维度框架（全局锚 G1-G10 + 单镜 S1-S52）**
 
-每段 image_prompt 必须用**自然语言长描述**（不是 SD 关键词堆砌），按以下 11 维度组织、用逗号/句子串成 1-2 段连贯英文（中文人物名+少量中文意境词可保留），覆盖 ≥ 9 个维度：
+每段 image_prompt 按**认知流顺序**（摄影机→主体→瞬间→场景→光色→构图→质感→情绪→技术→参考图）连成 200-400 字段落（英文为主，可保留少量中文意境词/道具名）：
 
-| # | 维度 | 内容 | 示例词 |
-|---|---|---|---|
-| 1 | **Style + Medium** | 摄影 / 电影感 / 纪录片 / 插画风等 | `cinematic photograph` / `documentary still` / `editorial portrait` |
-| 2 | **Shot type** | 景别 + 拍摄距离 | `close-up` / `medium shot` / `wide shot` / `over-the-shoulder` |
-| 3 | **Subject** | 主体（用 character_sheet 引用，禁重复外貌） | `character_sheet[mother]` / `character_sheet[insider]` |
-| 4 | **Action + Expression** | 当下动作 + 微表情 | `holding a soy sauce bottle, expression of quiet authority` |
-| 5 | **Setting** | 地点 + 时间 + 季节 + 氛围线索 | `at a modest family kitchen, late autumn evening` |
-| 6 | **Lighting** | 主光源方向 + 色温 K + 软硬 + 阴影 | `soft warm tungsten light from camera-right ~3000K, gentle shadows` |
-| 7 | **Composition** | 构图法 + 主体位置 + 画面留白 | `rule of thirds, subject occupying left third, negative space right` |
-| 8 | **Camera + Lens** | 焦距 mm + 光圈 f-stop + 景深 | `50mm lens, f/2.0, shallow depth of field` |
-| 9 | **Color + Tone** | 主色调 + 饱和度 + 对比度 | `slightly desaturated warm palette, amber and umber tones` |
-| 10 | **Mood** | 整体情绪氛围 | `quietly authoritative, contemplative, trustworthy` |
-| 11 | **Aspect ratio** | 必跟脚本元信息一致 | `9:16 vertical aspect` |
+| 层 | 维度 | 取值示例 |
+|---|---|---|
+| **A 镜头语法** | S1 景别 · S2 垂直角度 · S3 水平方位 · S4 焦段 · S5 景深 | medium close-up, eye-level, 3/4 side, 85mm, f/1.8 shallow DOF |
+| **B 主体** | S8 动作/姿态 · S9 表情/微表情 · S10 视线方向 · S11 手部细节（食品类必填）· S12 多人关系 | lifting chopsticks to lips, brow subtly furrowing, eyes fixed on food, weathered fingers |
+| **G 决定性瞬间** | S33 精确瞬间 · S35 张力源（即将/正在/刚刚）| the exact moment the first drop of soy sauce touches surface, droplet still airborne |
+| **C 场景道具** | S13 具体场景 · S15 关键道具 · S16 道具新旧感 · S17 空气感 · S18 背景元素 | worn clay pot on vintage wooden counter by window, thin steam wisping up, blurred paper-cut décor behind |
+| **D 光线（本段变化部分）** | S19 主光方向 · S20 性质 · S21 色温 · S22 光比 · S23 实用光源 | soft side-light from right window, diffused, ~3000K, medium contrast, pendant lamp warm glow in bokeh |
+| **E 色彩（本段变化部分）** | S24 主色调 · S25 饱和度 · S26 调色风格 · S27 点缀色 | warm amber and natural wood, slightly desaturated, cinematic orange-brown, deep soy-brown accent |
+| **F 构图** | S28 构图法则 · S29 主体位置 · S30 前中后景 · S31 留白方向 · S32 视线引导路径 | rule of thirds, subject left third, soft foreground bokeh, right negative space, gaze leads to hands then bowl |
+| **H 质感** | S36 主体材质 · S37 表面状态 · S38 液体特性（食品类必填）· S39 蒸汽 | matte ceramic bowl, slightly rough surface, glossy dark soy viscous flow, translucent thin steam |
+| **J 情绪叙事** | S43 情绪基调 · S44 氛围强度 · S45 叙事功能 · S46 隐喻/象征 | quietly tender, medium intensity, establishing beat, generational culinary memory |
+| **K 技术规格** | S47 画幅（继承 G8）· S48 画质（继承 G9）· S49 本镜负向词 | 9:16 vertical, 4K sharp focus · no product label this shot |
+| **L 参考图调用** | S50 人脸（有 character_sheet 时必填）· S51 产品（product_appearance=true 时必填）| character_sheet[mother] as face reference |
 
-**8 条强制规则（chatgpt-image-2 特性 + 跨段一致性）**
+**组装顺序（照此顺序连成段落，不做 key:value 列表）**：
 
-1. **角色 = character_sheet[role_id] 引用**，禁在 image_prompt 重写外貌
+```
+[G1 风格] [G2 场景] [G3 色调] [G7 真实感]   ← 每段前置复用全局锚简版
+  → [S1-S5 镜头语法]
+  → [S8 动作 · S9 表情 · S10 视线 · S11 手部]
+  → [S33-S35 决定性瞬间]
+  → [S13 场景 · S15 道具 · S16 新旧感 · S17 空气感]
+  → [S19-S23 光线] [S24-S27 色彩]
+  → [S28-S32 构图]
+  → [S36-S39 质感]
+  → [S43-S46 情绪叙事]
+  → [G8/S47 画幅] [G9/S48 画质]
+  → [G10 全局负向] [S49 本镜负向]
+  → [L50 人脸] [L51 产品]
+```
+
+**完整示例（种草中段 · 行家验货节点 · 71 维度版）**：
+
+```
+Cinematic documentary photograph shot on Kodak Portra 400 — a modest Chinese family kitchen with worn wooden countertop, single tungsten pendant lamp, beige plastered walls, dark wood cabinet in background.
+Medium close-up (85mm f/1.8), eye-level, 3/4 side view. character_sheet[insider] tilting a dark glass soy sauce bottle over a shallow ceramic tasting dish — the precise instant the first drop catches light before touching surface, fingers steady with quiet authority, slightly worn knuckles visible.
+Vintage dark glass bottle with handwritten-style label on worn wooden counter, thin steam rising from adjacent rice bowl, blurred pantry shelves in background. Soft side-light from right window, diffused, ~3000K, medium contrast, pendant lamp warm glow in bokeh.
+Warm amber and natural wood, slightly desaturated, cinematic soy-brown palette. Rule of thirds, bottle and hands left third, right negative space holds steam and bowl. Matte ceramic surface, glossy viscous soy flow catching light, dark caramel drop still airborne.
+Quietly authoritative, medium intensity, revelation beat, artisanal knowledge made tangible. 9:16 vertical aspect, photo-realistic 4K sharp focus. Without text overlay, without competitor product. character_sheet[insider] as face reference, soy sauce bottle as product reference.
+```
+
+**6 条硬约束（每段 image_prompt 写完必过）**
+
+1. **角色用 `character_sheet[role_id]` 引用，禁在 image_prompt 重写外貌**（外貌靠 face reference 锁定）
    ✅ `character_sheet[insider] holds the soy sauce bottle with steady hand...`
-   ❌ `A 50-year-old man with weathered hands holds the bottle...`（重复外貌 + 后续段不一致）
+   ❌ `A 50-year-old man with weathered hands holds the bottle...`
 
-2. **跨段一致性 5 元素必须全脚本共享同一组词**（保证多段图看起来是同一支视频，2026-05-12 加 Setting）：
-   - **Lighting 基调**（如 `warm tungsten ~3000K + soft pendant light`）
-   - **Camera/Lens 风格**（如 `50mm, f/2.0, shallow depth of field`）
-   - **Color palette**（如 `slightly desaturated amber/ochre/umber`）
-   - **Style + Medium**（如 `cinematic documentary photo-realistic`）
-   - **Setting（空间环境）★ 新加**（如 `a warm-toned modest home kitchen with wooden countertops, a hanging pendant lamp, beige plastered walls, dark wood dining table`）
-     - **默认所有分镜在同一空间内推进**（家具/墙面/灯具/地板/窗户的关键细节每段完全一致，跨段直接复用同一组描述词）
-     - 仅在脚本台词或视觉描述**明确声明切换场景**（如"切到院子"/"转到隔壁房间"/"3 个月后的同一厨房"）时才换 Setting
-     - 反例：第 1 段写 `wooden dining table` 第 3 段写 `marble kitchen island`（家具变了）= 同一脚本失败
-   每段只在 Shot type / Subject action / Composition / Mood 上变化
+2. **全局锚词组原文复用**：G2 场景锚、G3 调色锚、G4 光线锚的关键词每段**完全相同词组**（不换近义词，不改顺序）；只在景别/动作/构图/情绪上变化
 
-3. **product_appearance=false 时禁提产品**（连背景里、连"reminiscent of soy sauce bottle"都不行）
+3. **product_appearance=false 时绝不提产品**（连 "reminiscent of bottle" 也不行）
 
-4. **chatgpt-image-2 不擅长画文字**：禁让画面里有字幕、对白、产品 logo 文字、品牌名汉字、价签、菜单等任何文字内容
+4. **禁文字入画**：不写字幕/产品 logo/品牌汉字/价签（后期合成，不走 image gen）
 
-5. **禁 SD 风提示词污染**：
-   - ❌ `masterpiece, best quality, 4k, 8k, ultra-detailed, hyperrealistic, octane render`
-   - ❌ `(weight:1.2)` LoRA-style 权重括号
-   - ❌ negative prompt 段（chatgpt-image-2 没 negative，用 "without X" 描述代替）
+5. **每段独立完整**：不写 "continuing from" / "same as before" / "接上段"（图模型无上下文记忆）
 
-6. **每段独立完整**：不写"接上段"/"continuing from previous shot"/"the same mother as before" — 图模型每段独立生成
+6. **禁 SD 风**：❌ `masterpiece, best quality, (weight:1.2), octane render, ultra-detailed, trending on artstation`
 
-7. **画幅词必跟脚本元信息一致** — 默认 `9:16 vertical aspect`（抖音竖版）
+**序列连贯性自检（全部节点写完后输出此表，任一否 → 回头修对应节点 image_prompt）**
 
-8. **prompt 整体 120-200 中英混合字符**（chatgpt-image-2 长描述吃，但 > 250 字易截断；< 120 信息不足）；优先英文写技术维度（lighting/camera/composition），中文写不可英译的意境
+| # | 检查项 | 结论 |
+|---|---|---|
+| C1 | 角色一致性：所有有人物的 image_prompt 均使用 character_sheet[role_id] 引用，未重写外貌？ | 是/否 |
+| C2 | 场景一致性：G2 场景锚的关键词组每段完全相同，无家具/墙面漂移？ | 是/否 |
+| C3 | 光线连贯性：G4 光线锚的方向/色温在同场景所有节点一致？ | 是/否 |
+| C4 | 色调连贯性：G3 调色锚色温/主色调全段统一，无冷暖跳变？ | 是/否 |
+| C5 | 产品一致性：每次 product_appearance=true 时 image_prompt 含 G5 产品锚描述？ | 是/否 |
+| C6 | 叙事节奏：全片景别分布（特写/中景/全景）符合情绪曲线节点顺序？ | 是/否 |
+| C7 | 剪辑衔接：相邻节点存在视线匹配/动作匹配/图形匹配的视觉连接？ | 是/否 |
+| C8 | 轴线规则：多人场景无跳轴？ | 是/否 |
+| C9 | 钩子帧：第 1 节点 image_prompt 独立看能钩住观众，不依赖剧情前情？ | 是/否 |
 
 ### 第 5 部分：3 个开头钩子变体
 
@@ -866,7 +920,7 @@
   "character_sheet_count": 2,
   "scenes_with_image_prompt_count": 6,
   "scenes_total_count": 6,
-  "image_prompt_avg_chars": 165,
+  "image_prompt_avg_chars": 325,
   "scene_product_appearance": [false, false, true, true, false, false]
 }
 ```
@@ -892,7 +946,8 @@
 image_prompt + 角色清单（W4-B 切片 14.4 phase D 加，给 step 6 分镜图直接喂用）：
 - `character_sheet_count` ≥ 1（出场 ≥ 2 段的角色都要列；通常 1-3 个）
 - `scenes_with_image_prompt_count` == `scenes_total_count`（每段都必须有 image_prompt 字段）
-- `image_prompt_avg_chars` 在 [120, 250] 区间（太短信息不够、太长 chatgpt-image-2 易截断）
+- `image_prompt_avg_chars` 在 [200, 450] 区间（71 维度框架要求 200-400 字；太短 = 信息不够，太长截断）
+- [ ] last_frame_prompt 不为空，长度 [60,200] 字符
 - `scene_product_appearance` 是 boolean 数组，长度 == `scenes_total_count`
   - 数组 true 计数应 ≤ `brand_total_mention_count`
   - true 计数不能 = 0（每个脚本至少 1 段产品出场，否则品牌不入画）

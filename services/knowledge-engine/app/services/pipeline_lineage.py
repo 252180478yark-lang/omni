@@ -889,12 +889,37 @@ _CHARACTER_HEADER_RE = re.compile(
     re.M,
 )
 _CHARACTER_FIELD_RES = {
-    "age":                  re.compile(r"\*\*\s*年龄\s*\*\*\s*[:：]\s*([^\n]+)"),
-    "gender":               re.compile(r"\*\*\s*性别\s*\*\*\s*[:：]\s*([^\n]+)"),
-    "appearance_keywords":  re.compile(r"\*\*\s*外貌关键词\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\Z)", re.S),
-    "aura":                 re.compile(r"\*\*\s*气质\s*[/／]?\s*神韵?\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\Z)", re.S),
-    "audience_anchor":      re.compile(r"\*\*\s*人群锚点\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\n#|\Z)", re.S),
+    # v12+ structured fields (Layer 1 of 5-layer character anchor framework)
+    "age":              re.compile(r"\*\*\s*年龄\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "gender":           re.compile(r"\*\*\s*性别\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "body_type":        re.compile(r"\*\*\s*体型\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "ethnicity":        re.compile(r"\*\*\s*族裔\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "role":             re.compile(r"\*\*\s*社会角色\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "life_context":     re.compile(r"\*\*\s*生活语境\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "personality":      re.compile(r"\*\*\s*性格关键词\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "scene_type":       re.compile(r"\*\*\s*场景类型\s*\*\*\s*[:：]\s*([^\n]+)"),
+    "realism_level":    re.compile(r"\*\*\s*写实程度\s*\*\*\s*[:：]\s*([^\n]+)"),
+    # v11 legacy fields (kept for backward compat with old scripts)
+    "appearance_keywords": re.compile(
+        r"\*\*\s*外貌关键词\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\Z)",
+        re.S,
+    ),
+    "aura": re.compile(
+        r"\*\*\s*气质\s*[/／]?\s*神韵?\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\Z)",
+        re.S,
+    ),
+    "audience_anchor":  re.compile(
+        r"\*\*\s*人群锚点\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\n#|\Z)",
+        re.S,
+    ),
 }
+
+# 专属瑕疵列表 — 抓 ** 专属瑕疵 ** 下的 bullet 行（负向前瞻排除 - ** 字段行）
+_CUSTOM_IMPERFECTIONS_SECTION_RE = re.compile(
+    r"\*\*\s*专属瑕疵\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*\n"
+    r"((?:[ \t]+-(?!\s*\*\*)[^\n]+\n?)+)",
+    re.S,
+)
 
 # 图文类 kind：每段图片 brief 简单格式（按 #### 图 N / #### 主图 N / #### 段 N）
 _GRAPHIC_SCENE_HEADER_RE = re.compile(
@@ -1006,13 +1031,14 @@ def _parse_video_scenes(text: str) -> list[dict[str, Any]]:
 def parse_character_sheets_from_script_md(script_md: str) -> list[dict[str, Any]]:
     """从 script_md 第 3.5 部分提取角色清单。
 
-    返回 [{role_id, name, age, gender, appearance_keywords, aura, audience_anchor}]。
+    v12+ 新格式返回 [{role_id, name, age, gender, body_type, ethnicity, role, life_context,
+                       personality, scene_type, realism_level, custom_imperfections,
+                       audience_anchor}]。
+    v11 旧格式兼容返回 [{role_id, name, age, gender, appearance_keywords, aura, audience_anchor}]。
     解析失败返 []，主流程不阻塞。
     """
     if not script_md or not script_md.strip():
         return []
-    # 截取第 3.5 部分到第 4 部分之间（防止抓到第 4/5 部分的别的 # 节点）
-    # 第 3.5 部分头：### 第 3.5 部分... 或 ### 第 3.5 部分：角色清单
     section_re = re.compile(r"^#{2,4}\s*第\s*3\.5\s*部分", re.M)
     end_re = re.compile(r"^#{2,4}\s*第\s*4\s*部分", re.M)
     sm = section_re.search(script_md)
@@ -1043,8 +1069,20 @@ def parse_character_sheets_from_script_md(script_md: str) -> list[dict[str, Any]
             if m:
                 value = m.group(1).strip().rstrip("- ").strip()
                 value = re.sub(r"\s+", " ", value)
+                # Strip parenthetical enum hints like （slim / average / sturdy / heavy）
+                value = re.sub(r"[（(][^)）]{3,80}[)）]", "", value).strip()
                 if value:
                     sheet[field_key] = value
+        # custom_imperfections: extract bullet list under ** 专属瑕疵 **
+        imp_m = _CUSTOM_IMPERFECTIONS_SECTION_RE.search(body)
+        if imp_m:
+            bullets_raw = imp_m.group(1)
+            imperfections = [
+                re.sub(r"^\s*-\s*", "", line).strip()
+                for line in bullets_raw.splitlines()
+                if line.strip().startswith("-")
+            ]
+            sheet["custom_imperfections"] = [x for x in imperfections if x]
         sheets.append(sheet)
     return sheets
 
@@ -1211,7 +1249,7 @@ async def save_storyboard_asset(
     persist_to_disk=True（默认）：先把 file_url 转存到本地磁盘（解决 cdn 24h 过期）。
     落盘失败 fallback 用原 url（不挡链路）；notes 自动追加错误描述供复盘。
     """
-    if asset_type not in ("image", "video", "character_sheet"):
+    if asset_type not in ("image", "image_first", "image_last", "video", "character_sheet"):
         logger.warning("save_storyboard_asset: invalid asset_type=%s", asset_type)
         return None
 
@@ -1339,6 +1377,188 @@ async def list_assets(
             d["created_at"] = d["created_at"].isoformat()
         out.append(d)
     return out
+
+
+# ═══════════════════════════════════════════════════════
+# Lineage context enrichment (step 6 / 6.5 / 7 injection)
+# ═══════════════════════════════════════════════════════
+
+def _parse_audience_content_prefs(raw_md: str) -> list[str]:
+    m = re.search(r"爱看短剧类型[：:]\s*([^\n]+)", raw_md)
+    if not m:
+        return []
+    return [x.strip() for x in re.split(r"[、，,/]", m.group(1)) if x.strip()]
+
+
+def _parse_audience_persona_line(raw_md: str) -> str:
+    m = re.search(r"###\s*【[^】]+】\s*\n([^\n]+)", raw_md)
+    return m.group(1).strip() if m else ""
+
+
+def _parse_matrix_top_points(matrix_md: str) -> list[dict]:
+    """Extract top selling points from matrix_md '第1部分 显性卖点' section."""
+    points: list[dict] = []
+    for m in re.finditer(
+        r"####\s*(1\.\d+)\s+\*\*([^*\n]+)\*\*", matrix_md
+    ):
+        sid = m.group(1).strip()
+        name = m.group(2).strip()
+        # Try to grab 核心关键词 within next 800 chars
+        snippet = matrix_md[m.start():m.start() + 800]
+        kw_m = re.search(r"核心关键词[：:]\s*([^\n]+)", snippet)
+        keywords: list[str] = []
+        if kw_m:
+            keywords = [k.strip() for k in kw_m.group(1).split("、") if k.strip()][:4]
+        scene_m = re.search(r"匹配场景[：:]\s*([^\n]+)", snippet)
+        scenes_str = scene_m.group(1).strip() if scene_m else ""
+        points.append({"id": sid, "name": name, "keywords": keywords, "scenes": scenes_str})
+        if len(points) >= 5:
+            break
+    return points
+
+
+def _parse_matrix_product_profile(matrix_md: str) -> str:
+    m = re.search(r"第\s*0\s*部分[·・\s]+产品档案速写\s*\n+([\s\S]+?)(?=\n---|\n###|\Z)", matrix_md)
+    return m.group(1).strip()[:500] if m else ""
+
+
+async def gather_lineage_context(script: dict) -> dict:
+    """Pull SKU + audience_record + matrix_run for a script.
+
+    Returns structured dict injected into step 6/6.5/7 prompt builders.
+    Non-blocking: missing IDs → empty sections, never raises.
+    """
+    pool = get_pool()
+    ctx: dict[str, Any] = {}
+    try:
+        sku_id = script.get("sku_id")
+        if sku_id:
+            row = await pool.fetchrow(
+                "SELECT name, price_min, specifications, owner_selling_points "
+                "FROM mvp_sku WHERE id = $1",
+                sku_id,
+            )
+            if row:
+                raw_sps = row["owner_selling_points"]
+                sps_list = json.loads(raw_sps) if isinstance(raw_sps, str) else (raw_sps or [])
+                ctx["sku_name"] = row["name"] or ""
+                ctx["sku_price"] = str(row["price_min"]) if row["price_min"] else ""
+                ctx["sku_specs"] = row["specifications"] or ""
+                ctx["sku_selling_points"] = [s["text"] for s in sps_list if isinstance(s, dict) and s.get("text")]
+    except Exception as e:
+        logger.warning("gather_lineage_context: sku fetch failed: %s", e)
+
+    try:
+        ar_id = script.get("audience_record_id")
+        if ar_id:
+            row = await pool.fetchrow(
+                "SELECT name, raw_md_segment, layer_tags, match_reasons "
+                "FROM pipeline.audience_records WHERE id = $1::uuid",
+                ar_id,
+            )
+            if row:
+                raw = row["raw_md_segment"] or ""
+                ctx["audience_name"] = row["name"] or ""
+                raw_tags = row["layer_tags"]
+                ctx["audience_layer_tags"] = json.loads(raw_tags) if isinstance(raw_tags, str) else (raw_tags or [])
+                ctx["audience_content_prefs"] = _parse_audience_content_prefs(raw)
+                ctx["audience_persona"] = _parse_audience_persona_line(raw)
+                ctx["audience_raw_snippet"] = raw[:1000]
+    except Exception as e:
+        logger.warning("gather_lineage_context: audience_record fetch failed: %s", e)
+
+    try:
+        mr_id = script.get("matrix_run_id")
+        if mr_id:
+            row = await pool.fetchrow(
+                "SELECT matrix_md FROM pipeline.matrix_runs WHERE id = $1::uuid",
+                mr_id,
+            )
+            if row:
+                mmd = row["matrix_md"] or ""
+                ctx["matrix_top_points"] = _parse_matrix_top_points(mmd)
+                ctx["matrix_product_profile"] = _parse_matrix_product_profile(mmd)
+    except Exception as e:
+        logger.warning("gather_lineage_context: matrix_run fetch failed: %s", e)
+
+    return ctx
+
+
+def build_product_visual_anchor(ctx: dict) -> str:
+    """Translate lineage context → concise visual description for image/video prompts.
+
+    Uses sku_selling_points to derive material/texture/label cues only.
+    Strips non-visual business language (工厂年份/认证机构 names etc).
+    """
+    sps = ctx.get("sku_selling_points", [])
+    specs = ctx.get("sku_specs", "")
+    parts: list[str] = []
+
+    # Material cues
+    if any("玻璃" in s for s in sps):
+        parts.append("dark glass bottle")
+    if any("瓶" in s for s in sps) and not parts:
+        parts.append("sauce bottle")
+
+    # Liquid visual
+    sku_name = ctx.get("sku_name", "").lower()
+    if "酱油" in sku_name or "soy" in sku_name:
+        parts.append("deep amber-brown viscous soy sauce")
+    elif "醋" in sku_name or "vinegar" in sku_name:
+        parts.append("dark rice vinegar, translucent amber liquid")
+    elif "辣" in sku_name:
+        parts.append("deep red chili sauce")
+
+    # Label aesthetic cues
+    if any("日式" in s or "日本" in s for s in sps):
+        parts.append("Japanese-style label with clean calligraphy typography")
+    if any("有机" in s for s in sps):
+        parts.append("organic certification seal visible on label")
+    if any("零添加" in s or "无添加" in s for s in sps):
+        parts.append("minimal clean ingredient label design")
+
+    # Size
+    if specs:
+        parts.append(f"packaging: {specs}")
+
+    return ", ".join(parts) if parts else ""
+
+
+def build_audience_visual_hint(ctx: dict) -> str:
+    """Translate audience_record data → visual atmosphere hint for image/video."""
+    parts: list[str] = []
+    prefs = ctx.get("audience_content_prefs", [])
+    tags = ctx.get("audience_layer_tags", [])
+    persona = ctx.get("audience_persona", "")
+
+    if any(p in ("家庭伦理", "年代", "婆媳", "代际") for p in prefs):
+        parts.append("warm domestic atmosphere, multi-generational family context")
+    elif any(p in ("都市情感", "爱情") for p in prefs):
+        parts.append("urban modern lifestyle setting, couple or friendship context")
+    elif any(p in ("悬疑", "都市奇遇") for p in prefs):
+        parts.append("slightly dramatic lighting, modern urban environment")
+
+    if any("银发" in str(t) for t in tags):
+        parts.append("elderly-friendly warm color palette, unhurried pace")
+    if any("短剧" in str(t) for t in tags):
+        parts.append("short-video aesthetic, direct visual impact")
+
+    return ", ".join(parts) if parts else ""
+
+
+def build_selling_point_motion_hint(ctx: dict, scene_no: int = 1) -> str:
+    """For step 7 video: translate top selling points → motion/demonstration cues."""
+    points = ctx.get("matrix_top_points", [])
+    if not points:
+        return ""
+    # Rotate through top 2 points by scene number
+    pt = points[(scene_no - 1) % min(len(points), 2)]
+    name = pt["name"]
+    keywords = pt.get("keywords", [])
+    visual_kws = [k for k in keywords if any(c in k for c in ["色", "香", "感", "质", "纹", "光"])]
+    if visual_kws:
+        return f"visual emphasis: {name} — {', '.join(visual_kws[:2])}"
+    return f"visual emphasis: {name}"
 
 
 async def backfill_scenes_for_existing_scripts() -> dict[str, Any]:
