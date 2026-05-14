@@ -147,11 +147,20 @@ const CREATIVE_KIND_LIST: { kind: CreativeKind; label: string; group: string; hi
   { kind: 'product_detail_page', label: '详情页', group: '商品视觉', hint: '8-12 段叙事长图 brief / 卖点闭环 + 信任锚' },
 ]
 
+interface CreativeVariant {
+  script_id: string | null
+  script_md: string
+  variant_label: string
+  metrics?: Record<string, unknown> | null
+  validation_warnings?: string[]
+}
+
 interface CreativePackResp {
   ok: boolean
   result?: {
     script_md: string
     script_id: string | null
+    variants?: CreativeVariant[]
     kind: CreativeKind
     kind_label: string
     sku_id: string
@@ -303,6 +312,9 @@ export default function SkuPipelinePage() {
         product_refs_used?: string[]
         characters_in_scene?: string[]
         product_appearance?: boolean
+        last_frame_asset_id?: string
+        last_frame_url?: string
+        last_frame_error?: string
       }>
     }
     trace?: TraceShape
@@ -456,6 +468,8 @@ export default function SkuPipelinePage() {
   const [packListForSku, setPackListForSku] = useState<Array<{ id: string; sku_id: string; version: number; status: string; created_at: string }> | null>(null)
   const [packListLoading, setPackListLoading] = useState(false)
   const [extraContext5, setExtraContext5] = useState('')
+  const [numVariants5, setNumVariants5] = useState(1)
+  const [activeVariant5, setActiveVariant5] = useState(0)
   const [running5, setRunning5] = useState(false)
   const [resp5, setResp5] = useState<CreativePackResp | null>(null)
   const [showPrompt5, setShowPrompt5] = useState(true)
@@ -901,39 +915,55 @@ export default function SkuPipelinePage() {
   }
 
   // ── Step 7 handlers ─────────
-  // 拉同 script_id 的 image asset（哪几段已出图能跑视频）
+  // 拉同 script_id 的首帧 asset（哪几段已出图能跑视频）
+  // 新架构落 'image_first'；旧脚本仅有 'image'。两批合并，image_first 优先
   const loadImageAssets7 = async () => {
     if (!script6Id) return
     setLoadingImageAssets7(true)
     try {
-      const res = await fetch('/api/omni/sku-pipeline/list-assets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script_id: script6Id, asset_type: 'image', limit: 200 }),
-      })
-      const json = await res.json()
-      if (json.success && json.data?.ok) {
-        // 按 scene_no 去重：同一段多次重跑只保留 1 张（优先 adopted，fallback 第一张/最新）
-        // 后端 list_assets 已按 scene_no + created_at DESC 排过序
-        const raw = (json.data.assets || []) as Array<{
+      const fetchByType = async (assetType: string) => {
+        const res = await fetch('/api/omni/sku-pipeline/list-assets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script_id: script6Id, asset_type: assetType, limit: 200 }),
+        })
+        const json = await res.json()
+        if (!(json.success && json.data?.ok)) {
+          throw new Error(json.data?.error || json.error || `list-assets(${assetType}) 失败`)
+        }
+        return (json.data.assets || []) as Array<{
           id: string; scene_no: number | null; file_url: string | null; status: string
         }>
-        const bySn = new Map<number, typeof raw[number]>()
-        for (const a of raw) {
+      }
+
+      const [firstFrames, legacyImages] = await Promise.all([
+        fetchByType('image_first'),
+        fetchByType('image'),
+      ])
+
+      // 按 scene_no 去重：image_first 优先；同 type 内 adopted 优先
+      const bySn = new Map<number, { id: string; scene_no: number | null; file_url: string | null; status: string }>()
+      const ingest = (list: typeof firstFrames, isPrimary: boolean) => {
+        for (const a of list) {
           if (typeof a.scene_no !== 'number') continue
           const existing = bySn.get(a.scene_no)
           if (!existing) {
             bySn.set(a.scene_no, a)
-          } else if (a.status === 'adopted' && existing.status !== 'adopted') {
-            bySn.set(a.scene_no, a)  // adopted 优先替换
+            continue
           }
+          if (isPrimary) {
+            // 已有 entry 但本批是 image_first（更高优先），且当前 entry 不是同源 image_first
+            if (a.status === 'adopted' && existing.status !== 'adopted') {
+              bySn.set(a.scene_no, a)
+            }
+          }
+          // 非 primary（旧 image）：仅 fallback，已有 entry 时不覆盖
         }
-        const deduped = Array.from(bySn.values()).sort((a, b) => (a.scene_no ?? 0) - (b.scene_no ?? 0))
-        setImageAssets7(deduped)
-      } else {
-        setError(`拉分镜图列表失败：${json.data?.error || json.error || '未知'}`)
-        setImageAssets7([])
       }
+      ingest(firstFrames, true)
+      ingest(legacyImages, false)
+      const deduped = Array.from(bySn.values()).sort((a, b) => (a.scene_no ?? 0) - (b.scene_no ?? 0))
+      setImageAssets7(deduped)
     } catch (e) {
       setError(`拉分镜图列表异常：${String(e)}`)
       setImageAssets7([])
@@ -1273,11 +1303,13 @@ export default function SkuPipelinePage() {
     }
     setRunning5(true)
     setResp5(null)
+    setActiveVariant5(0)
     setError(null)
     try {
       const body: Record<string, unknown> = {
         kind: kind5,
         extra_context: extraContext5 || null,
+        num_variants: numVariants5,
       }
       if (srcMode5 === 'record') {
         body.audience_record_id = record5Id
@@ -2738,8 +2770,29 @@ export default function SkuPipelinePage() {
                   />
                 </div>
 
+                <div>
+                  <label className="text-sm font-medium mb-1 block">并行方案数</label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3].map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setNumVariants5(n)}
+                        className={`flex-1 py-1 text-sm rounded border-2 transition-colors ${numVariants5 === n ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-muted'}`}
+                      >
+                        {n === 1 ? '1 个' : n === 2 ? '2 个' : '3 个'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    多方案并行生成（temperature 递增），右侧可切 A/B/C 对比
+                  </div>
+                </div>
+
                 <Button onClick={runStep5} disabled={running5} className="w-full">
-                  {running5 ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 跑中...（约 30-90s）</> : '跑创意素材'}
+                  {running5
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 跑中...（约 {30 * numVariants5}-{90 * numVariants5}s）</>
+                    : numVariants5 > 1 ? `并行生成 ${numVariants5} 个方案` : '跑创意素材'}
                 </Button>
               </CardContent>
             </Card>
@@ -2773,150 +2826,173 @@ export default function SkuPipelinePage() {
                   </div>
                 )}
 
-                {resp5 && resp5.ok && resp5.result && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                      <Badge variant="secondary">{resp5.result.kind_label}</Badge>
-                      {resp5.result.script_id && (
-                        <span title="pipeline.scripts.id">script_id: {resp5.result.script_id.slice(0, 8)}</span>
-                      )}
-                      {resp5.result.audience_record_id && (
-                        <span>record: {resp5.result.audience_record_id.slice(0, 8)}</span>
-                      )}
-                      {resp5.result.matrix_run_id && (
-                        <span>matrix: {resp5.result.matrix_run_id.slice(0, 8)}</span>
-                      )}
-                      <button
-                        className="ml-auto text-primary hover:underline"
-                        onClick={() => {
-                          if (resp5.result?.script_md) {
-                            navigator.clipboard.writeText(resp5.result.script_md)
-                          }
-                        }}
-                      >
-                        <Copy className="w-3 h-3 inline mr-1" /> 复制
-                      </button>
-                      <button
-                        className="text-primary hover:underline"
-                        onClick={() => {
-                          if (!resp5.result?.script_md) return
-                          const blob = new Blob([resp5.result.script_md], { type: 'text/markdown' })
-                          const url = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = url
-                          a.download = `${resp5.result.kind}-${(resp5.result.script_id || 'creative').slice(0, 8)}.md`
-                          a.click()
-                          URL.revokeObjectURL(url)
-                        }}
-                      >
-                        <Download className="w-3 h-3 inline mr-1" /> 下载 .md
-                      </button>
-                    </div>
-
-                    {/* 确认绑入血缘（status='draft' → 'adopted'）—— 老板审完点 */}
-                    {resp5.result.script_id && (() => {
-                      const sId = resp5.result.script_id
-                      const isAdopted = adoptedScriptIds.has(sId)
-                      const isAdoptingThis = adoptingScript === sId
-                      const hasWarnings = (resp5.result.validation_warnings || []).length > 0
-                      return (
-                        <div className={`p-3 border rounded text-xs transition ${isAdopted ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800' : 'bg-blue-50/40 dark:bg-blue-950/20'}`}>
-                          <div className="flex items-center justify-between gap-3 flex-wrap">
-                            <div className="flex items-center gap-2 flex-wrap min-w-0">
-                              <Badge variant={isAdopted ? 'default' : 'outline'}>
-                                {isAdopted ? '✅ 已绑入血缘' : '已落库 · draft'}
-                              </Badge>
-                              <span className="text-muted-foreground">
-                                kind: <code className="text-[10px]">{resp5.result.kind}</code>
-                              </span>
-                              <span className="text-muted-foreground">
-                                script_id: <code className="text-[10px]">{sId.slice(0, 8)}…</code>
-                              </span>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant={isAdopted ? 'default' : 'outline'}
-                              disabled={isAdoptingThis || isAdopted}
-                              onClick={() => adoptCreativeScript(sId)}
-                              className="shrink-0"
-                              title={isAdopted ? '已绑入血缘 — 下游 phase D 生成图/视频可挂这版' : '审完 OK 后点这里：标 adopted 进血缘，下游可挂'}
+                {resp5 && resp5.ok && resp5.result && (() => {
+                  const _allVariants: CreativeVariant[] = resp5.result.variants?.length
+                    ? resp5.result.variants
+                    : [{ script_id: resp5.result.script_id, script_md: resp5.result.script_md,
+                         variant_label: '方案 A', metrics: resp5.result.metrics,
+                         validation_warnings: resp5.result.validation_warnings }]
+                  const curIdx = Math.min(activeVariant5, _allVariants.length - 1)
+                  const curV = _allVariants[curIdx]
+                  return (
+                    <div className="space-y-4">
+                      {/* 多方案 tab */}
+                      {_allVariants.length > 1 && (
+                        <div className="flex gap-2 border-b pb-3 flex-wrap">
+                          {_allVariants.map((v, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setActiveVariant5(i)}
+                              className={`px-4 py-1.5 text-sm rounded-full border-2 transition-colors ${curIdx === i ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-muted'}`}
                             >
-                              {isAdoptingThis
-                                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 绑入中</>
-                                : isAdopted
-                                  ? <>✅ 已绑入血缘</>
-                                  : <>✓ 确认绑入血缘</>}
-                            </Button>
-                          </div>
-                          <div className="text-muted-foreground mt-2">
-                            {isAdopted
-                              ? '已绑入。phase D 起拉分镜图 / 视频生成时按 sku+kind 列 adopted 让你挑这版。血缘反查也只跟 adopted 走。'
-                              : hasWarnings
-                                ? '⚠ 上方校验有警告。建议改 prompt / 重跑修复后再绑；硬要绑也可以（多版本并存，draft 老板按需重跑覆盖）。'
-                                : '审完觉得这版 OK 再点"确认绑入血缘"。不点也能继续跑别的，但 phase D 生成时不会列 draft 版本。'}
-                          </div>
-                        </div>
-                      )
-                    })()}
-
-                    {/* 后端硬约束校验结果（反 LLM 自检装饰） */}
-                    {resp5.result.validation_warnings && resp5.result.validation_warnings.length > 0 && (
-                      <div className="border-2 border-orange-300 rounded p-3 bg-orange-50 space-y-2">
-                        <div className="text-sm font-semibold text-orange-800">
-                          ⚠ 后端硬约束校验：{resp5.result.validation_warnings.length} 项不通过
-                        </div>
-                        <ul className="text-xs text-orange-900 space-y-1 list-disc pl-5">
-                          {resp5.result.validation_warnings.map((w, i) => (
-                            <li key={i}>{w}</li>
+                              {v.variant_label}
+                              {(v.validation_warnings?.length ?? 0) > 0 && <span className="ml-1 text-orange-400">⚠</span>}
+                              {(v.validation_warnings?.length ?? 0) === 0 && v.metrics && <span className="ml-1 text-green-500">✓</span>}
+                            </button>
                           ))}
-                        </ul>
-                        <div className="text-[10px] text-orange-700 mt-1">
-                          这是 LLM 自报 metrics_json 后跑的代码校验，不是 LLM 自打钩。改 prompt 或重跑修。
+                          <span className="ml-auto text-xs text-muted-foreground self-center">{_allVariants.length} 个方案并行</span>
                         </div>
-                      </div>
-                    )}
-                    {resp5.result.validation_warnings && resp5.result.validation_warnings.length === 0 && resp5.result.metrics && (
-                      <div className="border-2 border-green-300 rounded p-2 bg-green-50 text-xs text-green-800">
-                        ✓ 后端硬约束校验全过（地板 8 条 + 选定方向硬约束）
-                      </div>
-                    )}
+                      )}
 
-                    {/* metrics_json 数据（折叠显示） */}
-                    {resp5.result.metrics && (
-                      <details className="border rounded p-2 bg-muted/20" open>
-                        <summary className="text-xs cursor-pointer text-muted-foreground">
-                          metrics_json（LLM 自报指标，后端校验依据）
-                        </summary>
-                        <pre className="text-[10px] mt-2 whitespace-pre-wrap">
-                          {JSON.stringify(resp5.result.metrics, null, 2)}
-                        </pre>
-                      </details>
-                    )}
-
-                    <div className="prose prose-sm max-w-none border rounded p-4 bg-muted/30">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{resp5.result.script_md}</ReactMarkdown>
-                    </div>
-
-                    {resp5.trace && (
-                      <div className="border rounded">
-                        <button
-                          className="w-full flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
-                          onClick={() => setShowPrompt5(!showPrompt5)}
-                        >
-                          <span>
-                            {showPrompt5 ? <ChevronDown className="w-3 h-3 inline" /> : <ChevronRight className="w-3 h-3 inline" />}
-                            {' '}prompt + trace（{resp5.trace.model_provider}/{resp5.trace.model}）
-                          </span>
-                        </button>
-                        {showPrompt5 && (
-                          <pre className="text-xs p-3 bg-muted/50 whitespace-pre-wrap">
-                            {resp5.trace.final_prompt}
-                          </pre>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                        <Badge variant="secondary">{resp5.result.kind_label}</Badge>
+                        {curV.script_id && (
+                          <span title="pipeline.scripts.id">script_id: {curV.script_id.slice(0, 8)}</span>
                         )}
+                        {resp5.result.audience_record_id && (
+                          <span>record: {resp5.result.audience_record_id.slice(0, 8)}</span>
+                        )}
+                        {resp5.result.matrix_run_id && (
+                          <span>matrix: {resp5.result.matrix_run_id.slice(0, 8)}</span>
+                        )}
+                        <button
+                          className="ml-auto text-primary hover:underline"
+                          onClick={() => { navigator.clipboard.writeText(curV.script_md) }}
+                        >
+                          <Copy className="w-3 h-3 inline mr-1" /> 复制
+                        </button>
+                        <button
+                          className="text-primary hover:underline"
+                          onClick={() => {
+                            const blob = new Blob([curV.script_md], { type: 'text/markdown' })
+                            const url = URL.createObjectURL(blob)
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = `${resp5.result!.kind}-${(curV.script_id || 'creative').slice(0, 8)}-${curV.variant_label.replace(' ', '')}.md`
+                            a.click()
+                            URL.revokeObjectURL(url)
+                          }}
+                        >
+                          <Download className="w-3 h-3 inline mr-1" /> 下载 .md
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
+
+                      {/* 确认绑入血缘 */}
+                      {curV.script_id && (() => {
+                        const sId = curV.script_id
+                        const isAdopted = adoptedScriptIds.has(sId)
+                        const isAdoptingThis = adoptingScript === sId
+                        const hasWarnings = (curV.validation_warnings || []).length > 0
+                        return (
+                          <div className={`p-3 border rounded text-xs transition ${isAdopted ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800' : 'bg-blue-50/40 dark:bg-blue-950/20'}`}>
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                <Badge variant={isAdopted ? 'default' : 'outline'}>
+                                  {isAdopted ? '✅ 已绑入血缘' : '已落库 · draft'}
+                                </Badge>
+                                <span className="text-muted-foreground">
+                                  kind: <code className="text-[10px]">{resp5.result!.kind}</code>
+                                </span>
+                                <span className="text-muted-foreground">
+                                  script_id: <code className="text-[10px]">{sId.slice(0, 8)}…</code>
+                                </span>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant={isAdopted ? 'default' : 'outline'}
+                                disabled={isAdoptingThis || isAdopted}
+                                onClick={() => adoptCreativeScript(sId)}
+                                className="shrink-0"
+                                title={isAdopted ? '已绑入血缘 — 下游 phase D 生成图/视频可挂这版' : '审完 OK 后点这里：标 adopted 进血缘，下游可挂'}
+                              >
+                                {isAdoptingThis
+                                  ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 绑入中</>
+                                  : isAdopted
+                                    ? <>✅ 已绑入血缘</>
+                                    : <>✓ 确认绑入血缘</>}
+                              </Button>
+                            </div>
+                            <div className="text-muted-foreground mt-2">
+                              {isAdopted
+                                ? '已绑入。phase D 起拉分镜图 / 视频生成时按 sku+kind 列 adopted 让你挑这版。血缘反查也只跟 adopted 走。'
+                                : hasWarnings
+                                  ? '⚠ 上方校验有警告。建议改 prompt / 重跑修复后再绑；硬要绑也可以（多版本并存，draft 老板按需重跑覆盖）。'
+                                  : '审完觉得这版 OK 再点"确认绑入血缘"。不点也能继续跑别的，但 phase D 生成时不会列 draft 版本。'}
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {/* 后端硬约束校验结果 */}
+                      {(curV.validation_warnings?.length ?? 0) > 0 && (
+                        <div className="border-2 border-orange-300 rounded p-3 bg-orange-50 space-y-2">
+                          <div className="text-sm font-semibold text-orange-800">
+                            ⚠ 后端硬约束校验：{curV.validation_warnings!.length} 项不通过
+                          </div>
+                          <ul className="text-xs text-orange-900 space-y-1 list-disc pl-5">
+                            {curV.validation_warnings!.map((w, i) => (
+                              <li key={i}>{w}</li>
+                            ))}
+                          </ul>
+                          <div className="text-[10px] text-orange-700 mt-1">
+                            这是 LLM 自报 metrics_json 后跑的代码校验，不是 LLM 自打钩。改 prompt 或重跑修。
+                          </div>
+                        </div>
+                      )}
+                      {(curV.validation_warnings?.length ?? 0) === 0 && curV.metrics && (
+                        <div className="border-2 border-green-300 rounded p-2 bg-green-50 text-xs text-green-800">
+                          ✓ 后端硬约束校验全过（地板 8 条 + 选定方向硬约束）
+                        </div>
+                      )}
+
+                      {/* metrics_json */}
+                      {curV.metrics && (
+                        <details className="border rounded p-2 bg-muted/20" open>
+                          <summary className="text-xs cursor-pointer text-muted-foreground">
+                            metrics_json（LLM 自报指标，后端校验依据）
+                          </summary>
+                          <pre className="text-[10px] mt-2 whitespace-pre-wrap">
+                            {JSON.stringify(curV.metrics, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+
+                      <div className="prose prose-sm max-w-none border rounded p-4 bg-muted/30">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{curV.script_md}</ReactMarkdown>
+                      </div>
+
+                      {resp5.trace && (
+                        <div className="border rounded">
+                          <button
+                            className="w-full flex items-center justify-between px-3 py-2 text-xs text-muted-foreground hover:bg-muted"
+                            onClick={() => setShowPrompt5(!showPrompt5)}
+                          >
+                            <span>
+                              {showPrompt5 ? <ChevronDown className="w-3 h-3 inline" /> : <ChevronRight className="w-3 h-3 inline" />}
+                              {' '}prompt + trace（{resp5.trace.model_provider}/{resp5.trace.model}）
+                            </span>
+                          </button>
+                          {showPrompt5 && (
+                            <pre className="text-xs p-3 bg-muted/50 whitespace-pre-wrap">
+                              {resp5.trace.final_prompt}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           </div>
@@ -3520,13 +3596,45 @@ export default function SkuPipelinePage() {
                           )}
                         </div>
                         {r.file_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={r.file_url}
-                            alt={`scene ${r.scene_no}`}
-                            className="w-full rounded border"
-                            style={{ maxHeight: 360, objectFit: 'contain' }}
-                          />
+                          <div className="space-y-1">
+                            <div className="grid grid-cols-2 gap-1">
+                              <figure className="space-y-0.5">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={r.file_url}
+                                  alt={`scene ${r.scene_no} first frame`}
+                                  className="w-full rounded border"
+                                  style={{ maxHeight: 320, objectFit: 'contain' }}
+                                />
+                                <figcaption className="text-[10px] text-muted-foreground text-center">
+                                  首帧 (image_first)
+                                </figcaption>
+                              </figure>
+                              {r.last_frame_url ? (
+                                <figure className="space-y-0.5">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={r.last_frame_url}
+                                    alt={`scene ${r.scene_no} last frame`}
+                                    className="w-full rounded border"
+                                    style={{ maxHeight: 320, objectFit: 'contain' }}
+                                  />
+                                  <figcaption className="text-[10px] text-muted-foreground text-center">
+                                    尾帧 (image_last)
+                                  </figcaption>
+                                </figure>
+                              ) : (
+                                <div
+                                  className="flex items-center justify-center text-[10px] text-muted-foreground border border-dashed rounded p-2"
+                                  style={{ minHeight: 80 }}
+                                >
+                                  {r.last_frame_error
+                                    ? `尾帧失败：${r.last_frame_error}`
+                                    : '本段无尾帧（脚本未给 last_frame_prompt）'}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         ) : (
                           <div className="text-xs text-red-500 p-3 border border-red-200 rounded bg-red-50/40">
                             ❌ {r.error}
