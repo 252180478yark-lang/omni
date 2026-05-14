@@ -12,6 +12,7 @@ W1 仅留接口；W2 起在 generate_brief / generate_image / generate_video too
 from __future__ import annotations
 
 import base64
+import io
 import logging
 import mimetypes
 from pathlib import Path
@@ -64,6 +65,65 @@ def _localize_list(urls: Any) -> Any:
     if not isinstance(urls, list):
         return urls
     return [_localize_url(u) for u in urls]
+
+
+# Veo / Seedance i2v upload payload 上限实测 ~7-10MB（虽然文档写 20MB）。
+# step 6 出图 2K 9:16 PNG 单张 1.5-3MB；i2v 双帧 + prompt 单次请求 6-10MB
+# 在 Gemini Dev API 触发 Broken pipe (errno 32) — 对端在 SDK 上传完前 reset。
+# 修：first_frame / last_frame 走这个 helper，PNG → JPEG 80% (~10:1 压缩)，
+# 视频生成阶段视觉信号不丢，Veo 内部本来就要 perceptual resize。
+_FRAME_MAX_DIM = 1280   # 最长边 1280px（Veo i2v 输入推荐尺寸；超过被 Veo 自己 downscale）
+_FRAME_JPEG_Q = 82       # 视觉无损经验值
+
+
+def _localize_frame_for_video(url: Any) -> Any:
+    """专给 first_frame / last_frame 的压缩版本 _localize_url。
+
+    本地 png/webp → JPEG 80% data URI；远端/非本地原样返。
+    PIL 不可用或失败时 fallback 到原始 _localize_url（不挡链路）。
+    """
+    if not isinstance(url, str) or not url.startswith(_LOCAL_STATIC_PREFIX):
+        return url
+    rel = url[len(_LOCAL_STATIC_PREFIX):]
+    if not rel or ".." in rel or rel.startswith("/"):
+        return url
+    path = _LOCAL_DISK_ROOT / rel
+    if not path.exists():
+        logger.warning("_localize_frame_for_video: disk file missing %s", path)
+        return url
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            # 透明通道转白底（JPEG 不支持 alpha）
+            if im.mode in ("RGBA", "LA", "P"):
+                bg = Image.new("RGB", im.size, (255, 255, 255))
+                im_rgba = im.convert("RGBA")
+                bg.paste(im_rgba, mask=im_rgba.split()[-1] if "A" in im_rgba.getbands() else None)
+                im = bg
+            elif im.mode != "RGB":
+                im = im.convert("RGB")
+            # 最长边 downscale 到 _FRAME_MAX_DIM
+            w, h = im.size
+            longest = max(w, h)
+            if longest > _FRAME_MAX_DIM:
+                scale = _FRAME_MAX_DIM / longest
+                im = im.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+            buf = io.BytesIO()
+            im.save(buf, format="JPEG", quality=_FRAME_JPEG_Q, optimize=True)
+            jpeg_bytes = buf.getvalue()
+        b64 = base64.b64encode(jpeg_bytes).decode("ascii")
+        logger.debug(
+            "_localize_frame_for_video: %s %dKB → JPEG %dKB",
+            path.name, path.stat().st_size // 1024, len(jpeg_bytes) // 1024,
+        )
+        return f"data:image/jpeg;base64,{b64}"
+    except Exception as exc:
+        logger.warning(
+            "_localize_frame_for_video failed (fallback to _localize_url): %s err=%s",
+            url, exc,
+        )
+        return _localize_url(url)
 
 
 class HubError(Exception):
@@ -327,9 +387,9 @@ class AIHubClient:
             "aspect_ratio": aspect,
         }
         if first_frame:
-            body["first_frame"] = _localize_url(first_frame)
+            body["first_frame"] = _localize_frame_for_video(first_frame)
         if last_frame:
-            body["last_frame"] = _localize_url(last_frame)
+            body["last_frame"] = _localize_frame_for_video(last_frame)
         refs: list[dict[str, Any]] = []
         for r in _localize_list(face_refs) or []:
             refs.append({"url": r, "type": "face", "weight": 1.0})

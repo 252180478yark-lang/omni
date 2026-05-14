@@ -753,6 +753,127 @@
   xxx
 ```
 
+**短视频真人感锚（最高优先级 · 强制覆盖 71 维度的默认电影取值）**
+
+本任务输出**抖音/Reels 风格真人短视频**，**不是电影广告片**。Veo 拿到 "Cinematic / Kodak Portra / 50mm / Rule of thirds / 4K sharp / tungsten 3000K" 等词会自动输出影院级慢节奏 + 假人感。下列规则**覆盖** 71 维度框架的默认电影取值：
+
+**image_prompt 风格定锚替换清单**
+
+用这些（短视频真人锚 · 每段 image_prompt 顶部复用）：
+- `Vertical 9:16 iPhone handheld video frame, casual home vlog style, unposed documentary feel`
+- `natural indoor light from window / overcast soft daylight / ambient apartment lighting`
+- `subtle handheld micro-shake, slight ambient grain, natural skin texture, no color grading, no filter`
+- `slightly off-center framing, subject in left-third or right-third, cluttered ambient background visible`
+
+禁这些（默认电影锚 · 出现即重写本段）：
+- ❌ `Cinematic` / `Kodak Portra 400` / `shot on 35/50/85mm` / `f/1.8 shallow DOF` / `photo-realistic 4K sharp focus`
+- ❌ `Rule of thirds` / `centered composition` / `eye-level frontal view` / `professional framing`
+- ❌ `slightly desaturated cinematic orange-brown` / `amber and natural wood palette`（调色术语）
+- ❌ `tungsten 3000K side-light diffused` / `soft side-light from right window`（专业打光术语）
+- ❌ `establishing beat` / `quietly tender medium intensity` / `generational care through food`（叙事意图词 — Veo 看不懂只会保守输出静止）
+
+**71 维度短视频取值映射（覆盖原表格示例）**
+
+| 维度 | 默认电影锚 → 替换为 |
+|---|---|
+| S1/S4/S5 镜头景深 | medium shot iPhone vertical, phone-camera native FOV, flat depth (no bokeh) |
+| S19-S23 光线 | natural indoor light from window / overcast / ambient apartment（删"tungsten 3000K diffused"）|
+| S24-S27 色彩 | unprocessed natural colors, no grading（删"cinematic orange-brown"）|
+| S26 调色风格 | no color grading, phone-camera native（禁 cinematic/film-look/Kodak Portra）|
+| S28-S32 构图 | slightly off-center casual framing, subject in side-third（禁 rule of thirds）|
+| S43-S46 情绪叙事 | **整行删除** — 不给 Veo 灌叙事意图，只描述可见画面 |
+| S47-S48 画质 | phone-camera quality, slight indoor grain, natural skin micro-texture（禁"photo-realistic 4K sharp"）|
+
+**motion_prompt 动作密度硬规则（覆盖 D 框架默认）**
+
+每段必含**至少 1 个"动机性可见动作"**（5s/6s/8s 段都一样），不允许全段都是 subtle / slowly / fractional 微动 — 那样 Veo 直接输出静止假人。
+
+动机性可见动作清单（每段选 1+）：揉脸/揉眼/揉额 · 转头 ≥10°/低头/抬头 · 拨头发 · 伸手取物/放下物品 · 喝水/吃/看手机 · 明显笑（嘴角上扬）/明显皱眉 · 转身（半身）
+
+**禁这些写法（必产 AI 假人感）**：
+- ❌ 整段动作全是 `slowly / subtle / fractional / micro-shift` — 写不出来的微动作 Veo 直接输出几乎静止
+- ❌ `Shoulders relax fractionally / Brow softens 2mm / Eyes drift 5°` — 物理量化的微动作 = 假
+- ❌ `Hand remains completely still / Body perfectly still` — 强制不动 = 死板假人
+- ❌ `Eyes blink slowly from 1s to 2s` — 眨眼是自然反射不要写出来，写了 Veo 按字面"慢动作眨眼"会很怪
+- ❌ `Chest subtly falls in a quiet sigh between 2s and 4s` — 2s 的慢呼吸会产生"假叹气"卡顿
+
+**正确写法（产真人感）**：
+- ✅ 主动作：`right hand lifts to rub forehead between 0-1.5s, fingertips press temple briefly`
+- ✅ 自然伴生（不写也有）：natural skin micro-movement, subtle handheld camera sway, ambient hair strand drift
+- ✅ 短促情绪可见点：`a brief frown flashes at 3s` / `half-smile catches at 4s`
+
+**5s 段动作密度公式**：1 个动机性主动作（占 1.5-3s）+ 1 个情绪可见点（占 0.5-1s）+ 自然伴生背景持续。
+**6s 段**：2 个动机性动作 或 1 个主 + 2 个情绪点。
+**8s 段**：2-3 个动机性动作（含转身/换姿势这类大动作）+ 2 个情绪点。
+
+**F10 首尾帧可见差异自检（在原 F1-F9 之外追加）**
+
+| # | 检查项 | 结论 |
+|---|---|---|
+| F10 | 首尾帧的差异肉眼能在并排两图中明显看出？（不是 5° 角度差 / 2mm 表情差 / 3% 阴影差这种）| 是/否 |
+
+F10 否 → 必须重写 last_frame_prompt 把变化幅度拉大到可见范围（在 FV1-FV4 范围内），或拆段。
+
+---
+
+**双帧硬约束（image_prompt 与 last_frame_prompt 的关系 · 每段写完必过）**
+
+首尾帧 = 同一个连续镜头内 t=0 与 t=T，AI 视频模型在中间做补帧。两条铁律：
+
+- **铁律 A**：一个真实摄影机能在 3-5 秒内不中断、不剪辑地从首帧拍到尾帧。做不到 = 必须拆段。
+- **铁律 B**：last_frame_prompt 跟 image_prompt 的英文文字共享 ≥85%，只在"运动变量"上有差异。
+
+**5 个不变量（FI · 严禁在首尾帧之间变化）**
+
+| 编号 | 不变量 | 违反示例（必拆段或重写）|
+|---|---|---|
+| FI1 | 机位（位置+角度+高度）| 首帧正面 / 尾帧侧面 |
+| FI2 | 景别（特写/中景/全景）| 首帧手部特写 / 尾帧全身中景 |
+| FI3 | 焦段与景深 | 首帧 85mm f/1.8 / 尾帧 35mm f/8 |
+| FI4 | 主体身份与数量 | 首帧 1 人 / 尾帧 2 人，或不同长相 |
+| FI5 | 物体种类与数量 | 首帧桌上 1 瓶 / 尾帧桌上 3 瓶，或不同品牌瓶 |
+
+"另一个角度看同一场景"也不允许——那是两个镜头，必须拆成相邻两段（前段尾帧 = 后段首帧）。
+
+**4 个允许变量（FV · 首尾帧之间只能在这 4 类上变化）**
+
+| 编号 | 变量 | 合理范围 |
+|---|---|---|
+| FV1 | 主体表情 | 微笑→大笑、平静→皱眉、闭眼→睁眼 |
+| FV2 | 主体动作/姿态 | 手伸出→手握紧、身体前倾 5°→前倾 15°、未拥抱→已拥抱（连续可推导）|
+| FV3 | 物体连续位移 | 杯子从桌左移到桌右、酱油从瓶中倒入碗内（不允许"瓶子在桌→瓶子在地摔碎"这种状态突变）|
+| FV4 | 光线/烟雾/蒸汽等环境元素细微变化 | 蒸汽从无到有、阳光角度微调 5°、烛火摇曳 |
+
+**双帧撰写规范（每段 image_prompt 与 last_frame_prompt 按此结构写）**
+
+- 共享描述（≥85% 文本）：机位/景别/焦段/景深/主体身份/场景/道具/光线/构图/质感/风格 —— image_prompt 里写完整，last_frame_prompt **原文复用**这些关键词组（不换近义词、不改顺序）
+- image_prompt 段末追加 `At t=0:` 一句，描述运动起点状态（表情/姿态/位移起始）
+- last_frame_prompt 主体是 `At t=T:` 一句，描述运动终点状态 —— **其余 ≥85% 文本与 image_prompt 文字雷同**
+
+**典型错误（必避免）**
+
+- ❌ 首帧"手拧瓶盖特写" / 尾帧"老人侧身全身" → 违反 FI1+FI2，拆成两段
+- ❌ 首帧"白塑料瓶" / 尾帧"棕玻璃瓶" → 违反 FI5（不同物体），拆段（前段拍白瓶、后段拍棕瓶，剪辑硬切对比）
+- ❌ 首帧"桌上无瓶" / 尾帧"桌上多出 2 瓶" → 违反 FI5（物体凭空出现），统一桌面摆设、变量改为人物表情/动作
+- ❌ 首帧"女儿张臂走近" / 尾帧"两人位置左右对调" → 违反 FI1+FV2（位移越界），位置不能对调
+- ❌ 首帧"绿植正面" / 尾帧"绿植在窗台另一处" → 违反 FI1，统一机位 + 变量改为"叶片轻颤、阳光角度微调"
+
+**首尾帧 9 项自检（每段写完输出此表，任一否 → 重写本段 last_frame_prompt 或拆段）**
+
+| # | 检查项 | 结论 |
+|---|---|---|
+| F1 | 首尾帧 FI1 机位完全一致？| 是/否 |
+| F2 | 首尾帧 FI2 景别完全一致？| 是/否 |
+| F3 | 首尾帧 FI3 焦段与景深完全一致？| 是/否 |
+| F4 | 首尾帧 FI4 人物数量与身份完全一致？| 是/否 |
+| F5 | 首尾帧 FI5 物体种类与数量完全一致？| 是/否 |
+| F6 | 首尾帧变化只涉及 FV1-FV4 中的允许项？| 是/否 |
+| F7 | image_prompt 与 last_frame_prompt 文字共享 ≥85%？| 是/否 |
+| F8 | 一个真实摄影师能在 3-5 秒内不剪辑地拍出这段过程？| 是/否 |
+| F9 | 若把首尾两帧并排给陌生人看，他会认为是"同一镜头的两个瞬间"，不是"两张独立的图"？| 是/否 |
+
+任何 F1-F9 否 → 优先**重写 last_frame_prompt**（让它在 FV 范围内变化，跟 image_prompt 共享 ≥85% 文本）；重写不通则**拆段**：当前 image_prompt 作为段 N 的 last_frame_prompt + 段 N+1 的 image_prompt。
+
 **image_prompt 71 维度框架（全局锚 G1-G10 + 单镜 S1-S52）**
 
 每段 image_prompt 按**认知流顺序**（摄影机→主体→瞬间→场景→光色→构图→质感→情绪→技术→参考图）连成 200-400 字段落（英文为主，可保留少量中文意境词/道具名）：

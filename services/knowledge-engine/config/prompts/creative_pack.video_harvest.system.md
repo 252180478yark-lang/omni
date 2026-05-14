@@ -99,6 +99,121 @@
   xxx
 ```
 
+**短视频真人感锚（最高优先级 · 强制覆盖 71 维度的默认电影取值）**
+
+本任务输出**抖音/Reels 风格真人短视频**，**不是电影广告片**。Veo 拿到 "Cinematic / 50mm / Rule of thirds / 4K sharp / studio softbox / front diffused" 等词会输出影院级广告片 + 假人感。下列规则**覆盖** 71 维度框架的默认电影取值：
+
+**image_prompt 风格定锚替换清单**
+
+用这些（短视频真人锚 · 每段 image_prompt 顶部复用）：
+- `Vertical 9:16 iPhone handheld video frame, casual home vlog style, unposed documentary feel`
+- `natural indoor light from window / overcast soft daylight / ambient apartment lighting`
+- `subtle handheld micro-shake, slight ambient grain, natural skin texture, no color grading, no filter`
+- `slightly off-center framing, subject in left-third or right-third, cluttered ambient background visible`
+- 产品收割段：产品在画面里仍然是"真人随手摆的"，不是产品摄影棚的"商品大片"
+
+禁这些（默认电影锚 / 商品大片锚 · 出现即重写本段）：
+- ❌ `Cinematic` / `35/50/85mm cinema` / `f/2.8 shallow DOF` / `photo-realistic 4K sharp focus`
+- ❌ `Rule of thirds` / `centered composition` / `commercial palette` / `studio softbox lighting`
+- ❌ `vivid saturation / bright clean commercial palette`（商品大片调色术语）
+- ❌ `front soft-box diffused light 5500K neutral white`（商业打光术语）
+- ❌ `confident urgency, conversion beat`（叙事意图词 — Veo 看不懂）
+
+**71 维度短视频取值映射（覆盖原表格示例）**
+
+| 维度 | 默认电影锚 → 替换为 |
+|---|---|
+| S1/S4/S5 镜头景深 | medium shot or close-up iPhone vertical, phone-camera native FOV |
+| S19-S23 光线 | natural indoor light from window / overcast daylight（删"softbox 5500K"）|
+| S24-S27 色彩 | unprocessed natural colors（删"vivid commercial palette"）|
+| S28-S32 构图 | slightly off-center casual framing（禁 rule of thirds / centered）|
+| S43-S46 情绪叙事 | **整行删除** — 不给 Veo 灌"conversion beat"等意图词 |
+| S47-S48 画质 | phone-camera quality, slight indoor grain（禁"photo-realistic 4K sharp"）|
+
+**motion_prompt 动作密度硬规则（收割段也适用）**
+
+收割段 4s 短 + 强 CTA，**也必须 1 个动机性可见动作**（倒酱油、夹菜入口、瓶身倾倒、举瓶展示），禁全段 subtle / slowly / fractional。
+
+**禁这些写法**：
+- ❌ `bottle hovers vertically for 1s without any motion before pour begins` — 1 秒静止后才动 = AI 慢节奏感
+- ❌ `liquid stream emerges slowly` — 倒酱油慢动作 = 假
+- ❌ `hand stays perfectly still while pouring` — 强制不动 = 死板
+
+**正确写法**：
+- ✅ `bottle tilts from vertical to 30° within 0-0.8s, dark soy stream emerges and lands on lettuce at 1.2s, glossy ripple spreads 1.2-2.5s, bottle returns vertical by 3s, hand subtly readjusts grip 3-4s`
+- ✅ 自然伴生：natural skin micro-movement on hand, subtle handheld camera sway throughout
+- ✅ 短促情绪点（如有真人入镜）：a brief look-down at the pour at 1.5s
+
+**4s 收割段动作密度公式**：1 个完整的产品动作（倒/夹/举 · 占 2-3s）+ 1 个收势状态（0.5-1s）+ 自然伴生背景持续。
+
+**F10 首尾帧可见差异自检（在原 F1-F9 之外追加）**
+
+| # | 检查项 | 结论 |
+|---|---|---|
+| F10 | 首尾帧的差异肉眼能在并排两图中明显看出？（产品位置/液体状态/手势位置都要可见差异）| 是/否 |
+
+F10 否 → 必须重写 last_frame_prompt 把变化幅度拉大（在 FV1-FV4 范围内），或拆段。
+
+---
+
+**双帧硬约束（image_prompt 与 last_frame_prompt 的关系 · 每段写完必过）**
+
+首尾帧 = 同一个连续镜头内 t=0 与 t=T，AI 视频模型在中间做补帧。两条铁律：
+
+- **铁律 A**：一个真实摄影机能在 3-5 秒内不中断、不剪辑地从首帧拍到尾帧。做不到 = 必须拆段。
+- **铁律 B**：last_frame_prompt 跟 image_prompt 的英文文字共享 ≥85%，只在"运动变量"上有差异。
+
+**5 个不变量（FI · 严禁在首尾帧之间变化）**
+
+| 编号 | 不变量 | 违反示例（必拆段或重写）|
+|---|---|---|
+| FI1 | 机位（位置+角度+高度）| 首帧正面 / 尾帧侧面 |
+| FI2 | 景别（特写/中景/全景）| 首帧手部特写 / 尾帧全身中景 |
+| FI3 | 焦段与景深 | 首帧 85mm f/1.8 / 尾帧 35mm f/8 |
+| FI4 | 主体身份与数量 | 首帧 1 人 / 尾帧 2 人，或不同长相 |
+| FI5 | 物体种类与数量 | 首帧桌上 1 瓶 / 尾帧桌上 3 瓶，或不同品牌瓶 |
+
+"另一个角度看同一场景"也不允许——那是两个镜头，必须拆成相邻两段（前段尾帧 = 后段首帧）。
+
+**4 个允许变量（FV · 首尾帧之间只能在这 4 类上变化）**
+
+| 编号 | 变量 | 合理范围 |
+|---|---|---|
+| FV1 | 主体表情 | 微笑→大笑、平静→皱眉、闭眼→睁眼 |
+| FV2 | 主体动作/姿态 | 手伸出→手握紧、身体前倾 5°→前倾 15°、未拥抱→已拥抱（连续可推导）|
+| FV3 | 物体连续位移 | 杯子从桌左移到桌右、酱油从瓶中倒入碗内（不允许"瓶子在桌→瓶子在地摔碎"这种状态突变）|
+| FV4 | 光线/烟雾/蒸汽等环境元素细微变化 | 蒸汽从无到有、阳光角度微调 5°、烛火摇曳 |
+
+**双帧撰写规范（每段 image_prompt 与 last_frame_prompt 按此结构写）**
+
+- 共享描述（≥85% 文本）：机位/景别/焦段/景深/主体身份/场景/道具/光线/构图/质感/风格 —— image_prompt 里写完整，last_frame_prompt **原文复用**这些关键词组（不换近义词、不改顺序）
+- image_prompt 段末追加 `At t=0:` 一句，描述运动起点状态（表情/姿态/位移起始）
+- last_frame_prompt 主体是 `At t=T:` 一句，描述运动终点状态 —— **其余 ≥85% 文本与 image_prompt 文字雷同**
+
+**典型错误（必避免）**
+
+- ❌ 首帧"手拧瓶盖特写" / 尾帧"老人侧身全身" → 违反 FI1+FI2，拆成两段
+- ❌ 首帧"白塑料瓶" / 尾帧"棕玻璃瓶" → 违反 FI5（不同物体），拆段（前段拍白瓶、后段拍棕瓶，剪辑硬切对比）
+- ❌ 首帧"桌上无瓶" / 尾帧"桌上多出 2 瓶" → 违反 FI5（物体凭空出现），统一桌面摆设、变量改为人物表情/动作
+- ❌ 首帧"瓶子立在桌上" / 尾帧"瓶子摔碎在地" → 违反 FV3（状态突变 + 大位移），拆段
+- ❌ 收割段首帧"产品 logo 正面" / 尾帧"产品被使用一半" → 违反 FI5（物体状态差太多），拆段
+
+**首尾帧 9 项自检（每段写完输出此表，任一否 → 重写本段 last_frame_prompt 或拆段）**
+
+| # | 检查项 | 结论 |
+|---|---|---|
+| F1 | 首尾帧 FI1 机位完全一致？| 是/否 |
+| F2 | 首尾帧 FI2 景别完全一致？| 是/否 |
+| F3 | 首尾帧 FI3 焦段与景深完全一致？| 是/否 |
+| F4 | 首尾帧 FI4 人物数量与身份完全一致？| 是/否 |
+| F5 | 首尾帧 FI5 物体种类与数量完全一致？| 是/否 |
+| F6 | 首尾帧变化只涉及 FV1-FV4 中的允许项？| 是/否 |
+| F7 | image_prompt 与 last_frame_prompt 文字共享 ≥85%？| 是/否 |
+| F8 | 一个真实摄影师能在 3-5 秒内不剪辑地拍出这段过程？| 是/否 |
+| F9 | 若把首尾两帧并排给陌生人看，他会认为是"同一镜头的两个瞬间"，不是"两张独立的图"？| 是/否 |
+
+任何 F1-F9 否 → 优先**重写 last_frame_prompt**（让它在 FV 范围内变化，跟 image_prompt 共享 ≥85% 文本）；重写不通则**拆段**：当前 image_prompt 作为段 N 的 last_frame_prompt + 段 N+1 的 image_prompt。
+
 **image_prompt 71 维度框架（收割版 — 产品优先，节奏紧凑）**
 
 按**认知流顺序**连成 150-350 字段落（英文为主）：
