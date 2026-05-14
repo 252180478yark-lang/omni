@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"列一下我的 SKU"}]},"session_id":"abc-123","timestamp":"2026-05-15T10:00:00Z"}
+{"type":"assistant","message":{"id":"msg-1","role":"assistant","content":[{"type":"text","text":"我帮你查"}]},"session_id":"abc-123","timestamp":"2026-05-15T10:00:01Z"}
+{"type":"assistant","message":{"id":"msg-2","role":"assistant","content":[{"type":"tool_use","id":"toolu-1","name":"list_skus","input":{"status":"active"}}]},"session_id":"abc-123","timestamp":"2026-05-15T10:00:02Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu-1","content":"[{\"id\":\"SKU-1\"}]"}]},"session_id":"abc-123","timestamp":"2026-05-15T10:00:03Z"}
+{"type":"assistant","message":{"id":"msg-3","role":"assistant","content":[{"type":"text","text":"你有 1 个 SKU"}],"usage":{"input_tokens":100,"output_tokens":20}},"session_id":"abc-123","timestamp":"2026-05-15T10:00:04Z"}
