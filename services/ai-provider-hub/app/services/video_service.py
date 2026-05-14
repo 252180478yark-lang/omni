@@ -81,6 +81,11 @@ class VideoService:
                 continue
             except Exception as exc:
                 last_error = exc
+                logger.error(
+                    "video provider %s failed: %s: %s",
+                    name, type(exc).__name__, exc,
+                    exc_info=True,
+                )
                 continue
         raise RuntimeError(f"No video generation provider available: {last_error}")
 
