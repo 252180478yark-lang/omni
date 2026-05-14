@@ -114,6 +114,16 @@ app.include_router(mcp_exec_router)
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)
 
+# W5-B 切片 1.9：agent chat 附件 static mount（必须在 /static 宽路径之前注册）
+import os as _os
+UPLOAD_DIR = _os.environ.get("OMNI_UPLOAD_DIR", "/app/data/uploads")
+_os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount(
+    "/api/v1/knowledge/static/uploads",
+    StaticFiles(directory=UPLOAD_DIR, check_dir=False),
+    name="agent_chat_uploads",
+)
+
 # W4-B 切片 14.4 phase D 候选 D：资产磁盘存储（cdn url 24h 过期 → 落本地）
 # 挂载点跟 asset_storage.PUBLIC_URL_PREFIX 必须严格一致
 _assets_root = Path("/app/data/assets")

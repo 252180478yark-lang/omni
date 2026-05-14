@@ -231,6 +231,7 @@ services:
       - ./services/knowledge-engine/config:/app/config
       - ./services/knowledge-engine/scripts:/app/scripts:rw
       - ./data/agent_state:/app/agent_state:rw
+      - ./data/uploads:/app/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
