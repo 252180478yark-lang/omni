@@ -37,8 +37,28 @@ async def approve_endpoint(gate_id: str, payload: ApproveRequest):
     return result
 
 
+# W5-B 切片 1.10: /approved alias（前端 ws-handler 用 POST .../approved）
+@router.post("/human-gates/{gate_id}/approved")
+async def approved_endpoint(gate_id: str, payload: ApproveRequest):
+    result = await approve_gate(gate_id, payload.note)
+    if not result.get("ok"):
+        code = _error_to_status(result.get("error"))
+        return JSONResponse(content=result, status_code=code)
+    return result
+
+
 @router.post("/human-gates/{gate_id}/reject")
 async def reject_endpoint(gate_id: str, payload: ApproveRequest):
+    result = await reject_gate(gate_id, payload.note)
+    if not result.get("ok"):
+        code = _error_to_status(result.get("error"))
+        return JSONResponse(content=result, status_code=code)
+    return result
+
+
+# W5-B 切片 1.10: /rejected alias（前端 ws-handler 用 POST .../rejected）
+@router.post("/human-gates/{gate_id}/rejected")
+async def rejected_endpoint(gate_id: str, payload: ApproveRequest):
     result = await reject_gate(gate_id, payload.note)
     if not result.get("ok"):
         code = _error_to_status(result.get("error"))
