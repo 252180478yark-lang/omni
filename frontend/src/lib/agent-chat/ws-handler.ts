@@ -1,4 +1,5 @@
 import type { WebSocket } from 'ws'
+import Redis from 'ioredis'
 import { getSessionManager } from './session-manager'
 import { writeTempMcpConfig } from './mcp-config'
 import { readSessionHistory, encodeProjectDir } from './history-reader'
@@ -20,6 +21,51 @@ const pool = new Pool({
   password: process.env.PGPASSWORD || 'omni_pass',
   database: process.env.PGDATABASE || 'omni_vibe_db',
 })
+
+// W5-B 切片 3.2: Redis 订阅 mcp.human_gates.new + 广播到所有连接的 ws
+const REDIS_URL = process.env.REDIS_URL || 'redis://:changeme_redis@localhost:6379/1'
+let _redisSubscriber: Redis | null = null
+const _activeConnections = new Set<WebSocket>()
+
+function _initRedisSubscriber(): void {
+  if (_redisSubscriber) return
+  try {
+    _redisSubscriber = new Redis(REDIS_URL, { lazyConnect: false })
+    _redisSubscriber.subscribe('mcp.human_gates.new').catch((e) => {
+      // eslint-disable-next-line no-console
+      console.warn('[ws] redis subscribe failed:', e)
+    })
+    _redisSubscriber.on('message', (channel, payload) => {
+      if (channel !== 'mcp.human_gates.new') return
+      let data: { short_id: string; tool_name: string; summary: string }
+      try {
+        data = JSON.parse(payload)
+      } catch {
+        return
+      }
+      // 广播给所有连接（个人单用户场景，session 级路由后续优化）
+      Array.from(_activeConnections).forEach((ws) => {
+        try {
+          ws.send(JSON.stringify({
+            kind: 'human_gate_new',
+            session_id: '',
+            gate: data,
+          }))
+        } catch {
+          /* swallow */
+        }
+      })
+    })
+    _redisSubscriber.on('error', (e) => {
+      // eslint-disable-next-line no-console
+      console.warn('[ws] redis error:', e.message)
+    })
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[ws] redis subscriber init failed:', e)
+    _redisSubscriber = null
+  }
+}
 
 function send(ws: WebSocket, msg: WsServerMessage): void {
   try {
@@ -112,6 +158,12 @@ function extractAttachmentsFromResult(content: unknown): ChatAttachment[] {
 }
 
 export function attachWsHandler(ws: WebSocket): void {
+  _initRedisSubscriber()
+  _activeConnections.add(ws)
+  ws.on('close', () => {
+    _activeConnections.delete(ws)
+  })
+
   ws.on('message', async (raw) => {
     let msg: WsClientMessage
     try {
