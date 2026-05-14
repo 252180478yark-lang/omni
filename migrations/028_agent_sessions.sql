@@ -27,3 +27,18 @@ CREATE INDEX idx_agent_sessions_sku ON mcp.agent_sessions (sku_id) WHERE sku_id 
 CREATE INDEX idx_agent_sessions_claude_id ON mcp.agent_sessions (claude_session_id);
 
 COMMENT ON TABLE mcp.agent_sessions IS 'W5-B agent chat 前端的 session 元数据，对话内容存在 Claude Code jsonl 文件';
+
+-- 自动维护 updated_at（沿用 migrations 017/022 既有模式）
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'content_studio' AND p.proname = 'touch_updated_at'
+    ) THEN
+        DROP TRIGGER IF EXISTS trg_agent_sessions_touch ON mcp.agent_sessions;
+        CREATE TRIGGER trg_agent_sessions_touch
+            BEFORE UPDATE ON mcp.agent_sessions
+            FOR EACH ROW EXECUTE FUNCTION content_studio.touch_updated_at();
+    END IF;
+END $$;
