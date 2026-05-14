@@ -744,7 +744,12 @@
   xxx
 - **last_frame_prompt**（尾帧 last frame · 英文为主 · 80-150字）：本段最后 0.5 秒的**静止出帧**——动作完成态，构图收势，作为 Veo i2v 的结束帧。若本段是最后一段，出帧应是产品或品牌标识的 hold 帧。
   xxx
-- **motion_prompt**（运动描述 · 英文 · 30-80字）：首帧→尾帧之间的**可见运动过程**，喂给 Veo 视频模型。只写主体动作 + 镜头运动，不写情绪/叙事。
+- **motion_prompt**（运动描述 · 英文 · 60-160字 · 按 D 框架内部组织）：首帧→尾帧之间的**运动过程**，喂给 Veo 视频模型。step 7 已用通用 D 指令头托底，这里写**这一段特有的具体值**。**只写可见视觉运动，不写情绪/叙事意图**。按下列 D 框架内部组织（写成连贯英文段落即可，不分行不写 D 标签）：
+  - D1 变化主体：列 2-4 个变化元素，每个 `<element>: <start state> → <end state>`
+  - D3 时间锚点：段时长切 3-4 个时间点，每点描述画面状态
+  - D5 因果链：变化的因果先后（"A 先发生 → B 因此跟上 → C 收尾"）
+  - D7 运动模糊提示：注明哪些元素带 subtle motion blur
+  例（8s 段 · 内行倒酱油验货）：`0-2s bottle hovers above tasting dish; 2-3.5s first drop falls and lands at 3s creating ripple; 3.5-5s liquid spreads forming amber pool; 5-7s insider's brow relaxes 2mm and corner of mouth lifts subtly; 7-8s steady hand pose, ripple settling. Motion blur on falling drop only; bottle, hand, dish stay sharp. Camera 85mm medium close-up, no movement.`
   xxx
 ```
 

@@ -870,7 +870,7 @@ _VIDEO_FIELD_RES = {
     "change_point": re.compile(r"\*\*\s*变化点\s*\*\*\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\s*$|$)", re.S),
 }
 
-# phase D 新加 3 字段：本段角色 / 产品出场 / image_prompt
+# phase D 新加 5 字段：本段角色 / 产品出场 / image_prompt（首帧）/ last_frame_prompt（尾帧）/ motion_prompt（运动）
 _VIDEO_FIELD_RES_PHASE_D = {
     # **本段角色**：[daughter, mother] — 抓 [...] 内的 role_id 列表
     "characters_in_scene": re.compile(r"\*\*\s*本段角色\s*\*\*\s*[:：]\s*\[([^\]]*)\]"),
@@ -879,6 +879,16 @@ _VIDEO_FIELD_RES_PHASE_D = {
     # **image_prompt**(...): 自然语言长描述 — 抓 : 后到下一个 - **xxx** 之前 / 或段落末尾
     "image_prompt": re.compile(
         r"\*\*\s*image_prompt\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\n```|\Z)",
+        re.S,
+    ),
+    # **last_frame_prompt**(尾帧 ...): 动作完成态出帧 — 喂 step 6 生 image_last
+    "last_frame_prompt": re.compile(
+        r"\*\*\s*last_frame_prompt\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\n```|\Z)",
+        re.S,
+    ),
+    # **motion_prompt**(运动描述 · 英文 ...): 首帧→尾帧间的可见运动 — 喂 step 7 Veo i2v
+    "motion_prompt": re.compile(
+        r"\*\*\s*motion_prompt\s*\*\*\s*(?:[（(][^)）]*[)）])?\s*[:：]\s*(.+?)(?=\n\s*-\s*\*\*|\n\n|\n```|\Z)",
         re.S,
     ),
 }
@@ -1008,15 +1018,18 @@ def _parse_video_scenes(text: str) -> list[dict[str, Any]]:
         if m_prod:
             v = m_prod.group(1).strip().lower()
             scene["product_appearance"] = v in ("true", "是")
-        # image_prompt：自然语言长描述（保留换行 + 缩进）
-        m_ip = _VIDEO_FIELD_RES_PHASE_D["image_prompt"].search(body)
-        if m_ip:
-            ip = m_ip.group(1).strip()
-            # 去多余空白，但保留段落（image_prompt 可能多行）
-            ip = re.sub(r"\n\s+", " ", ip)
-            ip = re.sub(r"\s+", " ", ip).strip()
-            if ip:
-                scene["image_prompt"] = ip
+        # image_prompt / last_frame_prompt / motion_prompt：自然语言长描述
+        # 三套 prompt 同格式（**field**（描述）：内容多行可缩进），同流水线 strip + 压空白
+        for _field in ("image_prompt", "last_frame_prompt", "motion_prompt"):
+            m = _VIDEO_FIELD_RES_PHASE_D[_field].search(body)
+            if not m:
+                continue
+            v = m.group(1).strip()
+            # 去多余空白，但保留段落
+            v = re.sub(r"\n\s+", " ", v)
+            v = re.sub(r"\s+", " ", v).strip()
+            if v:
+                scene[_field] = v
 
         scenes.append(scene)
     # 按 scene_no 升序
@@ -1561,24 +1574,23 @@ def build_selling_point_motion_hint(ctx: dict, scene_no: int = 1) -> str:
     return f"visual emphasis: {name}"
 
 
-async def backfill_scenes_for_existing_scripts() -> dict[str, Any]:
-    """一次性回填：扫所有 pipeline.scripts 中 scenes=[] 或 character_sheets=[] 的，按 kind 重解析 script_md 写回。
+async def backfill_scenes_for_existing_scripts(force_reparse: bool = False) -> dict[str, Any]:
+    """一次性回填：按 kind 重解析 pipeline.scripts.script_md 写 scenes/character_sheets。
 
-    给 phase D 起手用，让历史 adopted scripts 也能拉分镜清单 + 角色清单。
-    解析 v11+ 的脚本能拿到 9 字段（含 image_prompt / characters_in_scene / product_appearance）+ character_sheets；
-    v10 老脚本只能拿到 6 字段（缺 phase D 那 3 个，character_sheets=[]）。
+    默认只补 scenes=[] 或 character_sheets=[] 的（首跑 phase D 用）；
+    force_reparse=True 时扫所有非空 script_md，把历史 v11+ 脚本里
+    新加的 last_frame_prompt / motion_prompt 等字段重新解析进 scenes JSONB。
 
     返 {scanned, scripts_updated, scenes_parsed_total, character_sheets_parsed_total, by_kind}。
     """
     pool = get_pool()
-    rows = await pool.fetch(
-        """
-        SELECT id::text AS id, kind, script_md
-        FROM pipeline.scripts
-        WHERE (scenes::text = '[]' OR character_sheets::text = '[]')
-          AND script_md IS NOT NULL AND script_md != ''
-        """
+    where_clause = (
+        "WHERE script_md IS NOT NULL AND script_md != ''"
+        if force_reparse
+        else """WHERE (scenes::text = '[]' OR character_sheets::text = '[]')
+          AND script_md IS NOT NULL AND script_md != ''"""
     )
+    rows = await pool.fetch(f"SELECT id::text AS id, kind, script_md FROM pipeline.scripts {where_clause}")
     scanned = len(rows)
     scenes_total = 0
     sheets_total = 0

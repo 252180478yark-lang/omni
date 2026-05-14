@@ -1197,6 +1197,32 @@ async def generate_video_segments(
                 if action_pieces2:
                     parts.append("Motion: " + "; ".join(action_pieces2))
 
+            # ── 显式"首→尾过渡"指令（D1-D12 运动维度框架，D17 口型在台词段处理）──
+            # Veo i2v 关键：告诉模型用 last_frame 作运动终点；7 个维度防"幻灯片切换"
+            # 这是通用指令头（不依赖 step 5 写具体值）；D3 时间锚点的具体值由 motion_prompt 提供
+            if has_last_frame:
+                parts.append(
+                    "Frame transition framework (first frame → last frame):\n"
+                    "  D1 Changing subjects: identify every visual element that differs between "
+                    "first and last frame (pose, expression, hand position, gaze direction, "
+                    "incidental light shift) and animate each one continuously.\n"
+                    "  D2 Trajectory curves: each changing element follows a natural easing curve "
+                    "(ease-in-out, not linear teleport, not constant velocity).\n"
+                    "  D4 Speed hierarchy: primary subject leads the motion; ambient elements "
+                    "(steam, hair strands, light, fabric) drift slowly in background to create "
+                    "depth — they do NOT match primary subject speed.\n"
+                    "  D5 Causality: respect implied cause-effect within the segment — if hands "
+                    "relax, face follows; if eyes widen, smile spreads after. Not simultaneous.\n"
+                    "  D6 Invariant lock: preserve exactly — face identity, clothing, product "
+                    "design and label, scene background, lighting direction, color temperature. "
+                    "No identity drift, no element replacement, no new objects appearing.\n"
+                    "  D7 Motion smoothness: apply subtle motion blur on moving subjects only "
+                    "(not the whole frame). Render continuous flow between intermediate states; "
+                    "no slideshow-style hard cuts, no stuttering frame interpolation.\n"
+                    "  D12 Emotion arc: if expression differs between frames, transition the "
+                    "emotion gradually across the segment — not a sudden jump at the end."
+                )
+
         # ── 镜头（两种模式共用）──
         if shot:
             parts.append(f"镜头：{shot}（运镜平稳缓慢，无抖动无快速切换）")
@@ -1231,9 +1257,13 @@ async def generate_video_segments(
         elif product_in is False:
             parts.append("产品：本段不出现产品，画面中不要任何瓶身/包装/品牌字样")
 
-        # ── 转场（仅 i2v 有 last_frame 时启用；t2v 无分镜图序列，不转场）──
+        # ── 段间过渡（已在 i2v 显式 Frame transition 之外，这里指本段尾→下段首的视觉缓冲）──
+        # 仅 i2v 有 last_frame 时启用；t2v 无分镜图序列，不转场
         if has_last_frame and not is_t2v:
-            parts.append("结尾过渡：本段镜头自然收束到下一段画面的构图，过渡平滑无生硬切换")
+            parts.append(
+                "Segment-to-next transition: the last frame should naturally lead toward the "
+                "framing of the next segment, no jarring cut at segment boundary."
+            )
 
         # ── Negative prompt（t2v 去掉首帧漂移类约束，换成跨镜一致性约束）──
         if is_t2v:

@@ -91,7 +91,11 @@
   xxx
 - **last_frame_prompt**（尾帧 last frame · 英文为主 · 60-120字）：本段动作完成的**静止出帧**，作为 Veo i2v 结束帧。最后一段出帧为产品 hold 帧。
   xxx
-- **motion_prompt**（运动描述 · 英文 · 20-60字）：首帧→尾帧之间的可见运动，喂给 Veo。只写动作+镜头，不写情绪。
+- **motion_prompt**（运动描述 · 英文 · 50-120字 · 按 D 框架内部组织）：首帧→尾帧之间的**运动过程**，喂给 Veo 视频模型。step 7 已用通用 D 指令头托底，这里写**这一段特有的具体值**。**只写可见视觉运动**。按下列 D 框架（写连贯英文段落，不分行不写 D 标签）：
+  - D1 变化主体：列 2-3 个变化元素 + 起始→终止
+  - D3 时间锚点：段时长切 3 个时间点 + 各点画面
+  - D7 运动模糊提示：注明哪些元素带 subtle motion blur
+  例（4s 收割段 · 倒酱油强 CTA）：`0-1s bottle vertical above lettuce, label fully visible; 1-2.5s bottle tilts and first stream emerges, dark liquid mid-air at 2s; 2.5-4s sauce pools onto leaves with vivid glossy ripple, bottle returns vertical. Motion blur on the liquid stream only; bottle stays sharp. Static medium close-up.`
   xxx
 ```
 

@@ -352,11 +352,13 @@ export default function SkuPipelinePage() {
   } | null>(null)
 
   // ── Step 7.1：i2v 视频段生成（分镜图→视频） ─────────────────────
+  // 每段含首帧 (image_first / fallback image) + 可选尾帧 (image_last)
   const [imageAssets7, setImageAssets7] = useState<Array<{
     id: string
     scene_no: number | null
     file_url: string | null
     status: string
+    last_frame_url?: string | null
   }> | null>(null)
   const [loadingImageAssets7, setLoadingImageAssets7] = useState(false)
   const [selectedScenes7, setSelectedScenes7] = useState<Set<number>>(new Set())
@@ -915,8 +917,10 @@ export default function SkuPipelinePage() {
   }
 
   // ── Step 7 handlers ─────────
-  // 拉同 script_id 的首帧 asset（哪几段已出图能跑视频）
-  // 新架构落 'image_first'；旧脚本仅有 'image'。两批合并，image_first 优先
+  // 拉同 script_id 的首帧 + 尾帧 asset（哪几段已出图能跑视频）
+  // 新架构落 'image_first' + 'image_last'；旧脚本仅有 'image'。三批合并：
+  //   - 首帧：image_first 优先，fallback image
+  //   - 尾帧：image_last（无则 step 7 内部 fallback 下一段首帧）
   const loadImageAssets7 = async () => {
     if (!script6Id) return
     setLoadingImageAssets7(true)
@@ -936,32 +940,46 @@ export default function SkuPipelinePage() {
         }>
       }
 
-      const [firstFrames, legacyImages] = await Promise.all([
+      const [firstFrames, legacyImages, lastFrames] = await Promise.all([
         fetchByType('image_first'),
         fetchByType('image'),
+        fetchByType('image_last'),
       ])
 
-      // 按 scene_no 去重：image_first 优先；同 type 内 adopted 优先
-      const bySn = new Map<number, { id: string; scene_no: number | null; file_url: string | null; status: string }>()
+      // 按 scene_no 选首帧：image_first 优先；同 type 内 adopted 优先
+      const bySn = new Map<number, {
+        id: string; scene_no: number | null; file_url: string | null; status: string; last_frame_url?: string | null
+      }>()
       const ingest = (list: typeof firstFrames, isPrimary: boolean) => {
         for (const a of list) {
           if (typeof a.scene_no !== 'number') continue
           const existing = bySn.get(a.scene_no)
           if (!existing) {
-            bySn.set(a.scene_no, a)
+            bySn.set(a.scene_no, { ...a })
             continue
           }
-          if (isPrimary) {
-            // 已有 entry 但本批是 image_first（更高优先），且当前 entry 不是同源 image_first
-            if (a.status === 'adopted' && existing.status !== 'adopted') {
-              bySn.set(a.scene_no, a)
-            }
+          if (isPrimary && a.status === 'adopted' && existing.status !== 'adopted') {
+            bySn.set(a.scene_no, { ...a, last_frame_url: existing.last_frame_url })
           }
-          // 非 primary（旧 image）：仅 fallback，已有 entry 时不覆盖
         }
       }
       ingest(firstFrames, true)
       ingest(legacyImages, false)
+
+      // 给每段配上对应的尾帧 url（按 scene_no 匹配；adopted 优先）
+      const lastBySn = new Map<number, { file_url: string | null; status: string }>()
+      for (const a of lastFrames) {
+        if (typeof a.scene_no !== 'number') continue
+        const existing = lastBySn.get(a.scene_no)
+        if (!existing || (a.status === 'adopted' && existing.status !== 'adopted')) {
+          lastBySn.set(a.scene_no, { file_url: a.file_url, status: a.status })
+        }
+      }
+      bySn.forEach((entry, sn) => {
+        const last = lastBySn.get(sn)
+        if (last?.file_url) entry.last_frame_url = last.file_url
+      })
+
       const deduped = Array.from(bySn.values()).sort((a, b) => (a.scene_no ?? 0) - (b.scene_no ?? 0))
       setImageAssets7(deduped)
     } catch (e) {
@@ -4007,14 +4025,33 @@ export default function SkuPipelinePage() {
                                 })
                               }}
                             />
-                            {a.file_url && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={a.file_url}
-                                alt={`scene ${sn}`}
-                                className="w-12 h-12 object-cover rounded border shrink-0"
-                              />
-                            )}
+                            <div className="flex gap-1 shrink-0">
+                              {a.file_url && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={a.file_url}
+                                  alt={`scene ${sn} first`}
+                                  title="首帧 (image_first)"
+                                  className="w-12 h-12 object-cover rounded border"
+                                />
+                              )}
+                              {a.last_frame_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={a.last_frame_url}
+                                  alt={`scene ${sn} last`}
+                                  title="尾帧 (image_last)"
+                                  className="w-12 h-12 object-cover rounded border border-amber-300"
+                                />
+                              ) : (
+                                <div
+                                  title="无尾帧 — step 7 会用下一段首帧串场"
+                                  className="w-12 h-12 rounded border border-dashed text-[8px] text-muted-foreground flex items-center justify-center"
+                                >
+                                  无尾
+                                </div>
+                              )}
+                            </div>
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-medium">第 {sn} 段</div>
                               <div className="text-[10px] text-muted-foreground truncate">

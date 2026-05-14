@@ -646,7 +646,12 @@ CER 是 Slice of Life 的**剧情化升级版** —— 多了情感弧线和释�
   xxx
 - **last_frame_prompt**（尾帧 last frame · 英文为主 · 80-150字）：本段最后 0.5 秒的**静止出帧**——角色/产品的动作完成态，构图收势。这张图将作为 Veo i2v 的结束帧，模型在到达此帧时停止。与 image_prompt 形成视觉前后呼应。若本段是最后一段，出帧应是产品或品牌标识的 hold 帧。
   xxx
-- **motion_prompt**（运动描述 · 英文 · 30-80字）：描述首帧→尾帧之间发生的**运动过程**，喂给 Veo 视频模型。写法：主体动作 + 镜头运动 + 关键变化，**不写情绪/叙事意图**，只写可见的视觉运动。例："woman slowly lifts soy sauce bottle and tilts it to pour, camera holds steady medium close-up, dark liquid streams down"
+- **motion_prompt**（运动描述 · 英文 · 60-160字 · 按 D 框架内部组织）：首帧→尾帧之间的**运动过程**，喂给 Veo 视频模型。step 7 已用通用 D 指令头托底，这里写**这一段特有的具体值**。**只写可见视觉运动，不写情绪/叙事意图**。按下列 D 框架内部组织（写成连贯英文段落即可，不分行不写 D 标签）：
+  - D1 变化主体：列 2-4 个变化元素，每个写 `<element>: <start state> → <end state>`
+  - D3 时间锚点：把段时长（4/6/8s）切 3-4 个时间点，每点描述当时画面
+  - D5 因果链：变化的因果先后（如"hands relax first → exhale → smile softens"）
+  - D7 运动模糊提示：注明哪些元素该带 subtle motion blur
+  例（6s 段 · 妈妈尝菜微笑）：`Hands lift chopsticks from 0s to 1.5s, chopsticks reach mouth at 2s causing lips to part. Eyes widen 2-3s upon taste. Brow softens and corners of mouth rise 3-4.5s, head turns 30° right by 5s, smile fully resolved at 6s. Hands settle, chopsticks held still. Subtle motion blur on lifting chopsticks; ambient steam drifts upward throughout, hair stays still. Camera holds steady medium close-up.`
   xxx
 ```
 
