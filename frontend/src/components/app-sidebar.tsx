@@ -31,6 +31,7 @@ import {
   CalendarDays,
   Calculator,
   Activity,
+  Brain,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -96,7 +97,7 @@ const NAV_ITEMS: NavEntry[] = [
 
   { kind: 'section', label: '知识与对话' },
   { href: '/knowledge', icon: Database, label: '知识库', hint: '管理 PDF、网页、复盘和报告' },
-  { href: '/chat', icon: MessageSquare, label: '智能问答', hint: '基于你的资料做检索和问答' },
+  { href: '/chat', icon: Brain, label: 'Agent 对话', hint: '跟 Claude 自然语言聊天，自动调 omni tool 出结果' },
 
   { kind: 'section', label: '内容生产' },
   {
