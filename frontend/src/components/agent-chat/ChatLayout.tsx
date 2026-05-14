@@ -1,6 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAgentChat } from '@/hooks/useAgentChat'
+import { useNotification } from '@/hooks/useNotification'
 import { SessionList } from './SessionList'
 import { MessageStream } from './MessageStream'
 import { InputBar } from './InputBar'
@@ -8,7 +9,24 @@ import { AlertCircle } from 'lucide-react'
 
 export function ChatLayout() {
   const [currentId, setCurrentId] = useState<string | null>(null)
-  const { connected, session, messages, running, error, sendPrompt, cancel, decideGate } = useAgentChat(currentId)
+  const { permission, requestPermission, notify } = useNotification()
+
+  useEffect(() => {
+    if (permission === 'default') requestPermission()
+  }, [permission, requestPermission])
+
+  const { connected, session, messages, running, error, sendPrompt, cancel, decideGate } = useAgentChat(currentId, {
+    onTaskDone: (_sid, dur) => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        notify('omni 任务完成', { body: `用时 ${(dur / 1000).toFixed(0)}s` })
+      }
+    },
+    onGateNew: (gate) => {
+      if (typeof document !== 'undefined' && document.hidden) {
+        notify('需要你点头', { body: `${gate.tool_name}：${gate.summary.slice(0, 80)}` })
+      }
+    },
+  })
 
   return (
     <div className="h-screen flex bg-white">

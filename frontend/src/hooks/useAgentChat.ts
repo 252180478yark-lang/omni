@@ -16,13 +16,23 @@ interface UseAgentChatResult {
   decideGate: (shortId: string, decision: 'approved' | 'rejected', note?: string) => void
 }
 
-export function useAgentChat(sessionId: string | null): UseAgentChatResult {
+interface UseAgentChatOptions {
+  onTaskDone?: (sessionId: string, durationMs: number) => void
+  onGateNew?: (gate: { short_id: string; tool_name: string; summary: string }) => void
+}
+
+export function useAgentChat(sessionId: string | null, options: UseAgentChatOptions = {}): UseAgentChatResult {
   const wsRef = useRef<WebSocket | null>(null)
+  const optionsRef = useRef(options)
   const [connected, setConnected] = useState(false)
   const [session, setSession] = useState<SessionState | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    optionsRef.current = options
+  }, [options])
 
   useEffect(() => {
     if (!sessionId) return
@@ -43,6 +53,7 @@ export function useAgentChat(sessionId: string | null): UseAgentChatResult {
         setMessages((prev) => mergeMessage(prev, msg.message))
       } else if (msg.kind === 'task_done') {
         setRunning(false)
+        optionsRef.current.onTaskDone?.(msg.session_id, msg.duration_ms)
       } else if (msg.kind === 'human_gate_new') {
         const gateMsg: ChatMessage = {
           id: `gate-${msg.gate.short_id}`,
@@ -54,6 +65,7 @@ export function useAgentChat(sessionId: string | null): UseAgentChatResult {
           created_at: new Date().toISOString(),
         }
         setMessages((prev) => [...prev, gateMsg])
+        optionsRef.current.onGateNew?.(msg.gate)
       } else if (msg.kind === 'error') {
         setError(msg.error + (msg.detail ? `: ${msg.detail}` : ''))
         setRunning(false)
