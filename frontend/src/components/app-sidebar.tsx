@@ -97,7 +97,7 @@ const NAV_ITEMS: NavEntry[] = [
 
   { kind: 'section', label: '知识与对话' },
   { href: '/knowledge', icon: Database, label: '知识库', hint: '管理 PDF、网页、复盘和报告' },
-  { href: '/chat', icon: Brain, label: 'Agent 对话', hint: '跟 Claude 自然语言聊天，自动调 omni tool 出结果' },
+  { href: '/chat', icon: Brain, label: 'Agent 对话（Web 版）', hint: '备用 web 入口；主用桌面 app（omni-desktop）' },
 
   { kind: 'section', label: '内容生产' },
   {
