@@ -84,10 +84,8 @@ services:
       identity-service:
         condition: service_started
     ports:
-      # W6 multi-device: nginx 绑 0.0.0.0 让 tailnet 内 OPPO/Mac 能访问;
-      # 其他服务 (KE/Hub/Frontend) 保持 127.0.0.1, 由 nginx 反代统一出口
-      - "${NGINX_PORT:-80}:80"
-      - "${NGINX_SSL_PORT:-443}:443"
+      - "127.0.0.1:${NGINX_PORT:-80}:80"
+      - "127.0.0.1:${NGINX_SSL_PORT:-443}:443"
     volumes:
       - ./services/infra-core/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/infra-core/nginx/conf.d:/etc/nginx/conf.d:ro

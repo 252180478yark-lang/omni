@@ -236,33 +236,14 @@ async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise
       }
       if (chunk.type === 'result') {
         const usage = chunk.message?.usage
-        const durationMs = chunk.duration_ms || 0
-        const costUsd = chunk.total_cost_usd || 0
         send(ws, {
           kind: 'task_done',
           session_id: msg.session_id,
-          duration_ms: durationMs,
-          total_cost_usd: costUsd,
+          duration_ms: chunk.duration_ms || 0,
+          total_cost_usd: chunk.total_cost_usd || 0,
           tokens: { input: usage?.input_tokens || 0, output: usage?.output_tokens || 0 },
         })
         updateSessionStats(msg.session_id, chunk).catch(() => undefined)
-        // W6 multi-device: 任务完成自动推企业微信 (老板出差时也能收到通知)
-        // fire-and-forget, 没配 WECOM_WEBHOOKS 时 KE 返 skipped 不影响业务
-        if (durationMs >= 10000) {
-          // 只推 >=10s 的"长任务", 避免每秒级查询任务都推一条骚扰
-          const keUrl = process.env.KNOWLEDGE_ENGINE_URL || 'http://knowledge-engine:8002'
-          fetch(`${keUrl}/api/v1/notify/task-done`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              session_id: msg.session_id,
-              duration_ms: durationMs,
-              total_cost_usd: costUsd,
-            }),
-          }).catch((err) => {
-            console.warn('[notify task_done] failed:', err?.message || err)
-          })
-        }
       }
     })
     runner.on('stderr', (data: string) => {

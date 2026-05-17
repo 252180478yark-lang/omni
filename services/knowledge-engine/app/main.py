@@ -27,7 +27,6 @@ from app.routers.accounting import router as accounting_router
 from app.routers.mcp_tool_calls import router as mcp_tool_calls_router
 from app.routers.human_gates import router as human_gates_router
 from app.routers.mcp_exec import router as mcp_exec_router
-from app.routers.notify import router as notify_router
 from contextlib import AsyncExitStack
 from app.mcp.server import mcp_http_app
 
@@ -111,7 +110,6 @@ app.include_router(accounting_router)
 app.include_router(mcp_tool_calls_router)
 app.include_router(human_gates_router)
 app.include_router(mcp_exec_router)
-app.include_router(notify_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)

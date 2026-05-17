@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { Plus, MessageSquare, Trash2, X } from 'lucide-react'
+import { Plus, MessageSquare, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface SessionRow {
@@ -15,13 +15,9 @@ interface SessionRow {
 interface Props {
   currentId: string | null
   onSelect: (id: string) => void
-  /** 移动端: 是否打开抽屉。大屏自动忽略 */
-  mobileOpen?: boolean
-  /** 移动端: 关闭抽屉回调 */
-  onClose?: () => void
 }
 
-export function SessionList({ currentId, onSelect, mobileOpen = false, onClose }: Props) {
+export function SessionList({ currentId, onSelect }: Props) {
   const [list, setList] = useState<SessionRow[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -54,37 +50,16 @@ export function SessionList({ currentId, onSelect, mobileOpen = false, onClose }
   }
 
   return (
-    <aside
-      className={cn(
-        // 基础: 大屏 static, 小屏 fixed 抽屉
-        'border-r border-gray-100 bg-white flex flex-col',
-        // 大屏: 64 宽固定
-        'md:static md:w-64 md:translate-x-0',
-        // 小屏: fixed 抽屉, 默认 -translate 隐藏, mobileOpen=true 滑入
-        'fixed inset-y-0 left-0 z-50 w-72 transition-transform duration-200',
-        mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
-      )}
-    >
+    <aside className="w-64 border-r border-gray-100 bg-white flex flex-col">
       <div className="px-4 h-14 border-b border-gray-100 flex items-center justify-between">
         <span className="text-sm font-semibold text-gray-700">对话</span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={createNew}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-violet-600 text-white text-xs hover:bg-violet-700"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            新建
-          </button>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="md:hidden p-1.5 rounded-md text-gray-500 hover:bg-gray-100"
-              aria-label="关闭"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+        <button
+          onClick={createNew}
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-violet-600 text-white text-xs hover:bg-violet-700"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          新建
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto py-2 space-y-1 px-2">
         {loading && <div className="px-3 py-2 text-xs text-gray-400">加载中...</div>}
