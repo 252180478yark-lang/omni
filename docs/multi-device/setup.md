@@ -150,9 +150,8 @@ Play Store / 国内应用商店搜 "Tailscale" → 装 → 同一账号登录
   ```
 - omni 后端没做认证 (个人自用) — 别把 tailnet IP/账号外泄
 
-## 下一步 (W7+ 路线)
+## 下一步 (按需,无 plan)
 
-- 高级版 Telegram bot / iOS Shortcuts 触发 (跨"非 omni"项目 — 见 plan `2026-05-17-claude-orchestrator-plan.md`)
-- omni computer-use MCP server (Claude Code 内置 GUI 操作 — 见 plan `2026-05-17-omni-computer-use-plan.md`)
 - /chat 移动端语音输入 (Web Speech API)
 - 任务历史按设备分类 (Win/Mac/手机 哪个端发的)
+- 进一步移动端 UI 打磨 (老板真用过后反馈)
