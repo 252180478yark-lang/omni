@@ -56,7 +56,10 @@ export function InputBar({ sessionId, running, onSend, onCancel }: Props) {
   }
 
   return (
-    <div className="border-t border-gray-100 bg-white px-4 py-3">
+    <div
+      className="border-t border-gray-100 bg-white px-3 md:px-4 py-3"
+      style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+    >
       {files.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {files.map((f, idx) => (

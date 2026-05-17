@@ -326,3 +326,33 @@ KE 容器 lifespan 启动期起 3 个 asyncio loop，每小时唤醒一次检查
   - 持续看：`docker exec -it omni-knowledge-engine python -m app.mcp.cli_approve tail`（Ctrl-C 退）
 - **prompt 模板列表**：`docker exec omni-knowledge-engine python -c 'from app.mcp import prompts; [print(t) for t in prompts.list_templates()]'`
 - **CSV 导入 cost_items**：`docker exec omni-knowledge-engine python /app/scripts/import_costs.py /app/scripts/cost_template.csv`（先 `--dry-run` 预演）
+
+## omni 三端协同 (W6 multi-device)
+
+老板要在 Win 主机 / Mac / OPPO Find N6 三端协同使用 omni。基建落地于 2026-05-17:
+
+- **后端**: nginx 已绑 `0.0.0.0:80` (docker-compose.yml),其他服务保持 127.0.0.1 经 nginx 反代
+- **前端 PWA**: `/chat` 路由加了 manifest.json + icon SVG + viewport meta + appleWebApp meta — OPPO Chrome 可"添加到主屏",带启动屏 + 全屏 + safe-area 适配
+- **/chat 移动端响应式**: ChatLayout 加 hamburger button + mobileNavOpen state; SessionList 小屏抽屉模式 (`fixed translate-x` 滑入,backdrop click 关); InputBar `paddingBottom: max(0.75rem, env(safe-area-inset-bottom))` 适配全面屏 home indicator
+- **长任务推企业微信**: KE 新增 `POST /api/v1/notify/task-done` endpoint (不走 Human Gate); frontend ws-handler 在 Claude Code task_done 时 fire-and-forget fetch 推送 (>=10s 任务才推,避免骚扰); 没配 `WECOM_WEBHOOKS` 时返 `skipped:true` 不影响业务
+- **网络层**: 老板装 Tailscale (Win + Mac + OPPO 三端同账号),走 100.x.x.x tailnet IP P2P 加密,0 公网暴露
+
+**老板话术触发**:
+- "我要在路上用 omni" → 文档 `docs/multi-device/setup.md` (Tailscale 装机 + Mac DMG + OPPO PWA 全步骤)
+- "怎么配企业微信推送" → `WECOM_WEBHOOKS=task_done=https://qyapi.weixin.qq.com/...` 写进 KE .env 重启
+- "推送 endpoint 有问题" → `curl http://localhost:8002/api/v1/notify/health` 看 channels_configured 是否非空
+
+**老板手动步骤** (我代不了):
+- Tailscale 注册 + 三端装客户端
+- 企业微信群机器人申请 webhook URL
+- Mac 上 `npm run pack:mac` 出 DMG + 装 Applications
+- OPPO Chrome "添加到主屏"
+
+实现:
+- `frontend/public/manifest.json` + `icon{,-192,-512}.svg`
+- `frontend/src/app/layout.tsx` (metadata.manifest + viewport export)
+- `frontend/src/components/agent-chat/{ChatLayout,SessionList,InputBar}.tsx` (移动端响应式)
+- `frontend/src/lib/agent-chat/ws-handler.ts` (task_done fetch notify endpoint)
+- `services/knowledge-engine/app/routers/notify.py` (POST /api/v1/notify/task-done + human-gate + health)
+- `docker-compose.yml` nginx 端口绑定改 `0.0.0.0`
+- `docs/multi-device/setup.md` (装机指南)
