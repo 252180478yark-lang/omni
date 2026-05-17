@@ -5,10 +5,11 @@ import { useNotification } from '@/hooks/useNotification'
 import { SessionList } from './SessionList'
 import { MessageStream } from './MessageStream'
 import { InputBar } from './InputBar'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Menu, X } from 'lucide-react'
 
 export function ChatLayout() {
   const [currentId, setCurrentId] = useState<string | null>(null)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const { permission, requestPermission, notify } = useNotification()
 
   useEffect(() => {
@@ -28,17 +29,43 @@ export function ChatLayout() {
     },
   })
 
+  const handleSelect = (id: string) => {
+    setCurrentId(id || null)
+    setMobileNavOpen(false)
+  }
+
   return (
-    <div className="h-screen flex bg-white">
-      <SessionList currentId={currentId} onSelect={(id) => setCurrentId(id || null)} />
+    <div className="h-[100dvh] flex bg-white overflow-hidden">
+      {/* Mobile backdrop */}
+      {mobileNavOpen && (
+        <div
+          onClick={() => setMobileNavOpen(false)}
+          className="md:hidden fixed inset-0 bg-black/40 z-40"
+        />
+      )}
+
+      <SessionList
+        currentId={currentId}
+        onSelect={handleSelect}
+        mobileOpen={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+      />
+
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 px-6 border-b border-gray-100 flex items-center justify-between bg-white">
-          <div className="min-w-0">
+        <header className="h-14 px-3 md:px-6 border-b border-gray-100 flex items-center justify-between bg-white gap-2">
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="md:hidden p-2 -ml-1 rounded-md text-gray-600 hover:bg-gray-100"
+            aria-label="打开会话列表"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="min-w-0 flex-1">
             <h1 className="text-sm font-semibold text-gray-900 truncate">
               {session?.title || (currentId ? '加载中...' : '从左侧选一个对话')}
             </h1>
             {session && (
-              <div className="text-[10px] text-gray-400 mt-0.5">
+              <div className="text-[10px] text-gray-400 mt-0.5 truncate">
                 {session.message_count} 条 · {session.sku_id ? `SKU ${session.sku_id} · ` : ''}
                 {connected ? '● 已连接' : '○ 未连接'}
               </div>
@@ -47,7 +74,7 @@ export function ChatLayout() {
         </header>
 
         {error && (
-          <div className="mx-6 mt-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+          <div className="mx-3 md:mx-6 mt-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
             <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
@@ -64,8 +91,8 @@ export function ChatLayout() {
             />
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-            从左侧选或新建一个对话开始
+          <div className="flex-1 flex items-center justify-center text-gray-400 text-sm px-6 text-center">
+            {mobileNavOpen ? '' : '点左上角菜单选或新建一个对话开始'}
           </div>
         )}
       </main>
