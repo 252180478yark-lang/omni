@@ -31,7 +31,7 @@ IPC）③ usage_limit 检测 + 续跑 ④ 手机端 UI shell
 **目的**：让 omni-desktop 跑任意目录的 Claude Code，不锁死 omni 自己。
 
 **改**：
-- `migrations/028_orch_lineage.sql`:
+- `migrations/029_orch_lineage.sql` (028 已被 W5-B agent_sessions 占了):
   ```sql
   ALTER TABLE mcp.agent_sessions ADD COLUMN project_dir TEXT;
 
@@ -150,7 +150,7 @@ IPC）③ usage_limit 检测 + 续跑 ④ 手机端 UI shell
 
 | | 工期 | 说明 |
 |---|---|---|
-| 切片 1 DB + cwd | 0.5 天 | migration 028 + omni-desktop type 改 |
+| 切片 1 DB + cwd | 0.5 天 | migration 029 + omni-desktop type 改 |
 | 切片 2 HTTP/WS server | 1 天 | 新文件 + npm install + 1:1 映射 IPC |
 | 切片 3 usage_limit + 续跑 | 0.5 天 | stderr regex + scheduler interval |
 | 切片 4A web UI | 1 天 | omni frontend `/orch` 路由 + 项目选择器 + 续跑按钮 |
