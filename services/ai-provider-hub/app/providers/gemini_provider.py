@@ -83,7 +83,7 @@ class GeminiProvider(BaseProvider):
                 text = _extract_text(data)
                 usage = _extract_usage(data)
                 return ChatResponse(content=text, provider=self.name, model=model_id, usage=usage)
-            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ReadError) as exc:
                 last_exc = exc
                 if attempt < 4:
                     await asyncio.sleep(min(2 ** attempt, 8))
@@ -180,7 +180,7 @@ class GeminiProvider(BaseProvider):
                         "total_tokens": usage.total_tokens,
                     },
                 }
-            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ReadError) as exc:
                 last_exc = exc
                 if attempt < 2:
                     await asyncio.sleep(min(2 ** attempt, 4))

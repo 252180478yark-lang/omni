@@ -85,9 +85,9 @@ codify_pattern_to_skill:
 # 用 gemini-3.1-pro-preview 跑（深度产品策略推理 — flash 系列偏快不偏深）
 generate_selling_points_matrix:
   provider: gemini
-  model: gemini-3.1-pro-preview
+  model: gemini-3-flash-preview
   temperature: 0.3
-  max_tokens: 6000
+  max_tokens: 10000
 
 # W4-B 切片 14.2：sku-pipeline step 3 人群匹配
 # 反向匹配：拿 matrix 三要素去 KB 全量 chunks（80 个，跨 KB 46 个 doc）实打实挑对口人群

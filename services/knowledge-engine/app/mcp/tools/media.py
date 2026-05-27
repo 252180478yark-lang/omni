@@ -1679,8 +1679,8 @@ async def generate_selling_points_matrix(
     final_prompt = sys_msg + "\n\n" + user_msg
 
     model_cfg = get_model_for_tool("generate_selling_points_matrix")
-    # pro 模型推理慢（6000 max_tokens 可 ~120s），给充足 timeout
-    client = AIHubClient(timeout=240.0)
+    # pro 模型推理慢（6000 max_tokens 可 ~120s）+ 代理层易断连 5 次 retry
+    client = AIHubClient(timeout=600.0)
     resp = await client.chat(
         messages=[
             {"role": "system", "content": sys_msg},
