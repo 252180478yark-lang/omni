@@ -34,7 +34,7 @@ from app.services.graph_search import graph_search
 from app.services.hybrid_search import enrich_with_context_window, hybrid_search
 from app.services.intent_router import classify_intent
 from app.services.ingestion import browse_kb
-from app.services.query_enhancer import enhance_query
+from app.services.query_enhancer import enhance_query, generate_hypothetical_answer
 from app.services.reranker import cross_encoder_rerank
 from app.services.session_store import append_turn, get_history
 from app.services import chat_sessions as _chat_sessions
@@ -363,11 +363,15 @@ async def retrieve_only(
     embedding_provider: str | None = None,
     time_decay: bool = False,
     decay_days: float = 45.0,
+    precomputed_embedding: list[float] | None = None,
 ) -> list[dict]:
     """轻量入口：只做单 KB 的 hybrid retrieval，不走 LLM、不重写 query、不做 CRAG。
 
     供外部模块（content_studio.generate_script、briefs.generate_draft 等）做"参考资料注入"用。
     时间衰减开启时按 ``score *= exp(-days_old / decay_days)`` 重新排序。
+
+    precomputed_embedding：调用方已算好的查询向量（如 HyDE 假设答案的向量）。给了就
+    直接用、跳过自己 embed——BM25/全文检索仍用原始 query 文字，只有向量这一路换成它。
     """
     if not kb_id or not query:
         return []
@@ -375,18 +379,21 @@ async def retrieve_only(
     model = embedding_model or settings.embedding_model
     provider = embedding_provider or settings.embedding_provider
 
-    try:
-        vecs = await embed_texts([query], model=model, provider=provider)
-    except Exception as exc:
-        logger.warning("retrieve_only embedding failed (%s/%s): %s", provider, model, exc)
-        return []
-
-    if not vecs or not vecs[0]:
-        return []
+    if precomputed_embedding:
+        query_vec = precomputed_embedding
+    else:
+        try:
+            vecs = await embed_texts([query], model=model, provider=provider)
+        except Exception as exc:
+            logger.warning("retrieve_only embedding failed (%s/%s): %s", provider, model, exc)
+            return []
+        if not vecs or not vecs[0]:
+            return []
+        query_vec = vecs[0]
 
     try:
         hits = await hybrid_search(
-            kb_id, query, vecs[0], top_k=max(top_k * 2, top_k),
+            kb_id, query, query_vec, top_k=max(top_k * 2, top_k),
         )
     except Exception as exc:
         logger.warning("retrieve_only hybrid_search failed (kb=%s): %s", kb_id, exc)
@@ -425,11 +432,14 @@ async def retrieve_multi_kb(
     time_decay: bool = False,
     decay_days: float = 45.0,
     kb_name_map: dict[str, str] | None = None,
+    rerank: bool = False,
+    use_hyde: bool = False,
+    context_window: bool = False,
 ) -> list[dict]:
     """多 KB 检索 + 三层融合（保底 + 过滤 + 总量上限）。
 
     返回已合并/重排的 snippets，每个 dict 含:
-        source / kb_id / id / score / content / title
+        source / kb_id / id / document_id / chunk_index / score / content / title
     直接可喂给 format_kb_snippets()。
 
     融合策略（与 /api/v1/knowledge/retrieve 端点一致，供内部 Python 调用复用）：
@@ -437,10 +447,31 @@ async def retrieve_multi_kb(
       2. 每 KB 前 min_per_kb 条不受 threshold 约束（保底）
       3. 其余按 score >= threshold 过滤
       4. 合并后按 score 降序，超出 total_limit 截断（但永不砍掉保底）
+
+    可选增强（默认全关 → 现有调用零影响；只在出 brief / search_kb 这种重质量场景显式开）：
+      - use_hyde: 先让 LLM 把 query 写成一段假设答案再 embed，向量这一路换成它（提召回；
+        假设答案只跟 query 有关、跟 KB 无关 → 全程只生成一次、embed 一次，复用到每个 KB）
+      - rerank: 合并后用交叉编码（LLM 打分）把最相关的顶上来，**整池只跑一次**
+      - context_window: 给最终命中块各拉 ±N 个邻块补全（缓解 chunk 偏小被切碎）
     """
     kb_ids = [k for k in (kb_ids or []) if k]
     if not kb_ids or not query:
         return []
+
+    # HyDE：假设答案跟 KB 无关 → 生成一次、embed 一次，复用到所有 KB（省 N-1 次 LLM）。
+    hyde_emb: list[float] | None = None
+    if use_hyde:
+        try:
+            hypo = await generate_hypothetical_answer(query)
+            if hypo:
+                vecs = await embed_texts(
+                    [hypo], model=settings.embedding_model,
+                    provider=settings.embedding_provider,
+                )
+                if vecs and vecs[0]:
+                    hyde_emb = vecs[0]
+        except Exception:
+            logger.debug("retrieve_multi_kb HyDE failed, using raw query", exc_info=True)
 
     per_kb_hits: dict[str, list[dict]] = {}
     for kid in kb_ids:
@@ -448,6 +479,7 @@ async def retrieve_multi_kb(
             hits = await retrieve_only(
                 query, kid, top_k=top_k_per_kb,
                 time_decay=time_decay, decay_days=decay_days,
+                precomputed_embedding=hyde_emb,
             )
         except Exception as exc:
             logger.warning("retrieve_multi_kb kb=%s failed: %s", kid, exc)
@@ -465,6 +497,9 @@ async def retrieve_multi_kb(
             "source": _name(kid),
             "kb_id": kid,
             "id": str(h.get("id") or ""),
+            # document_id / chunk_index 透传，供 context_window 扩展定位邻块
+            "document_id": str(h["document_id"]) if h.get("document_id") else None,
+            "chunk_index": h.get("chunk_index"),
             "score": float(h.get("score") or 0),
             "content": (h.get("content") or ""),
             "title": h.get("title"),
@@ -489,7 +524,22 @@ async def retrieve_multi_kb(
         seen.add(key)
         merged.append(s)
 
-    if total_limit and len(merged) > total_limit:
+    # 交叉编码重排：整池只跑一次，把最相关的顶上来，再按 total_limit 截。
+    # 失败/全局开关关时 cross_encoder_rerank 自动原样返回，回退到融合顺序 + 手动截断。
+    if rerank and merged:
+        try:
+            reranked = await cross_encoder_rerank(
+                query, merged, top_n=(total_limit or len(merged)),
+            )
+            if reranked:
+                merged = reranked
+            elif total_limit and len(merged) > total_limit:
+                merged = merged[:total_limit]
+        except Exception:
+            logger.debug("retrieve_multi_kb rerank failed, keeping fusion order", exc_info=True)
+            if total_limit and len(merged) > total_limit:
+                merged = merged[:total_limit]
+    elif total_limit and len(merged) > total_limit:
         g_count = len(guaranteed)
         if g_count >= total_limit:
             merged = merged[:total_limit]
@@ -497,6 +547,13 @@ async def retrieve_multi_kb(
             head = merged[:g_count]
             tail = sorted(merged[g_count:], key=lambda x: x["score"], reverse=True)
             merged = head + tail[: (total_limit - g_count)]
+
+    # 上下文窗口扩展：只对最终留下的命中块拉邻块（放最后，省 DB）。
+    if context_window and merged:
+        try:
+            merged = await enrich_with_context_window(merged)
+        except Exception:
+            logger.debug("retrieve_multi_kb context-window enrich failed", exc_info=True)
 
     return merged
 

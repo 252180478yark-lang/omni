@@ -39,6 +39,11 @@ DAILY_PULSE_INTERVAL_DAYS = 1
 DYNAMIC_REFRESH_LAST_FILE = AGENT_STATE_DIR / "last_dynamic_refresh.txt"
 DYNAMIC_REFRESH_INTERVAL_DAYS = 7
 
+# 飞轮 Phase B：feedback_digest — 每周聚类负反馈 + 投后数据，出"本周该改啥"草稿
+FEEDBACK_DIGEST_LAST_FILE = AGENT_STATE_DIR / "last_feedback_digest.txt"
+FEEDBACK_DIGEST_REPORT_FILE = AGENT_STATE_DIR / "feedback_digest.md"
+FEEDBACK_DIGEST_INTERVAL_DAYS = 7
+
 CHECK_INTERVAL_SECONDS = 3600  # 每小时检查一次（所有 cron 共享）
 
 
@@ -407,4 +412,188 @@ async def dynamic_block_refresh_loop(
             raise
         except Exception:
             logger.exception("dynamic_block_refresh cron 单次循环异常（继续）")
+        await asyncio.sleep(check_interval_seconds)
+
+
+# ============================================================
+# 飞轮 Phase B：feedback_digest cron — 每周聚类负反馈 + 投后数据出改进草稿
+# ============================================================
+#
+# 设计取舍（关键）：**只聚类 + 出草稿，绝不自动改 prompt/skill**。
+# 老板看完 feedback_digest.md 自己决定改哪个 prompt（三通道改）。
+# 这是"可改进"层的入口，但改的决定权留在老板手里（反幻觉 + 反过度自动化）。
+
+async def _collect_feedback_digest(now: datetime) -> dict:
+    """跑 3 段 SQL 聚类，返 {msg_by_cat, tool_by_cat, asset_perf}。每段独立 try，
+    单段失败不影响其他段（表/列缺失容忍）。"""
+    from app.database import get_pool
+    pool = get_pool()
+    out: dict = {"msg_by_cat": [], "tool_by_cat": [], "asset_perf": [], "errors": []}
+
+    # 1. 消息级负反馈 by category（7 天）
+    try:
+        rows = await pool.fetch(
+            """
+            SELECT COALESCE(category, 'uncategorized') AS category,
+                   count(*) AS n,
+                   (array_agg(left(message_text_snapshot, 80)
+                              ORDER BY created_at DESC)
+                    FILTER (WHERE message_text_snapshot IS NOT NULL))[1:3] AS samples
+            FROM mcp.message_feedback
+            WHERE rating = 'bad' AND created_at > $1
+            GROUP BY 1 ORDER BY n DESC
+            """,
+            now - timedelta(days=FEEDBACK_DIGEST_INTERVAL_DAYS),
+        )
+        out["msg_by_cat"] = [dict(r) for r in rows]
+    except Exception as exc:
+        out["errors"].append(f"msg_by_cat: {exc}")
+
+    # 2. 工具级负反馈 by tool + rating_category（7 天）
+    try:
+        rows = await pool.fetch(
+            """
+            SELECT tool_name,
+                   COALESCE(rating_category, 'uncategorized') AS rating_category,
+                   count(*) AS n
+            FROM mcp.tool_calls
+            WHERE user_rating = 'bad' AND created_at > $1
+            GROUP BY tool_name, 2 ORDER BY n DESC LIMIT 20
+            """,
+            now - timedelta(days=FEEDBACK_DIGEST_INTERVAL_DAYS),
+        )
+        out["tool_by_cat"] = [dict(r) for r in rows]
+    except Exception as exc:
+        out["errors"].append(f"tool_by_cat: {exc}")
+
+    # 3. 投后数据（30 天内有回传的资产，给老板看效果对应哪套内容）
+    try:
+        rows = await pool.fetch(
+            """
+            SELECT a.id::text AS asset_id, a.sku_id, a.ad_metrics,
+                   a.last_metrics_at,
+                   a.script_id::text AS script_id,
+                   a.audience_record_id::text AS audience_record_id
+            FROM pipeline.assets a
+            WHERE a.ad_metrics <> '{}'::jsonb
+              AND a.last_metrics_at > $1
+            ORDER BY a.last_metrics_at DESC LIMIT 20
+            """,
+            now - timedelta(days=30),
+        )
+        out["asset_perf"] = [dict(r) for r in rows]
+    except Exception as exc:
+        out["errors"].append(f"asset_perf: {exc}")
+
+    return out
+
+
+def _render_feedback_digest_markdown(data: dict, ts: datetime) -> str:
+    ts_str = ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+    parts = [
+        f"# Feedback Digest · {ts_str}",
+        "",
+        f"窗口：最近 **{FEEDBACK_DIGEST_INTERVAL_DAYS} 天**负反馈 + 30 天投后数据。",
+        "",
+        "> 这是**草稿**：只聚类不自动改。老板看完决定改哪个 prompt（三通道）/ 哪个 skill。",
+        "",
+        "## 1. 消息级负反馈（按分类）",
+    ]
+    msg = data.get("msg_by_cat") or []
+    if msg:
+        for r in msg:
+            cat, n = r.get("category"), r.get("n")
+            parts.append(f"- **{cat}** × {n}")
+            for s in (r.get("samples") or []):
+                if s:
+                    parts.append(f"  - “{s}”")
+        parts.append("")
+        parts.append("> 某分类反复出现 → 对应改：prompt_bad 改系统提示 / factual_error 查反幻觉约束 / "
+                     "wrong_tool 改 skill 的 tool 串法 / tone_off 查 anti_ai_voice。")
+    else:
+        parts.append("- _本周无消息级负反馈_")
+
+    parts.extend(["", "## 2. 工具级负反馈（按 tool × 分类）"])
+    tools = data.get("tool_by_cat") or []
+    if tools:
+        for r in tools:
+            parts.append(f"- `{r.get('tool_name')}` / {r.get('rating_category')} × {r.get('n')}")
+        parts.append("")
+        parts.append("> 同一 tool 高频被踩 → 看它的 config/prompts/<tool>.{system,user}.md 是不是该调。")
+    else:
+        parts.append("- _本周无工具级负反馈（注：桌面工具级 👍👎 若未挂 UI，数据可能偏少）_")
+
+    parts.extend(["", "## 3. 投后数据回传（30 天，哪套内容真带货）"])
+    perf = data.get("asset_perf") or []
+    if perf:
+        for r in perf:
+            m = r.get("ad_metrics") or {}
+            when = r.get("last_metrics_at")
+            when_s = when.astimezone(timezone.utc).strftime("%m-%d") if when else "?"
+            parts.append(
+                f"- [{when_s}] sku=`{r.get('sku_id')}` asset=`{r.get('asset_id')[:8]}` "
+                f"metrics={m}"
+            )
+        parts.append("")
+        parts.append("> ROI/完播率高的那套 → 用 `pipeline_get_asset_lineage` 反查它的卖点+人群+脚本，"
+                     "把成功要素固化；低的 → 复盘是卖点选错还是人群圈错。")
+    else:
+        parts.append("- _无投后回传数据（用 `record_ad_metrics` 把测试投放结果写回来才有）_")
+
+    if data.get("errors"):
+        parts.extend(["", "## ⚠ 采集告警"])
+        for e in data["errors"]:
+            parts.append(f"- {e}")
+
+    parts.extend(["", "---", "_由 KE cron feedback_digest 后台任务自动写入；只聚类不自动改 prompt。_"])
+    return "\n".join(parts) + "\n"
+
+
+async def _run_feedback_digest_cycle(now: datetime | None = None) -> dict:
+    """feedback_digest 单次执行：聚类 SQL + 渲染 markdown + 更新 last_run。"""
+    if now is None:
+        now = datetime.now(timezone.utc)
+    last_run = _read_last_run(FEEDBACK_DIGEST_LAST_FILE)
+    if not _should_run_now(last_run, now, FEEDBACK_DIGEST_INTERVAL_DAYS):
+        delta = now - last_run if last_run else None
+        return {
+            "ran": False,
+            "reason": (f"距上次仅 {delta.days}d，未到周期" if delta else "unknown"),
+        }
+
+    try:
+        data = await _collect_feedback_digest(now)
+    except Exception:
+        logger.exception("feedback_digest 采集失败")
+        return {"ran": False, "reason": "collect_failed"}
+
+    md = _render_feedback_digest_markdown(data, now)
+    FEEDBACK_DIGEST_REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    FEEDBACK_DIGEST_REPORT_FILE.write_text(md, encoding="utf-8")
+    _write_last_run(now, FEEDBACK_DIGEST_LAST_FILE)
+    logger.info("feedback_digest 写入 %s", FEEDBACK_DIGEST_REPORT_FILE)
+    return {"ran": True, "reason": "ok", "report_path": str(FEEDBACK_DIGEST_REPORT_FILE)}
+
+
+async def feedback_digest_loop(
+    *,
+    check_interval_seconds: int = CHECK_INTERVAL_SECONDS,
+) -> None:
+    logger.info(
+        "feedback_digest cron 启动：每 %ds 检查一次，周期 %dd",
+        check_interval_seconds,
+        FEEDBACK_DIGEST_INTERVAL_DAYS,
+    )
+    while True:
+        try:
+            res = await _run_feedback_digest_cycle()
+            if res.get("ran"):
+                logger.info("feedback_digest 已写入：%s", res.get("report_path"))
+            else:
+                logger.debug("feedback_digest 跳过：%s", res.get("reason"))
+        except asyncio.CancelledError:
+            logger.info("feedback_digest cron 被取消")
+            raise
+        except Exception:
+            logger.exception("feedback_digest cron 单次循环异常（继续）")
         await asyncio.sleep(check_interval_seconds)

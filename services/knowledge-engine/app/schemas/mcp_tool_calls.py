@@ -42,10 +42,28 @@ class ToolCallDetailResponse(BaseModel):
 
 
 class RateRequest(BaseModel):
-    """rating 不用 Literal——FastAPI Pydantic 422 会绕过 service 层的 invalid_rating 报错格式。"""
+    """rating 不用 Literal——FastAPI Pydantic 422 会绕过 service 层的 invalid_rating 报错格式。
+
+    2026-05-28 migration 031：加 category（向后兼容，不传 = None）。
+    """
 
     rating: str
     note: str = Field(default="", max_length=500)
+    category: str | None = None
+
+
+class RateRecentRequest(BaseModel):
+    """按 tool_name 评"最近一条"调用（桌面工具块 👍👎 用）。
+
+    桌面只有 Claude 的 tool_use_id，跟 mcp.tool_calls.id 不是一回事且无链，
+    所以按 tool_name 取最近一条解析 call_id（单人场景：评的就是刚看到那条）。
+    """
+
+    tool_name: str
+    rating: str
+    note: str = Field(default="", max_length=500)
+    category: str | None = None
+    within_minutes: int = Field(default=120, ge=1, le=1440)
 
 
 class RateResponse(BaseModel):
@@ -53,3 +71,20 @@ class RateResponse(BaseModel):
     result: dict[str, Any] | None = None
     error: str | None = None
     hint: str | None = None
+
+
+class MessageRateRequest(BaseModel):
+    """POST /api/v1/mcp/messages/rate body — 对应 rate_message tool。
+
+    rating/category 不用 Literal — service 层会返 {ok:false, error:invalid_rating}
+    走错误透传协议，比 Pydantic 422 更易前端解析。
+    """
+
+    session_id: str
+    message_id: str
+    rating: str
+    category: str | None = None
+    note: str | None = Field(default=None, max_length=2000)
+    message_text_snapshot: str | None = None
+    tool_use_ids: list[str] | None = None
+    client: str = "desktop"

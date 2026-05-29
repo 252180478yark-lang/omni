@@ -71,6 +71,11 @@ compute_margin(sku_id="SKU-X", channel="douyin",
 
 **触发 script-writer skill 模式**（本 skill Step 3 跟 script-writer skill 全 SOP 重合）。
 
+**先看 owner_selling_points**：有值 → 让老板圈 2-3 条直接进 extra_context；
+**为空 → 先跟老板说"要先跑一遍 selling-point-finder 子流程找卖点（多花一轮，
+找完你要先圈卖点我再出 brief），还是你口头给我两三条"**——别静默多花一轮
+（跟 script-writer skill Step 2 同一约束）。
+
 ```python
 gather_brief_context(sku_id="SKU-X", channel="douyin")
 generate_brief(

@@ -59,6 +59,12 @@ else:
         query_template_chunks(query="<品类> 脚本 OR 文案", top_k=5)
 ```
 
+**owner_selling_points 为空时必须先跟老板说清楚再跑**（别静默多花一轮）：
+
+> "002 没填 owner_selling_points。我先跑一遍 selling-point-finder 子流程找卖点
+> （多花一轮，找完你要先圈 2-3 条卖点我再往下写脚本）——还是你现在口头给我
+> 两三条卖点，我直接用？"
+
 如果老板**之前用过 selling-point-finder skill** 出过这个 SKU 的卖点，**直接复用**（让老板说"用上次那几条卖点"），不再重跑。
 
 **输出 3 类卖点**（功能/情绪/场景）给老板，让他**圈 2-3 条** 进脚本。

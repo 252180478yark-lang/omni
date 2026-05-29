@@ -224,6 +224,8 @@ async def submit_ingestion_task(
     filename: str = "",
     metadata: dict | None = None,
     skip_chunking: bool = False,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
 ) -> str:
     pool = get_pool()
     task_id = str(uuid4())
@@ -245,6 +247,8 @@ async def submit_ingestion_task(
             filename,
             metadata=metadata,
             skip_chunking=skip_chunking,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
     )
     return task_id
@@ -255,6 +259,8 @@ async def _guarded_pipeline(
     source_url: str | None, source_type: str, filename: str,
     metadata: dict | None = None,
     skip_chunking: bool = False,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
 ) -> None:
     """Acquire semaphore before running pipeline so queries aren't starved."""
     async with _INGESTION_SEMAPHORE:
@@ -268,6 +274,8 @@ async def _guarded_pipeline(
             filename,
             metadata=metadata,
             skip_chunking=skip_chunking,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
 
 
@@ -586,6 +594,8 @@ async def _run_pipeline(
     filename: str = "",
     metadata: dict | None = None,
     skip_chunking: bool = False,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
 ) -> None:
     try:
         await _update_task(task_id, "running")
@@ -612,9 +622,17 @@ async def _run_pipeline(
             )
         else:
             strategy = auto_detect_strategy(text, filename)
-            chunk_data = split_text(text, strategy=strategy)
+            # chunk_size/overlap 给了就用（如人群/5A KB 想让"1 chunk=1 完整人群画像"
+            # 时传更大的值，重灌该 KB 即可）；没给走 settings 默认。
+            chunk_data = split_text(
+                text, chunk_size=chunk_size, overlap=chunk_overlap, strategy=strategy,
+            )
             if not chunk_data:
                 raise ValueError("No chunks produced from input text")
+            # 防御性过滤空块（"17 空 chunks" 历史问题兜底）：内容 strip 后 <10 字符的丢掉
+            chunk_data = [c for c in chunk_data if c.content and len(c.content.strip()) >= 10]
+            if not chunk_data:
+                raise ValueError("All chunks empty after non-empty filter")
             chunk_data = add_contextual_headers(chunk_data, title, text)
 
         emb_provider = kb.get("embedding_provider") or settings.embedding_provider
