@@ -19,6 +19,9 @@ class FakeExecutor(LiveFetchExecutor):
                             "firstChars": "{}", "len": 2, "attempts": 1}
         self.last_call = None
 
+    def has_cookies(self, platform: str) -> bool:
+        return True
+
     async def _run_in_page(self, host, method, url, body):
         self.last_call = {"host": host, "method": method, "url": url, "body": body}
         return dict(self._raw)
