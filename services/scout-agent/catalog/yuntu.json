@@ -2874,14 +2874,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/yuntu_ng/home/QueryOverviewItemData",
+    "path": "/yuntu_ng/api/v1/home/QueryOverviewItemData",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS"
   },
   {
     "key": "yuntu.saveselectedcomponentitemtype",
@@ -2892,14 +2892,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/yuntu_ng/home/SaveSelectedComponentItemType",
+    "path": "/yuntu_ng/api/v1/home/SaveSelectedComponentItemType",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS"
   },
   {
     "key": "yuntu.save_metric_template",
@@ -3108,14 +3108,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/yuntu_biz/crowdMap/GetAudienceMap",
+    "path": "/yuntu_biz/api/common/crowdMap/GetAudienceMap",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS"
   },
   {
     "key": "yuntu.doublehotcontentindustryrank",
@@ -3216,14 +3216,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "GET",
-    "path": "/yuntu_biz/recommend/overview/GetCircleBreakingGroupList",
+    "path": "/yuntu_biz/api/common/recommend/overview/GetCircleBreakingGroupList",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS"
   },
   {
     "key": "yuntu.comparesimilarity",
@@ -3468,14 +3468,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/yuntu_ecom/live/BrandAccountLiveContentTypeMetric",
+    "path": "/yuntu_ecom/api/v1/live/BrandAccountLiveContentTypeMetric",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "yuntu.track_refspu_1",
@@ -3486,14 +3486,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/yuntu_ecom/sketch/track_refspu",
+    "path": "/yuntu_ecom/api/v1/sketch/track_refspu",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "yuntu.create_conversations",
@@ -3828,14 +3828,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/product_node/productOverview/QueryOverviewItemData",
+    "path": "/product_node/v2/api/productOverview/QueryOverviewItemData",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "yuntu.getproductoverview5aanalysis_1",
@@ -3882,14 +3882,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "GET",
-    "path": "/product_node/productOverview/categoryPriceRanges",
+    "path": "/product_node/v2/api/productOverview/categoryPriceRanges",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS"
   },
   {
     "key": "yuntu.itemanalysis",
@@ -3918,14 +3918,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/product_node/industry/insightCategoryStats",
+    "path": "/product_node/v2/api/industry/insightCategoryStats",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "yuntu.insightproductstats_1",
@@ -3954,14 +3954,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/product_node/industry/marketOverview",
+    "path": "/product_node/v2/api/industry/marketOverview",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "yuntu.customer",
@@ -3972,14 +3972,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/product_node/industry/customer",
+    "path": "/product_node/v2/api/industry/customer",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "yuntu.trendinsights",
@@ -3990,14 +3990,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/product_node/industry/trendInsights",
+    "path": "/product_node/v2/api/industry/trendInsights",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "yuntu.marketaweme",
@@ -4008,14 +4008,14 @@
     ],
     "host": "yuntu.oceanengine.com",
     "method": "POST",
-    "path": "/product_node/industry/marketAweme",
+    "path": "/product_node/v2/api/industry/marketAweme",
     "params": {},
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+    "notes": "refix(yuntu) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "yuntu.info",

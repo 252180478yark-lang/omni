@@ -1354,13 +1354,16 @@
     "host": "fxg.jinritemai.com",
     "method": "GET",
     "path": "/account/center/getFrontCommonInfo",
-    "params": {},
+    "params": {
+      "req_source": "dou_dian_pc",
+      "ac_redesign": "doudian"
+    },
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_OTHER (code=100002) @ 2026-06-01 待修"
+    "notes": "refix(doudian) prefix+params 修复 → PASS"
   },
   {
     "key": "doudian.queryautowithdrawinfo",

@@ -1790,14 +1790,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "POST",
-    "path": "/trade/core_index_v3",
-    "params": {},
+    "path": "/compass_api/shop/common/trade/core_index_v3",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "compass.core_trend_v3_1",
@@ -2366,14 +2370,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/product/product_detail/core_data/sku",
-    "params": {},
+    "path": "/compass_api/shop/product/product_detail/core_data/sku",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "compass.trend_v3_1",
@@ -2420,14 +2428,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/product/product_detail/flow_source/flow_data_more",
-    "params": {},
+    "path": "/compass_api/shop/product/product_detail/flow_source/flow_data_more",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "compass.good_compete_product_list_1",
@@ -2600,14 +2612,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/product_card/shop_diagnose/doudian_shop_overview",
-    "params": {},
+    "path": "/compass_api/shop/product_card/shop_diagnose/doudian_shop_overview",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS"
   },
   {
     "key": "compass.key_suggestion",
@@ -2654,14 +2670,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/product_card/shop_diagnose/doudian_focus_product_tab_v2",
-    "params": {},
+    "path": "/compass_api/shop/product_card/shop_diagnose/doudian_focus_product_tab_v2",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS"
   },
   {
     "key": "compass.cate_core_data",
@@ -3248,14 +3268,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/promise/user_sound/comment_reason_analysis_core",
-    "params": {},
+    "path": "/compass_api/shop/promise/user_sound/comment_reason_analysis_core",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS"
   },
   {
     "key": "compass.comment_reason_analysis_left_1",
@@ -3266,14 +3290,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/promise/user_sound/comment_reason_analysis_left",
-    "params": {},
+    "path": "/compass_api/shop/promise/user_sound/comment_reason_analysis_left",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "compass.product_category_list_1",
@@ -3284,14 +3312,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/promise/user_sound/product_category_list",
-    "params": {},
+    "path": "/compass_api/shop/promise/user_sound/product_category_list",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS"
   },
   {
     "key": "compass.product_list_2",
@@ -3302,14 +3334,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/promise/user_sound/product_list",
-    "params": {},
+    "path": "/compass_api/shop/promise/user_sound/product_list",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
   },
   {
     "key": "compass.comment_formula_1",
@@ -3320,14 +3356,18 @@
     ],
     "host": "compass.jinritemai.com",
     "method": "GET",
-    "path": "/promise/user_sound/comment_formula",
-    "params": {},
+    "path": "/compass_api/shop/promise/user_sound/comment_formula",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
+    "verified": true,
     "verified_at": "2026-06-01",
-    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+    "notes": "refix(compass) prefix+params 修复 → PASS"
   },
   {
     "key": "compass.core_data_3",
