@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db, close_db
 from app.scheduler import start_scheduler, stop_scheduler
-from app.routers import health, runbooks, runs, sessions, anomalies, skus, dashboard
+from app.routers import health, runbooks, runs, sessions, anomalies, skus, dashboard, taobao
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 log = logging.getLogger(__name__)
@@ -58,3 +58,4 @@ app.include_router(sessions.router, prefix="/api/v1/scout")
 app.include_router(anomalies.router, prefix="/api/v1/scout")
 app.include_router(skus.router, prefix="/api/v1/scout")
 app.include_router(dashboard.router, prefix="/api/v1/scout")
+app.include_router(taobao.router, prefix="/api/v1/scout")  # 竞品调研：淘宝抓取

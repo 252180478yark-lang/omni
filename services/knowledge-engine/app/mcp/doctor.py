@@ -148,6 +148,8 @@ async def _check_tools_registered(report: DoctorReport) -> None:
             "rate_message",
             # 2026-05-28 Phase A+/A++（migration 032）：bug 记忆库 + 客户端日志
             "log_client_event", "report_bug", "list_bugs", "update_bug",
+            # 2026-06-01 竞品调研：淘宝搜词抓榜（competitor_search）+ 主图/详情页视觉拆解（competitor_decompose）
+            "competitor_search", "competitor_decompose",
         }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names
@@ -202,6 +204,9 @@ def _check_prompts(report: DoctorReport) -> None:
             "video_anchor.system", "video_anchor.user",
             # 2026-05-28 反推视频
             "reverse_storyboard.system", "reverse_storyboard.user",
+            # 2026-06-01 竞品调研：相关性过滤 + 主图/详情页视觉拆解
+            "competitor_relevance.system", "competitor_relevance.user",
+            "competitor_decompose.system", "competitor_decompose.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

@@ -16,7 +16,7 @@ from app.database import get_pool
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-PLATFORMS = {"douyin_compass", "douyin_shop_admin", "yuntu"}
+PLATFORMS = {"douyin_compass", "douyin_shop_admin", "yuntu", "taobao"}
 
 
 @router.get("/sessions/{platform}")
@@ -46,6 +46,9 @@ async def relogin(platform: str):
         "douyin_compass": "https://compass.jinritemai.com/",
         "douyin_shop_admin": "https://fxg.jinritemai.com/",
         "yuntu": "https://yuntu.oceanengine.com/",
+        # 竞品调研：淘宝/天猫。落 www.taobao.com 首页；未登录会出登录浮层，
+        # 老板扫码/账密登录后回首页，_run_relogin 监测到 unb/tracknick 即落库。
+        "taobao": "https://www.taobao.com/",
     }
 
     asyncio.create_task(_run_relogin(platform, urls[platform]))
@@ -72,15 +75,26 @@ async def _run_relogin(platform: str, url: str) -> None:
     # STRICT auth-cookie names — only set after a real login completes.
     # Excludes ttwid / s_v_web_id / passport_csrf_token: those are visitor /
     # CSRF tokens that get planted on plain page.goto without any login.
-    AUTH_COOKIE_NAMES = {
-        "sessionid",       # douyin/jinritemai/yuntu — primary login cookie
-        "sessionid_ss",    # secure variant
-        "sid_tt",          # alt session id
-        "sid_guard",       # session guard
-        "uid_tt",          # logged-in user id
-        "uid_tt_ss",       # secure variant
-        "LOGIN_STATUS",    # yuntu specific
+    # Platform-keyed: 淘宝/天猫的登录 cookie 名跟抖音系完全不同。
+    AUTH_COOKIE_NAMES_BY_PLATFORM = {
+        "_default": {
+            "sessionid",       # douyin/jinritemai/yuntu — primary login cookie
+            "sessionid_ss",    # secure variant
+            "sid_tt",          # alt session id
+            "sid_guard",       # session guard
+            "uid_tt",          # logged-in user id
+            "uid_tt_ss",       # secure variant
+            "LOGIN_STATUS",    # yuntu specific
+        },
+        # 淘宝/天猫登录后才会写的强标记：unb=登录用户数字 id，tracknick=登录昵称，
+        # lgc=login account，_nk_=昵称。
+        # （cookie2/_tb_token_/sgcookie/cna/isg/tfstk/t 是游客态 cookie，page.goto 即落，
+        #   不能当登录标记——否则刚打开 taobao.com 就被误判成已登录。）
+        "taobao": {"unb", "tracknick", "lgc", "_nk_"},
     }
+    auth_cookie_names = AUTH_COOKIE_NAMES_BY_PLATFORM.get(
+        platform, AUTH_COOKIE_NAMES_BY_PLATFORM["_default"]
+    )
     MIN_COOKIES = 8  # post-login pages set 10-30+ cookies; 8 is a safe floor
 
     # URL fragments that mean user is NOT yet on the real workspace:
@@ -95,7 +109,7 @@ async def _run_relogin(platform: str, url: str) -> None:
 
     def has_auth_cookies(cookies: list) -> tuple[bool, int, list[str]]:
         names = [c.get("name", "") for c in cookies]
-        hit = [n for n in names if n in AUTH_COOKIE_NAMES]
+        hit = [n for n in names if n in auth_cookie_names]
         ok = (len(cookies) >= MIN_COOKIES) and (len(hit) > 0)
         return ok, len(cookies), hit
 
@@ -181,6 +195,13 @@ async def _run_relogin(platform: str, url: str) -> None:
 
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # 新平台（如 taobao）首次 relogin 时 mvp_session 还没行 → 先补一行
+        # （migration 009 只 seed 了抖音三平台）。storage_path NOT NULL，给持久化路径。
+        await conn.execute(
+            "INSERT INTO mvp_session (platform, storage_path) VALUES ($1, $2) "
+            "ON CONFLICT (platform) DO NOTHING",
+            platform, str(storage_file),
+        )
         if final_status == "ok":
             await conn.execute(
                 """

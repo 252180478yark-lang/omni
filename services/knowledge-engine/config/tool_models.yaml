@@ -85,7 +85,7 @@ codify_pattern_to_skill:
 # 用 gemini-3.1-pro-preview 跑（深度产品策略推理 — flash 系列偏快不偏深）
 generate_selling_points_matrix:
   provider: gemini
-  model: gemini-3-flash-preview
+  model: gemini-3.1-pro-preview
   temperature: 0.3
   max_tokens: 10000
 
@@ -127,3 +127,40 @@ generate_creative_pack:
   model: gemini-3.1-pro-preview
   temperature: 0.5
   max_tokens: 10000
+
+# 2026-05-28: reverse_storyboard_video 反推视频→故事板提示词
+# 直调 Gemini Files API(绕过 ai-provider-hub,大视频走 upload_file 不走 inline_data)
+# 老板原话首选 gemini-3.1-flash-lite-preview,但已被 Google 下架(404 no longer available)
+# 切 gemini-2.5-flash 当默认(系统其他地方稳定使用);老板可换 3-flash-preview/3.1-pro-preview
+# temp 0.2: 反推要稳不要发挥(差异化交给 image/video gen 模型本身)
+# max_tokens 16000: 多 scene 输出可能膨胀(每 scene 19 字段 + 3 类全局产物)
+reverse_storyboard_video:
+  provider: gemini
+  model: gemini-2.5-flash
+  temperature: 0.2
+  max_tokens: 32000   # 实测 25K chars 还截断,拉到 32K tokens 给充足空间
+  prompts:
+    system: reverse_storyboard.system
+    user: reverse_storyboard.user
+
+# 2026-06-01 竞品调研：淘宝抓取 + 视觉拆解
+# competitor_search 的相关性过滤：判定标题相关性，flash 够用，temp 低求稳
+competitor_search:
+  provider: gemini
+  model: gemini-3.5-flash
+  temperature: 0.1
+  max_tokens: 2048
+  prompts:
+    system: competitor_relevance.system
+    user: competitor_relevance.user
+
+# competitor_decompose 多模态视觉拆解（主图+详情页 → 卖点/构图/配色/设计/内容）
+# flash 多模态够看构图/配色/版式；要更深卖点/叙事分析可切 gemini-3.1-pro-preview
+competitor_decompose:
+  provider: gemini
+  model: gemini-3.5-flash
+  temperature: 0.3
+  max_tokens: 6000
+  prompts:
+    system: competitor_decompose.system
+    user: competitor_decompose.user

@@ -39,6 +39,8 @@ from app.mcp.tools import agent_meta as _agent_meta  # noqa: E402, F401  # W4-A 
 from app.mcp.tools import agent_extras as _agent_extras  # noqa: E402, F401  # W4-B 切片 5
 from app.mcp.tools import pipeline as _pipeline  # noqa: E402, F401  # W4-B 切片 14.3 phase A
 from app.mcp.tools import realman as _realman  # noqa: E402, F401  # realman 真实人物视频
+from app.mcp.tools import bug_memory as _bug_memory  # noqa: E402, F401  # 2026-05-28 Phase A+/A++ bug 记忆库 + 客户端日志
+from app.mcp.tools import competitor as _competitor  # noqa: E402, F401  # 2026-06-01 竞品调研（淘宝抓取 + 视觉拆解）
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
 # path="/" 使子应用内路由为 "/"，挂载到 /mcp 后完整路径即 /mcp

@@ -543,3 +543,71 @@ A+/A++ 是地基,数据攒起来后开 B/C/D/E:
 doctor 总数 58 → **61**（投后 3 tool）。
 
 **注意**：桌面侧改动（工具反馈 + 之前 DevTools/消息ID/resume-scheduler 修复）要 `npm run build` 重新打包桌面 app 才生效（KE 改动已随容器重启生效）。
+
+## 竞品调研：淘宝抓取 + 视觉拆解（2026-06-01）
+
+`reverse_storyboard` 的"竞品镜像"：把别人淘宝的**主图/详情页**拆成卖点/构图/配色/设计/内容，
+反过来喂自己的 selling-point-finder / generate_creative_pack。老板拍板的范围：**两段式 ·
+只出 md 报告（不落库）· 搜索页显示价+月销（不逐个进详情页抠真到手价）**。
+
+### 两段式 2 个 MCP tool（KE，全 @tool_with_audit · require_approval=False）
+
+- `competitor_search(query, top_n=50, platform='taobao', relevance_filter=True, headless?, max_pages=3)`
+  —— 搜词 → scout-agent 抓前 N 卡片（标题/显示价/月销/店铺/链接/主图）→ LLM 相关性过滤
+  （把"不是该产品本身"的配件/赠品/工具剔掉，fail-open）→ markdown 榜单。老板挑要深拆的。
+- `competitor_decompose(item_url? / item_urls?, focus_product?, headless?, max_main_images=6, max_detail_images=8, model?)`
+  —— 对挑中的商品：scout-agent 抓主图组+详情页长图（alicdn CDN url）→ KE 下载转 base64
+  **data URI**（hub 的 gemini chat 只把 `data:` 块转 inline_data，普通 http url 不真看图）→
+  多模态 gemini chat → 卖点/构图/配色/设计/内容 5 维度 md。一次最多 12 个（防烧 token）。
+
+### 数据流
+
+```
+skill competitor-product-research（话术触发，每步停等反馈）
+  Stage1 → competitor_search → httpx → scout-agent POST /taobao/search（Playwright 登录态抓 50 卡片）
+                              → LLM 相关性过滤 → md 榜单 → 老板挑
+  Stage2 → competitor_decompose → httpx → scout-agent POST /taobao/detail（主图+详情页 alicdn url）
+                              → KE fetch CDN 图→base64 data 块 → gemini 多模态 → 5 维度 md
+```
+
+### scout-agent 侧（浏览器层，纯抓取不碰 LLM）
+
+- `app/routers/taobao.py`：`POST /api/v1/scout/taobao/search` + `/taobao/detail`。复用 persistent-context
+  登录态（`sessions/taobao/user_data`）。抗变更靠"商品详情链接锚点 + 结构爬升 + 文本正则"启发式
+  （`_SEARCH_EXTRACT_JS` / `_DETAIL_EXTRACT_JS`），不靠 hash 化 class。抓不到不抛 → 返
+  login_required/no_items + 落 `snapshots/taobao/`（全页截图 + HTML）供调选择器。
+- `app/routers/sessions.py`：加 `taobao` 平台（PLATFORMS + relogin url + 淘宝登录 cookie 检测
+  `unb/tracknick/lgc/_tb_token_/...` + 首次 relogin upsert mvp_session 行）。
+- 同 user_data_dir 不能并发开 context → `_TAOBAO_LOCK` 串行化。`headless` 可按请求覆盖。
+- **源码已 bind-mount**（compose 新加 `./services/scout-agent/app:/app/app`）：调选择器改完
+  `docker restart omni-scout-agent` 即生效，免 rebuild。
+
+### 老板手动步骤（我代不了）
+
+- **淘宝登录**：跟登罗盘/云图一个套路——在能弹浏览器的环境（host 跑 scout-agent）触发
+  `POST /api/v1/scout/taobao/relogin` → 扫码/账密登录淘宝 → cookie 落 `sessions/taobao/user_data`（bind-mount 进容器）。
+- 淘宝反爬狠 + DOM 偶变：**第一次抓不到很正常**，看 `debug.html_snapshot` 调一轮选择器（"先调试淘宝"）。
+
+### 三个现实（已写进 skill，避免误判为 bug）
+
+到手价≈搜索页**显示价**（可能券前/预估，非加购真到手价）；月销淘宝常隐藏（缺标 —）；选择器启发式可能要调几轮。
+
+### 实现
+
+- scout-agent：`app/routers/taobao.py`（新）+ `app/routers/sessions.py`（加 taobao）+ `app/main.py`（挂 router）
+- KE：`app/services/competitor_research.py`（新，scout HTTP + alicdn 图→data URI + 榜单 md）+
+  `app/mcp/tools/competitor.py`（新，2 tool）+ `config/prompts/competitor_relevance.{system,user}.md` +
+  `competitor_decompose.{system,user}.md`（新）+ `config.py`（scout_agent_url）+ `server.py`/`doctor.py`/`tool_models.yaml`（注册）
+- compose：scout-agent app bind-mount + NO_PROXY 加 scout-agent + KE 加 SCOUT_AGENT_URL
+- skill：`.claude/skills/competitor-product-research/SKILL.md`（新）
+
+doctor 总数 61 → **63**（竞品 2 tool）。**京东后续接**（platform 已留参数，scout 加个 `/jd/*` 端点即可）。
+
+### 实测落地（2026-06-01，踩坑后跑通）
+
+- **必须 headed + xvfb**（headless 被 rgv587 deny）、**storage_state 明文 cookie**（Windows profile 跨 OS 解不开）、**首页热身 + `&page=N`**（`&s=` 触发 deny）、**进口 IP 不行**：淘宝要**国内 IP**——VPN 切「规则/分流」模式让淘宝走直连国内 IP，hub 继续走代理连 Gemini（否则外国机房 IP 被搜索反爬拦）。详见记忆 [[project-taobao-scraping-recipe]]。
+- **chat 模型 `gemini-3.5-flash`**（`gemini-3-flash-preview`/`2.5-flash` 是无效名 → hub 旧 build 静默回退 anthropic-mock 假响应）。competitor_search/decompose 的 tool_models.yaml 已用它。
+- **搜索榜单 ✅ 跑通**（标题/显示价/月销/店铺/链接/主图 + 相关性过滤）。
+- **详情页 = 淘宝最硬的墙**：PC item 页"验证码拦截"（goto/referer/真点击全拦），移动 H5 不弹验证码但 SPA 抓不到 DOM、且实测也常返"访问被拒绝"。`competitor_decompose` **三层兜底**：① 先试 scout `/taobao/detail_shots`（移动 H5 滚动截图喂视觉，渲染出来就用真截图）② 被挡 → 退用**搜索主图**（传 `items` 带 main_image_url）拆 卖点/构图/配色/设计，"内容"标缺 ③ `local_images=["/host/Desktop/x.jpg",...]`：老板手动截详情页（真实登录态无反爬）**100% 可靠全 5 维**。调用优先传 `items`；要真详情页用 `local_images`。
+- scout-agent 已改**不走 VPN**（compose 清空它的 proxy env；它只抓国内站 + 内网 ai-hub）。
+- 调试辅助脚本：`services/scout-agent/_login_taobao.py`（host 弹窗登录淘宝写 storage_state）、`services/knowledge-engine/scripts/_test_competitor_{scrape,full}.py`。

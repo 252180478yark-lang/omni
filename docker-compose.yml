@@ -15,8 +15,8 @@ x-proxy-env: &proxy-env
   HTTPS_PROXY: "${HTTPS_PROXY:-${PROXY_URL:-${HTTP_PROXY:-}}}"
   http_proxy: "${HTTP_PROXY:-${PROXY_URL:-}}"
   https_proxy: "${HTTPS_PROXY:-${PROXY_URL:-${HTTP_PROXY:-}}}"
-  NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,omni-ad-review,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis"
-  no_proxy: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,omni-ad-review,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis"
+  NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,omni-ad-review,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis,scout-agent,omni-scout-agent"
+  no_proxy: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,omni-ad-review,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis,scout-agent,omni-scout-agent"
 
 services:
   # ═══ Infrastructure ═══
@@ -212,6 +212,8 @@ services:
     shm_size: '512m'
     env_file:
       - ./services/knowledge-engine/.env.example
+      # reverse_storyboard_video tool 直调 Gemini Files API,借 hub 的 .env 拿 GEMINI_API_KEY
+      - ./services/ai-provider-hub/.env
     environment:
       <<: *proxy-env
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
@@ -219,6 +221,8 @@ services:
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
       VOLCENGINE_ACCESS_KEY: "${VOLCENGINE_ACCESS_KEY:-}"
       VOLCENGINE_SECRET_KEY: "${VOLCENGINE_SECRET_KEY:-}"
+      # 竞品调研：KE 的 competitor_* tool 经 HTTP 调 scout-agent 抓淘宝
+      SCOUT_AGENT_URL: "http://scout-agent:8009"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     expose:
       - "8002"
@@ -234,6 +238,8 @@ services:
       - ./services/knowledge-engine/scripts:/app/scripts:rw
       - ./data/agent_state:/app/agent_state:rw
       - ./data/uploads:/app/data/uploads
+      # reverse_storyboard_video tool 测试用,挂载 host Desktop 让 KE 能访问千川视频测试文件 + 测试日志写回
+      - "C:/Users/Administrator/Desktop:/host/Desktop:rw"
     depends_on:
       postgres:
         condition: service_healthy
@@ -319,7 +325,14 @@ services:
     build: ./services/scout-agent
     container_name: omni-scout-agent
     environment:
-      <<: *proxy-env
+      # 不走 VPN：scout-agent 只抓国内站（淘宝/罗盘/云图/抖音）+ 内网 ai-hub。
+      # 国内站要国内 IP，外国 VPN 机房出口会被淘宝搜索反爬拦 → 清空代理走直连。
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
+      NO_PROXY: "*"
+      no_proxy: "*"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       AI_HUB_URL: "http://ai-provider-hub:8001"
       DOUYIN_SHOP_ID: "${DOUYIN_SHOP_ID:-}"
@@ -336,6 +349,8 @@ services:
       - ./services/scout-agent/sessions:/app/sessions
       - ./services/scout-agent/downloads:/app/downloads
       - ./services/scout-agent/snapshots:/app/snapshots
+      # 源码 bind-mount：调淘宝选择器时改完 docker restart omni-scout-agent 即生效，免 rebuild
+      - ./services/scout-agent/app:/app/app
     depends_on:
       postgres:
         condition: service_healthy
