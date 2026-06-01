@@ -1,0 +1,4622 @@
+[
+  {
+    "key": "yuntu.getaudienceassetstructure",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "5A vs 行业 TOP20 品牌均值 (benchmark=3)"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceAssetStructure",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "card": 0,
+      "benchmark": 3,
+      "date": "20260524"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "structure_list[].name",
+      "structure_list[].value",
+      "structure_list[].rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudienceassetbig8profile",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "结案 audience 兴趣词跨心智"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceAssetBig8Profile",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "date": "20260524",
+      "industry_typical_type": 1
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "ax_big8_profile.L.self_profile[].big8_name"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudienceassetbig8trend",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "A2 层八大群体趋势(Z 世代)"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceAssetBig8Trend",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "card": 2,
+      "ecom_big8_type": "新锐白领",
+      "industry_typical_type": 1,
+      "date": "20260524"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "trend[].date",
+      "trend[].big8_cnt",
+      "trend[].big8_rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_audience_asset_profile",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "5A 各层画像标签构成"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/get_audience_asset_profile",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "card": 0,
+      "benchmark": 1,
+      "date": "20260524"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "cover_num",
+      "rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_audience_asset_trend",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "5A 各层 30 天趋势"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/get_audience_asset_trend",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "card": 0,
+      "benchmark": 1,
+      "date": "20260524"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "trend[].date",
+      "trend[].cnt",
+      "trend[].rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_audience_asset_trigger_point_distribution",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "A1 触点蓄水分布(视频 vs 直播)"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/get_audience_asset_trigger_point_distribution",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "card": 1,
+      "benchmark": 1,
+      "date": "20260524"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "cover_num",
+      "rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudienceassetdiagnosticscard",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "跨页:5A 诊断 → SPU 漏斗"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceAssetDiagnosticsCard",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "card": 2,
+      "module_name": 1,
+      "benchmark": 1,
+      "date": "20260524"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "card.diagnostic_content.待改进"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.audienceflowsceneanalysisv2",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "5A 种草场景(O→A3)"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/AudienceFlowSceneAnalysisV2",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "scene_id": "-3",
+      "benchmark": 1,
+      "start_date": "2026-04-20",
+      "end_date": "2026-05-20",
+      "diff_a3_active": false
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "analysis[].from",
+      "analysis[].to",
+      "analysis[].num"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.audienceflowsceneprofilev2",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "5A 流转近 7 天"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/AudienceFlowSceneProfileV2",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "benchmark": 1,
+      "start_date": "2026-05-14",
+      "end_date": "2026-05-20"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "cover_num",
+      "rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.audienceflowanalysisv2",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "5A 流转同环比"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/AudienceFlowAnalysisV2",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "card": 3,
+      "type": 0,
+      "benchmark": 1,
+      "diff_a3_active": false,
+      "start_date": "2026-04-20",
+      "end_date": "2026-05-20"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "pre_cover_num",
+      "cur_cover_num",
+      "rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.flowsceneanalysisv2",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "拉新云图人群包贡献"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/FlowSceneAnalysisV2",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "level_2_query_type": 1,
+      "scene_id": "-1",
+      "start_date": "2026-04-20",
+      "end_date": "2026-05-20"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "cover_num"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getspuaudienceassetprofile",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "单 SPU 5A 分布"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetSpuAudienceAssetProfile",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "spu_id": "7359895785032532287",
+      "date": "20260524"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "a1_cover_num",
+      "a2_cover_num",
+      "a3_cover_num",
+      "a4_cover_num",
+      "a5_cover_num"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getbrandspulist",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "哪个 SPU 覆盖人数最多"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetBrandSpuList",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "start_date": "2023-01-01",
+      "end_date": "2026-04-30"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "spu_info_list[].spu_id",
+      "spu_info_list[].spu_name",
+      "spu_info_list[].spu_cover_num"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudiencemap",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "人群图谱大促 (group_type_id=4)"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/api/common/crowdMap/GetAudienceMap",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "group_type_id": 4,
+      "brand_5A_industry_id": "14"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.crowd_category_list[].type_id"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.recommendbreakingcrowd",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "基于 SPU A4+A5 推荐破圈人群"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/api/common/recommend/overview/RecommendBreakingCrowd",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "seed_crowd_type": 14,
+      "spu_id": "7359895785032532287",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "seed_crowd_name": "SPU A4+A5"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "tag_id",
+      "name",
+      "cover_num",
+      "similarity"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.gettargetcrowdpenetrationinfo",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "破圈人群洞察(渗透率)"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/api/common/recommend/overview/GetTargetCrowdPenetrationInfo",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "tag_id": "1",
+      "industry_id": 14,
+      "brand_id": 11835330
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "penetration_rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.gettarget5adeal",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "目标人群 5A 成交"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/GetTarget5ADeal",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "tag_id": "1",
+      "date": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "a1_deal",
+      "a5_deal"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getbrandfluxaudience",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "行业品牌流量人群(Top 品牌破圈)"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/GetBrandFluxAudience",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "date": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "competitor_list"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.search",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "自定义人群按 cover_num 排序"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/old/audience_info/search",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "page": 1,
+      "size": 100,
+      "sort_param": "cover_num",
+      "sort_type": 2
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "audiences[].cover_num",
+      "audiences[].status"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.industryaudiencetrend",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "平台尝鲜人群推荐"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/IndustryAudienceTrend",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "audience_type": 30,
+      "industry_id": 14
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "audience_list",
+      "trend"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_insight_report_list",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "报告市场按 trigger 类筛选"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/get_insight_report_list",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "page_index": 1,
+      "page_size": 10,
+      "trigger_or_kol": "trigger"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "report_list[].report_id"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getoverview",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "心智核心总览"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/v1/image/mind/GetOverview",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "level_1_industry_id": "14",
+      "industry_id": "14",
+      "main_brand_id": "11835330",
+      "brand_id": "11835330",
+      "benchType": 1,
+      "end_date": "2026-05-21",
+      "period_type": 2,
+      "brand_type": 1,
+      "audience_filter_type": 2
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "association_cnt",
+      "industry_association.rank"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.listbrandtopkeyword",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "心智 Top 词趋势"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/v1/image/mind/ListBrandTopKeyword",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "level_1_industry_id": "14",
+      "industry_id": "14",
+      "main_brand_id": "11835330",
+      "brand_id": "11835330",
+      "benchType": 1,
+      "end_date": "2026-05-21",
+      "period_type": 2,
+      "brand_type": 1,
+      "audience_filter_type": 2,
+      "mind_source_type": 0
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "keyword_stats[].keyword_name",
+      "keyword_stats[].trend"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.listindustrydiscoverkeywordstats",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "lift 排行"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/v1/image/mind/ListIndustryDiscoverKeyWordStats",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "level_1_industry_id": "14",
+      "industry_id": "14",
+      "main_brand_id": "11835330",
+      "brand_id": "11835330",
+      "benchType": 1,
+      "end_date": "2026-05-21",
+      "period_type": 2,
+      "brand_type": 1,
+      "audience_filter_type": 2
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "lift_keyword_stats[]"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getbrandnsrdetailstats",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "NSR 趋势"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/v1/image/mind/GetBrandNsrDetailStats",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "level_1_industry_id": "14",
+      "industry_id": "14",
+      "main_brand_id": "11835330",
+      "brand_id": "11835330",
+      "benchType": 1,
+      "end_date": "2026-05-21",
+      "period_type": 2,
+      "brand_type": 1,
+      "audience_filter_type": 2
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "nsr_positive",
+      "nsr_neutral",
+      "nsr_negative"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getsessionlist",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "AiMars 历史会话清单"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/ai_marketer_api/main/GetSessionList",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "session_types": [
+        1
+      ]
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "session_list[].session_id",
+      "session_list[].conversation_id",
+      "session_list[].scene_type",
+      "session_list[].title",
+      "session_list[].status",
+      "session_list[].create_time"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_scene_auth_white_list",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "AiMars scene 权限白名单"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/ai_marketer_api/home/get_scene_auth_white_list",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "scene_type",
+      "name",
+      "agent_id",
+      "has_auth",
+      "lock_reason"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_batch_dictionary_card",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "Rome 字典批量解释卡"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_rome/api/dictionary/get_batch_dictionary_card",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "path_id": "/yuntu_brand/ecom/assets/crowd/distribution",
+      "dictionary_id_list": []
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "dictionary_list[].dictionary.dictionary_id",
+      "dictionary_list[].dictionary.name",
+      "dictionary_list[].dictionary.description_list",
+      "dictionary_list[].current_user_like_status"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_dictionary_id_list",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "Rome 路径下可用字典 id"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_rome/api/dictionary/get_dictionary_id_list",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "path_id": "/yuntu_brand/ecom/assets/crowd/distribution"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "dictionary_id_list"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getagentidbyscenetypes",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "AiMars 6 scene 获取 agent_id"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/ai_marketer_api/main/GetAgentIdBySceneTypes",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "scene_types": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ]
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "scene_type",
+      "agent_id"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getspucontribution",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "5A 蓄水期 1 vs 15 天对比"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetSPUContribution",
+    "params": {
+      "aadvid": "1805203190148185",
+      "spu_id": "7359895785032532287",
+      "deal_date": "2026-05",
+      "impound_scope": 1
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "core_data.deal_gmv",
+      "core_ratio.spu_deal_ratio"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getflowanalysisaudiencelist",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "5A 流转下钻 - 拉自定义人群清单"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetFlowAnalysisAudienceList",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "audiences[].custom_audience_id"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudiencegtaprofile",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "GTA 月度同环比下滑"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceGtaProfile",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "month": "2026-04",
+      "scene": 1
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.trends[].gmv",
+      "data.trends[].date"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.gettavideoanalysis",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "Z 世代 TA 视频偏好"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/api/common/content/ta_content/GetTaVideoAnalysis",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "crowd_tab": "industry_intention",
+      "industry_id": 14,
+      "brand_id": 11835330
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "ta_preference_item_list[].preference_name",
+      "ta_preference_item_list[].preference_value"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_summary",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "心智 AI 解读总结"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/v1/copilot/get_summary",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "business_id": "brand_mind_implement",
+      "query_selector": {
+        "main_brand_id": 11835330,
+        "level_1_industry_id": 14,
+        "industry_id": 14,
+        "brand_id": 11835330,
+        "end_date": "2026-05-24",
+        "period_type": 2
+      },
+      "generate_policy": 2
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "summary_str"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.bestsellingauthor",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "抖音号销量榜"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/bestSellingAuthor",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].itemId",
+      "data.list[].itemName",
+      "data.list[].gmv",
+      "data.list[].gmvRatio",
+      "data.list[].dimension"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.metrics",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "自播 vs 达播指标"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/metrics",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS",
+      "dimension": "SELF_BROADCASTING"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].dimension",
+      "data.list[].gmv",
+      "data.list[].gmvRatio"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.bestsellingproduct",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "畅销商品列表"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/bestSellingProduct",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].itemId",
+      "data.list[].productName",
+      "data.list[].gmv",
+      "data.list[].gmvRatio",
+      "data.list[].rank"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.flowentrystructure",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "流量入口结构"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/flowEntryStructure",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.flow_entry_list[].entry_name",
+      "data.flow_entry_list[].sales_amount",
+      "data.flow_entry_list[].traffic_ratio"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getproductoverview5aanalysis",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "商品 5A 漏斗"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/getProductOverview5AAnalysis",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.a1_num",
+      "data.a2_num",
+      "data.a3_num",
+      "data.a4_num",
+      "data.conversion_rates"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.industryrank",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "商品行业排名"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/industryRank",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS",
+      "dimension": "ALL"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.category_list[].category_name",
+      "data.category_list[].sales_amount",
+      "data.category_list[].ratio",
+      "data.category_list[].growth"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.daterange",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "可用日期范围"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/product_node/v2/api/productOverview/dateRange",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "minDate",
+      "maxDate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.insightoverviewstats",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "行业趋势(7天)"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/industry/insightOverviewStats",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "",
+      "categoryId": "20104",
+      "contentType": "ALL",
+      "startDate": "2026-05-17",
+      "endDate": "2026-05-23",
+      "dateType": "WEEK"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.tendency_list[].date",
+      "data.tendency_list[].value",
+      "data.tendency_list[].growthRate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.insightmarketconcentration",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "市场集中度"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/industry/insightMarketConcentration",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "",
+      "categoryId": "20104",
+      "contentType": "ALL",
+      "startDate": "2026-05-23",
+      "endDate": "2026-05-23",
+      "dateType": "DAY"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.cr3",
+      "data.cr5",
+      "data.cr10",
+      "data.cr15"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.insightbrandgmvrank",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "行业 Top 抖音号"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/industry/insightBrandGmvRank",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "",
+      "categoryId": "20104",
+      "contentType": "ALL",
+      "startDate": "2026-05-23",
+      "endDate": "2026-05-23",
+      "dateType": "DAY",
+      "analysisType": "DRILL_DOWN",
+      "itemType": "PRODUCT_BRAND",
+      "sortKey": "salesAmount",
+      "order": "descend",
+      "page": 1,
+      "pageSize": 10
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].aweme_id",
+      "data.list[].nickname",
+      "data.list[].follower_count",
+      "data.list[].sales_amount",
+      "data.list[].video_count"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.insightcategorystats",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "多类目对比"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/industry/insightCategoryStats",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "",
+      "categoryId": "20104",
+      "contentType": "ALL",
+      "startDate": "2026-05-23",
+      "endDate": "2026-05-23",
+      "dateType": "DAY",
+      "analysisType": "DRILL_DOWN",
+      "itemType": "SECOND_CATEGORY"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.salesAmount",
+      "data.salesVolune"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.insightcrowdstructure",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "酱油行业 5A 人群结构"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/industry/insightCrowdStructure",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "categoryIds": [
+        "20104"
+      ],
+      "startDate": "2026-05-12",
+      "endDate": "2026-05-18",
+      "dateType": "WEEK"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.a1_num",
+      "data.a2_num",
+      "data.a3_num",
+      "data.a4_num",
+      "data.a5_num"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.insightbrandoccupancy",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "市占率"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/industry/insightBrandOccupancy",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "",
+      "categoryId": "20104",
+      "contentType": "ALL",
+      "startDate": "2026-05-23",
+      "endDate": "2026-05-23",
+      "dateType": "DAY"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.occupancy_ratio",
+      "data.ratio_change",
+      "data.rank",
+      "data.total_brand_count"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.reportlist",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "报告列表"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/segmentedMarket/reportList",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "page_no": 1,
+      "page_size": 20
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].reportId",
+      "data.list[].name",
+      "data.list[].periodType",
+      "data.list[].startTime",
+      "data.list[].endTime",
+      "data.list[].status",
+      "data.total"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.reportdetail",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "报告详情"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/segmentedMarket/reportDetail",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "203",
+      "page_no": 1,
+      "page_size": 20,
+      "startDate": "20260518",
+      "endDate": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.salesAmount",
+      "data.list[].value",
+      "data.list[].label",
+      "data.list[].salesAmount"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.keywordlist",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "关键词长尾"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/segmentedMarket/keywordList",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "203",
+      "page_no": 1,
+      "page_size": 20,
+      "startDate": "20260518",
+      "endDate": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].date",
+      "data.list[].value"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.pricerange",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "价格段分布"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/segmentedMarket/priceRange",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "203",
+      "page_no": 1,
+      "page_size": 20,
+      "startDate": "20260518",
+      "endDate": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].price_range",
+      "data.list[].salesAmount",
+      "data.list[].salesVolune"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.audience",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "人群画像签名"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/segmentedMarket/audience",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "203",
+      "page_no": 1,
+      "page_size": 20,
+      "startDate": "20260518",
+      "endDate": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "list[].unique_signature",
+      "list[].salesAmount",
+      "list[].count"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.category",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "类目分布"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/segmentedMarket/category",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "203",
+      "page_no": 1,
+      "page_size": 20,
+      "startDate": "20260518",
+      "endDate": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.report_name",
+      "data.industry",
+      "data.period",
+      "data.spu_list[].spu_id",
+      "data.spu_list[].spu_name"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.newproductreportzhongcaonum",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "对标品种草量级"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/api/v1/sketch/NewProductReportZhongCaoNum",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "report_id": "1380"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.zhong_cao_num",
+      "data.level_list"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.newproductreportcostdistribute",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "对标品投放消耗分布"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/api/v1/sketch/NewProductReportCostDistribute",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "report_id": "1380"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.cost_distribute_list[].day",
+      "data.cost_distribute_list[].cost",
+      "data.cost_distribute_list[].channel_type"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.querydaterange",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "上市追踪可用日期 + SPU 组"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ecom/api/v1/sketch/QueryDateRange",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": "14",
+      "module_": "201031"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "min_date",
+      "max_date"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getplayletmarketthemeinsights",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "短剧题材榜"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/api/v1/sketch/GetPlayletMarketThemeInsights",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "general_cond": {
+        "time_range": {
+          "start_date": "2026-04-20",
+          "end_date": "2026-05-20",
+          "date_type": 100
+        }
+      }
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.playlet_theme_metric_list[].theme",
+      "data.playlet_theme_metric_list[].index_map"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getplayletauthorranking",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "短剧达人榜"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/api/v1/sketch/GetPlayletAuthorRanking",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "general_cond": {
+        "time_range": {
+          "start_date": "2026-04-20",
+          "end_date": "2026-05-20",
+          "date_type": 100
+        }
+      },
+      "theme": 0,
+      "crowd_type": "0",
+      "ranking_scope": "1",
+      "ranking_type": "1"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.author_ranking_list[].author_id",
+      "data.author_ranking_list[].nickname",
+      "data.author_ranking_list[].follower",
+      "data.author_ranking_list[].theme_match_score"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getcontentmaterialgeneralinfo",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "品牌素材效果 + Top 视频"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/content/trigger_analysis/GetContentMaterialGeneralInfo",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "module_": 1100002,
+      "industry_id": 14,
+      "bid": "11835330",
+      "startDate": "2026-05-13",
+      "endDate": "2026-05-19",
+      "periodType": 7
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.gethotspotrecommanded",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "调味品行业热点"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetHotspotRecommanded",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "hotspot_list[].hotspot_id",
+      "hotspot_list[].name",
+      "hotspot_list[].heat_score",
+      "hotspot_list[].tag_list",
+      "hotspot_list[].trend"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.queryreportlist",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "自定义内容报告清单"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/content/QueryReportList",
+    "params": {
+      "aadvid": "1805203190148185",
+      "date": "20260524"
+    },
+    "body": {
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "page": 1,
+      "pageSize": 10
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "report_list[].id",
+      "report_list[].name",
+      "report_list[].status",
+      "report_list[].keyword",
+      "report_list[].create_time"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.corebrand",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "行业搜索近 30 天"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/search_node/api/search/industry/brandList/coreBrand",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "selector": {
+        "categoryId": "20104",
+        "periodSelector": {
+          "startDate": "20260418",
+          "endDate": "20260518",
+          "periodType": 30
+        }
+      }
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data[].brandName",
+      "data[].rnk"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getbrandaccountliveoverview",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "直播间表现 vs 行业 Top"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/api/live/GetBrandAccountLiveOverview",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "period_type": 7,
+      "start_date": "2026-05-13",
+      "end_date": "2026-05-19",
+      "industry_id": 14,
+      "benchmark_type": 1,
+      "brand_id": 11835330
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "live_overview.gmv",
+      "live_overview.gpm",
+      "live_overview.audience_num",
+      "live_overview.conversion_rate"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.productstructure",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "货品结构"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/productStructure",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].itemId",
+      "data.list[].gmv"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.branddistribution",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "品牌分布"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/brandDistribution",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.keywordtrend",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "关键词趋势"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/segmentedMarket/keywordTrend",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "203",
+      "page_no": 1,
+      "page_size": 20,
+      "startDate": "20260518",
+      "endDate": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.salesAmount"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.awemeaccount",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "抖音号"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/segmentedMarket/awemeAccount",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "203",
+      "page_no": 1,
+      "page_size": 20,
+      "startDate": "20260518",
+      "endDate": "20260524"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].aweme_id",
+      "data.list[].follower_count"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.distribution",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "搜索成交 tab 竞品分布"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/search_node/api/search/overview/distribution",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "selector": {
+        "categoryId": "20104",
+        "periodSelector": {
+          "startDate": "20260512",
+          "endDate": "20260518",
+          "periodType": 7
+        }
+      },
+      "subBrandId": "11835330",
+      "compareBrandList": []
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.distribution"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getnewproductreportdetail",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "跨页:细分市场 → 对标品 sketch"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ecom/api/v1/sketch/GetNewProductReportDetail",
+    "params": {
+      "aadvid": "1805203190148185",
+      "report_id": "1380"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.report_name",
+      "data.spu_list[].spu_id"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.sellmatrix",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "带货矩阵"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/productOverview/sellMatrix",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "startDate": "20260518",
+      "periodType": "LAST_7_DAYS"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "a1_cover_num",
+      "a5_cover_num"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getcontentmaterial",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "单素材内容深度拆解"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/content/trigger_analysis/GetContentMaterial",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "vid": "7359895785032532287",
+      "objectType": 1,
+      "materialType": 3
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.material_info"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getbrandaccountliveroommetrics",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "直播综合复盘 → 单房间"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/api/live/GetBrandAccountLiveRoomMetrics",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "room_id": "7359895785032532287",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "start_date": "2026-05-13",
+      "end_date": "2026-05-19"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "room_metrics"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.insightproductstats",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "细分市场 vs 全行业 SPU 排名对比"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/v2/api/industry/insightProductStats",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "reportId": "203",
+      "startDate": "2026-04-01",
+      "endDate": "2026-04-30",
+      "dateType": "MONTH",
+      "page": 1,
+      "pageSize": 100,
+      "sortKey": "salesAmount",
+      "order": "descend"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "data.list[].item",
+      "data.list[].data.salesAmount.value"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getcontentformulaandscript",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "单素材内容公式诊断"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/content/trigger_analysis/GetContentFormulaAndScript",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "vid": "7359895785032532287",
+      "objectType": 1,
+      "materialType": 3
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "formula",
+      "script"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getnewproductreviewrefspugrouplist",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "行业 SPU → 上市追踪参考组"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/api/v1/sketch/GetNewProductReviewRefSpuGroupList",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "industry_id": "14",
+      "period_type": 7,
+      "end_date": "2026-05-18",
+      "page_size": 6,
+      "page_index": 1,
+      "ref_spu_group_name": ""
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "ref_spu_group_list[].group_id",
+      "ref_spu_group_list[].group_name"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudiencegtaroadmap",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "触点效能 vs 行业对比信号"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceGtaRoadMap",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "ax": 3,
+      "convert_period": 1,
+      "audience_period": 1,
+      "audience_end_date": "2026-05-20",
+      "shop_scale": 1
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "road_map.total.competitor_show_high",
+      "road_map.total.competitor_conversion_high",
+      "road_map.video.competitor_show_high",
+      "road_map.live.competitor_show_high"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudiencegtaecomindustry",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "行业电商对比"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceGtaEcomIndustry",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "module_": 1,
+      "scene": 1
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "industry_top5",
+      "median"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudiencegtaroadmaptrafficanalysis",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "路径流量分析"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceGtaRoadmapTrafficAnalysis",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "scene": 1
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "traffic_breakdown"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getpacketv2",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "GTA RoadMap show_pack 圈包配置"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetPacketV2",
+    "params": {
+      "aadvid": "1805203190148185",
+      "audience_module": "AUDIENCE_GMVTO5A",
+      "type": "GMVTo5A",
+      "pack_name": "show_5"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "packet_config"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.querydaterange_1",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "GTA 月度日期范围"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/common/QueryDateRange",
+    "params": {
+      "aadvid": "1805203190148185",
+      "module_": "102010",
+      "date_type": 10
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "min_date",
+      "max_date"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_shop_list",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "店铺清单"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/get_shop_list",
+    "params": {
+      "aadvid": "1805203190148185",
+      "brand_id": 11835330,
+      "industry_id": 14
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "shop_list[].shop_id",
+      "shop_list[].shop_name"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.audiencegtareportquerylistv2",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "生意目标 → GTA 月度对比"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/AudienceGtaReportQueryListV2",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "page_size": 6,
+      "page_index": 1,
+      "query_type_v2": 1,
+      "report_type": 12,
+      "report_id": "",
+      "report_name": ""
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "reports[].task_start_time",
+      "reports[].task_end_time"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.audiencegtareportiscreated",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "是否建过 GTA 活动"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/AudienceGtaReportIsCreated",
+    "params": {
+      "aadvid": "1805203190148185",
+      "industry_id": 14,
+      "brand_id": 11835330,
+      "query_type_v2": 1,
+      "report_type": 12
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "is_created"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getbrandhistoryreport",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "历史生意复盘品牌视图"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetBrandHistoryReport",
+    "params": {
+      "aadvid": "1805203190148185",
+      "brand_id": 11835330,
+      "page_index": 1,
+      "page_size": 6,
+      "brand_compete_type": "16"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "brand_report_list"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_trigger_insight_effect_analysis",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "转化 stage 新客占比"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/measurement/api/eva/get_trigger_insight_effect_analysis",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "stage": 3,
+      "subsequent_trigger_point_level": 2,
+      "start_date": "20260101",
+      "end_date": "20260430",
+      "index_type": 21
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "trigger_effect_list"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_trigger_insight_resource_distribution",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "投放资源分布饼图"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/measurement/api/eva/get_trigger_insight_resource_distribution",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "stage": 2,
+      "start_date": "20260101",
+      "end_date": "20260430"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "resource_distribution"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_trigger_insight_history_trend",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "分日趋势触点表现"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/measurement/api/eva/get_trigger_insight_history_trend",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "stage": 2,
+      "start_date": "20260101",
+      "end_date": "20260430"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "trend"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.query_path_detail",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "路径平均转化周期"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/measurement/api/eva/query_path_detail",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "start_date": "20260101",
+      "end_date": "20260430",
+      "stage_selectors": []
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "trigger_combination_info_list[].avg_convert_period"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_attribute_window_phase",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "归因窗口设置"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/measurement/api/eva/get_attribute_window_phase",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [
+      "attribution_window",
+      "attribution_model"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_evaluation_task_list_v2",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "结案报告归因模型对比"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/v1/taskList/get_evaluation_task_list_v2",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "main_brand_id": "11835330",
+      "level_1_industry_id": "14",
+      "offset": "0",
+      "count": "10",
+      "order_type": 1
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "task_list[].task_params.attribution_window",
+      "task_list[].task_params.attribution_model"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getbrandassociationdetailstats",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "SPU 漏斗最差 → 心智词命中"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/v1/image/mind/GetBrandAssociationDetailStats",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "main_brand_id": 11835330,
+      "level_1_industry_id": 14,
+      "bench_type": "industry",
+      "start_date": "2026-04-20",
+      "end_date": "2026-05-20"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "association_detail"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.get_evaluation_task_detail",
+    "platform": "yuntu",
+    "category": "",
+    "aliases": [
+      "触点榜单 → 结案 creative 物料"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/api/v1/ecomTaskList/get_evaluation_task_detail",
+    "params": {
+      "aadvid": "1805203190148185"
+    },
+    "body": {
+      "task_id": "1158415"
+    },
+    "biz_code_field": "status",
+    "expected_fields": [
+      "task_params.effect_ad_ids"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "yuntu.getaudienceassetdiagnosticscard_1",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "`diagnostic_content`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/GetAudienceAssetDiagnosticsCard",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/02_crowd_distribution_network.txt`"
+  },
+  {
+    "key": "yuntu.getaudienceassetbig8profile_1",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "八大群体画像"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/GetAudienceAssetBig8Profile",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_diagnosis_audience_list.json`"
+  },
+  {
+    "key": "yuntu.getaudienceassetbig8trend_1",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "群体趋势"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/GetAudienceAssetBig8Trend",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/05_distribution_baseline_round5.txt:263,289`"
+  },
+  {
+    "key": "yuntu.gettargettagdeal",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "`audience_rate{0~4}`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/GetTargetTagDeal",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_diagnosis_tagdeal.json`"
+  },
+  {
+    "key": "yuntu.gettargettagrate",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "`rate_list[8].{id, name, rate, tag_type, father_name}`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/GetTargetTagRate",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_diagnosis_tagrate.json`"
+  },
+  {
+    "key": "yuntu.get5amapping",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "5A 日期配置"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/Get5AMapping",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/05"
+  },
+  {
+    "key": "yuntu.getaudience5amodel",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "5A 模型"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudience5aModel",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/06"
+  },
+  {
+    "key": "yuntu.audienceflowscenequery",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "11 scene 配置"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/AudienceFlowSceneQuery",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/05"
+  },
+  {
+    "key": "yuntu.getflowsceneanalysistriggerlist",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "16 trigger"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetFlowSceneAnalysisTriggerList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/05"
+  },
+  {
+    "key": "yuntu.querydaterange_2",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "日期范围"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/QueryDateRange",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/06"
+  },
+  {
+    "key": "yuntu.audiencegtareportdel",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "删除报告"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/api/v1/AudienceGtaReportDel",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.queryoverviewitemdata",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "overview 卡片"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/home/QueryOverviewItemData",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/01_home_round5_baseline.txt`"
+  },
+  {
+    "key": "yuntu.saveselectedcomponentitemtype",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "保存指标"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/home/SaveSelectedComponentItemType",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.save_metric_template",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "`{template_id, status:0}`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/home/save_metric_template",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r13_home/r13_home_save_metric.txt`"
+  },
+  {
+    "key": "yuntu.initupload",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "`upload_id, part_size`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/upload/initUpload",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/24"
+  },
+  {
+    "key": "yuntu.uploadpart",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "etag"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/upload/uploadPart",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/24"
+  },
+  {
+    "key": "yuntu.completeupload",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/v1",
+    "aliases": [
+      "`file_url`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/upload/completeUpload",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/24"
+  },
+  {
+    "key": "yuntu.search_1",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/old",
+    "aliases": [
+      "人群列表（本品 328 个）"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/audience_info/search",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_audience_list_default.txt`"
+  },
+  {
+    "key": "yuntu.push",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/old",
+    "aliases": [
+      "推下游"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/audience_info/push",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.update",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/old",
+    "aliases": [
+      "创建/更新（双用）— 完整 body 未取（multi-tenant 隔离 status=1001）"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/dmp/audience/update",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r17_round2/r17_dmp_audience_update_probe.json`"
+  },
+  {
+    "key": "yuntu.delete",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/old",
+    "aliases": [
+      "删除人群"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/dmp/audience/delete",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.extend",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/old",
+    "aliases": [
+      "智能扩展"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/dmp/audience/extend",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.ad_plan",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/old",
+    "aliases": [
+      "推千川"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/dmp/audience/ad_plan",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.upload",
+    "platform": "yuntu",
+    "category": "yuntu_ng/api/old",
+    "aliases": [
+      "上传人群文件"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ng/dmp/audience/upload",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.getaudiencemap_1",
+    "platform": "yuntu",
+    "category": "yuntu_biz/api/common",
+    "aliases": [
+      "4 群体分布"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/crowdMap/GetAudienceMap",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/15"
+  },
+  {
+    "key": "yuntu.doublehotcontentindustryrank",
+    "platform": "yuntu",
+    "category": "yuntu_biz/api/common",
+    "aliases": [
+      "行业灵感激发 TOP 内容"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/content/DoubleHotContentIndustryRank",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.newproductreportzhongcaonum_1",
+    "platform": "yuntu",
+    "category": "yuntu_biz/api/common",
+    "aliases": [
+      "`spu5a_total_distribute + spu5a_week_distribute[4周]` 种草量级"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/sketch/NewProductReportZhongCaoNum",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/api_sketch_NewProductReportZhongCaoNum.json`"
+  },
+  {
+    "key": "yuntu.newproductreportcostdistribute_1",
+    "platform": "yuntu",
+    "category": "yuntu_biz/api/common",
+    "aliases": [
+      "`total_distribute{pinguang_ratio, xingtu_ratio, qianchuan_ratio, other_ratio}` + `week_distribute[4周]`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/sketch/NewProductReportCostDistribute",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/api_sketch_NewProductReportCostDistribute.json`"
+  },
+  {
+    "key": "yuntu.track_refspu",
+    "platform": "yuntu",
+    "category": "yuntu_biz/api/common",
+    "aliases": [
+      "候选对标品 5 个"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/sketch/track_refspu",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.recommendbreakingcrowd_1",
+    "platform": "yuntu",
+    "category": "yuntu_biz/api/common",
+    "aliases": [
+      "破圈推荐"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/recommend/overview/RecommendBreakingCrowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_recommend_req_buyer.json` + `_raw/r10_recommend_breakgroup.json`"
+  },
+  {
+    "key": "yuntu.getcirclebreakinggrouplist",
+    "platform": "yuntu",
+    "category": "yuntu_biz/api/common",
+    "aliases": [
+      "1=购买偏好 / 2=内容偏好"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_biz/recommend/overview/GetCircleBreakingGroupList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.comparesimilarity",
+    "platform": "yuntu",
+    "category": "yuntu_biz/api/common",
+    "aliases": [
+      "相似度比较"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_biz/recommend/overview/CompareSimilarity",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.getoverview_1",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "心智概览"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/image/mind/GetOverview",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/04_brand_mind_monitor_network.txt`"
+  },
+  {
+    "key": "yuntu.listbrandtopkeyword_1",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "`data.keyword_list[].{keyword, heat_score, rank_change}` 心智 TOP 词"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/image/mind/ListBrandTopKeyword",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/04"
+  },
+  {
+    "key": "yuntu.listindustrydiscoverkeywordstats_1",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "行业热词发现"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/image/mind/ListIndustryDiscoverKeyWordStats",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/03"
+  },
+  {
+    "key": "yuntu.getbrandassociationdetailstats_1",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "联想心智 detail"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/image/mind/GetBrandAssociationDetailStats",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r12_mind_monitor_default.txt:57,58,61,137,138`"
+  },
+  {
+    "key": "yuntu.getbrandnsrdetailstats_1",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "NSR 负面心智 detail"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/image/mind/GetBrandNsrDetailStats",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r12_mind_monitor_default.txt` + `_raw/04_brand_mind_monitor_network.txt:91,92,93,125,126`"
+  },
+  {
+    "key": "yuntu.getbrandpreferencedetailstats",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "偏好心智 detail"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/image/mind/GetBrandPreferenceDetailStats",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r12_mind_monitor_default.txt`"
+  },
+  {
+    "key": "yuntu.get_brand_competitor_list",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "4 竞品 bid"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/image/mind/get_brand_competitor_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/02_crowd_distribution_network.txt` + `_raw/04_brand_mind_monitor_network.txt`"
+  },
+  {
+    "key": "yuntu.start_calaulate_evaluation_task",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "启动评估（拼错 calaulate）"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/ecomTaskList/start_calaulate_evaluation_task",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.start_calculate_evaluation_task",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "启动 v1"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/taskList/start_calculate_evaluation_task",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.get_offline_eval_task_list",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "轮询 task 状态"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/taskList/get_offline_eval_task_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.get_evaluation_task_list_v2_1",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "`tasks[].{task_id, task_name, industry_id, model, window}`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/taskList/get_evaluation_task_list_v2",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/api_taskList_get_evaluation_task_list_v2.json` + `_raw/r10_eval_tasklist_v2_req.json` + `_resp.json`"
+  },
+  {
+    "key": "yuntu.get_offline_file",
+    "platform": "yuntu",
+    "category": "yuntu_common/api/v1",
+    "aliases": [
+      "`file_url` 离线导出"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_common/taskList/get_offline_file",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.brandaccountlivecontenttypemetric",
+    "platform": "yuntu",
+    "category": "yuntu_ecom/api",
+    "aliases": [
+      "直播 metric"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/live/BrandAccountLiveContentTypeMetric",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/35"
+  },
+  {
+    "key": "yuntu.track_refspu_1",
+    "platform": "yuntu",
+    "category": "yuntu_ecom/api",
+    "aliases": [
+      "对标品（兼 yuntu_biz）"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ecom/sketch/track_refspu",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.create_conversations",
+    "platform": "yuntu",
+    "category": "yuntu_ai_marketer/api/v1",
+    "aliases": [
+      "创建对话 → `conversation_id`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ai_marketer/api/v1/create_conversations",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r14/r14_create_conv_req.json` + `_raw/r17_round2/r17_aimars_scene_2to6_create.json`"
+  },
+  {
+    "key": "yuntu.get_conversation_sse_messages",
+    "platform": "yuntu",
+    "category": "yuntu_ai_marketer/api/v1",
+    "aliases": [
+      "LLM 流式回复 SSE event stream"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ai_marketer/api/v1/get_conversation_sse_messages",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r14/r14_chat_sse_full.txt` + `r14_chat_stream.txt`"
+  },
+  {
+    "key": "yuntu.get_conversations_info",
+    "platform": "yuntu",
+    "category": "yuntu_ai_marketer/api/v1",
+    "aliases": [
+      "拉历史会话"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ai_marketer/api/v1/get_conversations_info",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:166`"
+  },
+  {
+    "key": "yuntu.update_conversation_info",
+    "platform": "yuntu",
+    "category": "yuntu_ai_marketer/api/v1",
+    "aliases": [
+      "rename conversation"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_ai_marketer/api/v1/update_conversation_info",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.get_conversation_status",
+    "platform": "yuntu",
+    "category": "ai_marketer_api",
+    "aliases": [
+      "conversation 状态"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/ai_marketer_api/home/get_conversation_status",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r11_aimars_default.txt:43` + `r11_aimars_newsession.txt:43` + `r13_aimars/*`"
+  },
+  {
+    "key": "yuntu.login",
+    "platform": "yuntu",
+    "category": "ai_marketer_api",
+    "aliases": [
+      "飞书 docx 登录态"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/ai_marketer_api/docx/check/login",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.callback",
+    "platform": "yuntu",
+    "category": "ai_marketer_api",
+    "aliases": [
+      "推飞书 docx"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/ai_marketer_api/lark/callback",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.get_batch_dictionary_card_1",
+    "platform": "yuntu",
+    "category": "yuntu_rome/api",
+    "aliases": [
+      "`data.dictionary_list[].{id, name, definition, source}` 心智词 detail"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_rome/dictionary/get_batch_dictionary_card",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r13_rome/r13_rome_dict_card_resp.json`"
+  },
+  {
+    "key": "yuntu.update_like_status",
+    "platform": "yuntu",
+    "category": "yuntu_rome/api",
+    "aliases": [
+      "字典点赞/踩"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_rome/dictionary/update_like_status",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r17_round2/r17_dict_like_attempt_1.json` + `_2.json`（全 4000）"
+  },
+  {
+    "key": "yuntu.create_feedback",
+    "platform": "yuntu",
+    "category": "yuntu_rome/api",
+    "aliases": [
+      "创建反馈"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_rome/feedback/create_feedback",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.send_feedback_collect_results",
+    "platform": "yuntu",
+    "category": "yuntu_rome/api",
+    "aliases": [
+      "提交反馈表单"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_rome/feedback/send_feedback_collect_results",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:114-118`"
+  },
+  {
+    "key": "yuntu.search_block_feedback_list",
+    "platform": "yuntu",
+    "category": "yuntu_rome/api",
+    "aliases": [
+      "反馈历史列表"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_rome/feedback/search_block_feedback_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:209`"
+  },
+  {
+    "key": "yuntu.batch_collect_asset_point_info",
+    "platform": "yuntu",
+    "category": "yuntu_rome/api",
+    "aliases": [
+      "用户行为批量上报"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/yuntu_rome/yuntuAsset/batch_collect_asset_point_info",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:130,147,166,204`"
+  },
+  {
+    "key": "yuntu.get_trigger_insight_index_types",
+    "platform": "yuntu",
+    "category": "measurement/api/eva",
+    "aliases": [
+      "指标类型枚举"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/measurement/api/eva/get_trigger_insight_index_types",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/12"
+  },
+  {
+    "key": "yuntu.get_trigger_insight_query_types",
+    "platform": "yuntu",
+    "category": "measurement/api/eva",
+    "aliases": [
+      "查询类型枚举"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/measurement/api/eva/get_trigger_insight_query_types",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/12"
+  },
+  {
+    "key": "yuntu.get_trigger_insight_show_comparative_trigger_list",
+    "platform": "yuntu",
+    "category": "measurement/api/eva",
+    "aliases": [
+      "对比触点 list"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/measurement/api/eva/get_trigger_insight_show_comparative_trigger_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/12"
+  },
+  {
+    "key": "yuntu.get_history_date_range",
+    "platform": "yuntu",
+    "category": "measurement/api/eva",
+    "aliases": [
+      "历史日期范围"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/measurement/api/eva/get_history_date_range",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/12"
+  },
+  {
+    "key": "yuntu.get_brand_power_metrics_with_benchmark",
+    "platform": "yuntu",
+    "category": "measurement/api/eva",
+    "aliases": [
+      "`item_value_benchmark` 5 值"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/measurement/eva/measurement/yuntu/api/brand_power/get_brand_power_metrics_with_benchmark",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r17_round2/r17_benchmark_type_compare.json` + `r17_benchmark_type_1_3_4_5_6.json`"
+  },
+  {
+    "key": "yuntu.queryoverviewitemdata_1",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "商品概览"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/productOverview/QueryOverviewItemData",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/api_pinned_components.json` + `r13_home/*`"
+  },
+  {
+    "key": "yuntu.getproductoverview5aanalysis_1",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "商品 5A 漏斗"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/productOverview/getProductOverview5AAnalysis",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/26"
+  },
+  {
+    "key": "yuntu.flowentrystructure_1",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "流量入口结构"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/productOverview/flowEntryStructure",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/26"
+  },
+  {
+    "key": "yuntu.categorypriceranges",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "价格段 9 档"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/product_node/productOverview/categoryPriceRanges",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r11_product_structure.txt:85`"
+  },
+  {
+    "key": "yuntu.itemanalysis",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "商品分析"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/productOverview/itemAnalysis",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/10"
+  },
+  {
+    "key": "yuntu.insightcategorystats_1",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "行业洞察类目（调味品 20104）"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/industry/insightCategoryStats",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/06_industry_marketProduct.txt:327`"
+  },
+  {
+    "key": "yuntu.insightproductstats_1",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "行业 TOP 商品"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/industry/insightProductStats",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/06"
+  },
+  {
+    "key": "yuntu.marketoverview",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "行业概览"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/industry/marketOverview",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/27"
+  },
+  {
+    "key": "yuntu.customer",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "行业消费者洞察"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/industry/customer",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/27"
+  },
+  {
+    "key": "yuntu.trendinsights",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "行业趋势洞察"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/industry/trendInsights",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/27"
+  },
+  {
+    "key": "yuntu.marketaweme",
+    "platform": "yuntu",
+    "category": "product_node/v2/api",
+    "aliases": [
+      "抖音号"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/product_node/industry/marketAweme",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/06_industry_all_subpages.txt:581`"
+  },
+  {
+    "key": "yuntu.info",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "搜索概览基本信息"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/overview/info",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.metrics_1",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "搜索 metric"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/overview/metrics",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.distribution_1",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "搜索分布"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/overview/distribution",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.rank",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "搜索 rank"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/overview/rank",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.tendency",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "搜索趋势"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/overview/tendency",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.industry",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "行业搜索"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/overview/yuntu/industry",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.daterange_1",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "日期范围"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/common/dateRange",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.competitorids",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "竞品 ID"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/common/competitorIds",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.brandmetadata",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "品牌元数据"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/user/brandMetaData",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.info_1",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "用户信息"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/user/info",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.get_word_detail",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "关键词详情"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/search_node/search/get_word_detail",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.search_brand_ad_ad_list",
+    "platform": "yuntu",
+    "category": "search_node/api/search",
+    "aliases": [
+      "广告关键词"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/search_node/search/search_brand_ad_ad_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.list",
+    "platform": "yuntu",
+    "category": "nbs/api/bm",
+    "aliases": [],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/nbs/brand_matrix/list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.record",
+    "platform": "yuntu",
+    "category": "nbs/api/bm",
+    "aliases": [],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/nbs/brand_matrix/record",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.fe",
+    "platform": "yuntu",
+    "category": "copilot/api/v1/agw",
+    "aliases": [
+      "copilot SDK 初始化"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/copilot/config/fe",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:157,167,176`"
+  },
+  {
+    "key": "yuntu.preinit",
+    "platform": "yuntu",
+    "category": "copilot/api/v1/agw",
+    "aliases": [
+      "预初始化"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/copilot/user/preinit",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt`"
+  },
+  {
+    "key": "yuntu.abtest",
+    "platform": "yuntu",
+    "category": "copilot/api/v1/agw",
+    "aliases": [
+      "实验配置"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/copilot/api/v1/agw/abTest",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:202,204`"
+  },
+  {
+    "key": "yuntu.query",
+    "platform": "yuntu",
+    "category": "copilot/api/v1/agw",
+    "aliases": [
+      "未读消息计数"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/copilot/commonPush/unread/query",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:204,206`"
+  },
+  {
+    "key": "yuntu.stream",
+    "platform": "yuntu",
+    "category": "mind_interpret_api/v3",
+    "aliases": [],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/mind_interpret_api/chat/stream",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.init",
+    "platform": "yuntu",
+    "category": "mind_interpret_api/v3",
+    "aliases": [],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/mind_interpret_api/chat/init",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.feedback",
+    "platform": "yuntu",
+    "category": "mind_interpret_api/v3",
+    "aliases": [],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/mind_interpret_api/chat/feedback",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.getportrait",
+    "platform": "yuntu",
+    "category": "crowd_portrait",
+    "aliases": [
+      "拉人群画像"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/crowd_portrait/GetPortrait",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.getportraitbybcid",
+    "platform": "yuntu",
+    "category": "crowd_portrait",
+    "aliases": [
+      "按 BCID 拉画像"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/crowd_portrait/GetPortraitByBCID",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "yuntu.getpacketconfig",
+    "platform": "yuntu",
+    "category": "crowd_portrait",
+    "aliases": [
+      "圈包配置"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/crowd_portrait/GetPacketConfig",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:188`"
+  },
+  {
+    "key": "yuntu.getpackruleconfig",
+    "platform": "yuntu",
+    "category": "crowd_portrait",
+    "aliases": [
+      "圈包规则配置"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/crowd_portrait/GetPackRuleConfig",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/15"
+  },
+  {
+    "key": "yuntu.getportraitconfig",
+    "platform": "yuntu",
+    "category": "crowd_portrait",
+    "aliases": [
+      "画像配置"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/crowd_portrait/GetPortraitConfig",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:187`"
+  },
+  {
+    "key": "yuntu.auth",
+    "platform": "yuntu",
+    "category": "infra/auth",
+    "aliases": [
+      "权限校验 → `{has_permission, missing_features}`"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/infra/infra/auth",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.get_gray_redirect_url",
+    "platform": "yuntu",
+    "category": "infra/auth",
+    "aliases": [
+      "灰度路由（切品牌时）"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/infra/main_app_gray/get_gray_redirect_url",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.garrmodlistv3",
+    "platform": "yuntu",
+    "category": "infra/auth",
+    "aliases": [
+      "子应用 manifest"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/infra/auth/garrmodlistv3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "yuntu.industryaudiencetrend_1",
+    "platform": "yuntu",
+    "category": "infra/auth",
+    "aliases": [
+      "`trend[].{date, industry_audience_cover_num, permeability}` 22 天"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/infra/auth/IndustryAudienceTrend",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_audience_recommend_industrytrend.json`"
+  },
+  {
+    "key": "yuntu.getbrandfluxaudience_1",
+    "platform": "yuntu",
+    "category": "infra/auth",
+    "aliases": [
+      "`data_list[].{label:a1/a2/a3/a4a5, uv}` 资产层级 UV"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/infra/auth/GetBrandFluxAudience",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_seek_flux_audience.json`"
+  },
+  {
+    "key": "yuntu.getbrandfluxinfo",
+    "platform": "yuntu",
+    "category": "infra/auth",
+    "aliases": [
+      "`influx_info/outflux_info/absolute_flux_info` 30 个品牌 flux_index"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/infra/auth/GetBrandFluxInfo",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_seek_flux_info.json`"
+  },
+  {
+    "key": "yuntu.getcompetebidlist",
+    "platform": "yuntu",
+    "category": "infra/auth",
+    "aliases": [
+      "`competitor_lists[].{bid, main_bid, brand_name}` 4 竞品"
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/infra/auth/GetCompeteBidList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_seek_compete_bid.json`"
+  },
+  {
+    "key": "yuntu.get_insight_report_list_1",
+    "platform": "yuntu",
+    "category": "infra/auth",
+    "aliases": [
+      "5 个报告，`trigger_or_kol:\"触达分析\"`/\"KOL 分析\""
+    ],
+    "host": "yuntu.oceanengine.com",
+    "method": "POST",
+    "path": "/infra/auth/get_insight_report_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_report_list_req.json` + `_resp.json`"
+  }
+]

@@ -1,0 +1,1895 @@
+[
+  {
+    "key": "doudian.tabcnt",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "今天待发货等 Tab 计数"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/api/order/tabcnt",
+    "params": {
+      "tabcnt_version": "v1",
+      "tab": "all"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data.stock_up",
+      "data.all",
+      "data.unpaid",
+      "data.on_delivery"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.searchlist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "库存预警→关联 SKU 近 7 天订单（订单查询步）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/api/order/searchlist",
+    "params": {
+      "page": 0,
+      "pageSize": 10,
+      "order_by": "create_time",
+      "order": "desc",
+      "tab": "all"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.homepage",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "今天 GMV（抖店首页 dashboard）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/pc/api/home/homepage",
+    "params": {
+      "meet_redirect_grey": "true",
+      "source": 1,
+      "homepage_version": "202602260"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data.lay_out_data",
+      "data.business_data.has_product"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.orderdetail",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "跨页串联第 1 步：订单详情拿 logistic_no"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/api/order/orderDetail",
+    "params": {
+      "order_id": "4500000000000000000"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getorderlogistics",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "订单 X 物流跟踪"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/api/order/getOrderLogistics",
+    "params": {
+      "order_id": "4500000000000000000"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.counts",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "今天售后单数（pending tab）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/shopuser/aftersale/counts",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.list",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "售后金额/GMV 占比（多 endpoint 拼接：售后 sum 步）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/after_sale/pc/list",
+    "params": {},
+    "body": {
+      "page": 0,
+      "size": 10
+    },
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.detail",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "售后 → 重新发货 查 aftersale detail（READ 部分）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/v1/aftersale/pc/detail",
+    "params": {
+      "order_id": "0",
+      "extra": "{\"detail_upgrade_hit\":\"new\"}"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.contact_info",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "售后单买家联系方式（脱敏）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/v1/aftersale/contact_info",
+    "params": {
+      "after_sale_id": "0"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.list_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "运费模板列表"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/api/express/template/list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.logisticslist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "合作物流商列表"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/shopuser/power/logisticslist",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.detail_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "售后单运费险信息"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/v1/aftersale/insurance/detail",
+    "params": {
+      "after_sale_id": "0"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.statistics",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "评价管理 4 Tab"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tcomment/statistics",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data.good_rate",
+      "data.worst_count",
+      "data.negative_count"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.commentlist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "商品评价按星级筛选"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tcomment/commentList",
+    "params": {
+      "rank": "5",
+      "page": 0,
+      "pageSize": 10
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getaccountlist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "账户余额"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/account/center/getAccountList",
+    "params": {
+      "req_source": "dou_dian_pc",
+      "ac_redesign": "doudian"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.querylastaccountflowsandwithdrawrecord",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "账户流水→关联结算单（flow.bill_id 串）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/settlement/index/queryLastAccountFlowsAndWithdrawRecord",
+    "params": {
+      "req_source": "dou_dian_pc",
+      "ac_redesign": "doudian"
+    },
+    "body": {
+      "account_list": []
+    },
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.queryfreezeinfo",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "在线对账单（当月）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/settlement/account/queryfreezeinfo",
+    "params": {
+      "req_source": "dou_dian_pc",
+      "ac_redesign": "doudian"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.subjectchangelist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "历史报表列表"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/account/center/subjectChangeList",
+    "params": {
+      "req_source": "dou_dian_pc",
+      "ac_redesign": "doudian"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.marginexpose",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "保证金不足→类目深查"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/account/center/marginExpose",
+    "params": {
+      "req_source": "dou_dian_pc",
+      "ac_redesign": "doudian"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.get_ticket_list",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "罚款按原因筛"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/governance/shop/penalty/v3/get_ticket_list",
+    "params": {},
+    "body": {
+      "condition": {
+        "penalty_type": "all",
+        "quick_select": "all"
+      },
+      "sort": {
+        "sort_type": 1,
+        "sort_params": "ticket_create_time_range"
+      },
+      "standard_ticket_type": "penalty",
+      "page": 0,
+      "page_size": 10
+    },
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data.tickets"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getoverviewbyversion",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "体验分（抖店镜像）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/governance/shop/experiencescore/getOverviewByVersion",
+    "params": {
+      "exp_version": "release",
+      "new_shop_version": "release",
+      "source": 1
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getcompassdiagnosis",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "店铺等级"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/governance/shop/experiencescore/getCompassDiagnosis",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getdiagnosisconclusion",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "拒签率/退货物流回传率"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/shopuser/support/getDiagnosisConclusion",
+    "params": {},
+    "body": {
+      "indicatorType": "returnRate"
+    },
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.unactlogisticslist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "物流诊断异常 → 关联订单第 1 步"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/shopuser/power/unactLogisticsList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.allcommenttagaggstat",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "差评关键词 top → SKU 反查（关键词列表）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tcomment/allCommentTagAggStat",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getorderorrights",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "售后率（近 7 天）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/governance/shop/experiencescore/getOrderOrRights",
+    "params": {
+      "expVersion": "release",
+      "needOrderInfo": "true",
+      "needRightsInfo": "true"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getnegativecommenttagscount",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "差评原因 top 5（同环比）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tcomment/getNegativeCommentTagsCount",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getanalysisscore",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "被扣分趋势（30 天）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/governance/shop/experiencescore/getAnalysisScore",
+    "params": {
+      "exp_version": "release",
+      "number_type": "30+",
+      "new_shop_version": "release"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.getshopsettledayconfig",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "结算周期（账期/到账时长）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/account/center/getShopSettleDayConfig",
+    "params": {
+      "req_source": "dou_dian_pc",
+      "ac_redesign": "doudian"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.list_2",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "商品成长营整体（growth-camp-v2）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tproduct/list",
+    "params": {
+      "page": 0,
+      "pageSize": 5,
+      "tab": "onSale"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.get_diagnose_product_detail",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "单品 X 详情页（基础信息）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product_diagnose/tproduct/get_diagnose_product_detail",
+    "params": {
+      "product_id": "0"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.list_3",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "SKU 列表（按 product 查）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/stock/manage/list",
+    "params": {},
+    "body": {
+      "page": 0,
+      "page_size": 20
+    },
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.aggsproductcount",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "商品诊断成长阶段聚合"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tproduct/aggsProductCount",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.diagnose_filed_config",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "商品诊断 - 货架评分"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product_diagnose/tproduct/diagnose_filed_config",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.list_4",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "图文带货商品维度（period=7d）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/growth-common/image-text-commission/api/list",
+    "params": {
+      "period": "7d"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.categoryoptionsn",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "商品分类列表（一级/二级）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tproduct/categoryOptionsN",
+    "params": {
+      "cid": 0
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.unread_count",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "AI 助手商品建议明细"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/api/scale_shop/doudian_im/shop/user/unread_count",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.get_ai_page_config",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "AI 助手页配置"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/doudian/ai/get_ai_page_config",
+    "params": {
+      "point_type": 1,
+      "url": "/ffa/mshop/homepage/index"
+    },
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [
+      "data"
+    ],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "doudian.searchlist_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "`total=5128, orderList[].create_time / receiver_info.post_tel=\"1**********\" 脱敏 / latest_logistic_info`"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/order/searchlist",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_order_searchlist.json`"
+  },
+  {
+    "key": "doudian.tabcnt_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "`tab_count_map.{stock_up:4, in_aftersale, ...}` 17 tab 计数"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/order/tabcnt",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_order_tabcnt.json`"
+  },
+  {
+    "key": "doudian.orderdetail_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "`order_base.order_status_info / order_state_flow[] / receiver.post_addr / product.sku[] / after_sale_info`"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/order/orderDetail",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r2_h3_order_detail_orderDetail.json`"
+  },
+  {
+    "key": "doudian.getorderlogistics_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "物流跟踪"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/order/getOrderLogistics",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/14"
+  },
+  {
+    "key": "doudian.query_negotiation_info_by_shop_order_no",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "协商记录"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/order/query_negotiation_info_by_shop_order_no",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+  },
+  {
+    "key": "doudian.operatereasonconfig",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "申请明文电话原因配置"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/order/operateReasonConfig",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+  },
+  {
+    "key": "doudian.getorderprocessinfo",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "物流过程信息（bundle 真名）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/order/torder/getorderprocessinfo",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.searchconfig",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "搜索配置"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/order/searchConfig",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.orderconfig",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "订单配置"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/order/orderConfig",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.data",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "`metrics[].key=mall_pay_ord_amt value=555.02 (7天) + trend_current_period / trend_previous_period`"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/shop/overview/data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_growth_shop_overview.json`"
+  },
+  {
+    "key": "doudian.grayhit",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "灰度配置"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/v1/aftersale/grayHit",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/15"
+  },
+  {
+    "key": "doudian.get_msg_box",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "售后消息盒"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/v1/aftersale/get_msg_box",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.getnotification",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "通知"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/v1/aftersale/getNotification",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.get_guide",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "售后引导"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/aftersale/get_guide",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.getaftersalelistshowconfig",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "list 展示配置"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/shopuser/aftersale/getAfterSaleListShowConfig",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.group",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "商品组"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tproduct/group",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.banner",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "banner"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tproduct/banner",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.getnegativecommentproductlist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "差评商品 list"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product/tcomment/getNegativeCommentProductList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/11"
+  },
+  {
+    "key": "doudian.getpregeneratedmaterial",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "AI 素材"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/product_diagnose/tproduct/getPreGeneratedMaterial",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=H3"
+  },
+  {
+    "key": "doudian.sku_stock_diagnose",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "SKU 库存诊断"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/stock/manage/sku_stock_diagnose",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.warehouse_list",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "仓库 list"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/stock/index/warehouse_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.getoverviewbyversion_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "综合 78 中 / 商品 80 中 / 物流 96 高 / 服务 66 低 ⚠"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/experiencescore/getOverviewByVersion",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_experience_overview.json`"
+  },
+  {
+    "key": "doudian.get_ticket_list_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "总处罚 2 / 风险 5"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/penalty/v3/get_ticket_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_penalty_ticket_list.json`"
+  },
+  {
+    "key": "doudian.overview_data",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "penalty_can_appeal 字段"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/penalty/v3/overview_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_penalty_v3_overview.json`"
+  },
+  {
+    "key": "doudian.others",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "其他 5 端点"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/penalty/v3/{others}",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle 7+ 端点"
+  },
+  {
+    "key": "doudian.getlogisticsdiagnosislinearriveontimeratelist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "线路准时率"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/shopuser/support/getLogisticsDiagnosisLineArriveOntimeRateList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/10"
+  },
+  {
+    "key": "doudian.ebillexpresslist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "电子面单"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/shopuser/power/eBillExpressList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+  },
+  {
+    "key": "doudian.getfrontcommoninfo",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "前端通用信息"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/account/center/getFrontCommonInfo",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.queryautowithdrawinfo",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "自动提现配置"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/settlement/index/queryautowithdrawinfo",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.gray",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "保证金灰度"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/governance/shop/tpledgecash/category/gray",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.doudian_shop_overview",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "商品诊断（同罗盘）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shop_diagnose/doudian_shop_overview",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_growth_compass_doudian_shop_overview.json`"
+  },
+  {
+    "key": "doudian.key_suggestion",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "优化建议"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shop_diagnose/key_suggestion",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.limit_product_list",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "衰退/潜力品"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shop_diagnose/limit_product_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.doudian_focus_product_tab_v2",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "焦点商品 tab"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shop_diagnose/doudian_focus_product_tab_v2",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+  },
+  {
+    "key": "doudian.getshoplist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "bundle"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/byteshop/index/getshoplist",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.chooseshop",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "bundle"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/byteshop/loginv2/chooseshop",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.getimunreplycustomernum",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "bundle"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/byteshop/broadcast/getIMUnReplyCustomerNum",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.search_config",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/doudian/ai/search_config",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.common_suggest",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/doudian/ai/common_suggest",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.get_async_task",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/doudian/ai/get_async_task",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.entrance_gray",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/doudian/ai/entrance_gray",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.biz_get",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/doudian/ai/page_point/biz_get",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.getfreighttemplatelist",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "bundle"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/freight/template/getFreightTemplateList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.redirect",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "bundle"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/b/m/api/home/redirect",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.ep",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [
+      "bundle（admin 元数据，**非业务**）"
+    ],
+    "host": "fxg.jinritemai.com",
+    "method": "POST",
+    "path": "/b/a/api/v1/*",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.index",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/mshop/homepage/index",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.list_5",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/morder/order/list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.detail_v2_id_x",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/morder/order/detail-v2?id=X",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.detail_v3_id_x",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/maftersale/aftersale/detail-v3?id=X",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.list_6",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/g/list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.create_product_id_x_cid_y_entrance_edit",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/g/create?product_id=X&cid=Y&entrance=edit",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.growth_shelf",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/growth-common/growth-shelf",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.experience_score",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/eco/experience-score",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.violation",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/govern-guarantee/regulation/violation",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.list_7",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/g/stock-manage/list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.index_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/logistics-project/diagnosis/index",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.comment",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/maftersale/comment",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.homepage_1",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa-micro-config/mcompass/homepage",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "doudian.homepage_2",
+    "platform": "doudian",
+    "category": "",
+    "aliases": [],
+    "host": "fxg.jinritemai.com",
+    "method": "GET",
+    "path": "/ffa/mcompass/homepage",
+    "params": {},
+    "body": null,
+    "biz_code_field": "code",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": null,
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  }
+]
