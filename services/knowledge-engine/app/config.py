@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Redis (caching)
     redis_url: str = "redis://:changeme_redis@omni-redis:6379/1"
 
+    # Scout Agent
+    scout_agent_url: str = "http://scout-agent:8009"
+
     # AI Provider Hub
     ai_provider_hub_url: str = "http://ai-provider-hub:8001"
     ad_review_service_url: str = "http://ad-review-service:8005"

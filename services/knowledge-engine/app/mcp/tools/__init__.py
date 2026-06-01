@@ -18,4 +18,5 @@
 - W4-B 切片 9 (1): list_channel_fees    # 渠道扣点率查询
 - W4-B 切片 14.1 (1): generate_selling_points_matrix  # sku-pipeline step 2 卖点矩阵
 - W4-B 切片 14.2 (1): generate_audience_match         # sku-pipeline step 3 人群匹配
+- Task 7 (4): platform_fetch, platform_batch_fetch, platform_list_endpoints, platform_auth_status
 """
