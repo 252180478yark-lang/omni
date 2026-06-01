@@ -10,8 +10,8 @@
     "method": "GET",
     "path": "/compass_api/shop/common/trade/core_index_v3",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21,
       "activity_id": "",
       "is_activity": "false",
@@ -27,7 +27,7 @@
       "data[].ad_cost"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -42,8 +42,8 @@
     "path": "/compass_api/shop/common/trade/core_trend_v3",
     "params": {
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "activity_id": "",
       "is_activity": false,
       "operate_type": 0,
@@ -60,7 +60,7 @@
       "axis_config[].axis_data[].y"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -77,8 +77,8 @@
       "industry_id": 13,
       "cate_id": 1000009128,
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00"
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
     },
     "body": null,
     "biz_code_field": "st",
@@ -88,7 +88,7 @@
       "competitor_count"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -103,8 +103,8 @@
     "path": "/compass_api/shop/product/product/product_list",
     "params": {
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "is_activity": "false",
       "activity_id": "",
       "key_word": "",
@@ -127,7 +127,7 @@
       "data[].extra.product_id"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -142,8 +142,8 @@
     "path": "/compass_api/shop/product/product_detail/core_data/index_data",
     "params": {
       "date_type": "21",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "activity_id": "",
       "product_id": "3679940190014669244",
       "user_type": 0,
@@ -162,9 +162,9 @@
       "data.metric_list[].benchmark",
       "data.metric_list[].ahead_ratio"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.sku",
@@ -178,8 +178,8 @@
     "path": "/compass_api/shop/product/product_detail/core_data/sku",
     "params": {
       "date_type": "21",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "activity_id": "",
       "product_id": "3679940190014669244",
       "sort_field": "pay_amt",
@@ -203,7 +203,7 @@
       "sku_list[].on_sale_stock_cnt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -218,8 +218,8 @@
     "path": "/compass_api/shop/product/product_detail/flow_source/flow_data_v2",
     "params": {
       "date_type": "21",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "activity_id": "",
       "product_id": "3679940190014669244",
       "source_entrance": 0,
@@ -239,7 +239,7 @@
       "pay_amt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -254,8 +254,8 @@
     "path": "/compass_api/shop/product/product_detail/good_compete_product_list",
     "params": {
       "product_id": "3679940190014669244",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -267,7 +267,7 @@
       "compete_list[].pay_amt_range"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -284,8 +284,8 @@
       "scene_identity": "shop_product_card_core_data_offline_real_free",
       "is_activity": false,
       "activity_id": "",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -294,7 +294,7 @@
       "index_head[].gmv_per_user.value"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -313,8 +313,8 @@
       "page_no": 1,
       "page_size": 10,
       "is_asc": false,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -324,7 +324,7 @@
       "data[].pay_amt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -341,8 +341,8 @@
       "is_activity": false,
       "activity_id": "",
       "index_selected": "product_show_cnt,product_show_ucnt,product_click_cnt,product_click_ucnt,product_new_cus_click_ucnt_rate,product_old_cus_click_ucnt_rate,pay_ucnt,product_show_click_converse_uv_rate,product_click_pay_converse_uv_rate,product_show_pay_converse_uv_rate,per_user_price,gmv_per_user",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -354,7 +354,7 @@
       "index_head[].benchmark"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -369,8 +369,8 @@
     "path": "/compass_api/shop/product/product_flow_analysis/flow_source_funnel",
     "params": {
       "content_type": 1,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -381,7 +381,7 @@
       "funnel_nodes[].sources[]"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -400,8 +400,8 @@
       "page_size": 5,
       "content_type": 1,
       "index_selected": "product_show_ucnt,product_click_ucnt,pay_ucnt,product_show_click_converse_uv_rate,product_click_pay_converse_uv_rate,product_show_pay_converse_uv_rate",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -413,7 +413,7 @@
       "data[].pay_ucnt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -427,8 +427,8 @@
     "method": "GET",
     "path": "/compass_api/shop/product/product_flow_analysis/flow_loss_card",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -439,7 +439,7 @@
       "loss_nodes[].loss_ratio"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -453,8 +453,8 @@
     "method": "GET",
     "path": "/compass_api/shop/product/product_chance_market/category_overview_price_band_distribution",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21,
       "activity_id": "",
       "industry_id": 13,
@@ -475,7 +475,7 @@
       "shop_cnt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -489,8 +489,8 @@
     "method": "GET",
     "path": "/compass_api/shop/product/product_chance_market/category_overview_price_analysis_product",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21,
       "activity_id": "",
       "industry_id": 13,
@@ -504,7 +504,7 @@
       "products[].gmv_range"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -522,8 +522,8 @@
       "package_type": "all",
       "package_id": -1,
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "is_activity": "false",
       "index_selected_core": "exposure_crowd",
       "index_selected_other": "exposure_not_purchase_crowd",
@@ -540,9 +540,9 @@
       "data[].show_uv",
       "data[].pay_uv"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.basic_attribute",
@@ -559,8 +559,8 @@
       "package_type": "all",
       "package_id": -1,
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "is_activity": "false",
       "subTitle": "全部商品",
       "package_name": "all",
@@ -574,9 +574,9 @@
       "gender",
       "province"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.trend_v3",
@@ -590,8 +590,8 @@
     "path": "/compass_api/shop/product/product_detail/core_data/trend_v3",
     "params": {
       "date_type": "21",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "activity_id": "",
       "product_id": "3679940190014669244",
       "content_type": 0,
@@ -610,7 +610,7 @@
       "benchmark_trend"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -625,8 +625,8 @@
     "path": "/compass_api/shop/product_card/shop_diagnose/shop_negative_problem",
     "params": {
       "problem_type": "all",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -636,8 +636,8 @@
       "negative_problems[].problem_cnt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "compass.overview_data",
@@ -652,8 +652,8 @@
     "params": {
       "operate_type": 0,
       "content_type": 0,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -665,7 +665,7 @@
       "benchmark.industry_top"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -680,8 +680,8 @@
     "path": "/compass_api/shop/mall/dd_search/search_analysis/weekly_report_summary",
     "params": {
       "operate_type": 0,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -691,7 +691,7 @@
       "wow_ratio"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -708,8 +708,8 @@
       "index_name": "pay_amt",
       "trend_type": "pay_amt",
       "version": 1,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -719,7 +719,7 @@
       "trend.y[]"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -735,8 +735,8 @@
     "params": {
       "source_biz_type": 3,
       "sort_field": "pay_amt",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -747,7 +747,7 @@
       "top_shops[].pay_amt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -766,8 +766,8 @@
       "page_no": 1,
       "page_size": 10,
       "sort_type": 1,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -778,7 +778,7 @@
       "data[].recommend_suggestion"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -792,8 +792,8 @@
     "method": "GET",
     "path": "/compass_api/shop/mall/search_analysis/flow_attract/word_rank",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21,
       "operate_type": "all",
       "content_type": 0,
@@ -814,7 +814,7 @@
       "data[].tables.shop_show_product.product_list[].product_id"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -834,8 +834,8 @@
       "search_intent": 0,
       "sort_field": "",
       "is_asc": "false",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21,
       "activity_id": "",
       "is_activity": "false",
@@ -850,9 +850,9 @@
     "expected_fields": [
       "data[].base_info.query_word_info"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.shop_video_list",
@@ -866,8 +866,8 @@
     "path": "/compass_api/shop/mall/dd_search/after_watch/shop_video_list",
     "params": {
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "cate_id": "1000009128",
       "first_cid": "21",
       "content_type": 1,
@@ -882,7 +882,7 @@
       "data[].config_status"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -897,8 +897,8 @@
     "path": "/compass_api/shop/mall/dd_search/after_watch/to_be_opt",
     "params": {
       "date_type": "21",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "cate_id": "1000009128",
       "first_cid": "21",
       "content_type": 1,
@@ -913,9 +913,9 @@
       "to_be_opt_videos[].video_id",
       "to_be_opt_videos[].estimated_show_uv_lift"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=621100601) @ 2026-06-01 待修"
   },
   {
     "key": "compass.realtime_word_overview_v2",
@@ -929,8 +929,8 @@
     "path": "/compass_api/shop/mall/dd_search/hot_spot/realtime_word_overview_v2",
     "params": {
       "industry_id": 13,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -941,7 +941,7 @@
       "opportunity_score"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -959,7 +959,7 @@
       "fans_account_type": "official",
       "index_selected": "product_show",
       "date_type": 23,
-      "begin_date": "2026/05/18 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
       "begin_date_format": "2026-05-24T08:00:00+08:00",
       "dateType": 22,
       "userType": "product_show",
@@ -971,9 +971,9 @@
       "trade_crowd",
       "fans_crowd"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.feature",
@@ -990,7 +990,7 @@
       "user_type": "product_show",
       "account_type": "all",
       "date_type": 23,
-      "begin_date": "2026/05/18 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
       "dateType": 22,
       "userType": "product_show"
     },
@@ -1000,9 +1000,9 @@
       "eight_strategy_crowd[].bucket",
       "eight_strategy_crowd[].ratio"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.crowd_prefer",
@@ -1019,8 +1019,8 @@
       "package_type": "all",
       "package_id": -1,
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "is_activity": "false",
       "product_id": "3679940190014669244",
       "dateType": 22
@@ -1032,9 +1032,9 @@
       "content_second_level",
       "category_first_level"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.basic_attribute_1",
@@ -1051,8 +1051,8 @@
       "package_type": "all",
       "package_id": -1,
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "is_activity": "false",
       "live_room_id": "<latest>",
       "dateType": 22
@@ -1064,9 +1064,9 @@
       "gender",
       "province"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.trade_value_1",
@@ -1083,8 +1083,8 @@
       "package_type": "all",
       "package_id": -1,
       "date_type": 21,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "is_activity": "false",
       "index_selected_core": "exposure_crowd",
       "sort_field": "repeat_buy_user_cnt",
@@ -1097,9 +1097,9 @@
       "list[].live_room_id",
       "list[].repeat_buy_user_cnt"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.card_list",
@@ -1113,8 +1113,8 @@
     "path": "/compass_api/shop/author/cooperate/data_overview/card_list",
     "params": {
       "date_type": 21,
-      "end_date": "2026/05/24 00:00:00",
-      "begin_date": "2026/05/18 00:00:00"
+      "end_date": "{win_end_slashdt}",
+      "begin_date": "{win_begin_slashdt}"
     },
     "body": null,
     "biz_code_field": "st",
@@ -1124,7 +1124,7 @@
       "content_split.prodcard_ahead_ratio"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1139,7 +1139,7 @@
     "path": "/compass_api/shop/author/cooperate/data_overview/top_list",
     "params": {
       "date_type": 21,
-      "end_date": "2026/05/24 00:00:00",
+      "end_date": "{win_end_slashdt}",
       "index_name": "coop_author_pay_amt",
       "channel_type": "live",
       "content_type": "author"
@@ -1152,7 +1152,7 @@
       "pay_amt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1170,9 +1170,9 @@
       "page_no": 1,
       "page_size": 20,
       "date_type": 21,
-      "end_date": "2026/05/24 00:00:00",
+      "end_date": "{win_end_slashdt}",
       "index_selected": "",
-      "begin_date": "2026/05/18 00:00:00"
+      "begin_date": "{win_begin_slashdt}"
     },
     "body": null,
     "biz_code_field": "st",
@@ -1184,7 +1184,7 @@
       "cooperation_cnt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1200,8 +1200,8 @@
     "params": {
       "activity_id": "11260409003508",
       "is_activity": true,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1211,7 +1211,7 @@
       "target_amt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1229,8 +1229,8 @@
       "industry_id": 13,
       "cate_id": 1000009128,
       "date_type": 100,
-      "begin_date": "2026/05/15 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "rank_type": 4,
       "page_no": 1,
       "page_size": 10,
@@ -1242,9 +1242,9 @@
     "expected_fields": [
       "my_rank"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.shop_lead_text",
@@ -1261,8 +1261,8 @@
       "industry_id": 13,
       "cate_id": 1000009128,
       "date_type": 100,
-      "begin_date": "2026/05/15 00:00:00",
-      "end_date": "2026/05/24 00:00:00"
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
     },
     "body": null,
     "biz_code_field": "st",
@@ -1270,7 +1270,7 @@
       "lead_text"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1294,7 +1294,7 @@
       "status"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1308,8 +1308,8 @@
     "method": "GET",
     "path": "/ecology/front/growth/exp/app/getScoreAppConf",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1319,9 +1319,9 @@
       "trend",
       "recommendations"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.prof_exp_score",
@@ -1334,8 +1334,8 @@
     "method": "GET",
     "path": "/compass_api/shop/common/homepage/core/prof_exp_score",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1345,7 +1345,7 @@
       "industry_compare_label"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1359,8 +1359,8 @@
     "method": "GET",
     "path": "/compass_api/shop/promise/customer_analysis/core_data",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1371,7 +1371,7 @@
       "robot_service_cnt"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1385,8 +1385,8 @@
     "method": "GET",
     "path": "/compass_api/shop/promise/customer_analysis/core_data_intent",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1395,7 +1395,7 @@
       "top_intents[].intent_name"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1416,7 +1416,7 @@
       "data[].sku_id"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1430,8 +1430,8 @@
     "method": "GET",
     "path": "/compass_api/shop/promise/customer_analysis/customer_detail_list",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1442,7 +1442,7 @@
       "data[].intent_chain"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1456,8 +1456,8 @@
     "method": "GET",
     "path": "/compass_api/shop/promise/user_sound/comment_reason_analysis_core",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1466,7 +1466,7 @@
       "reasons[].trend_yoy"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1480,8 +1480,8 @@
     "method": "GET",
     "path": "/compass_api/shop/promise/user_sound/overview",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1495,9 +1495,9 @@
       "delivery_score",
       "hot_keyword_top5"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.comment_reason_analysis_left",
@@ -1510,8 +1510,8 @@
     "method": "GET",
     "path": "/compass_api/shop/promise/user_sound/comment_reason_analysis_left",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1520,8 +1520,8 @@
       "category_tree[]"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "compass.comment_formula",
@@ -1535,8 +1535,8 @@
     "path": "/compass_api/shop/promise/user_sound/comment_formula",
     "params": {
       "date_type": "21",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "content_type": 0
     },
     "body": null,
@@ -1547,7 +1547,7 @@
       "threshold_description"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1562,8 +1562,8 @@
     "path": "/api/ecompass_logistics/unactLogisticsList",
     "params": {
       "abnormal_type": "signed",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1571,9 +1571,9 @@
     "expected_fields": [
       "data[].anomaly_type"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=0) @ 2026-06-01 待修"
   },
   {
     "key": "compass.ebillexpresslist",
@@ -1593,9 +1593,9 @@
       "data[].express_name",
       "data[].signed_status"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=0) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_recommendation_list",
@@ -1610,8 +1610,8 @@
     "params": {
       "activity_id": "11260409003508",
       "recommendation_type": 1,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1619,9 +1619,9 @@
     "expected_fields": [
       "products[]"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.getscoretrend",
@@ -1635,8 +1635,8 @@
     "path": "/ecology/front/growth/exp/app/getScoreTrend",
     "params": {
       "range": 22,
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1644,9 +1644,9 @@
     "expected_fields": [
       "trend_data[]"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_category_list",
@@ -1659,8 +1659,8 @@
     "method": "GET",
     "path": "/compass_api/shop/promise/user_sound/product_category_list",
     "params": {
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1670,7 +1670,7 @@
       "category_list[].category_name"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1693,9 +1693,9 @@
       "review_problems[]",
       "negative_comments[]"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=621000601) @ 2026-06-01 待修"
   },
   {
     "key": "compass.shop_core_data_trend",
@@ -1709,8 +1709,8 @@
     "path": "/compass_api/shop/mall/market/shop_core_data_trend",
     "params": {
       "date_type": "21",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "cate_id": "1000009128",
       "first_cid": "21",
       "industry_id": "13",
@@ -1726,7 +1726,7 @@
       "trend[].gmv"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1753,7 +1753,7 @@
       "abnormal_events"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1768,8 +1768,8 @@
     "path": "/api/ecompass_logistics/diagnosis_overview",
     "params": {
       "group_by": "courier",
-      "begin_date": "2026/05/18 00:00:00",
-      "end_date": "2026/05/24 00:00:00",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
       "date_type": 21
     },
     "body": null,
@@ -1777,9 +1777,9 @@
     "expected_fields": [
       "courier_distribution[]"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_index_v3_1",
@@ -1796,8 +1796,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_31_store_daily_core.json` + `r18_round2/r2_t02_fix1_core_index_v3_combination_test.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_trend_v3_1",
@@ -1814,8 +1814,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`r18_round2/r2_t02_fix3_core_trend_v3_test.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.pie_chart_v3",
@@ -1832,8 +1832,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_01_business_part_default.txt:335` + `_raw/r15_test/r15_test_44_pie_split.json` + `_raw/r16_deep_test/case41_50_compass.json:c45_pie_operate`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.shop_rank_2",
@@ -1850,8 +1850,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_01_business_part_default.txt:304` + `_raw/r1_compass_01_shop_rank_resp.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.income_expense_index_v3",
@@ -1868,8 +1868,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/20"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.prof_exp_score_1",
@@ -1886,8 +1886,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_17_all.txt:121` + `_raw/r16_deep_test/case66_80_compass.json:419-718 c76_ecology_exp`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_index_v3_2",
@@ -1904,8 +1904,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/01"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.summary_core_index_v3",
@@ -1922,8 +1922,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.financial_summary",
@@ -1940,8 +1940,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.manage_overview",
@@ -1958,8 +1958,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.content_detail_v3",
@@ -1976,8 +1976,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_content_list",
@@ -1994,8 +1994,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_trend",
@@ -2012,8 +2012,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_window",
@@ -2030,8 +2030,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.realtime_liveroom_list",
@@ -2048,8 +2048,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.overview_data_1",
@@ -2066,8 +2066,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_39_search_overview.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.overview_data_trend_1",
@@ -2084,8 +2084,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_05_*.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.word_rank_1",
@@ -2102,8 +2102,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_06_search_drainage_default.txt` + `_raw/r1_compass_06_word_rank_resp.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.compass_rank_v3_1",
@@ -2120,8 +2120,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/06"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.word_detail",
@@ -2138,8 +2138,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.recommend_optimized_product_v2_1",
@@ -2156,8 +2156,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_36_search_recommend_optimized.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.shop_video_list_1",
@@ -2174,8 +2174,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_15_after_viewing_default.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.benefit",
@@ -2192,8 +2192,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.permission_v",
@@ -2210,8 +2210,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.to_be_opt_1",
@@ -2228,8 +2228,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.realtime_word_overview_v2_1",
@@ -2246,8 +2246,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.ep",
@@ -2264,8 +2264,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=page 15"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_list_1",
@@ -2282,8 +2282,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_02_product_list_default.txt:648` + `_raw/r15_test/r15_test_34_product_list.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.get_abnormal_threshold",
@@ -2300,8 +2300,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_02_abnormal_threshold_resp.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.track_or_untrack_product",
@@ -2318,8 +2318,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.categoryoptions",
@@ -2336,8 +2336,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/02"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.index_data_1",
@@ -2354,8 +2354,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_14_product_detail_default.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.sku_1",
@@ -2372,8 +2372,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.trend_v3_1",
@@ -2390,8 +2390,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.flow_data_v2_1",
@@ -2408,8 +2408,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.flow_data_more",
@@ -2426,8 +2426,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.good_compete_product_list_1",
@@ -2444,8 +2444,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.base_info",
@@ -2462,8 +2462,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.trend",
@@ -2480,8 +2480,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "compass.flow_overview_card_1",
@@ -2498,8 +2498,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_35_product_flow_overview.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.flow_source_funnel_1",
@@ -2516,8 +2516,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_37_flow_source_funnel.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.flow_source_detail_v2_1",
@@ -2534,8 +2534,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_37b_flow_source_detail.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.cdr_detail",
@@ -2552,8 +2552,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_33_cdr_detail.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_data_2",
@@ -2570,8 +2570,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_03_core_data_resp.json` + `_raw/r15_test/r15_test_38_product_card_core.json` + `_raw/r18_round2/r2_t02_fix2_shelves_analysis_test.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.enter_source_v2_1",
@@ -2588,8 +2588,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_38b_product_card_enter_source.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.doudian_shop_overview",
@@ -2606,8 +2606,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_growth_compass_doudian_shop_overview.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.key_suggestion",
@@ -2624,8 +2624,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.limit_product_list",
@@ -2642,8 +2642,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.doudian_focus_product_tab_v2",
@@ -2660,8 +2660,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.cate_core_data",
@@ -2678,8 +2678,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.dig_cate_list",
@@ -2696,8 +2696,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.leaf_category_list",
@@ -2714,8 +2714,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.category_price_band_distribution",
@@ -2732,8 +2732,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_49_category_price_band.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.category_price_analysis_product",
@@ -2750,8 +2750,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_49b_category_price_analysis.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.market_hot_sale",
@@ -2768,8 +2768,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_12_bundle_grep.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.trend_1",
@@ -2786,8 +2786,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_46_goods_user_trend.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.basic_attribute_2",
@@ -2804,8 +2804,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r16_deep_test/case66_80_compass.json:c73_rebuy`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.basic_attribute_compare",
@@ -2822,8 +2822,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r16_deep_test/c74_crowd_pref_compare`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.crowd_prefer_1",
@@ -2840,8 +2840,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.trade_value_2",
@@ -2858,8 +2858,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.crowd_data",
@@ -2876,8 +2876,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_43_live_crowd_data.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.basic_attribute_3",
@@ -2894,8 +2894,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_43b_live_feature_basic.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.crowd_delivery",
@@ -2912,8 +2912,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_crowd_1",
@@ -2930,8 +2930,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_45_core_crowd.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.list_1",
@@ -2948,8 +2948,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_09_*.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.top_list_1",
@@ -2966,8 +2966,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r18_round2/r2_t02_fix5_cooperate_test.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.card_list_1",
@@ -2984,8 +2984,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.scatter_plot",
@@ -3002,8 +3002,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.qualification",
@@ -3020,8 +3020,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.dd_share_login",
@@ -3038,8 +3038,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.change_role",
@@ -3056,8 +3056,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.recommend_authors",
@@ -3074,8 +3074,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=page 09 §5.2"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_index_1",
@@ -3092,8 +3092,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_07_workbench_default.txt:600`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.shop_lead_text_1",
@@ -3110,8 +3110,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_recommendation_list_1",
@@ -3128,8 +3128,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_07_workbench_tab2.txt:646`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.activity_recommendation_list",
@@ -3146,8 +3146,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:649"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.hotword_recommendation_core_data",
@@ -3164,8 +3164,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:650"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.hotword_recommendation_list",
@@ -3182,8 +3182,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:656"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.operational_recommendation_index",
@@ -3200,8 +3200,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:652"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.hot_sale_track_1",
@@ -3218,8 +3218,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.overview_1",
@@ -3236,8 +3236,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_48_user_sound_overview.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.comment_reason_analysis_core_1",
@@ -3254,8 +3254,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_48b_user_sound_reason.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.comment_reason_analysis_left_1",
@@ -3272,8 +3272,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_19_user_sound_default.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_category_list_1",
@@ -3290,8 +3290,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_19_user_sound_default.txt:1175`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.product_list_2",
@@ -3308,8 +3308,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:1176"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.comment_formula_1",
@@ -3326,8 +3326,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_19_user_sound_default.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_data_3",
@@ -3344,8 +3344,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_18_customer_default.txt:950`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_data_intent_1",
@@ -3362,8 +3362,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:964"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.customer_detail_list_1",
@@ -3380,8 +3380,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:951"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.detail_intent",
@@ -3398,8 +3398,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:971,974"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.refund_order",
@@ -3416,8 +3416,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.complaint_list",
@@ -3434,8 +3434,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.complaint_order",
@@ -3452,8 +3452,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_data_4",
@@ -3470,8 +3470,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.core_data_v2",
@@ -3488,8 +3488,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.quality_return",
@@ -3506,8 +3506,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.getdiagnosisconclusion",
@@ -3524,8 +3524,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_21_logistics_default.txt:42-58`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.getshopexpressenumdatalist",
@@ -3542,8 +3542,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.ebillexpresslist_1",
@@ -3560,8 +3560,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.unactlogisticslist_1",
@@ -3578,8 +3578,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.getlogisticsdiagnosislinearriveontimeratelist",
@@ -3596,8 +3596,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.getlogisticsdiagnosisdetaillist",
@@ -3614,8 +3614,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.getlogisticsdiagnosisrecommendexpresslist",
@@ -3632,8 +3632,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.text",
@@ -3650,8 +3650,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上:772"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.getscoreappconf_2",
@@ -3668,8 +3668,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_47_experience_score.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.top_product",
@@ -3686,8 +3686,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_50_user_buy_top_product.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.summary",
@@ -3704,8 +3704,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r15_test/r15_test_50b_user_buy_summary.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.seller_ai_report",
@@ -3722,8 +3722,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.delivery_crowd",
@@ -3740,8 +3740,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.create_market_crowd",
@@ -3758,8 +3758,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.delete_crowd",
@@ -3776,8 +3776,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.duplicate_crowd",
@@ -3794,8 +3794,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.check_market_crowd",
@@ -3812,8 +3812,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.custom_crowd",
@@ -3830,8 +3830,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.custom_crowd_1",
@@ -3848,8 +3848,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.cnt_info",
@@ -3866,8 +3866,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.common",
@@ -3884,8 +3884,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.live",
@@ -3902,8 +3902,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.service",
@@ -3920,8 +3920,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.alert_change",
@@ -3938,8 +3938,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.homepage_alert_diagnose_list",
@@ -3956,8 +3956,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.alert_center",
@@ -3974,8 +3974,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.alert_info",
@@ -3992,8 +3992,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.ep_1",
@@ -4010,8 +4010,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.ep_2",
@@ -4028,8 +4028,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.operate_account_list_v3",
@@ -4046,8 +4046,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_compass_20_settlement_default.txt:537-539`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.account_overview",
@@ -4064,8 +4064,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.ep_3",
@@ -4080,8 +4080,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.ep_4",
@@ -4096,8 +4096,8 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "compass.hide_watermark",
@@ -4111,8 +4111,8 @@
     "body": null,
     "biz_code_field": "st",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw="
   },
   {
@@ -4128,7 +4128,7 @@
     "biz_code_field": "st",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   }
 ]

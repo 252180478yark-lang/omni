@@ -41,6 +41,20 @@ def test_build_render_context_dates():
     assert ctx["aadvid"] == "X"
 
 
+def test_build_render_context_date_roles():
+    ctx = build_render_context({}, today=date(2026, 6, 10))
+    assert ctx["ref_yyyymmdd"] == "20260608"       # today-2（T+1 缓冲）
+    assert ctx["ref_iso"] == "2026-06-08"
+    assert ctx["yest_yyyymmdd"] == "20260609"       # 昨日
+    assert ctx["win_begin_yyyymmdd"] == "20260602"  # 近 7 天窗口起 = today-8
+    assert ctx["win_end_yyyymmdd"] == "20260609"    # 窗口止 = 昨日
+    assert ctx["win_begin_iso"] == "2026-06-02"
+    assert ctx["win_end_iso"] == "2026-06-09"
+    assert ctx["win_begin_slashdt"] == "2026/06/02 00:00:00"
+    assert ctx["win_end_slashdt"] == "2026/06/09 00:00:00"
+    assert ctx["last_month"] == "2026-05"
+
+
 def test_render_params_fills_templates_and_overrides():
     ctx = build_render_context(CONTEXT["yuntu"], today=date(2026, 6, 1))
     params = {"audience_end_date": "{today_yyyymmdd}", "aadvid": "{aadvid}"}

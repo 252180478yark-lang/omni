@@ -15,7 +15,7 @@
       "brand_id": 11835330,
       "card": 0,
       "benchmark": 3,
-      "date": "20260524"
+      "date": "{ref_yyyymmdd}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -25,7 +25,7 @@
       "structure_list[].rate"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -42,7 +42,7 @@
       "aadvid": "1805203190148185",
       "industry_id": 14,
       "brand_id": 11835330,
-      "date": "20260524",
+      "date": "{ref_yyyymmdd}",
       "industry_typical_type": 1
     },
     "body": null,
@@ -51,7 +51,7 @@
       "ax_big8_profile.L.self_profile[].big8_name"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -71,7 +71,7 @@
       "card": 2,
       "ecom_big8_type": "新锐白领",
       "industry_typical_type": 1,
-      "date": "20260524"
+      "date": "{ref_yyyymmdd}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -81,7 +81,7 @@
       "trend[].big8_rate"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -100,7 +100,7 @@
       "brand_id": 11835330,
       "card": 0,
       "benchmark": 1,
-      "date": "20260524"
+      "date": "{ref_yyyymmdd}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -108,9 +108,9 @@
       "cover_num",
       "rate"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_audience_asset_trend",
@@ -128,7 +128,7 @@
       "brand_id": 11835330,
       "card": 0,
       "benchmark": 1,
-      "date": "20260524"
+      "date": "{ref_yyyymmdd}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -138,7 +138,7 @@
       "trend[].rate"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -157,7 +157,7 @@
       "brand_id": 11835330,
       "card": 1,
       "benchmark": 1,
-      "date": "20260524"
+      "date": "{ref_yyyymmdd}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -166,7 +166,7 @@
       "rate"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -186,7 +186,7 @@
       "card": 2,
       "module_name": 1,
       "benchmark": 1,
-      "date": "20260524"
+      "date": "{ref_yyyymmdd}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -194,7 +194,7 @@
       "card.diagnostic_content.待改进"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -226,7 +226,7 @@
       "analysis[].num"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -254,9 +254,9 @@
       "cover_num",
       "rate"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.audienceflowanalysisv2",
@@ -288,7 +288,7 @@
       "rate"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -317,7 +317,7 @@
       "cover_num"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -335,7 +335,7 @@
       "industry_id": 14,
       "brand_id": 11835330,
       "spu_id": "7359895785032532287",
-      "date": "20260524"
+      "date": "{ref_yyyymmdd}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -346,9 +346,9 @@
       "a4_cover_num",
       "a5_cover_num"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getbrandspulist",
@@ -364,8 +364,8 @@
       "aadvid": "1805203190148185",
       "industry_id": 14,
       "brand_id": 11835330,
-      "start_date": "2023-01-01",
-      "end_date": "2026-04-30"
+      "start_date": "{win_begin_iso}",
+      "end_date": "{win_end_iso}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -374,9 +374,9 @@
       "spu_info_list[].spu_name",
       "spu_info_list[].spu_cover_num"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getaudiencemap",
@@ -400,7 +400,7 @@
       "data.crowd_category_list[].type_id"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -430,9 +430,9 @@
       "cover_num",
       "similarity"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.gettargetcrowdpenetrationinfo",
@@ -456,9 +456,9 @@
     "expected_fields": [
       "penetration_rate"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.gettarget5adeal",
@@ -484,9 +484,9 @@
       "a1_deal",
       "a5_deal"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getbrandfluxaudience",
@@ -510,9 +510,9 @@
     "expected_fields": [
       "competitor_list"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.search",
@@ -540,7 +540,7 @@
       "audiences[].status"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -565,9 +565,9 @@
       "audience_list",
       "trend"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_insight_report_list",
@@ -592,9 +592,9 @@
     "expected_fields": [
       "report_list[].report_id"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getoverview",
@@ -626,7 +626,7 @@
       "industry_association.rank"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -660,7 +660,7 @@
       "keyword_stats[].trend"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -692,7 +692,7 @@
       "lift_keyword_stats[]"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -726,7 +726,7 @@
       "nsr_negative"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -757,7 +757,7 @@
       "session_list[].create_time"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -783,7 +783,7 @@
       "lock_reason"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -811,7 +811,7 @@
       "dictionary_list[].current_user_like_status"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -835,7 +835,7 @@
       "dictionary_id_list"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -867,9 +867,9 @@
       "scene_type",
       "agent_id"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getspucontribution",
@@ -884,7 +884,7 @@
     "params": {
       "aadvid": "1805203190148185",
       "spu_id": "7359895785032532287",
-      "deal_date": "2026-05",
+      "deal_date": "{last_month}",
       "impound_scope": 1
     },
     "body": null,
@@ -894,7 +894,7 @@
       "core_ratio.spu_deal_ratio"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -918,7 +918,7 @@
       "audiences[].custom_audience_id"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -935,7 +935,7 @@
       "aadvid": "1805203190148185",
       "industry_id": 14,
       "brand_id": 11835330,
-      "month": "2026-04",
+      "month": "{last_month}",
       "scene": 1
     },
     "body": null,
@@ -945,7 +945,7 @@
       "data.trends[].date"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -971,9 +971,9 @@
       "ta_preference_item_list[].preference_name",
       "ta_preference_item_list[].preference_value"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_summary",
@@ -1005,7 +1005,7 @@
       "summary_str"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1034,7 +1034,7 @@
       "data.list[].dimension"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1061,9 +1061,9 @@
       "data.list[].gmv",
       "data.list[].gmvRatio"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=999999) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.bestsellingproduct",
@@ -1091,7 +1091,7 @@
       "data.list[].rank"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1118,7 +1118,7 @@
       "data.flow_entry_list[].traffic_ratio"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1147,8 +1147,8 @@
       "data.conversion_rates"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.industryrank",
@@ -1176,7 +1176,7 @@
       "data.category_list[].growth"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1199,7 +1199,7 @@
       "maxDate"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1230,7 +1230,7 @@
       "data.tendency_list[].growthRate"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1262,7 +1262,7 @@
       "data.cr15"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1301,7 +1301,7 @@
       "data.list[].video_count"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1333,7 +1333,7 @@
       "data.salesVolune"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1366,7 +1366,7 @@
       "data.a5_num"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1398,8 +1398,8 @@
       "data.total_brand_count"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.reportlist",
@@ -1429,7 +1429,7 @@
       "data.total"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1460,8 +1460,8 @@
       "data.list[].salesAmount"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.keywordlist",
@@ -1489,8 +1489,8 @@
       "data.list[].value"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.pricerange",
@@ -1519,8 +1519,8 @@
       "data.list[].salesVolune"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.audience",
@@ -1549,8 +1549,8 @@
       "list[].count"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.category",
@@ -1581,8 +1581,8 @@
       "data.spu_list[].spu_name"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.newproductreportzhongcaonum",
@@ -1606,7 +1606,7 @@
       "data.level_list"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1632,7 +1632,7 @@
       "data.cost_distribute_list[].channel_type"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1648,7 +1648,7 @@
     "params": {
       "aadvid": "1805203190148185",
       "industry_id": "14",
-      "module_": "201031"
+      "module_": "{this_month_compact}"
     },
     "body": null,
     "biz_code_field": "status",
@@ -1656,9 +1656,9 @@
       "min_date",
       "max_date"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=4000) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getplayletmarketthemeinsights",
@@ -1688,7 +1688,7 @@
       "data.playlet_theme_metric_list[].index_map"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1725,7 +1725,7 @@
       "data.author_ranking_list[].theme_match_score"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1753,9 +1753,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.gethotspotrecommanded",
@@ -1781,7 +1781,7 @@
       "hotspot_list[].trend"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1796,7 +1796,7 @@
     "path": "/yuntu_ng/api/v1/content/QueryReportList",
     "params": {
       "aadvid": "1805203190148185",
-      "date": "20260524"
+      "date": "{ref_yyyymmdd}"
     },
     "body": {
       "industry_id": 14,
@@ -1812,9 +1812,9 @@
       "report_list[].keyword",
       "report_list[].create_time"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.corebrand",
@@ -1845,7 +1845,7 @@
       "data[].rnk"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1877,7 +1877,7 @@
       "live_overview.conversion_rate"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1903,7 +1903,7 @@
       "data.list[].gmv"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1928,7 +1928,7 @@
       "data.list"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -1956,8 +1956,8 @@
       "data.salesAmount"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.awemeaccount",
@@ -1985,8 +1985,8 @@
       "data.list[].follower_count"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.distribution",
@@ -2018,8 +2018,8 @@
       "data.distribution"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.getnewproductreportdetail",
@@ -2042,7 +2042,7 @@
       "data.spu_list[].spu_id"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2068,8 +2068,8 @@
       "a5_cover_num"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.getcontentmaterial",
@@ -2093,9 +2093,9 @@
     "expected_fields": [
       "data.material_info"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getbrandaccountliveroommetrics",
@@ -2122,7 +2122,7 @@
       "room_metrics"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2154,7 +2154,7 @@
       "data.list[].data.salesAmount.value"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2180,9 +2180,9 @@
       "formula",
       "script"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getnewproductreviewrefspugrouplist",
@@ -2211,7 +2211,7 @@
       "ref_spu_group_list[].group_name"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2231,7 +2231,7 @@
       "ax": 3,
       "convert_period": 1,
       "audience_period": 1,
-      "audience_end_date": "2026-05-20",
+      "audience_end_date": "{win_end_iso}",
       "shop_scale": 1
     },
     "body": null,
@@ -2243,7 +2243,7 @@
       "road_map.live.competitor_show_high"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2270,7 +2270,7 @@
       "median"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2295,7 +2295,7 @@
       "traffic_breakdown"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2320,7 +2320,7 @@
       "packet_config"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2335,7 +2335,7 @@
     "path": "/yuntu_ng/api/common/QueryDateRange",
     "params": {
       "aadvid": "1805203190148185",
-      "module_": "102010",
+      "module_": "{this_month_compact}",
       "date_type": 10
     },
     "body": null,
@@ -2344,9 +2344,9 @@
       "min_date",
       "max_date"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_shop_list",
@@ -2370,7 +2370,7 @@
       "shop_list[].shop_name"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2402,7 +2402,7 @@
       "reports[].task_end_time"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2428,7 +2428,7 @@
       "is_created"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2454,7 +2454,7 @@
       "brand_report_list"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2481,9 +2481,9 @@
     "expected_fields": [
       "trigger_effect_list"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=4000) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_trigger_insight_resource_distribution",
@@ -2507,9 +2507,9 @@
     "expected_fields": [
       "resource_distribution"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=4000) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_trigger_insight_history_trend",
@@ -2533,9 +2533,9 @@
     "expected_fields": [
       "trend"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=4000) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.query_path_detail",
@@ -2559,9 +2559,9 @@
     "expected_fields": [
       "trigger_combination_info_list[].avg_convert_period"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=4000) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_attribute_window_phase",
@@ -2583,7 +2583,7 @@
       "attribution_model"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2612,7 +2612,7 @@
       "task_list[].task_params.attribution_model"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -2639,9 +2639,9 @@
     "expected_fields": [
       "association_detail"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_evaluation_task_detail",
@@ -2663,9 +2663,9 @@
     "expected_fields": [
       "task_params.effect_ad_ids"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=500) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getaudienceassetdiagnosticscard_1",
@@ -2682,8 +2682,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/02_crowd_distribution_network.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getaudienceassetbig8profile_1",
@@ -2700,8 +2700,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_diagnosis_audience_list.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getaudienceassetbig8trend_1",
@@ -2718,8 +2718,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/05_distribution_baseline_round5.txt:263,289`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.gettargettagdeal",
@@ -2736,8 +2736,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_diagnosis_tagdeal.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.gettargettagrate",
@@ -2754,8 +2754,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_diagnosis_tagrate.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=1001) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get5amapping",
@@ -2771,8 +2771,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/05"
   },
   {
@@ -2789,8 +2789,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/06"
   },
   {
@@ -2808,8 +2808,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/05"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=1001) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getflowsceneanalysistriggerlist",
@@ -2825,8 +2825,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/05"
   },
   {
@@ -2843,8 +2843,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/06"
   },
   {
@@ -2861,8 +2861,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
   },
   {
@@ -2880,8 +2880,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/01_home_round5_baseline.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.saveselectedcomponentitemtype",
@@ -2898,8 +2898,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.save_metric_template",
@@ -2916,8 +2916,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r13_home/r13_home_save_metric.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.initupload",
@@ -2934,8 +2934,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/24"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.uploadpart",
@@ -2952,8 +2952,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/24"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.completeupload",
@@ -2970,8 +2970,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/24"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.search_1",
@@ -2988,8 +2988,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_audience_list_default.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.push",
@@ -3006,8 +3006,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.update",
@@ -3024,8 +3024,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r17_round2/r17_dmp_audience_update_probe.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.delete",
@@ -3042,8 +3042,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.extend",
@@ -3060,8 +3060,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.ad_plan",
@@ -3078,8 +3078,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.upload",
@@ -3096,8 +3096,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getaudiencemap_1",
@@ -3114,8 +3114,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/15"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.doublehotcontentindustryrank",
@@ -3132,8 +3132,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.newproductreportzhongcaonum_1",
@@ -3150,8 +3150,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/api_sketch_NewProductReportZhongCaoNum.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.newproductreportcostdistribute_1",
@@ -3168,8 +3168,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/api_sketch_NewProductReportCostDistribute.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.track_refspu",
@@ -3186,8 +3186,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.recommendbreakingcrowd_1",
@@ -3204,8 +3204,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_recommend_req_buyer.json` + `_raw/r10_recommend_breakgroup.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getcirclebreakinggrouplist",
@@ -3222,8 +3222,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.comparesimilarity",
@@ -3240,8 +3240,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getoverview_1",
@@ -3258,8 +3258,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/04_brand_mind_monitor_network.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.listbrandtopkeyword_1",
@@ -3276,8 +3276,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/04"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.listindustrydiscoverkeywordstats_1",
@@ -3294,8 +3294,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/03"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getbrandassociationdetailstats_1",
@@ -3312,8 +3312,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r12_mind_monitor_default.txt:57,58,61,137,138`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getbrandnsrdetailstats_1",
@@ -3330,8 +3330,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r12_mind_monitor_default.txt` + `_raw/04_brand_mind_monitor_network.txt:91,92,93,125,126`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getbrandpreferencedetailstats",
@@ -3348,8 +3348,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r12_mind_monitor_default.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_brand_competitor_list",
@@ -3366,8 +3366,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/02_crowd_distribution_network.txt` + `_raw/04_brand_mind_monitor_network.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.start_calaulate_evaluation_task",
@@ -3384,8 +3384,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.start_calculate_evaluation_task",
@@ -3402,8 +3402,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_offline_eval_task_list",
@@ -3420,8 +3420,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_evaluation_task_list_v2_1",
@@ -3438,8 +3438,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/api_taskList_get_evaluation_task_list_v2.json` + `_raw/r10_eval_tasklist_v2_req.json` + `_resp.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_offline_file",
@@ -3456,8 +3456,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.brandaccountlivecontenttypemetric",
@@ -3474,8 +3474,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/35"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.track_refspu_1",
@@ -3492,8 +3492,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.create_conversations",
@@ -3510,8 +3510,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r14/r14_create_conv_req.json` + `_raw/r17_round2/r17_aimars_scene_2to6_create.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=400) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_conversation_sse_messages",
@@ -3527,8 +3527,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r14/r14_chat_sse_full.txt` + `r14_chat_stream.txt`"
   },
   {
@@ -3545,8 +3545,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:166`"
   },
   {
@@ -3563,8 +3563,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
   },
   {
@@ -3581,8 +3581,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r11_aimars_default.txt:43` + `r11_aimars_newsession.txt:43` + `r13_aimars/*`"
   },
   {
@@ -3599,8 +3599,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
   },
   {
@@ -3617,9 +3617,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.get_batch_dictionary_card_1",
@@ -3636,8 +3636,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r13_rome/r13_rome_dict_card_resp.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.update_like_status",
@@ -3654,8 +3654,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r17_round2/r17_dict_like_attempt_1.json` + `_2.json`（全 4000）"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.create_feedback",
@@ -3672,8 +3672,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.send_feedback_collect_results",
@@ -3690,8 +3690,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:114-118`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.search_block_feedback_list",
@@ -3708,8 +3708,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:209`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.batch_collect_asset_point_info",
@@ -3726,8 +3726,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:130,147,166,204`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_trigger_insight_index_types",
@@ -3743,9 +3743,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/12"
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.get_trigger_insight_query_types",
@@ -3761,9 +3761,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/12"
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.get_trigger_insight_show_comparative_trigger_list",
@@ -3780,8 +3780,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/12"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=4000) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_history_date_range",
@@ -3797,8 +3797,8 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/12"
   },
   {
@@ -3816,8 +3816,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r17_round2/r17_benchmark_type_compare.json` + `r17_benchmark_type_1_3_4_5_6.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.queryoverviewitemdata_1",
@@ -3834,8 +3834,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/api_pinned_components.json` + `r13_home/*`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getproductoverview5aanalysis_1",
@@ -3852,8 +3852,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/26"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.flowentrystructure_1",
@@ -3870,8 +3870,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/26"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.categorypriceranges",
@@ -3888,8 +3888,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r11_product_structure.txt:85`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.itemanalysis",
@@ -3906,8 +3906,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/10"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.insightcategorystats_1",
@@ -3924,8 +3924,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/06_industry_marketProduct.txt:327`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.insightproductstats_1",
@@ -3942,8 +3942,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/06"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.marketoverview",
@@ -3960,8 +3960,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/27"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.customer",
@@ -3978,8 +3978,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/27"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.trendinsights",
@@ -3996,8 +3996,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/27"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.marketaweme",
@@ -4014,8 +4014,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/06_industry_all_subpages.txt:581`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.info",
@@ -4031,9 +4031,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.metrics_1",
@@ -4049,9 +4049,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.distribution_1",
@@ -4067,9 +4067,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.rank",
@@ -4085,9 +4085,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.tendency",
@@ -4103,9 +4103,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.industry",
@@ -4121,9 +4121,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.daterange_1",
@@ -4139,9 +4139,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.competitorids",
@@ -4157,9 +4157,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.brandmetadata",
@@ -4175,9 +4175,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.info_1",
@@ -4193,9 +4193,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.get_word_detail",
@@ -4211,9 +4211,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.search_brand_ad_ad_list",
@@ -4229,9 +4229,9 @@
     "body": null,
     "biz_code_field": "status",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "yuntu.list",
@@ -4246,8 +4246,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.record",
@@ -4262,8 +4262,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.fe",
@@ -4280,8 +4280,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:157,167,176`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.preinit",
@@ -4298,8 +4298,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.abtest",
@@ -4316,8 +4316,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:202,204`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.query",
@@ -4334,8 +4334,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:204,206`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.stream",
@@ -4350,8 +4350,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.init",
@@ -4366,8 +4366,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.feedback",
@@ -4382,8 +4382,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getportrait",
@@ -4400,8 +4400,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getportraitbybcid",
@@ -4418,8 +4418,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getpacketconfig",
@@ -4436,8 +4436,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:188`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getpackruleconfig",
@@ -4454,8 +4454,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/15"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getportraitconfig",
@@ -4472,8 +4472,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/11_search_filtered.txt:187`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.auth",
@@ -4490,8 +4490,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_gray_redirect_url",
@@ -4508,8 +4508,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.garrmodlistv3",
@@ -4526,8 +4526,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.industryaudiencetrend_1",
@@ -4544,8 +4544,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_audience_recommend_industrytrend.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getbrandfluxaudience_1",
@@ -4562,8 +4562,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_seek_flux_audience.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getbrandfluxinfo",
@@ -4580,8 +4580,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_seek_flux_info.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.getcompetebidlist",
@@ -4598,8 +4598,8 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_seek_compete_bid.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "yuntu.get_insight_report_list_1",
@@ -4616,7 +4616,7 @@
     "biz_code_field": "status",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r10_report_list_req.json` + `_resp.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   }
 ]

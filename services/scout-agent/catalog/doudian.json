@@ -22,7 +22,7 @@
       "data.on_delivery"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -48,7 +48,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -73,7 +73,7 @@
       "data.business_data.has_product"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -94,9 +94,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=602502053) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.getorderlogistics",
@@ -116,9 +116,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=602502015) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.counts",
@@ -137,7 +137,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -159,9 +159,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=20309500) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.detail",
@@ -182,9 +182,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=5100002) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.contact_info",
@@ -204,9 +204,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=404) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.list_1",
@@ -224,9 +224,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.logisticslist",
@@ -245,7 +245,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -266,9 +266,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=404) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.statistics",
@@ -289,7 +289,7 @@
       "data.negative_count"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -313,7 +313,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -336,7 +336,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -360,9 +360,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=100002) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.queryfreezeinfo",
@@ -384,7 +384,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -407,8 +407,8 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "doudian.marginexpose",
@@ -430,7 +430,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -462,7 +462,7 @@
       "data.tickets"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -486,7 +486,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -506,8 +506,8 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "doudian.getdiagnosisconclusion",
@@ -528,8 +528,8 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "doudian.unactlogisticslist",
@@ -548,7 +548,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -568,7 +568,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -592,7 +592,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -612,7 +612,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -636,7 +636,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -659,7 +659,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -683,7 +683,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -704,9 +704,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.list_3",
@@ -728,7 +728,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -748,7 +748,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -768,7 +768,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -789,9 +789,9 @@
     "expected_fields": [
       "data"
     ],
-    "verified": true,
-    "verified_at": "2026-05-26",
-    "notes": "from phase5 testcase"
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.categoryoptionsn",
@@ -812,7 +812,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -832,7 +832,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -855,7 +855,7 @@
       "data"
     ],
     "verified": true,
-    "verified_at": "2026-05-26",
+    "verified_at": "2026-06-01",
     "notes": "from phase5 testcase"
   },
   {
@@ -873,8 +873,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_order_searchlist.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.tabcnt_1",
@@ -891,8 +891,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_order_tabcnt.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.orderdetail_1",
@@ -909,8 +909,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r2_h3_order_detail_orderDetail.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.getorderlogistics_1",
@@ -927,8 +927,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/14"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.query_negotiation_info_by_shop_order_no",
@@ -945,8 +945,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.operatereasonconfig",
@@ -963,8 +963,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.getorderprocessinfo",
@@ -981,8 +981,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=404) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.searchconfig",
@@ -999,8 +999,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.orderconfig",
@@ -1017,8 +1017,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.data",
@@ -1035,8 +1035,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_growth_shop_overview.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.grayhit",
@@ -1053,8 +1053,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/15"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10004) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.get_msg_box",
@@ -1070,8 +1070,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
   },
   {
@@ -1089,8 +1089,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=404) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.get_guide",
@@ -1107,8 +1107,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.getaftersalelistshowconfig",
@@ -1124,8 +1124,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
   },
   {
@@ -1143,8 +1143,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.banner",
@@ -1161,8 +1161,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.getnegativecommentproductlist",
@@ -1178,9 +1178,9 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/11"
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "doudian.getpregeneratedmaterial",
@@ -1197,8 +1197,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=H3"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.sku_stock_diagnose",
@@ -1215,8 +1215,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=-1000) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.warehouse_list",
@@ -1232,9 +1232,9 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
   },
   {
     "key": "doudian.getoverviewbyversion_1",
@@ -1251,8 +1251,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_experience_overview.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.get_ticket_list_1",
@@ -1269,8 +1269,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_penalty_ticket_list.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.overview_data",
@@ -1287,8 +1287,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_penalty_v3_overview.json`"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.others",
@@ -1305,8 +1305,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle 7+ 端点"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.getlogisticsdiagnosislinearriveontimeratelist",
@@ -1322,8 +1322,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=pages/10"
   },
   {
@@ -1340,8 +1340,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=同上"
   },
   {
@@ -1359,8 +1359,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=100002) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.queryautowithdrawinfo",
@@ -1377,8 +1377,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=100002) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.gray",
@@ -1394,8 +1394,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
   },
   {
@@ -1412,8 +1412,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=`_raw/r1_e_growth_compass_doudian_shop_overview.json`"
   },
   {
@@ -1431,8 +1431,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=621000601) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.limit_product_list",
@@ -1449,8 +1449,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.doudian_focus_product_tab_v2",
@@ -1466,8 +1466,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw=bundle"
   },
   {
@@ -1484,8 +1484,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw="
   },
   {
@@ -1503,8 +1503,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.getimunreplycustomernum",
@@ -1520,8 +1520,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw="
   },
   {
@@ -1538,8 +1538,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw="
   },
   {
@@ -1557,8 +1557,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=701) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.get_async_task",
@@ -1574,8 +1574,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw="
   },
   {
@@ -1593,8 +1593,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.biz_get",
@@ -1610,8 +1610,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw="
   },
   {
@@ -1628,8 +1628,8 @@
     "body": null,
     "biz_code_field": "code",
     "expected_fields": [],
-    "verified": false,
-    "verified_at": null,
+    "verified": true,
+    "verified_at": "2026-06-01",
     "notes": "from inventory (候选路径, 待 sweep 验证); raw="
   },
   {
@@ -1647,8 +1647,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.ep",
@@ -1665,8 +1665,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.index",
@@ -1681,8 +1681,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.list_5",
@@ -1697,8 +1697,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.detail_v2_id_x",
@@ -1713,8 +1713,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.detail_v3_id_x",
@@ -1729,8 +1729,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.list_6",
@@ -1745,8 +1745,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.create_product_id_x_cid_y_entrance_edit",
@@ -1761,8 +1761,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.growth_shelf",
@@ -1777,8 +1777,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.experience_score",
@@ -1793,8 +1793,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.violation",
@@ -1809,8 +1809,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.list_7",
@@ -1825,8 +1825,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.index_1",
@@ -1841,8 +1841,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.comment",
@@ -1857,8 +1857,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.homepage_1",
@@ -1873,8 +1873,8 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   },
   {
     "key": "doudian.homepage_2",
@@ -1889,7 +1889,7 @@
     "biz_code_field": "code",
     "expected_fields": [],
     "verified": false,
-    "verified_at": null,
-    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
   }
 ]
