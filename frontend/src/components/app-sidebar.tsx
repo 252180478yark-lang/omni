@@ -30,6 +30,8 @@ import {
   ClipboardCheck,
   CalendarDays,
   Calculator,
+  Activity,
+  Brain,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -95,7 +97,7 @@ const NAV_ITEMS: NavEntry[] = [
 
   { kind: 'section', label: '知识与对话' },
   { href: '/knowledge', icon: Database, label: '知识库', hint: '管理 PDF、网页、复盘和报告' },
-  { href: '/chat', icon: MessageSquare, label: '智能问答', hint: '基于你的资料做检索和问答' },
+  { href: '/chat', icon: Brain, label: 'Agent 对话（Web 版）', hint: '备用 web 入口；主用桌面 app（omni-desktop）' },
 
   { kind: 'section', label: '内容生产' },
   {
@@ -112,6 +114,7 @@ const NAV_ITEMS: NavEntry[] = [
       { href: '/content-studio/avatars', icon: Palette, label: '数字人脸库', hint: '管理 AI 数字人形象' },
     ],
   },
+  { href: '/sku-pipeline', icon: Sparkles, label: 'SKU Pipeline 测试', hint: 'sku-pipeline 各 step 单独测 + 调 prompt（step 2 卖点矩阵 + step 3 人群匹配 已通）' },
   { href: '/video-analysis', icon: Clapperboard, label: '短视频分析', hint: '上传素材，先让 AI 写分析报告' },
   { href: '/reverse-engineer', icon: Wand2, label: '反向拆解', hint: '把爆款素材拆成可复用提示词与镜头' },
   { href: '/livestream-analysis', icon: Radio, label: '直播分析', hint: '上传直播录屏，自动复盘出 Excel' },
@@ -121,6 +124,8 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/ad-review', icon: LineChart, label: '投放复盘', hint: '广告 CSV + 素材报告，生成复盘建议' },
   { href: '/ad-review/flywheel', icon: RefreshCw, label: '飞轮仪表盘', hint: '看多轮投放迭代有没有变好' },
   { href: '/decisions', icon: ClipboardCheck, label: '决策日志', hint: 'AI 给的所有建议都存这里，跟踪命中率' },
+  { href: '/inbox', icon: Inbox, label: '待批', hint: '点头让 omni 做要紧的事 / 不点超时自动驳' },
+  { href: '/agent-log', icon: Activity, label: 'Agent 日志', hint: '看 omni 跑了啥 / 给好坏打分 / 自动累积模式' },
   { href: '/review', icon: CalendarDays, label: '周末复盘', hint: '本周 AI 命中率 + 前后对比卡 + 策略归档' },
 
   { kind: 'section', label: '系统' },

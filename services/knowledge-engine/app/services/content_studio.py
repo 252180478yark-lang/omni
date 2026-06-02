@@ -86,11 +86,8 @@ async def create_pipeline(
             # 自动带入 audience_package：若调用方未显式传入，则从 brief.audience_profile 提取
             if not resolved_audience_pkg:
                 ap = brief.get("audience_profile") or {}
-                if isinstance(ap, str):
-                    try:
-                        ap = json.loads(ap)
-                    except Exception:
-                        ap = {}
+                if not isinstance(ap, dict):
+                    ap = {}
                 pkg_id = ap.get("dmp_package_id")
                 if pkg_id:
                     resolved_audience_pkg = {
@@ -183,6 +180,13 @@ async def list_pipelines(limit: int = 50, offset: int = 0) -> list[dict]:
 
 
 async def update_pipeline(pipeline_id: str, **fields: object) -> dict | None:
+    # 状态切到非失败态时若 caller 未管 error_message，自动清掉残留旧错
+    # （否则上一次 failed 留的 error_message 会一直残留）
+    if (
+        fields.get("status") in ("paused", "running", "completed")
+        and "error_message" not in fields
+    ):
+        fields["error_message"] = None
     pool = get_pool()
     sets = []
     vals = []
@@ -816,6 +820,35 @@ async def generate_copy(pipeline_id: str) -> dict:
 
     config = pipe["config"] if isinstance(pipe["config"], dict) else json.loads(pipe["config"] or "{}")
     prompt = build_copy_prompt(pipe["source_text"], config)
+
+    # tri-KB 联合召回（基于 brief）+ 反 AI 语料样本——跟 generate_script 看齐，
+    # 防裸 LLM 自由发挥，让文案基于真实素材 + 真人语感样本
+    brief: dict | None = None
+    if pipe.get("brief_id"):
+        try:
+            from app.services import briefs as briefs_svc
+            brief = await briefs_svc.get_brief(str(pipe["brief_id"]))
+        except Exception as exc:
+            logger.debug("brief fetch failed: %s", exc)
+    kb_snippets, voice_examples = await _retrieve_tri_kb_context(brief)
+    kb_block = format_kb_snippets(kb_snippets)
+    prompt += (
+        f"\n\n{KB_AS_CREATIVE_MATERIAL}\n\n"
+        f"## 知识库召回（三 KB：ocean_engine / audience_report / content_strategy + history）\n"
+        f"{kb_block}"
+    )
+    if voice_examples:
+        prompt += f"\n\n{KB_AS_STYLE_SAMPLE}\n\n{format_style_samples(voice_examples)}"
+
+    # 输出最终约束（防 LLM 把 KB 块看成需要复述的元信息）
+    prompt += (
+        "\n\n## 输出最终约束（最高优先级）\n"
+        "- KB 召回片段只供你参考事实和语感，**绝对不要复述、不要标引用来源**\n"
+        "- 不要在末尾或任何地方加 'evidence:' / '参考来自' / '依据：' / '推断' 等元信息段\n"
+        "- 不要解释你用了哪些 KB / 哪些 USP / 哪些场景\n"
+        "- 输出 = 直接发给粉丝看的文案纯文本，开头 hook → 中段卖点 → 结尾 CTA，**无任何标记或脚注**"
+    )
+
     # 飞轮：按 copy_style 细分 scope
     copy_scope = {"copy_style": config.get("copy_style", "grassplanting"), "pipeline_id": pipeline_id}
     prompt += await render_rules_suffix("content.copy", copy_scope)
@@ -1416,9 +1449,13 @@ async def generate_videos(pipeline_id: str) -> dict:
         script_prov, script_mdl = _stage_model(pipe, "script")
         video_prov, video_mdl = _stage_model(pipe, "video")
         video_tasks = []
-        for scene in scenes:
+        # N 张分镜图 → N-1 段视频。段 i 的 first=storyboard[i]，last=storyboard[i+1]。
+        # 最后一个 scene 的图只作上一段的 last_frame，不再单独出视频。
+        for i, scene in enumerate(scenes[:-1]):
             sb = sb_map.get(scene["scene_id"], {})
             storyboard_url = sb.get("image_url", "")
+            next_sb = sb_map.get(scenes[i + 1]["scene_id"], {})
+            last_frame_url = next_sb.get("image_url", "")
             dur = int(scene.get("duration", "5s").replace("s", ""))
 
             if use_enhanced:
@@ -1426,6 +1463,7 @@ async def generate_videos(pipeline_id: str) -> dict:
                     scene["scene_id"],
                     _generate_video_with_transform(
                         scene, storyboard_url, dur,
+                        last_frame_url=last_frame_url or None,
                         product_images=product_images,
                         character_profiles=character_profiles,
                         generate_audio=generate_audio,
@@ -1445,6 +1483,7 @@ async def generate_videos(pipeline_id: str) -> dict:
                     _call_video(
                         prompt, storyboard_url or None, dur,
                         provider=video_prov, model=video_mdl,
+                        last_frame=last_frame_url or None,
                         generate_audio=generate_audio,
                         ratio=video_ratio,
                         quality=video_quality,

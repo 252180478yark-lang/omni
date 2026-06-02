@@ -83,7 +83,7 @@ class GeminiProvider(BaseProvider):
                 text = _extract_text(data)
                 usage = _extract_usage(data)
                 return ChatResponse(content=text, provider=self.name, model=model_id, usage=usage)
-            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ReadError) as exc:
                 last_exc = exc
                 if attempt < 4:
                     await asyncio.sleep(min(2 ** attempt, 8))
@@ -180,7 +180,7 @@ class GeminiProvider(BaseProvider):
                         "total_tokens": usage.total_tokens,
                     },
                 }
-            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ReadError) as exc:
                 last_exc = exc
                 if attempt < 2:
                     await asyncio.sleep(min(2 ** attempt, 4))
@@ -294,22 +294,79 @@ class GeminiProvider(BaseProvider):
         model_id = model or "gemini-3.1-flash-image-preview"
         url = f"{_API_BASE}/models/{model_id}:generateContent"
 
-        size_map = {"1024x1024": "1K", "1536x1024": "1K", "1024x1536": "1K", "2048x2048": "2K", "4096x4096": "4K"}
+        # imageSize 等级（影响画质/cost，K 越高细节越多 token 越多）
+        size_map = {
+            "1024x1024": "1K", "1536x1024": "1K", "1024x1536": "1K",
+            "2048x2048": "2K", "2048x1152": "2K", "1152x2048": "2K",
+            "2048x1536": "2K", "1536x2048": "2K",
+            "4096x4096": "4K", "3840x2160": "4K", "2160x3840": "4K",
+        }
         raw_size = str(kwargs.get("size", "1536x1024"))
         image_size = size_map.get(raw_size, "1K")
 
-        aspect_map = {"1024x1024": "1:1", "1536x1024": "16:9", "1024x1536": "9:16"}
-        aspect = aspect_map.get(raw_size, "16:9")
+        # aspect 优先用 kwarg 显式传（KE 直接传"9:16"），缺失时退而从 size 推（fallback）
+        explicit_aspect = (kwargs.get("aspect_ratio") or "").strip()
+        if explicit_aspect:
+            aspect = explicit_aspect
+        else:
+            aspect_map = {
+                "1024x1024": "1:1", "1536x1024": "16:9", "1024x1536": "9:16",
+                "2048x2048": "1:1", "2048x1152": "16:9", "1152x2048": "9:16",
+                "2048x1536": "4:3", "1536x2048": "3:4",
+            }
+            aspect = aspect_map.get(raw_size, "1:1")
+
+        # ── W4-B 14.4 phase D：多参考图（face_refs / product_refs / style_refs）支持 ──
+        # 入参 reference_images: list[str | {url, type, weight}]，data URL 或 http(s) URL 都接受
+        # Gemini API 支持多模态：parts 数组里混合 text + inline_data (base64)
+        raw_refs = kwargs.get("reference_images") or []
+        ref_urls: list[str] = []
+        for r in raw_refs:
+            if isinstance(r, str):
+                ref_urls.append(r)
+            elif isinstance(r, dict):
+                u = r.get("url") or ""
+                if u:
+                    ref_urls.append(u)
+        ref_parts: list[dict] = []
+        if ref_urls:
+            print(f"[IMG-DBG][gemini] reference_images count={len(ref_urls)} first={ref_urls[0][:60]}", flush=True)
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as fetch_client:
+                for i, ru in enumerate(ref_urls):
+                    try:
+                        if ru.startswith("data:"):
+                            # data:image/png;base64,XXX
+                            header, b64_data = ru.split(",", 1)
+                            mime = "image/png"
+                            if ";" in header and ":" in header:
+                                mime_part = header.split(":", 1)[1].split(";", 1)[0]
+                                if mime_part:
+                                    mime = mime_part
+                            ref_parts.append({"inline_data": {"mime_type": mime, "data": b64_data}})
+                        elif ru.startswith(("http://", "https://")):
+                            rr = await fetch_client.get(ru)
+                            rr.raise_for_status()
+                            mime = rr.headers.get("content-type", "image/png").split(";")[0]
+                            b64_data = base64.b64encode(rr.content).decode("ascii")
+                            ref_parts.append({"inline_data": {"mime_type": mime, "data": b64_data}})
+                        else:
+                            print(f"[IMG-DBG][gemini] skip ref {i} unsupported scheme: {ru[:40]}", flush=True)
+                    except Exception as exc:
+                        print(f"[IMG-DBG][gemini] ref {i} fetch failed: {exc}", flush=True)
+
+        # parts 顺序：先 text 再 reference images（让模型把后续 inline_data 当参考）
+        parts: list[dict] = [{"text": prompt}, *ref_parts]
+        print(f"[IMG-DBG][gemini] → {model_id} parts: 1 text + {len(ref_parts)} refs | imageSize={image_size} aspect={aspect} raw_size={raw_size}", flush=True)
 
         body = {
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": [{"parts": parts}],
             "generationConfig": {
                 "responseModalities": ["TEXT", "IMAGE"],
                 "imageConfig": {"aspectRatio": aspect, "imageSize": image_size},
             },
         }
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=120.0, write=60.0, pool=30.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=180.0, write=120.0, pool=30.0)) as client:
             resp = await client.post(url, params={"key": key}, json=body)
             resp.raise_for_status()
             data = resp.json()

@@ -53,11 +53,64 @@ STEPS_ORDER: list[str] = [
 
 
 def _hub_chat_url() -> str:
-    return f"{settings.ai_hub_url.rstrip('/')}/api/v1/ai/chat/completions"
+    return f"{settings.ai_provider_hub_url.rstrip('/')}/api/v1/ai/chat"
+
+
+_KB_IDS_CACHE: dict[str, str] | None = None
+
+
+async def _tri_kb_ids_async() -> dict[str, str]:
+    """三 KB id：先看 settings 显式配置；空则按 W3a kb_role 自动 fallback。
+
+    role → tri_key 映射：
+      authoritative → ocean_engine（运营手册类，云图 / 千川）
+      private_doc → audience_report（自家事实，人群报告 / 复盘日记）
+      template → content_strategy（爆款拆解 / 投放复盘）
+    """
+    global _KB_IDS_CACHE
+    if _KB_IDS_CACHE is not None:
+        return _KB_IDS_CACHE
+
+    out = {
+        "ocean_engine": (getattr(settings, "content_pipeline_kb_ocean_engine", "") or "").strip(),
+        "audience_report": (getattr(settings, "content_pipeline_kb_audience_report", "") or "").strip(),
+        "content_strategy": (getattr(settings, "content_pipeline_kb_content_strategy", "") or "").strip(),
+    }
+    if all(out.values()):
+        _KB_IDS_CACHE = out
+        return out
+
+    # fallback: 从 kb_role 自动找；按 name 关键字 prefer 更精准的 KB
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id::text AS id, name, kb_role FROM knowledge.knowledge_bases WHERE kb_role IN ('authoritative', 'private_doc', 'template') ORDER BY created_at"
+    )
+    by_role: dict[str, list[dict]] = {}
+    for r in rows:
+        by_role.setdefault(r["kb_role"], []).append(dict(r))
+
+    def _pick(role: str, prefer_keywords: list[str]) -> str:
+        kbs = by_role.get(role) or []
+        for kw in prefer_keywords:
+            for kb in kbs:
+                if kw in (kb.get("name") or ""):
+                    return kb["id"]
+        return kbs[0]["id"] if kbs else ""
+
+    if not out["ocean_engine"]:
+        out["ocean_engine"] = _pick("authoritative", ["云图", "巨量云图"])
+    if not out["audience_report"]:
+        out["audience_report"] = _pick("private_doc", ["人群", "人群分析"])
+    if not out["content_strategy"]:
+        out["content_strategy"] = _pick("template", ["切片", "爆款", "模板"])
+    _KB_IDS_CACHE = out
+    return out
 
 
 def _tri_kb_ids() -> dict[str, str]:
-    """同 briefs._tri_kb_ids：直接读 settings 中的三 KB id。"""
+    """同步版本，仅返 settings 配置（用于已加载的 orchestrator 调用）。
+    需要 fallback 时调用 _tri_kb_ids_async。
+    """
     return {
         "ocean_engine": (getattr(settings, "content_pipeline_kb_ocean_engine", "") or "").strip(),
         "audience_report": (getattr(settings, "content_pipeline_kb_audience_report", "") or "").strip(),
@@ -130,9 +183,9 @@ async def _update_step(
     *,
     step: str | None = None,
     status: str | None = None,
-    error_message: str | None = None,
     **field_updates: Any,
 ) -> dict:
+    # error_message 走 **field_updates 通用路径，None 时 SET NULL（成功路径清掉旧错）。
     pool = get_pool()
     sets: list[str] = []
     vals: list[Any] = []
@@ -141,8 +194,6 @@ async def _update_step(
         sets.append(f"current_step = ${idx}"); idx += 1; vals.append(step)
     if status is not None:
         sets.append(f"status = ${idx}"); idx += 1; vals.append(status)
-    if error_message is not None:
-        sets.append(f"error_message = ${idx}"); idx += 1; vals.append(error_message)
     for key, val in field_updates.items():
         if isinstance(val, (dict, list)):
             sets.append(f"{key} = ${idx}::jsonb"); idx += 1
@@ -235,14 +286,17 @@ async def _retrieve_kb(kb_id: str, query: str, top_k: int = 6) -> list[dict]:
         return []
 
 
-async def _llm_json(prompt: str, *, temperature: float = 0.5) -> dict:
+async def _llm_json(prompt: str, *, temperature: float = 0.5, max_tokens: int = 8000) -> dict:
     """调 ai-provider-hub，强制返回 JSON。失败抛异常。"""
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             _hub_chat_url(),
             json={
+                "provider": "gemini",
+                "model": "gemini-3-flash-preview",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": temperature,
+                "max_tokens": max_tokens,
             },
         )
         resp.raise_for_status()
@@ -276,9 +330,41 @@ async def step_selling_points(orch_id: str) -> dict:
     if sku.get("price_min") is not None or sku.get("price_max") is not None:
         price_text = f"{sku.get('price_min') or ''}-{sku.get('price_max') or ''}"
 
-    prompt = f"""你是资深消费品营销操盘手。请基于这个 SKU 的硬事实 + 老板视角输入，分析三类卖点。
+    prompt = f"""你是一位深耕**调味品与佐餐小菜行业**的资深产品策略分析师。你服务过的品类覆盖：基础调味料（酱油、醋、料酒、糖）、复合调味料（火锅底料、调味汁、拌饭酱）、日式调味料（味醂、寿司醋、日式酱油、味噌）、佐餐小菜（锦州小菜、酱腌菜、腌渍菜、下饭菜）。
 
-## SKU 主数据
+你的**唯一任务**是：拿到一款产品的基础资料，**只做前置的产品侧分析**——把显性卖点、隐性卖点、独特卖点挖到位，把使用场景、场景心智、内容心智、产品心智、品牌心智这五个维度解剖到位。
+
+## 严格边界（最重要的规则）
+
+这份报告是整个内容生产链路的第一步。下游还有：知识库人群匹配、内容生成（脚本/分镜/视频）。因此你**绝对不做**：
+
+1. ❌ 不描述人群——不写"宝妈/白领/小镇青年""年龄段"等
+2. ❌ 不写文案/标题/钩子——不给文案例子、口播、Slogan
+3. ❌ 不推荐内容形式——不说"适合做短视频/直播/图文"
+4. ❌ 不推荐投放渠道——不提抖音/小红书/视频号/天猫/京东
+5. ❌ 不写脚本——不给前 3 秒钩子、CTA
+6. ❌ 不给内容主线——不做月度/季度内容排期建议
+
+你**只做**：把产品本身读透 + 三层卖点（显性/隐性/USP）+ 5 心智维度（使用场景/场景心智/内容心智/产品心智/品牌心智）+ 结构化标签。
+
+## 工作原则
+
+1. **品类真话优先**：调味品/佐餐小菜是高复购、低决策成本、场景驱动品类。用调味品自己的逻辑（好不好吃、下不下饭、家人爱不爱吃、替代谁家的、省不省事）。
+2. **合规红线不越**：涉及"零添加""减盐""有机""0 防腐剂""儿童酱油""健康""功效"等表述，必须标注合规风险等级（高/中/低）+ 替代表述建议。食品法规对调味品宣传边界严格。
+3. **显性/隐性/USP 严格区分**：
+   - 显性 = 用户不用买就能从包装/详情页/参数直接看到的（等级、酿造天数、原料产地、零添加、价格、容量、工艺、认证）
+   - 隐性 = 买回家使用后才能感知到的（挂壁感、回甘、后味、不齁咸、开盖后久放、做菜不抢味、不腥不腻、凉菜第二天不出水）
+   - USP = 在本品类里**只有这个产品能讲**或**只有这个品牌讲最有说服力**的一句话；必须通过**排他性检验**：竞品也能说就不是 USP
+4. **心智不等于卖点**：卖点 20 个能占住的心智通常只有 1-2 个。
+5. **实事求是**：资料不足时明确写"信息不足，需补充 XXX"，不编造。
+6. **证据优先级**：用户评价原文/客服反馈 > 配料表/参数/规格/价格 > 包装与详情页 > 品牌自述 > 品类常识。无证据时标"信息不足"，不要把品类常识包装成产品卖点。
+7. **关键词必须可检索**：每个卖点的 5 个核心关键词必须是工艺/口感/场景/对比/复购原因类**具体短语**；禁用"高端/优质/好吃/方便/健康/品质感"这类空泛词。
+8. **场景只描述产品出现的位置**：必须是具体、可视化的生活/烹饪/食用画面，只写"产品在哪里、怎么被使用、解决了什么场景问题"；不写人群画像、不写传播建议。
+9. **卖点必须判断强弱**：每个显性/隐性卖点必须给强度评分 1-5（综合证据强度、差异化、场景匹配、复购关联、合规安全度）。评分必须帮助判断这个卖点是否值得进入下游 KB 匹配。
+10. **场景必须解释匹配逻辑**：每个卖点的匹配场景后必须补"匹配理由"，说明为什么这场景最能放大该卖点。
+
+## SKU 资料
+
 - 名称：{sku.get('name', '')}
 - 品类：{sku.get('category', '')}
 - 价格区间：{price_text or '未提供'}
@@ -290,30 +376,155 @@ async def step_selling_points(orch_id: str) -> dict:
 ## 老板视角的卖点（必须重点参考）
 {owner_sp_text}
 
-## 三类卖点分类标准（关键）
-- **显性卖点（usp_explicit）**：客户从商品图、详情页、或第一句话就能看出来的事实。例：包装规格、价格、外观、口感描述、配料表关键字。
-- **隐性卖点（usp_implicit）**：需要解释、类比、或讲故事才能让用户感知的优势。例：发酵工艺、研发周期、原料产地、技术认证。
-- **独特卖点（usp_unique）**：这个 SKU 区别于同品类竞品的地方。例：独家专利、首创工艺、品牌历史、创始人理念、独家原料。
-
 {NO_AI_SLANG}
 
 {JSON_OUTPUT_DISCIPLINE}
 
-## 输出 Schema
+## 输出 JSON Schema（严格按此输出，不要 markdown 报告）
+
 ```json
 {{
+  "product_archive_summary": "150-250 字段落：品类定位、价格段位（入门/主流/中高端/高端）、SKU 结构、核心原料与工艺关键词、5-8 个高频关键词（正面/负面分开）。不描述人群。",
+
   "usp_explicit": [
-    {{"point": "显性卖点（一句话）", "evidence": "为什么属于显性（≥10 字）", "priority": 1}}
+    {{
+      "point": "显性卖点名称（一句话）",
+      "evidence": "证据来源：包装/详情页/参数/配料表/工艺/认证/价格/规格中的哪一项",
+      "priority": 1,
+      "perceivability": "高|中|低",
+      "category_rarity": "独有|少见|普通|泛滥",
+      "compliance_risk": "高|中|低",
+      "strength_score": 4,
+      "strength_reason": "评分理由 ≥10 字（综合证据/差异化/场景匹配/复购关联/合规）",
+      "core_keywords": ["关键词1", "关键词2", "关键词3", "关键词4", "关键词5"],
+      "matched_scenario": "具体可视化使用场景一句话",
+      "match_reason": "为什么这个场景最能放大该显性卖点",
+      "summary_30char": "30 字内说明这个卖点为什么成立",
+      "tags": ["#显性", "#合规风险_中"]
+    }}
   ],
+
   "usp_implicit": [
-    {{"point": "隐性卖点", "evidence": "为什么属于隐性", "priority": 1}}
+    {{
+      "point": "隐性卖点名称",
+      "evidence": "引用哪条用户评价原文/反馈/使用细节",
+      "priority": 1,
+      "discovery_difficulty": "一用就懂|用3次才懂|对比才懂",
+      "rebuy_correlation": "强|中|弱",
+      "strength_score": 4,
+      "strength_reason": "...",
+      "core_keywords": ["...", "...", "...", "...", "..."],
+      "matched_scenario": "具体可视化生活场景一句话",
+      "match_reason": "...",
+      "summary_30char": "30 字内说明为什么会影响复购",
+      "tags": ["#隐性", "#关联复购_强"]
+    }}
   ],
+
+  "usp_unique_candidates": [
+    {{
+      "candidate": "USP 候选一句话表述（≤15 字）",
+      "exclusivity_basis": "为什么只有你能说（原料/产地/工艺/规格/历史/认证/地理标志/工厂/专利/创始人/非遗）",
+      "competitor_check": "罗列 2-3 个主要竞品是否也能讲同样的话",
+      "conclusion": "成立|不成立|需要补证据"
+    }}
+  ],
+
   "usp_unique": [
-    {{"point": "独特卖点", "evidence": "为什么属于独特", "priority": 1}}
+    {{
+      "point": "推荐主打 USP（1 条）",
+      "evidence": "为什么选它而不选另一条候选",
+      "priority": 1,
+      "selection_reason": "...",
+      "matched_scenario": "这条主打 USP 最能放大效果的具体可视化场景一句话（不写人群）",
+      "match_reason": "为什么这场景最能放大该主打 USP（举例对比品类共性）",
+      "tags": ["#USP", "#排他性_成立"]
+    }}
+  ],
+
+  "not_recommended_usp": [
+    {{
+      "point": "不建议主打的卖点名称",
+      "reason": "为什么不适合作为核心卖点",
+      "risk_type": "品类泛滥|证据不足|合规风险|价格带冲突|竞品同质化|评价不支持",
+      "handling": "删除|降级为辅助信息|需补证据后再判断"
+    }}
+  ],
+
+  "mind_levels": {{
+    "use_scenarios": [
+      {{"scenario": "早餐佐粥", "penetration": "高|中|低|未渗透", "tags": ["#使用场景_早餐佐粥", "#渗透率_高"]}}
+    ],
+    "scenario_mind": [
+      {{
+        "scenario": "...",
+        "match_reason": "产品属性与场景需求的匹配度",
+        "competitive_landscape": "空位|红海|被占",
+        "competitors": ["竞品 A", "竞品 B"],
+        "leverage_usp": "对应第 1 部分哪条卖点",
+        "tags": ["#场景心智_xx", "#占位格局_空位"]
+      }}
+    ],
+    "content_mind": [
+      {{
+        "theme": "家常做饭|一人食|家人餐桌|宝妈辅食|减脂餐|露营野炊|中式快手菜|地域小吃|奶奶/妈妈的味道|从田间到餐桌|工艺溯源",
+        "fit_point": "产品的什么属性对应母题的什么情绪",
+        "conflict_point": "如有明显不契合也诚实指出，否则空字符串",
+        "tags": ["#内容心智_xx"]
+      }}
+    ],
+    "product_mind": [
+      {{
+        "need_expression": "凉拌必备的醋|蘸饺子的醋|下饭神器|咸菜佐粥神器|日式家常味|送长辈有面子的|家的味道|减盐不减鲜|纯酿不勾兑",
+        "occupation_status": "已占位|正在占位|尚无占位|被竞品占位",
+        "competitor_holding": "如果被竞品占位，列出是谁；否则空字符串",
+        "gap": "如果目标抢占，当前距离心智还差什么（原料？工艺？认知？渠道铺货？）",
+        "tags": ["#产品心智_xx", "#占位状态_xx"]
+      }}
+    ],
+    "brand_mind": {{
+      "currently_held": "基于现有资料能证明的当前已占住的品牌心智（老字号传承|区域正宗|医食同源|匠人手作|现代轻食|家常家味|极致性价比|精致生活|地方风味挖掘）",
+      "potential_to_hold": "有潜力占住但尚未占住的",
+      "missing_evidence": "缺什么证据/资产才能占住",
+      "do_not_hold": "不建议强行占位的",
+      "do_not_reason": "硬占会遇到什么天然冲突",
+      "tags": ["#品牌心智_xx", "#占位_可"]
+    }}
+  }},
+
+  "tag_summary": {{
+    "category": ["#调味品", "#日式酱油", "#有机"],
+    "explicit_usp": ["#显性_零添加", "#显性_玻璃瓶"],
+    "implicit_usp": ["#隐性_180天发酵"],
+    "usp_main": ["#USP_33年老北京日式工艺"],
+    "use_scenarios": ["#使用场景_早餐佐粥", "#使用场景_凉拌"],
+    "scenario_mind": ["#场景心智_厨房调味"],
+    "content_mind": ["#内容心智_家常做饭"],
+    "product_mind": ["#产品心智_纯酿不勾兑"],
+    "brand_mind": ["#品牌心智_老字号传承"],
+    "compliance_risk": ["#合规风险_有机_低"]
+  }},
+
+  "info_gaps": [
+    {{
+      "missing": "缺失的信息",
+      "why_needed": "为什么需要它（影响哪一节的判断深度）",
+      "where_to_get": "用户调研|客服记录|竞品详情页|天猫京东评价导出|行业报告|实地工厂走访"
+    }}
   ]
 }}
 ```
-要求：每类至少 2 条（独特至少 1 条），priority 从 1 开始升序。
+
+## 输出前自检（自检不通过先修正再输出）
+
+1. 是否出现了目标人群画像、年龄、职业、圈层、城市层级等人群推断？有则删除。
+2. 是否写了标题、口播、脚本、钩子、CTA、投放渠道或内容形式？有则删除。
+3. 是否把品类共性当成了产品独特卖点？有则降级为显性或删除。
+4. 是否每个显性/隐性卖点都有 5 个核心关键词和 1 个匹配场景？没有则补全。
+5. 是否每个显性/隐性卖点都有卖点强度评分，并说明评分理由？没有则补全。
+6. 是否每个匹配场景后都有匹配理由？没有则补全。
+7. 是否所有 USP 候选都做了排他性检验和竞品反证检查？没有则补全。
+8. 是否存在没有证据支撑的判断？有则标"信息不足"或"需补证据"，不要编。
 """
     try:
         result = await _llm_json(prompt, temperature=0.4)
@@ -346,7 +557,7 @@ async def step_audience_match(orch_id: str) -> dict:
         for it in (sp.get(cat) or [])
     )[:500]
 
-    kb_ids = _tri_kb_ids()
+    kb_ids = await _tri_kb_ids_async()
     audience_kb = kb_ids.get("audience_report", "")
     query = f"{sku.get('name', '')} {sku.get('category', '')} 目标人群 兴趣 行为"
     snippets = await _retrieve_kb(audience_kb, query, top_k=6) if audience_kb else []
@@ -374,14 +585,29 @@ async def step_audience_match(orch_id: str) -> dict:
     {{
       "name": "人群标签（如 25-35 居家烹饪精致妈妈）",
       "size_estimate": "粗估规模（如 大/中/小 或 100w 量级）",
+      "match_score": 5,
+      "match_score_reason": "评分理由 ≥15 字（综合卖点匹配深度/规模/复购潜力/转化阻力）",
       "match_reason": "为什么这个 SKU 适配（≥30 字）",
-      "matched_selling_points": ["命中的卖点 1", "命中的卖点 2"],
+      "triggered_usp": ["命中的具体卖点 1（要写卖点全名）", "命中的具体卖点 2"],
+      "mini_profile": {{
+        "age": "如 25-35",
+        "gender": "F|M|不限",
+        "tier": "一线|新一线|二线|三四线|不限",
+        "consumption_level": "如 A2-A3",
+        "core_motivation": "一句话核心动机",
+        "core_objection": "一句话核心顾虑"
+      }},
       "priority": 1
     }}
   ],
   "primary_audience": "首选人群名（candidates 中之一）"
 }}
 ```
+
+## 评分约束
+- `match_score` 1-5 整数；5=核心人群必抢；3=可投放但非主战场；1=不建议投。
+- `triggered_usp` 必须写卖点全名（如"氨基酸态氮 0.9g/100ml"），不写抽象词（"高品质"）。
+- `mini_profile` 即使候选人群 2、3 也必须有，让老板判断是否值得"次推"。
 """
     try:
         result = await _llm_json(prompt, temperature=0.4)
@@ -410,7 +636,7 @@ async def step_audience_profile(orch_id: str) -> dict:
     candidates = matched.get("candidates") or []
     primary_obj = next((c for c in candidates if c.get("name") == primary), candidates[0] if candidates else {})
 
-    kb_ids = _tri_kb_ids()
+    kb_ids = await _tri_kb_ids_async()
     snippets: list[dict] = []
     if kb_ids.get("audience_report"):
         snippets += await _retrieve_kb(kb_ids["audience_report"], f"{primary} 画像 行为 偏好", top_k=4)
@@ -480,39 +706,86 @@ async def step_dmp_sop(orch_id: str) -> dict:
     matched = orch.get("matched_audience_result") or {}
     profile = orch.get("audience_profile_result") or {}
 
-    kb_ids = _tri_kb_ids()
+    kb_ids = await _tri_kb_ids_async()
     snippets: list[dict] = []
     if kb_ids.get("ocean_engine"):
-        snippets += await _retrieve_kb(
-            kb_ids["ocean_engine"],
-            f"{matched.get('primary_audience', '')} DMP 标签 圈包 行为",
-            top_k=5,
-        )
+        # 多 query 召回再去重：操作向 + 5A 推送向 + 人群洞察向
+        all_hits: list[dict] = []
+        seen_ids: set[str] = set()
+        for q in [
+            "巨量云图 标签工厂 圈包 操作 step-by-step 自定义人群",
+            "5A 人群资产 圈选 自定义人群 创建 推送 千川",
+            "云图 人群洞察 标签 兴趣 行为 排除 预估包大小",
+        ]:
+            hits = await _retrieve_kb(kb_ids["ocean_engine"], q, top_k=6)
+            for h in hits:
+                cid = str(h.get("id") or h.get("chunk_id") or "")
+                if cid and cid not in seen_ids:
+                    seen_ids.add(cid)
+                    all_hits.append(h)
+        snippets = all_hits[:12]  # 合并后限 12 条
     kb_block = format_kb_snippets(snippets) if snippets else "（云图 KB 无召回）"
 
-    prompt = f"""你是巨量云图 DMP 圈包专家。基于人群画像，给一份可直接照做的圈包 SOP。
+    prompt = f"""你是巨量云图 DMP 圈包专家。给一个**完全不会用云图**的小白写一份从打开云图到圈包成功的全步骤手册。
 
 ## 人群画像
 {json.dumps(profile, ensure_ascii=False, indent=2)}
 
-## 知识库召回（巨量云图）
-{KB_AS_CREATIVE_MATERIAL}
+## 云图知识库使用强约束（重要：覆盖任何"无效召回"的判断）
+
+下面 `<kb_context>` 里的 chunks 是**云图官方 Playbook 操作步骤**（标签工厂 / 自定义人群 / 5A 资产 / 人群圈选 / 推送千川等）。
+
+1. **必须使用** KB 里的**真实菜单路径、按钮名、字段名、操作动词** —— 不要凭空编菜单
+2. KB 里提到的云图功能名词**原样保留**：「标签工厂」「自定义人群」「自定义人群分析」「5A 人群资产」「人群圈选」「标签圈选」「人群洞察」「人群夹」「关系资产」等
+3. **特别注意**：KB chunks 来自不同行业的 Playbook（汽车/餐饮/通用），但**操作步骤本身是云图通用的** —— 你要做的是把这些 Playbook 的操作步骤**套用到当前调味品有机酱油** 上，不要因为 KB 不是调味品行业就判断为"无效召回"
+4. 每步引用 KB 时用格式：`参考云图 KB: {{id前8位}}` 或 `[KB:{{id前8位}}#章节]`
+5. **禁止编造**云图里不存在的菜单或功能名 —— 不确定就用 KB 里的原词
+
+## 云图知识库召回内容（chunks）
 {kb_block}
 
 {NO_AI_SLANG}
 
 ## 输出要求
-- 输出**纯 markdown 文本**（不是 JSON），可直接放入 brief.dmp_sop 字段。
-- 至少包含：(1) 推荐圈包标签组合（兴趣 + 行为 + 5A 阶段交叉）；(2) 排除条件；(3) 预估包大小级别；(4) 圈包后建议的触达节奏（每周触达 N 次、停留 N 天）。
-- 长度 200-400 字。
 
-直接输出 markdown，不要前后引号或代码块。
+**写成 step 1, step 2... 的操作手册**，必须有 10 步左右，每步含 4 项：
+- (a) **菜单路径**：在云图哪个页面 / 点哪个按钮（具体到 tab 名）
+- (b) **选什么填什么**：标签具体值、过滤条件、数字范围
+- (c) **为啥这么做**：让小白理解原理（这步对人群质量的影响）
+- (d) **看哪里验证**：完成后界面什么变化（包大小变了 / 标签数量变了 / 人群预览长啥样）
+
+10 步覆盖：
+1. 登录入口 + 进入"人群洞察 → 人群圈选"模块的菜单路径
+2. 选基础人群（性别 / 年龄 / 城市 / 设备）每项给具体值 + 解释
+3. 加兴趣行为标签（带具体 tab 路径，如"食品 → 调味品 → 酱油"）
+4. 加 5A 资产人群交叉（A1-A5 哪几级合适 + 为啥这级）
+5. 加排除条件（已购 / 反感 / 黑名单 + 怎么导入排除包）
+6. 看预估包大小（在哪显示 / 多大算合适 / 太小怎么放宽 / 太大怎么收紧）
+7. 保存到"我的人群"（命名规则建议，如"sku-X-曝光-A2A3-202605"）
+8. 复制到千川 / 抖加做投放（哪步导出 / 怎么对齐定向 / 包同步频率）
+9. 触达节奏（每周触达 N 次 / 停留 N 天 / 反感后多久可重新触达）
+10. 数据反馈看哪几个指标（CTR / CVR / 5A 资产流转率 + 在云图哪个报表查）
+
+## 风格强制
+- 每步开头用具体动词（"打开""点击""勾选""填入""保存"），不用"建议""可以"
+- 数字必须具体（不写"较多"，写"500-2000 万"；不写"频次合适"，写"每周 2-3 次"）
+- 引用 KB 内容标注 "（参考云图 KB）"
+- 用"咱""你"，不用"用户""贵司"
+
+## 输出格式
+纯 markdown 文本，可直接放入 brief.dmp_sop 字段。**长度 800-1500 字**。直接输出 markdown，不要前后引号或代码块。
 """
     try:
-        async with httpx.AsyncClient(timeout=90.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
                 _hub_chat_url(),
-                json={"messages": [{"role": "user", "content": prompt}], "temperature": 0.4},
+                json={
+                    "provider": "gemini",
+                    "model": "gemini-3-flash-preview",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.4,
+                    "max_tokens": 3000,
+                },
             )
             resp.raise_for_status()
             sop = (resp.json().get("content") or "").strip()
@@ -538,7 +811,7 @@ async def step_content_preference(orch_id: str) -> dict:
         raise ValueError("Orchestration not found")
     profile = orch.get("audience_profile_result") or {}
 
-    kb_ids = _tri_kb_ids()
+    kb_ids = await _tri_kb_ids_async()
     snippets: list[dict] = []
     primary_keywords = " ".join(profile.get("channels") or [])
     if kb_ids.get("content_strategy"):

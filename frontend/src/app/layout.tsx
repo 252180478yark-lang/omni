@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,25 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "Omni-Vibe OS Ultra",
   description: "A Self-Evolving, Hybrid-Architecture E-commerce & Cognitive Operating System.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "omni",
+  },
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon-192.svg",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#6366f1",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

@@ -342,7 +342,22 @@ D. 投放复盘飞轮
 
 ---
 
-## 13. 已知限制 & Roadmap 候选
+## 13. 三平台实时取数底座（platform-fetch）
+
+另一台电脑安装 = pull 本仓库即可：
+1. `git pull && docker compose up -d`
+2. 打开 `/scout` 页，扫码登录 云图 / 罗盘 / 抖店（cookies 1~4 天过期，过期重登）
+3. 完成。上层报表/分析功能调以下 MCP tool：
+   - `platform_fetch(platform, endpoint, params?)` — 实时取单端点真数据
+   - `platform_batch_fetch(requests)` — 批量
+   - `platform_list_endpoints(platform?, query?, verified_only?)` — 检索端点目录
+   - `platform_auth_status()` — 查登录态
+4. 话术入口：`.claude/skills/platform-data` skill
+5. 端点目录维护：改 `services/scout-agent/catalog/*.json`；重验跑 `scout-agent/scripts/validate_catalog.py all`
+
+---
+
+## 14. 已知限制 & Roadmap 候选
 
 * 🔴 鉴权未启用（identity-service 已就绪，前端没接）
 * 🔴 `/models` Key 明文回显
@@ -356,6 +371,6 @@ D. 投放复盘飞轮
 
 ---
 
-## 14. License
+## 15. License
 
 MIT

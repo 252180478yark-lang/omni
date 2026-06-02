@@ -1,0 +1,129 @@
+# tool → 模型映射（design doc §2.5）
+# W1：仅 __default__ 起作用
+# W2：4 个 LLM tool 各自 keyed override（独立切模型）
+# W3a：chat 类 tool 加 prompts 路径，prompt 外置到 config/prompts/*.md
+
+__default__:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.3
+
+# W2 keyed override
+# 注意：老板的 Anthropic 是 Claude Code Max 订阅（主大脑用），不是 API key →
+# hub 端 tool 内部 LLM **不能用 anthropic**。chat 走 gemini-3-flash-preview。
+# image: openai/gpt-image-2；video: seedance/seedance-2-0（老板填 SEEDANCE_API_KEY）。
+
+compute_margin:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.1   # 解读类，要稳
+  prompts:
+    system: compute_margin.system
+    user: compute_margin.user
+
+generate_brief:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.5   # 文案要发挥
+  prompts:
+    system: generate_brief.system
+    user: generate_brief.user
+
+generate_image:
+  # step 6 分镜图（generate_storyboard_images / 老 generate_image tool）
+  # 2026-05-12 老板切回 gemini-3.1-flash-image-preview（之前用过的快版）
+  # size 1152x2048 → imageSize=2K + aspect=9:16 竖屏短视频画幅
+  # 回切候选：
+  #   - gemini/gemini-3-pro-image-preview（pro 版，长 prompt 推理深度更强）
+  #   - openai/gpt-image-1.5 + size 1024x1536（跟 step 6.5 同款）
+  #   - seedream/doubao-seedream-5-0-260128 + size 2048x2048（国产高清）
+  #   - openai/gpt-image-2 + quality: high（等 OpenAI verify 真生效）
+  provider: gemini
+  model: gemini-3.1-flash-image-preview
+  size: "1152x2048"
+
+generate_character_sheets:
+  # step 6.5 角色定妆白底像（生脸）— 2026-05-14 切 doubao-seedream-5-0-lite
+  # 回切候选：gemini-3.1-flash-image-preview / dall-e-3 / gpt-image-1.5
+  provider: gemini
+  model: gemini-3.1-flash-image-preview
+  size: "1024x1024"
+
+generate_video:
+  # 2026-05-13 老板切 Veo 3.1（Google Gemini API）：
+  #   - veo-3.1-generate-preview（当前用，Gemini Developer API 可用）
+  #   - 备选 Vertex AI：veo-3.1-generate-001
+  # 能力：
+  #   - t2v + i2v（first_frame = base64 data: URI）
+  #   - 时长只支持 4 / 6 / 8s，其余自动 clamp
+  #   - 画幅：9:16 或 16:9
+  # 认证：GEMINI_API_KEY（与 Gemini chat 同一个 key，无额外配置）
+  # 回切候选：seedance/doubao-seedance-2-0-260128
+  provider: veo
+  model: veo-3.1-generate-preview
+  duration: 8
+
+summarize_text:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.3
+  max_tokens: 2048
+
+parse_long_doc_with_gemini:
+  provider: gemini
+  model: gemini-2.5-flash
+  temperature: 0.2
+  max_tokens: 8192
+
+codify_pattern_to_skill:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.3
+  max_tokens: 2048
+
+# W4-B 切片 14.1：sku-pipeline step 2 卖点矩阵
+# 用 gemini-3.1-pro-preview 跑（深度产品策略推理 — flash 系列偏快不偏深）
+generate_selling_points_matrix:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.3
+  max_tokens: 10000
+
+# W4-B 切片 14.2：sku-pipeline step 3 人群匹配
+# 反向匹配：拿 matrix 三要素去 KB 全量 chunks（80 个，跨 KB 46 个 doc）实打实挑对口人群
+# max_tokens 18000：≥ 15 个匹配人群 × (KB 原文 + 5 理由) + 标签 ≥ 30 + 资料诊断段
+generate_audience_match:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.3
+  max_tokens: 18000
+
+# W4-B 切片 14.3 phase B：sku-pipeline step 4 圈包 SOP
+# 拿单 audience_record + matrix_run + 巨量云图/千川 KB 召回 → 翻译成可勾选标签 SOP
+# 切 pro：颗粒度细到三级菜单 + 数据工厂/自定义人群两层架构 + 大白话理由，pro 推理深度更稳
+# max_tokens 18000：pro 有 thinking budget，给充足空间避免 thinking 吃完正式输出截断
+generate_audience_pack:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.3
+  max_tokens: 18000
+
+# W4-B 切片 14.3 phase B+：keyword_pack 500 词扩展
+# 输入种子词 + 可选人群/SKU → 输出 500 词，一行一个无标点
+# flash + temp 0.5（求多样不求深度）+ max_tokens 4500（500 词 × 4-6 字 ≈ 2500-3000 字 ≈ 1500-2000 token，留 buffer）
+generate_keyword_pack:
+  provider: gemini
+  model: gemini-3-flash-preview
+  temperature: 0.5
+  max_tokens: 4500
+
+# W4-B 切片 14.4 phase C：generate_creative_pack 6 类素材脚本
+# 视频/图文/主图/详情页 6 类共用 1 tool，按 kind 路由 system prompt
+# 切 pro：脚本要深度推理（钩子/卖点串/视觉 brief 都需要创意 + 严谨结构）
+# max_tokens 10000：视频类主脚本+3钩子+5-7 分镜约 3-4k，详情页 8-12 段更大
+# temp 0.5：脚本要发挥但不能漂得太离谱
+generate_creative_pack:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.5
+  max_tokens: 10000

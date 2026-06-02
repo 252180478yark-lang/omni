@@ -273,8 +273,13 @@ class SeedanceProvider(BaseProvider):
                 "model": model_used,
             }
         except httpx.HTTPStatusError as exc:
-            logger.error("Seedance API error %s: %s", exc.response.status_code, exc.response.text[:500])
-            raise RuntimeError(f"Seedance video generation failed: {exc.response.status_code}") from exc
+            # 保留火山方舟原始 response.text（含 AccountOverdueError / InputImageSensitiveContentDetected
+            # 等错误码 + message），让上游能 classify 给出 actionable hint，而不是一锅 503
+            body_excerpt = (exc.response.text or "")[:800]
+            logger.error("Seedance API error %s: %s", exc.response.status_code, body_excerpt)
+            raise RuntimeError(
+                f"Seedance video generation failed: HTTP {exc.response.status_code} — {body_excerpt}"
+            ) from exc
         except Exception as exc:
             logger.error("Seedance request failed: %s", exc)
             raise RuntimeError(f"Seedance video generation failed: {exc}") from exc

@@ -48,8 +48,14 @@ $PID_FILE = Join-Path $ROOT ".dev-pids"
 # (ProactorEventLoop is set there before uvicorn imports asyncio).
 $SERVICES = @(
     @{ Name = "identity-service";    Port = 8000; Optional = $true  }
-    @{ Name = "ai-provider-hub";     Port = 8001; Optional = $false }
-    @{ Name = "knowledge-engine";    Port = 8002; Optional = $false }
+    # ai-provider-hub 改为容器独占（A2，跨服务走 docker network 内部 DNS
+    # `http://ai-provider-hub:8001`；host 端口 8001 由 docker-compose.yml ports 暴露
+    # 给 frontend / verify 脚本）。如需 host 模式开发，先 docker compose stop
+    # ai-provider-hub 再恢复此行。
+    # @{ Name = "ai-provider-hub";     Port = 8001; Optional = $false }
+    # knowledge-engine 改为容器独占（W1 起 MCP server 挂在容器里，host 端口 8002
+    # 由 docker-compose.yml ports 暴露）。如需 host 模式开发，先 docker compose
+    # stop knowledge-engine 再恢复此行。
     @{ Name = "news-aggregator";     Port = 8005; Optional = $true  }
     @{ Name = "video-analysis";      Port = 8006; Optional = $false }
     @{ Name = "livestream-analysis"; Port = 8007; Optional = $false }

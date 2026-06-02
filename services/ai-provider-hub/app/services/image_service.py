@@ -37,6 +37,7 @@ class ImageService:
                     provider.generate_image,
                     prompt=payload.prompt, model=model,
                     size=payload.size, quality=payload.quality, n=payload.n,
+                    aspect_ratio=payload.aspect_ratio,
                     reference_images=payload.reference_images,
                 )
                 return ImageGenerateResponse(

@@ -1,0 +1,34 @@
+[
+  {
+    "key": "yuntu.5a.asset_structure",
+    "platform": "yuntu",
+    "category": "5A资产",
+    "aliases": ["5A人群多少", "5A资产结构"],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceAssetStructure",
+    "params": {"audience_end_date": "{today_yyyymmdd}", "aadvid": "{aadvid}"},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": ["total_count"],
+    "verified": true,
+    "verified_at": "2026-05-26",
+    "notes": ""
+  },
+  {
+    "key": "yuntu.gta.profile",
+    "platform": "yuntu",
+    "category": "GTA",
+    "aliases": ["GTA生意贡献", "月度GMV"],
+    "host": "yuntu.oceanengine.com",
+    "method": "GET",
+    "path": "/yuntu_ng/api/v1/GetAudienceGtaProfile",
+    "params": {"month": "{this_month}", "aadvid": "{aadvid}", "scene": "1"},
+    "body": null,
+    "biz_code_field": "status",
+    "expected_fields": ["gmv"],
+    "verified": false,
+    "verified_at": null,
+    "notes": ""
+  }
+]

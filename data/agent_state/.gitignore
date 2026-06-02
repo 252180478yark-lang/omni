@@ -1,0 +1,4 @@
+# patterns 文件 + skill drafts + cron last_run 时间戳太私人，全部不入 git
+*.md
+*.txt
+skill_drafts/

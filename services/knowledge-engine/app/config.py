@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Redis (caching)
     redis_url: str = "redis://:changeme_redis@omni-redis:6379/1"
 
+    # Scout Agent
+    scout_agent_url: str = "http://scout-agent:8009"
+
     # AI Provider Hub
     ai_provider_hub_url: str = "http://ai-provider-hub:8001"
     ad_review_service_url: str = "http://ad-review-service:8005"
@@ -91,6 +94,17 @@ class Settings(BaseSettings):
     avatar_promote_min_samples: int = 5
     avatar_promote_min_ctr: float = 0.03
     avatar_archive_consecutive_low: int = 3
+
+    # Volcengine Visual API（realman 真实人物视频；图像生成大模型 service 86081）
+    # 账号级 AK/SK，不同于 ARK Bearer Token；在 console.volcengine.com → 访问控制 → API 密钥 获取
+    volcengine_access_key: str = ""
+    volcengine_secret_key: str = ""
+
+    # W4-B 切片 7：成本两版口令解锁
+    # 老板的真实成本（visibility='real'）只对持有此口令的调用方可见。
+    # 留空 → 不启用口令保护（开发环境用，老板自己电脑）。
+    # 设值 → query_costs / compute_margin 调 view='real' 时必须传相同 passphrase。
+    cost_real_view_passphrase: str = ""
 
 
 settings = Settings()

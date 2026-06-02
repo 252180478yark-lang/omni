@@ -2,8 +2,13 @@ import asyncio
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+import time
+import uuid
+
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -19,6 +24,13 @@ from app.routers.prompt_flywheel import router as prompt_flywheel_router
 from app.routers.chat_sessions import router as chat_sessions_router
 from app.routers.sku_orchestrations import router as sku_orchestrations_router
 from app.routers.accounting import router as accounting_router
+from app.routers.mcp_tool_calls import router as mcp_tool_calls_router
+from app.routers.human_gates import router as human_gates_router
+from app.routers.mcp_exec import router as mcp_exec_router
+from app.routers.notify import router as notify_router
+from app.routers.bug_memory import router as bug_memory_router
+from contextlib import AsyncExitStack
+from app.mcp.server import mcp_http_app
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -29,6 +41,13 @@ async def lifespan(app: FastAPI):
     logger.info("Starting %s — connecting to PostgreSQL...", settings.service_name)
     await init_pool()
     logger.info("PostgreSQL connection pool ready")
+
+    # W2 T1：启动期孤儿清理（把上次跑挂时停在 pending 的 tool_calls 标 orphaned）
+    from app.mcp.orphan import mark_orphans
+    try:
+        await mark_orphans(threshold_minutes=5)
+    except Exception:
+        logger.exception("startup orphan cleanup failed (continuing)")
 
     # Migrate tsv column from GENERATED to regular for Chinese search support
     from app.database import get_pool
@@ -45,7 +64,39 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Task recovery failed, continuing startup", exc_info=True)
 
-    yield
+    # 启动 MCP session manager（FastMCP 3.x：StarletteWithLifespan 自带 lifespan）
+    async with mcp_http_app.lifespan(app):
+        logger.info("MCP server lifespan entered")
+
+        # 启动期自检（不阻断）
+        from app.mcp.doctor import run_at_startup
+        await run_at_startup()
+
+        # W4-B 切片 4 + 11 + 飞轮 Phase B：后台 cron 任务（4 个互不干扰的 loop）
+        from app.mcp.cron import (
+            daily_pulse_loop,
+            dynamic_block_refresh_loop,
+            feedback_digest_loop,
+            weekly_self_review_loop,
+        )
+        cron_tasks = [
+            asyncio.create_task(weekly_self_review_loop()),
+            asyncio.create_task(daily_pulse_loop()),
+            asyncio.create_task(dynamic_block_refresh_loop()),
+            asyncio.create_task(feedback_digest_loop()),
+        ]
+
+        try:
+            yield
+        finally:
+            for t in cron_tasks:
+                t.cancel()
+            for t in cron_tasks:
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
+
     logger.info("Shutting down — closing database pool...")
     await close_pool()
 
@@ -60,6 +111,52 @@ app.include_router(prompt_flywheel_router)
 app.include_router(chat_sessions_router)
 app.include_router(sku_orchestrations_router)
 app.include_router(accounting_router)
+app.include_router(mcp_tool_calls_router)
+app.include_router(human_gates_router)
+app.include_router(mcp_exec_router)
+app.include_router(notify_router)
+app.include_router(bug_memory_router)
+
+# 挂载 MCP HTTP 子应用（在所有 router 之后）
+app.mount("/mcp", mcp_http_app)
+
+# W5-B 切片 1.9：agent chat 附件 static mount（必须在 /static 宽路径之前注册）
+import os as _os
+UPLOAD_DIR = _os.environ.get("OMNI_UPLOAD_DIR", "/app/data/uploads")
+_os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount(
+    "/api/v1/knowledge/static/uploads",
+    StaticFiles(directory=UPLOAD_DIR, check_dir=False),
+    name="agent_chat_uploads",
+)
+
+# W4-B 切片 14.4 phase D 候选 D：资产磁盘存储（cdn url 24h 过期 → 落本地）
+# 挂载点跟 asset_storage.PUBLIC_URL_PREFIX 必须严格一致
+_assets_root = Path("/app/data/assets")
+_assets_root.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/api/v1/knowledge/static",
+    StaticFiles(directory=str(_assets_root), check_dir=False),
+    name="static_assets",
+)
+
+# ── 产品参考图上传端点（t2v 白底图锁产品）──────────────────────────────────────
+_UPLOAD_DIR = _assets_root / "product_refs"
+_ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_MAX_SIZE = 10 * 1024 * 1024  # 10 MB
+
+@app.post("/api/v1/knowledge/upload-product-ref")
+async def upload_product_ref(file: UploadFile = File(...)):
+    if file.content_type not in _ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="只支持 JPEG/PNG/WebP")
+    raw = await file.read()
+    if len(raw) > _MAX_SIZE:
+        raise HTTPException(status_code=400, detail="文件超过 10 MB 上限")
+    ext = (file.filename or "img").rsplit(".", 1)[-1].lower() or "png"
+    fname = f"{int(time.time())}_{uuid.uuid4().hex[:8]}.{ext}"
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    (_UPLOAD_DIR / fname).write_bytes(raw)
+    return {"url": f"/api/v1/knowledge/static/product_refs/{fname}"}
 
 
 @app.get("/health")

@@ -1,0 +1,4174 @@
+[
+  {
+    "key": "compass.core_index_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "收支投放 → 千川消耗 → 商品流量（投了哪个商品 ROI 高）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/common/trade/core_index_v3",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21,
+      "activity_id": "",
+      "is_activity": "false",
+      "operate_type": 0,
+      "content_type": 0,
+      "traffic_channel": 1,
+      "index_selected": "pay_amt"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].product_id",
+      "data[].ad_cost"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.core_trend_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "店铺今日大盘异动诊断（同环比）- 趋势组件"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/common/trade/core_trend_v3",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "activity_id": "",
+      "is_activity": false,
+      "operate_type": 0,
+      "content_type": 0,
+      "traffic_channel": 1,
+      "trend_type": 1,
+      "trend_benchmark_type": 1,
+      "index_selected": "income_amt"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "axis_config[].axis_data[].x_str",
+      "axis_config[].axis_data[].y"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.shop_rank",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "店铺 7 日排名是多少名"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/common/homepage/shop_rank",
+    "params": {
+      "industry_id": 13,
+      "cate_id": 1000009128,
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "rank",
+      "rank_change",
+      "competitor_count"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.product_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "从 TOP 商品下钻到单品详情 - product_list 拿 product_id"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product/product_list",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "is_activity": "false",
+      "activity_id": "",
+      "key_word": "",
+      "index_selected": "pay_amt",
+      "sale_type": 1,
+      "content_type": 1,
+      "cate_ids": "",
+      "cate_ids_original": 0,
+      "product_tab": 1,
+      "only_abnormal": "false",
+      "new_version": "true",
+      "page_no": 1,
+      "page_size": 10,
+      "sort_field": "trans_amt",
+      "is_asc": false
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].extra.product_id"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.index_data",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "商品 SKU-367994-0003 近 7 天卖多少"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_detail/core_data/index_data",
+    "params": {
+      "date_type": "21",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "activity_id": "",
+      "product_id": "3679940190014669244",
+      "user_type": 0,
+      "sale_type": 0,
+      "content_type": 0,
+      "terminal_type": 0,
+      "index_selected": "trans_amt,pay_amt,pay_cnt,refund_sucess_amt,dh_product_show_uv,dh_product_click_uv,pay_ucnt"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data.metric_list[].metric_name",
+      "data.metric_list[].value",
+      "data.metric_list[].last_value",
+      "data.metric_list[].out_period_ratio",
+      "data.metric_list[].benchmark",
+      "data.metric_list[].ahead_ratio"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.sku",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "SKU-367994-0003 的 SKU 拆分销量"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_detail/core_data/sku",
+    "params": {
+      "date_type": "21",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "activity_id": "",
+      "product_id": "3679940190014669244",
+      "sort_field": "pay_amt",
+      "is_asc": "false",
+      "page_no": 1,
+      "page_size": 10,
+      "content_type": 0,
+      "sale_type": 0,
+      "user_type": 0,
+      "add_ratio": "true",
+      "index_selected": "pay_amt,pay_cnt,pay_ucnt",
+      "sales_volume_type": 0
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "sku_list[].sku_id",
+      "sku_list[].sku_spec",
+      "sku_list[].pay_amt",
+      "sku_list[].sale_cnt",
+      "sku_list[].on_sale_stock_cnt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.flow_data_v2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促榜单 → 商品流量分析（找对手爆款的流量结构）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_detail/flow_source/flow_data_v2",
+    "params": {
+      "date_type": "21",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "activity_id": "",
+      "product_id": "3679940190014669244",
+      "source_entrance": 0,
+      "sale_type": 0,
+      "content_type": 0,
+      "user_type": 0,
+      "sort_field": "pay_amt",
+      "is_asc": "false",
+      "index_selected": "pay_amt,pay_cnt,dh_product_show_pv,gpm",
+      "flow_split": "channel"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "flow_src",
+      "show_uv",
+      "pay_amt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.good_compete_product_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "SKU-367994-0003 的同类竞品"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_detail/good_compete_product_list",
+    "params": {
+      "product_id": "3679940190014669244",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "compete_list[].product_id",
+      "compete_list[].title",
+      "compete_list[].cover_img",
+      "compete_list[].pay_amt_range"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.core_data",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "商品卡 UV 价值"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shelves_analysis/core_data",
+    "params": {
+      "scene_identity": "shop_product_card_core_data_offline_real_free",
+      "is_activity": false,
+      "activity_id": "",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "index_head[].gmv_per_user.value"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.enter_source_v2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "商品卡按投放时段拆流量"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shelves_analysis/enter_source_v2",
+    "params": {
+      "flow_split": "promote",
+      "scene_identity": "shop_product_card_core_data_offline_real_free",
+      "page_no": 1,
+      "page_size": 10,
+      "is_asc": false,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].source_name",
+      "data[].pay_amt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.flow_overview_card",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "店铺流量大盘（曝光人数 / 点击人数）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_flow_analysis/flow_overview_card",
+    "params": {
+      "is_activity": false,
+      "activity_id": "",
+      "index_selected": "product_show_cnt,product_show_ucnt,product_click_cnt,product_click_ucnt,product_new_cus_click_ucnt_rate,product_old_cus_click_ucnt_rate,pay_ucnt,product_show_click_converse_uv_rate,product_click_pay_converse_uv_rate,product_show_pay_converse_uv_rate,per_user_price,gmv_per_user",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "index_head[].value",
+      "index_head[].out_period_ratio",
+      "index_head[].ahead",
+      "index_head[].benchmark"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.flow_source_funnel",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "店铺曝光-点击-成交漏斗"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_flow_analysis/flow_source_funnel",
+    "params": {
+      "content_type": 1,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "funnel_nodes[].name",
+      "funnel_nodes[].value",
+      "funnel_nodes[].sources[]"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.flow_source_detail_v2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "店铺流量从哪来（5 流量源排行）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_flow_analysis/flow_source_detail_v2",
+    "params": {
+      "sort_field": "product_show_ucnt",
+      "is_asc": false,
+      "page_size": 5,
+      "content_type": 1,
+      "index_selected": "product_show_ucnt,product_click_ucnt,pay_ucnt,product_show_click_converse_uv_rate,product_click_pay_converse_uv_rate,product_show_pay_converse_uv_rate",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].source_name",
+      "data[].product_show_ucnt",
+      "data[].product_click_ucnt",
+      "data[].pay_ucnt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.flow_loss_card",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "店铺流量在哪丢的"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_flow_analysis/flow_loss_card",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "loss_nodes[].name",
+      "loss_nodes[].loss_value",
+      "loss_nodes[].loss_ratio"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.category_overview_price_band_distribution",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "调味品类目价格带分布"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_chance_market/category_overview_price_band_distribution",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21,
+      "activity_id": "",
+      "industry_id": 13,
+      "category_id": "1000009090,1000009128",
+      "sort_field": "cate_pay_amt",
+      "is_asc": "false",
+      "page_no": 1,
+      "page_size": 5,
+      "price_band_type": 1
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "band_id",
+      "band_label",
+      "gmv_ratio",
+      "sale_cnt_ratio",
+      "shop_cnt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.category_overview_price_analysis_product",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促榜上对手店铺名 → 点进去看其商品池"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_chance_market/category_overview_price_analysis_product",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21,
+      "activity_id": "",
+      "industry_id": 13,
+      "category_id": "1000009090,1000009128",
+      "price_band": "30以上"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "products[].product_id",
+      "products[].gmv_range"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.trade_value",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "哪款商品复购率最高"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/crowd_insight/prod/trade_value",
+    "params": {
+      "is_package": "true",
+      "package_type": "all",
+      "package_id": -1,
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "is_activity": "false",
+      "index_selected_core": "exposure_crowd",
+      "index_selected_other": "exposure_not_purchase_crowd",
+      "subTitle": "全部商品",
+      "package_name": "all",
+      "sort_field": "repeat_buy_user_cnt",
+      "is_asc": false
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].product_id",
+      "data[].repeat_buy_user_cnt",
+      "data[].show_uv",
+      "data[].pay_uv"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.basic_attribute",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "X 商品的客户多大年纪"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/crowd_insight/prod/basic_attribute",
+    "params": {
+      "is_package": "true",
+      "package_type": "all",
+      "package_id": -1,
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "is_activity": "false",
+      "subTitle": "全部商品",
+      "package_name": "all",
+      "product_id": "3679940190014669244",
+      "dateType": 22
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "age_distribution",
+      "gender",
+      "province"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.trend_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "单品流量趋势"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_detail/core_data/trend_v3",
+    "params": {
+      "date_type": "21",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "activity_id": "",
+      "product_id": "3679940190014669244",
+      "content_type": 0,
+      "sale_type": 0,
+      "terminal_type": 0,
+      "user_type": 0,
+      "index_list": "dh_product_show_uv",
+      "index_selected": "pay_amt",
+      "trend_type": 1
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "trend.x_str[]",
+      "trend.y[]",
+      "benchmark_trend"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.shop_negative_problem",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "店铺负面问题汇总"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shop_diagnose/shop_negative_problem",
+    "params": {
+      "problem_type": "all",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "negative_problems[].problem_name",
+      "negative_problems[].problem_cnt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
+  },
+  {
+    "key": "compass.overview_data",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "搜索 4 维行业对标（基准/标杆/顶尖）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/search_analysis/overview_data",
+    "params": {
+      "operate_type": 0,
+      "content_type": 0,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "benchmark.shop",
+      "benchmark.industry_basic",
+      "benchmark.industry_excellent",
+      "benchmark.industry_top"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.weekly_report_summary",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "上周搜索周报数据"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/dd_search/search_analysis/weekly_report_summary",
+    "params": {
+      "operate_type": 0,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "last_week_pay_amt",
+      "wow_ratio"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.overview_data_trend",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "搜索 GMV 趋势（7 天每天）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/search_analysis/overview_data_trend",
+    "params": {
+      "index_name": "pay_amt",
+      "trend_type": "pay_amt",
+      "version": 1,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "trend.x_str[]",
+      "trend.y[]"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.shop_rank_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "店铺搜索排名第几"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/search_analysis/overview_data/shop_rank",
+    "params": {
+      "source_biz_type": 3,
+      "sort_field": "pay_amt",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "rank",
+      "top_shops[].shop_id",
+      "top_shops[].pay_amt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.recommend_optimized_product_v2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "哪些商品搜索需优化"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/search_diagnosis/recommend_optimized_product_v2",
+    "params": {
+      "tab_type": 2,
+      "source_biz_type": 1,
+      "page_no": 1,
+      "page_size": 10,
+      "sort_type": 1,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].product_id",
+      "data[].labels",
+      "data[].recommend_suggestion"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.word_rank",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "从引流词 → 词下商品 → 商品详情"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/search_analysis/flow_attract/word_rank",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21,
+      "operate_type": "all",
+      "content_type": 0,
+      "search_intent": 0,
+      "is_qianchuan": "false",
+      "cate_id": 0,
+      "rank_tab": "all",
+      "index_selected": "pay_amt,product_show_ucnt,prod_show_click_ratio,prod_click_pay_ratio",
+      "author_id": "",
+      "page_no": 1,
+      "page_size": 10,
+      "industry_id": 0,
+      "category[]": 0
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].tables.shop_show_product.product_list[].product_id"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.compass_rank_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "行业类目切换（食品 vs 调味品）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/search_analysis/industry_words/compass_rank_v3",
+    "params": {
+      "page_no": 1,
+      "page_size": 10,
+      "rank_type": 1,
+      "search_intent": 0,
+      "sort_field": "",
+      "is_asc": "false",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21,
+      "activity_id": "",
+      "is_activity": "false",
+      "industry_id": 13,
+      "cate_id": 1000009128,
+      "category_id": 1000009128,
+      "total_cate_id": "1000009090,1000009128",
+      "index_selected": "search_show_ucnt,search_ucnt,pay_amt,product_show_ucnt,prod_show_click_ratio,prod_click_pay_ratio"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].base_info.query_word_info"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.shop_video_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "我的视频带来多少搜索（看后搜）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/dd_search/after_watch/shop_video_list",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "cate_id": "1000009128",
+      "first_cid": "21",
+      "content_type": 1,
+      "page_no": 1,
+      "page_size": 10
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].search_after_watch_uv",
+      "data[].search_after_watch_rate",
+      "data[].config_status"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.to_be_opt",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "哪些视频该配置看后搜"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/dd_search/after_watch/to_be_opt",
+    "params": {
+      "date_type": "21",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "cate_id": "1000009128",
+      "first_cid": "21",
+      "content_type": 1,
+      "sort_field": "search_pv",
+      "is_asc": "false",
+      "page_no": 1,
+      "page_size": 10
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "to_be_opt_videos[].video_id",
+      "to_be_opt_videos[].estimated_show_uv_lift"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=621100601) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.realtime_word_overview_v2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "行业现在什么词最热（实时）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/dd_search/hot_spot/realtime_word_overview_v2",
+    "params": {
+      "industry_id": 13,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "hot_words[]",
+      "trend_direction",
+      "opportunity_score"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.core_crowd",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "人群按账号筛选（全部账号 / 单店铺）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/user_ans/core_crowd",
+    "params": {
+      "pay_account_type": "all",
+      "fans_account_type": "official",
+      "index_selected": "product_show",
+      "date_type": 23,
+      "begin_date": "{win_begin_slashdt}",
+      "begin_date_format": "2026-05-24T08:00:00+08:00",
+      "dateType": 22,
+      "userType": "product_show",
+      "accountType": "all"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "trade_crowd",
+      "fans_crowd"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.feature",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "八大策略人群分布"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/crowd/analysis/feature",
+    "params": {
+      "user_scope": "pay",
+      "user_type": "product_show",
+      "account_type": "all",
+      "date_type": 23,
+      "begin_date": "{win_begin_slashdt}",
+      "dateType": 22,
+      "userType": "product_show"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "eight_strategy_crowd[].bucket",
+      "eight_strategy_crowd[].ratio"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.crowd_prefer",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "X 商品的客户偏好啥（内容/类目）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/crowd_insight/prod/crowd_prefer",
+    "params": {
+      "is_package": "true",
+      "package_type": "all",
+      "package_id": -1,
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "is_activity": "false",
+      "product_id": "3679940190014669244",
+      "dateType": 22
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "content_first_level",
+      "content_second_level",
+      "category_first_level"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.basic_attribute_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "上次直播观众多大年纪"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/crowd_insight/live/basic_attribute",
+    "params": {
+      "is_package": "true",
+      "package_type": "all",
+      "package_id": -1,
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "is_activity": "false",
+      "live_room_id": "<latest>",
+      "dateType": 22
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "age_distribution",
+      "gender",
+      "province"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.trade_value_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "哪场直播复购最多"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/crowd_insight/live/trade_value",
+    "params": {
+      "is_package": "true",
+      "package_type": "all",
+      "package_id": -1,
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "is_activity": "false",
+      "index_selected_core": "exposure_crowd",
+      "sort_field": "repeat_buy_user_cnt",
+      "is_asc": false,
+      "dateType": 22
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "list[].live_room_id",
+      "list[].repeat_buy_user_cnt"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.card_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "达人同行同层对比（高于 X% 同行）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/author/cooperate/data_overview/card_list",
+    "params": {
+      "date_type": 21,
+      "end_date": "{win_end_slashdt}",
+      "begin_date": "{win_begin_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "content_split.live_ahead_ratio",
+      "content_split.video_ahead_ratio",
+      "content_split.prodcard_ahead_ratio"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.top_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "达人 Top 类型切换（直播间）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/author/cooperate/data_overview/top_list",
+    "params": {
+      "date_type": 21,
+      "end_date": "{win_end_slashdt}",
+      "index_name": "coop_author_pay_amt",
+      "channel_type": "live",
+      "content_type": "author"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "rank",
+      "live_room_id",
+      "pay_amt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "达人合作历史 / 累计 GMV"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/author/cooperate/list",
+    "params": {
+      "is_asc": "false",
+      "page_no": 1,
+      "page_size": 20,
+      "date_type": 21,
+      "end_date": "{win_end_slashdt}",
+      "index_selected": "",
+      "begin_date": "{win_begin_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "author_id",
+      "fans_cnt",
+      "recent_pay_amt",
+      "total_pay_amt",
+      "cooperation_cnt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.core_index",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促周期 vs 日常周期对比（GMV 同期增幅）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promotion/promotion_workbench/core_index",
+    "params": {
+      "activity_id": "11260409003508",
+      "is_activity": true,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "current_amt",
+      "target_amt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.hot_sale_track",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "行业类目筛选（粮油干货 vs 调味品 vs 方便速食）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promotion/promotion_workbench/hot_sale_track",
+    "params": {
+      "activity_id": "11260409003508",
+      "industry_id": 13,
+      "cate_id": 1000009128,
+      "date_type": 100,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "rank_type": 4,
+      "page_no": 1,
+      "page_size": 10,
+      "brand_type": 0,
+      "first_cid": 1000009090
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "my_rank"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.shop_lead_text",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促引领文案"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promotion/promotion_workbench/shop_lead_text",
+    "params": {
+      "activity_id": "11260409003508",
+      "industry_id": 13,
+      "cate_id": 1000009128,
+      "date_type": 100,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "lead_text"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.activity_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "活动列表（顶部选择器）有哪些大促"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/config_center/activity_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "activity_id",
+      "activity_name",
+      "begin_time",
+      "end_time",
+      "status"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.getscoreappconf",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "体验分综合诊断（4 维 + 趋势 + 建议）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/ecology/front/growth/exp/app/getScoreAppConf",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "dimensions",
+      "trend",
+      "recommendations"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.prof_exp_score",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "首页顶部 prof_exp_score 摘要"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/common/homepage/core/prof_exp_score",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "score",
+      "industry_compare_label"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.core_data_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "机器人 vs 人工解决比例"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/customer_analysis/core_data",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "ai_resolve_rate",
+      "human_service_cnt",
+      "robot_service_cnt"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.core_data_intent",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "客服咨询物流慢 → 跳物流诊断（声音 → 数据闭环）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/customer_analysis/core_data_intent",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "top_intents[].intent_name"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.conversation_permission",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "客诉单分析（complaint_order）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/customer_service_analysis/hot_consult/conversation_permission",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].complaint_id",
+      "data[].sku_id"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.customer_detail_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "单客户详情下钻（某个客户问了什么）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/customer_analysis/customer_detail_list",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].user_id",
+      "data[].session_summary",
+      "data[].intent_chain"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.comment_reason_analysis_core",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "差评原因同环比（trend_yoy）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/comment_reason_analysis_core",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "reasons[].trend_yoy"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.overview",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "差评率多少"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/overview",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "total_review_cnt",
+      "positive_rate",
+      "negative_rate",
+      "dsr",
+      "service_score",
+      "delivery_score",
+      "hot_keyword_top5"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.comment_reason_analysis_left",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "差评原因分类树（商品/物流/服务三大类）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/comment_reason_analysis_left",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "category_tree[]"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "端点健康，业务当前无数据 (sweep PASS_NODATA)"
+  },
+  {
+    "key": "compass.comment_formula",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "评分计算公式（消费者评分怎么算）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/comment_formula",
+    "params": {
+      "date_type": "21",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "content_type": 0
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "formula",
+      "weight_table",
+      "threshold_description"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.unactlogisticslist",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "物流诊断 — 异常类型筛选（揽收/发货/虚假签收）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/api/ecompass_logistics/unactLogisticsList",
+    "params": {
+      "abnormal_type": "signed",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].anomaly_type"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=0) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.ebillexpresslist",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "电子面单快递列表（合作快递商）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/api/ecompass_logistics/eBillExpressList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "data[].express_code",
+      "data[].express_name",
+      "data[].signed_status"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_AUTH (code=0) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.product_recommendation_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促操作台 7 个推荐池切换 - 立减直降"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promotion/promotion_workbench/product_recommendation_list",
+    "params": {
+      "activity_id": "11260409003508",
+      "recommendation_type": 1,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "products[]"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=11001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.getscoretrend",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "体验分 7 天 vs 30 天对比"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/ecology/front/growth/exp/app/getScoreTrend",
+    "params": {
+      "range": 22,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "trend_data[]"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.product_category_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "用户原声 — 按商品类目筛差评"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/product_category_list",
+    "params": {
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "category_list[].category_id",
+      "category_list[].category_name"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.diagnosis_detail",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "用户原声 → 直播复盘（差评从直播间来）- 复盘域 endpoint"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/live/live_review/diagnosis_detail",
+    "params": {
+      "live_id": "",
+      "room_id": "<from_user_sound>"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "review_problems[]",
+      "negative_comments[]"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=621000601) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.shop_core_data_trend",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促榜对手店铺 → 拿 shop_id → 调 shop_core_data_trend 看对手 30 天大盘"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/mall/market/shop_core_data_trend",
+    "params": {
+      "date_type": "21",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "cate_id": "1000009128",
+      "first_cid": "21",
+      "industry_id": "13",
+      "content_type": 1,
+      "index_selected": "pay_amt",
+      "trend_type": 1,
+      "target_shop_id": "<competitor>"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "trend[].x_str",
+      "trend[].gmv"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.getscoreappconf_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "体验分趋势异常诊断（突然下跌某日）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/ecology/front/growth/exp/app/getScoreAppConf",
+    "params": {
+      "module_id": 500229,
+      "page_id": 20906,
+      "biz_id": 62000070001,
+      "platform": "compass",
+      "role_type": 2
+    },
+    "body": {},
+    "biz_code_field": "st",
+    "expected_fields": [
+      "trend[]",
+      "abnormal_events"
+    ],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from phase5 testcase"
+  },
+  {
+    "key": "compass.diagnosis_overview",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "物流诊断 - 异常单同环比 + 责任快递归因"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/api/ecompass_logistics/diagnosis_overview",
+    "params": {
+      "group_by": "courier",
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}",
+      "date_type": 21
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [
+      "courier_distribution[]"
+    ],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.core_index_v3_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "basic_meta 30 个 index_name 含 `net_income_amt / payin3d_pay_ship_amt_rate / refund_amt_rate / qc_ad_cost`"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/compass_api/shop/common/trade/core_index_v3",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
+  },
+  {
+    "key": "compass.core_trend_v3_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`axis_data` 趋势"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/trade/core_trend_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.pie_chart_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`module_data.trade_core_index_pie_and_bar.compass_general_multi_index_card_value.{basic_meta[], data[].{<dim>##<index>}.index_value.{value, last_value, benchmark, out_period_ratio, value_ratio}}`"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/trade/pie_chart_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.shop_rank_2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "同行位次（本店 7506 名）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/trade/shop_rank",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.income_expense_index_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "收支总览"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/trade/income_expense_index_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.prof_exp_score_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`data.score / hundredScore / exp_score_detail / expScoreOralInfo.{productQuality, logisticSpeed, imSatisfaction} / industry / deducted_score / exp_score_trend_chart[]`"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/homepage/core/prof_exp_score",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.core_index_v3_2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "汇总核心 12 指标"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/core_index_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.summary_core_index_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "经营汇总"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/summary_core_index_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.financial_summary",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "财务摘要"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/financial_summary",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.manage_overview",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "经营总览"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/manage_overview",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.content_detail_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "内容详情"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/content_detail_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.product_content_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "商品 + 内容关联"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/product_content_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.product_trend",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "商品趋势"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/product_trend",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.product_window",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "橱窗商品"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/product_window",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.realtime_liveroom_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "实时直播 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/app/homepage/liveroom/realtime_liveroom_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.overview_data_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "搜索概览 6 指标 + last_value/out_period_ratio"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/search_analysis/overview_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.overview_data_trend_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "搜索趋势"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/search_analysis/overview_data_trend",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.word_rank_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "top 10 引流词"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/search_analysis/flow_attract/word_rank",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.compass_rank_v3_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "行业热词 6 榜"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/industry_words/compass_rank_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.word_detail",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "单词详情"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/industry_words/word_detail",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.recommend_optimized_product_v2_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`page_result.total=17, 17 商品, benchmark_product, diagnosis_result, index_map, shop_mkt_tool/platform_mkt_tool`"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/search_diagnosis/recommend_optimized_product_v2",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.shop_video_list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "看后搜视频 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/dd_search/after_watch/shop_video_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.benefit",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "看后搜收益"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/dd_search/after_watch/benefit",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.permission_v",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "权限"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/dd_search/after_watch/permission_v",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.to_be_opt_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "待优化"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/dd_search/after_watch/to_be_opt",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.realtime_word_overview_v2_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "实时热词"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/dd_search/after_watch/hot_spot/realtime_word_overview_v2",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.ep",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "AI 智能体专用 6 端点"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/dd_search/agent/*",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.product_list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`cell_info.{qc_ad_cost, net_trans_amt, ...}`"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product/product_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.get_abnormal_threshold",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`{abnormal_threshold_1d:20, abnormal_threshold_7d:20, use_customize:false}`"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product_card/common/get_abnormal_threshold",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.track_or_untrack_product",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "关注/取关（写入）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/product/product/track_or_untrack_product",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.categoryoptions",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "类目下拉树"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product/categoryOptions",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.index_data_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "core 12 指标"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product_detail/core_data/index_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.sku_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "SKU 拆分"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_detail/core_data/sku",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
+  },
+  {
+    "key": "compass.trend_v3_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "30 天 trend"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product_detail/core_data/trend_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.flow_data_v2_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "流量拆分"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product_detail/flow_source/flow_data_v2",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.flow_data_more",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "流量深拆 5 渠道（合作达人/商品卡/自营直播/自营短视频/自营图文）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product/product_detail/flow_source/flow_data_more",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
+  },
+  {
+    "key": "compass.good_compete_product_list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "竞品商品 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product_detail/good_compete_product_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.base_info",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "商品基础信息"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product_detail/base_info",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.trend",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "替代 cdr_detail (404) 的老接口"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/product_detail_v2/prod/trend",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=10001) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.flow_overview_card_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "12 指标完整（含 ahead + benchmark + out_period_ratio）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/product/product_flow_analysis/flow_overview_card",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.flow_source_funnel_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "3 节点漏斗（曝光→点击→成交）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/product/product_flow_analysis/flow_source_funnel",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.flow_source_detail_v2_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "合作达人行 31 人成交"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/product/product_flow_analysis/flow_source_detail_v2",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.cdr_detail",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "❌ 404 已下线，使用 `business_api/.../prod/trend` 替代"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product/product/cdr_detail",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.core_data_2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`index_head[]` 含 product_click_ucnt/product_click_cnt/gmv_per_user/product_potential_cus_click_ucnt_ratio/product_old_cus_click_ucnt_ratio/pay_amt + benchmark + ahead + tag"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/product_card/shelves_analysis/core_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.enter_source_v2_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "投放时段-合作达人/全域投放/标准品牌投放/非投放时段拆分"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/product_card/shelves_analysis/enter_source_v2",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.doudian_shop_overview",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "流量超 74.14% 同行 / 转化低 89.58% / 7 天 trend"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shop_diagnose/doudian_shop_overview",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS"
+  },
+  {
+    "key": "compass.key_suggestion",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "优化建议"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product_card/shop_diagnose/key_suggestion",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.limit_product_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "衰退/潜力品 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product_card/shop_diagnose/limit_product_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.doudian_focus_product_tab_v2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "recommend_limit/flow_top20/flow_decline 三 tab 计数"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/product_card/shop_diagnose/doudian_focus_product_tab_v2",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS"
+  },
+  {
+    "key": "compass.cate_core_data",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "类目大盘"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product_chance_market/cate_core_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.dig_cate_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "机会类目 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product_chance_market/dig_cate_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.leaf_category_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "叶子类目"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/product_chance_market/leaf_category_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.category_price_band_distribution",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "5 价格带 + cate_pay_amt + extra_value lower/upper range 脱敏"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/category_overview/category_price_band_distribution",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.category_price_analysis_product",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "cell_info含rank_no + product_info + cate_pay_amt range + add_competition_info"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/category_overview/category_price_analysis_product",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.market_hot_sale",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "类目热销"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/category_overview/market_hot_sale",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.trend_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "exposure_crowd 13155 / click_crowd 528 / shopping_cart_crowd 26 / purchase_crowd 75 + 反向指标"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd_insight/prod/trend",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.basic_attribute_2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "单 SKU 基础画像"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd_insight/prod/basic_attribute",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.basic_attribute_compare",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "两 SKU 对比"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd_insight/prod/basic_attribute_compare",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.crowd_prefer_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "单 SKU 偏好"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd_insight/prod/crowd_prefer",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.trade_value_2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "复购客户 + rebuy_user_cnt"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd_insight/prod/trade_value",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.crowd_data",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "live_people 213/purchase 1/not_purchase 212"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd_insight/live/crowd_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.basic_attribute_3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "sex/age/consumer 分布 + tgi"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd_insight/live/basic_attribute",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.crowd_delivery",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "推千川（写入）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd_insight/live/delivery/crowd_delivery",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.core_crowd_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`portrait_tag` 字典（小镇中老年 / 都市蓝领 / 新锐白领 / 精致妈妈 / 都市银发 / Z 世代 / 资深中产 / GenZ）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/user_ans/core_crowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "合作达人 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/cooperate/list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.top_list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "达人 ROI"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/cooperate/data_overview/top_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.card_list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "卡片列表"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/cooperate/data_overview/card_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.scatter_plot",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "散点图"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/cooperate/data_overview/scatter_plot",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.qualification",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "资质（typo: qulification）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/cooperate/common/qualification",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.dd_share_login",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "抖店共享登录"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/business_api/home/dd_share_login",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_OTHER (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.change_role",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "切换身份（自营/达人/MCN）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/business_api/home/change_role",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.recommend_authors",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "推荐达人"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/recommend_authors",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.core_index_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促核心指标"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promotion_workbench/core_index",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.shop_lead_text_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促文案"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promotion_workbench/shop_lead_text",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.product_recommendation_list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "商品推荐 7 池"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promotion_workbench/product_recommendation_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.activity_recommendation_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "活动推荐"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promotion_workbench/activity_recommendation_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.hotword_recommendation_core_data",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "热词核心"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promotion_workbench/hotword_recommendation_core_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.hotword_recommendation_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "热词 list 3 类"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promotion_workbench/hotword_recommendation_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.operational_recommendation_index",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "运营推荐"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promotion_workbench/operational_recommendation_index",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.hot_sale_track_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "大促进度"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promotion_workbench/hot_sale_track",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.overview_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "exp_bad_cmt_rate / ext_prod_qreturn_ratio / complaint_ratio / exp_bad_cmt_order_cnt + multi_trends 30 日点位"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promise/user_sound/overview",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.comment_reason_analysis_core_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "4 差评标签数 + 总数"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/comment_reason_analysis_core",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS"
+  },
+  {
+    "key": "compass.comment_reason_analysis_left_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "左侧差评原因"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/comment_reason_analysis_left",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
+  },
+  {
+    "key": "compass.product_category_list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "类目筛"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/product_category_list",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS"
+  },
+  {
+    "key": "compass.product_list_2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "商品 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/product_list",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS_NODATA"
+  },
+  {
+    "key": "compass.comment_formula_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "评论公式"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/compass_api/shop/promise/user_sound/comment_formula",
+    "params": {
+      "date_type": 21,
+      "begin_date": "{win_begin_slashdt}",
+      "end_date": "{win_end_slashdt}"
+    },
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "refix(compass) prefix+params 修复 → PASS"
+  },
+  {
+    "key": "compass.core_data_3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "客服 KPI"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promise/customer_analysis/customer_service_analysis/core_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.core_data_intent_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "客服意图"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promise/customer_analysis/customer_service_analysis/core_data_intent",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.customer_detail_list_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "客服明细 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promise/customer_analysis/customer_service_analysis/customer_detail_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.detail_intent",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "二/三级意图"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/promise/customer_analysis/customer_service_analysis/detail_intent",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.refund_order",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "top 10 商品退款"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/after_sale_analysis/refund_order",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.complaint_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "客诉 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/after_sale_analysis/complaint_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.complaint_order",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "客诉订单"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/after_sale_analysis/complaint_order",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.core_data_4",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "核心"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/after_sale_analysis/core_data",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.core_data_v2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "核心 v2"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/after_sale_analysis/core_data_v2",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.quality_return",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "质量退货"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/after_sale_analysis/quality_return",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.getdiagnosisconclusion",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "物流诊断结论"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/getDiagnosisConclusion",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.getshopexpressenumdatalist",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "物流公司枚举"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/getShopExpressEnumDataList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.ebillexpresslist_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "电子面单快递 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/eBillExpressList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.unactlogisticslist_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "未生效物流 list"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/unactLogisticsList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.getlogisticsdiagnosislinearriveontimeratelist",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "线路准时率（对应 doc 推测 abnormal_orders?group_by=courier）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/getLogisticsDiagnosisLineArriveOntimeRateList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.getlogisticsdiagnosisdetaillist",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "物流诊断明细（对应 doc 推测 abnormal_orders）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/getLogisticsDiagnosisDetailList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.getlogisticsdiagnosisrecommendexpresslist",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "推荐快递"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/getLogisticsDiagnosisRecommendExpressList",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.text",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "跨子域 govern"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/govern/friendly/service/external/text",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.getscoreappconf_2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "体验分配置 + 4 大版块"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/app/getScoreAppConf",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.top_product",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "top_products[] 含 product_id + product_name + traded_amount + traded_user_cnt + qr_code + has_cate_qualification"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_chance_center/user_select/top_product",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.summary",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "cate_trade response（含 category_id + self/peer_avg/platform_avg 三维 + related_clues）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_chance_center/user_select/summary",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.seller_ai_report",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "AI 卖家洞察报告（仍 ⚠）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_chance_center/seller_ai_report",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.delivery_crowd",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "⭐⭐ 推人群到千川（写入）"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd/delivery_crowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.create_market_crowd",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "⭐⭐ 创建营销人群"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd/create_market_crowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.delete_crowd",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "删除人群"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd/delete_crowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.duplicate_crowd",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "复制人群"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd/duplicate_crowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.check_market_crowd",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "创建前校验"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd/check_market_crowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.custom_crowd",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "插入自定义人群"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd/tag/insert/custom_crowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.custom_crowd_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "更新自定义人群"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/crowd/tag/update/custom_crowd",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.cnt_info",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "自定义市场计数"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/insight/self_define_market/cnt_info",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.common",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "`_endpoints_raw.txt:841-911`"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/app/alert_center/common",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.live",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/app/alert_center/live",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.service",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/app/alert_center/service",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.alert_change",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/app/growth_center/alert_change",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.homepage_alert_diagnose_list",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/app/homepage_alert_diagnose_list",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.alert_center",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/app/homepage_ms/alert_center",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.alert_info",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "POST",
+    "path": "/app/homepage_new/alert_info",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.ep_1",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "同上"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/multi_shop/product_chance_market/*",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.ep_2",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "99_pages_index §3.3"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/inst/*",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.operate_account_list_v3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "多账户切换"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/settlement/operate_account_list_v3",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.account_overview",
+    "platform": "compass",
+    "category": "",
+    "aliases": [
+      "财务摘要"
+    ],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/business_api/shop/transaction_analysis/account_overview",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.ep_3",
+    "platform": "compass",
+    "category": "",
+    "aliases": [],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/launcher_api/*",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.ep_4",
+    "platform": "compass",
+    "category": "",
+    "aliases": [],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/touch_x/*",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_DRIFT (code=None) @ 2026-06-01 待修"
+  },
+  {
+    "key": "compass.hide_watermark",
+    "platform": "compass",
+    "category": "",
+    "aliases": [],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/api/get/hide_watermark",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": true,
+    "verified_at": "2026-06-01",
+    "notes": "from inventory (候选路径, 待 sweep 验证); raw="
+  },
+  {
+    "key": "compass.ep_5",
+    "platform": "compass",
+    "category": "",
+    "aliases": [],
+    "host": "compass.jinritemai.com",
+    "method": "GET",
+    "path": "/marker_api/*",
+    "params": {},
+    "body": null,
+    "biz_code_field": "st",
+    "expected_fields": [],
+    "verified": false,
+    "verified_at": "2026-06-01",
+    "notes": "sweep FAIL_404 (code=None) @ 2026-06-01 待修"
+  }
+]

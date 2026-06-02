@@ -6,6 +6,7 @@ from app.providers.ollama_provider import OllamaProvider
 from app.providers.openai_provider import OpenAIProvider
 from app.providers.seedance_provider import SeedanceProvider
 from app.providers.seedream_provider import SeedreamProvider
+from app.providers.veo_provider import VeoProvider
 from app.providers.registry import ProviderRegistry
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "OllamaProvider",
     "SeedanceProvider",
     "SeedreamProvider",
+    "VeoProvider",
     "ProviderRegistry",
 ]

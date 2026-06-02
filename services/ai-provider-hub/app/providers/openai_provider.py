@@ -145,26 +145,39 @@ class OpenAIProvider(BaseProvider):
     # ── Image Generation ──
 
     async def generate_image(self, prompt: str, model: str, **kwargs: object) -> dict:
+        import logging
+        log = logging.getLogger("openai_provider.image")
         if not self._has_key():
             return {
                 "images": [{"url": "https://placeholder.co/1536x1024?text=mock", "revised_prompt": prompt}],
                 "usage": {"cost_usd": 0},
             }
 
-        refs = kwargs.get("reference_images") or []
-        ref_notes: list[str] = []
-        for i, ref in enumerate(refs):
+        # 提取参考图 URL（dict 取 url 字段；str 直接用）
+        raw_refs = kwargs.get("reference_images") or []
+        print(
+            f"[IMG-DBG] generate_image model={model} prompt_len={len(prompt or '')} "
+            f"raw_refs_count={len(raw_refs)} raw_refs_types={[type(r).__name__ for r in raw_refs[:3]]}",
+            flush=True,
+        )
+        ref_urls: list[str] = []
+        for ref in raw_refs:
             if isinstance(ref, dict):
-                ref_type = ref.get("type", "reference")
-                ref_notes.append(f"图{i + 1}是{ref_type}参考图，请保持主体一致")
-            elif isinstance(ref, str):
-                ref_notes.append(f"图{i + 1}是参考图，请保持主体一致")
-        if ref_notes:
-            prompt = f"{prompt}\n\n参考约束：{'；'.join(ref_notes)}"
+                u = ref.get("url") or ref.get("image_url")
+                if isinstance(u, str) and u:
+                    ref_urls.append(u)
+            elif isinstance(ref, str) and ref:
+                ref_urls.append(ref)
+        print(
+            f"[IMG-DBG] extracted ref_urls count={len(ref_urls)} "
+            f"first={ref_urls[0][:80] if ref_urls else '(none)'}",
+            flush=True,
+        )
 
         chosen_model = model or "gpt-image-2"
         size = kwargs.get("size", "1536x1024")
         quality = kwargs.get("quality", "auto")
+        n = int(kwargs.get("n", 1))
 
         if chosen_model.startswith("gpt-image"):
             if quality == "standard":
@@ -173,20 +186,112 @@ class OpenAIProvider(BaseProvider):
             if size not in valid_sizes:
                 size = "1536x1024"
 
+        # 走 /images/edits（gpt-image 系列支持 image[] 多张参考图）— 只在有参考图时
+        if ref_urls and chosen_model.startswith("gpt-image"):
+            print(f"[IMG-DBG] → /images/edits (with {len(ref_urls)} refs, model={chosen_model})", flush=True)
+            return await self._generate_image_with_refs(
+                prompt=prompt, model=chosen_model, size=size, quality=quality, n=n, ref_urls=ref_urls
+            )
+
+        print(f"[IMG-DBG] → /images/generations (no refs or non-gpt-image model={chosen_model})", flush=True)
+
+        # 没参考图 → 走 /images/generations 纯 text-to-image
         payload = {
             "model": chosen_model,
             "prompt": prompt,
             "size": size,
             "quality": quality,
-            "n": kwargs.get("n", 1),
+            "n": n,
         }
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(f"{_BASE_URL}/images/generations", headers=self._headers(), json=payload)
             resp.raise_for_status()
             data = resp.json()
 
-        images = [{"url": img.get("url", ""), "revised_prompt": img.get("revised_prompt", "")} for img in data.get("data", [])]
+        images = []
+        for img in data.get("data", []):
+            url = img.get("url") or ""
+            if not url and img.get("b64_json"):
+                url = f"data:image/png;base64,{img['b64_json']}"
+            images.append({"url": url, "revised_prompt": img.get("revised_prompt", "")})
         return {"images": images, "usage": {"cost_usd": 0.04 * len(images)}}
+
+    async def _generate_image_with_refs(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        size: str,
+        quality: str,
+        n: int,
+        ref_urls: list[str],
+    ) -> dict:
+        """gpt-image-1+ /images/edits 接口：multipart/form-data 上传 image[] 多张参考图。
+
+        ref_urls 元素可以是：
+          - data URL (data:image/png;base64,...) → 直接 base64 解码拿 bytes
+          - http(s):// URL → httpx GET 下载拿 bytes
+        """
+        import base64
+        # 1. 把所有参考图都解码/下载成 (filename, bytes, mime) 元组
+        files_to_upload: list[tuple[str, bytes, str]] = []
+        async with httpx.AsyncClient(timeout=60.0) as fetch_client:
+            for i, url in enumerate(ref_urls):
+                if url.startswith("data:"):
+                    # data URL: data:[mime];base64,[content]
+                    try:
+                        header, b64_data = url.split(",", 1)
+                        mime = "image/png"
+                        if ";" in header and ":" in header:
+                            mime_part = header.split(":", 1)[1].split(";", 1)[0]
+                            if mime_part:
+                                mime = mime_part
+                        img_bytes = base64.b64decode(b64_data)
+                    except Exception as exc:
+                        raise ValueError(f"failed to decode data URL ref {i}: {exc}") from exc
+                elif url.startswith(("http://", "https://")):
+                    r = await fetch_client.get(url)
+                    r.raise_for_status()
+                    img_bytes = r.content
+                    mime = r.headers.get("content-type", "image/png").split(";")[0]
+                else:
+                    raise ValueError(f"ref {i} unsupported scheme: {url[:50]}")
+                ext = "png" if "png" in mime else "jpg" if ("jpeg" in mime or "jpg" in mime) else "png"
+                files_to_upload.append((f"ref{i}.{ext}", img_bytes, mime))
+
+        # 2. 组装 multipart files + form data
+        files: list[tuple[str, tuple[str, bytes, str]]] = []
+        for filename, content, mime in files_to_upload:
+            files.append(("image[]", (filename, content, mime)))
+
+        data = {
+            "model": model,
+            "prompt": prompt,
+            "size": size,
+            "quality": quality,
+            "n": str(n),
+        }
+
+        # 3. POST /images/edits（multipart/form-data — 不要 Content-Type: application/json）
+        headers = {k: v for k, v in self._headers().items() if k.lower() != "content-type"}
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(
+                f"{_BASE_URL}/images/edits",
+                headers=headers,
+                files=files,
+                data=data,
+            )
+            resp.raise_for_status()
+            ret = resp.json()
+
+        images = []
+        for img in ret.get("data", []):
+            u = img.get("url") or ""
+            if not u and img.get("b64_json"):
+                u = f"data:image/png;base64,{img['b64_json']}"
+            images.append({"url": u, "revised_prompt": img.get("revised_prompt", "")})
+        # cost：edits 比 generations 略贵（OpenAI 定价 ~$0.06-0.16 per image）
+        return {"images": images, "usage": {"cost_usd": 0.06 * len(images)}}
 
     # ── Analysis (Vision) ──
 

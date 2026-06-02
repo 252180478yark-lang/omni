@@ -30,8 +30,12 @@ class ChatService:
                 record_usage(name, model, result.usage)
                 return result
             except NotImplementedError:
+                if payload.provider and name == payload.provider:
+                    raise RuntimeError(f"preferred provider '{name}' does not implement chat") from None
                 continue
             except Exception as exc:
+                if payload.provider and name == payload.provider:
+                    raise RuntimeError(f"preferred provider '{name}' failed: {exc}") from exc
                 last_error = exc
                 continue
         raise RuntimeError(f"all chat providers failed: {last_error}")

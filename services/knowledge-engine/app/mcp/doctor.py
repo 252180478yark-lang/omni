@@ -1,0 +1,293 @@
+"""omni MCP 健康检查（design doc §6.3 调试三件套之一）。
+
+用法：
+    # CLI（容器内）
+    docker exec omni-knowledge-engine python -m app.mcp.doctor
+    # 退出码 0 = 全绿；1 = 有红
+
+    # 启动期（main.py lifespan 内）
+    from app.mcp.doctor import run_at_startup
+    await run_at_startup()  # 仅日志，不抛
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import sys
+from dataclasses import dataclass, field
+
+import httpx
+
+from app.config import settings
+from app.database import init_pool, close_pool, get_pool
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CheckResult:
+    name: str
+    ok: bool
+    detail: str = ""
+
+
+@dataclass
+class DoctorReport:
+    checks: list[CheckResult] = field(default_factory=list)
+
+    @property
+    def all_green(self) -> bool:
+        return all(c.ok for c in self.checks)
+
+    def render(self) -> str:
+        lines = ["omni MCP doctor 报告"]
+        for c in self.checks:
+            mark = "OK  " if c.ok else "FAIL"
+            lines.append(f"  [{mark}] {c.name}{(': ' + c.detail) if c.detail else ''}")
+        lines.append("")
+        lines.append("结论：全绿 ✓" if self.all_green else "结论：存在 FAIL ✗")
+        return "\n".join(lines)
+
+
+async def _check_db_pool(report: DoctorReport) -> None:
+    try:
+        pool = get_pool()
+        v = await pool.fetchval("SELECT 1")
+        report.checks.append(CheckResult("DB pool", v == 1))
+    except Exception as exc:
+        report.checks.append(CheckResult("DB pool", False, str(exc)))
+
+
+async def _check_mcp_schema(report: DoctorReport) -> None:
+    try:
+        pool = get_pool()
+        n = await pool.fetchval(
+            "SELECT COUNT(*) FROM information_schema.tables"
+            " WHERE table_schema='mcp' AND table_name IN ('tool_calls','human_gates')"
+        )
+        ok = n == 2
+        report.checks.append(CheckResult("mcp schema tables", ok, f"found {n}/2"))
+    except Exception as exc:
+        report.checks.append(CheckResult("mcp schema tables", False, str(exc)))
+
+
+def _check_yaml(report: DoctorReport) -> None:
+    try:
+        from app.mcp.model_config import _load_yaml
+        raw = _load_yaml()
+        ok = "__default__" in raw
+        report.checks.append(CheckResult("tool_models.yaml", ok, f"keys={list(raw.keys())[:5]}"))
+    except Exception as exc:
+        report.checks.append(CheckResult("tool_models.yaml", False, str(exc)))
+
+
+async def _check_tools_registered(report: DoctorReport) -> None:
+    """FastMCP 3.x: mcp.list_tools() 是 async coroutine，必须 await。"""
+    try:
+        from app.mcp.server import mcp
+        tools = await mcp.list_tools()
+        # W1 5 + W2 5 + W3a 3 + W3b 7 + W3c 3 + W4-A 4 + W4-B 切片 5/8/9/14.1/14.2/14.3 phase A+B+B+/14.4 phase C+D step 6/6.5/7 + realman 2 + video_anchor 1 = 52
+        wanted = {
+            # W1
+            "list_skus", "get_sku", "search_kb", "list_kbs", "list_briefs",
+            # W2
+            "query_costs", "compute_margin",
+            "generate_brief", "generate_image", "generate_video",
+            # W3a
+            "record_cost", "disable_cost_item", "gather_brief_context",
+            # W3b
+            "fetch_compass_store_daily", "fetch_compass_sku_detail",
+            "fetch_compass_search_traffic",
+            "fetch_yuntu_5a", "fetch_yuntu_brand_mind",
+            "kb_upload_doc", "kb_set_role",
+            # W3c
+            "summarize_text", "parse_long_doc_with_gemini",
+            "query_template_chunks",
+            # W4-A
+            "rate_tool_call", "agent_self_review",
+            "codify_pattern_to_skill", "refresh_project_context",
+            # W4-B 切片 5（W4 加分 5 tool）
+            "save_decision", "schedule_observation",
+            "generate_image_compare", "send_wecom_message",
+            "dy_publish_creative",
+            # W4-B 切片 8（工厂出厂价字典）
+            "list_product_prices",
+            # W4-B 切片 9（渠道扣点表）
+            "list_channel_fees",
+            # W4-B 切片 14.1（sku-pipeline step 2 卖点矩阵）
+            "generate_selling_points_matrix",
+            # W4-B 切片 14.2（sku-pipeline step 3 人群匹配）
+            "generate_audience_match",
+            # W4-B 切片 14.3 phase A（pipeline lineage 查询/采纳）
+            "pipeline_list_matrix_runs", "pipeline_get_matrix_run",
+            "pipeline_list_audience_runs", "pipeline_get_audience_run",
+            "pipeline_list_audience_records", "pipeline_get_audience_record",
+            "pipeline_adopt",
+            # W4-B 切片 14.4 phase D：投后 ad_metrics 回传闭环
+            "record_ad_metrics", "pipeline_get_asset_lineage",
+            "pipeline_list_asset_performance",
+            # W4-B 切片 14.3 phase B（sku-pipeline step 4 圈包 SOP）
+            "generate_audience_pack",
+            # W4-B 切片 14.3 phase B+（关键词扩展 500 词）
+            "generate_keyword_pack",
+            # W4-B 切片 14.4 phase C（6 类素材脚本：视频软广/种草/收割 + 图文收割 + 主图 + 详情页）
+            "generate_creative_pack",
+            # W4-B 切片 14.4 phase D（分镜图生成挂血缘）
+            "generate_storyboard_images",
+            # W4-B 切片 14.4 phase D step 6.5（角色定妆白底像锁脸）
+            "generate_character_sheets",
+            # W4-B 切片 14.4 phase D step 7（视频段生成：分镜图当 first_frame + character_sheet 锁脸）
+            "generate_video_segments",
+            # realman 真实人物视频（绕过 Seedance content_sensitive）
+            "realman_create_avatar", "realman_generate_portrait_video",
+            # t2v 模式角色锚点生成
+            "generate_video_anchor",
+            # 2026-05-28 反推视频→故事板提示词(直调 Gemini Files API)
+            "reverse_storyboard_video",
+            # 2026-05-28 反馈飞轮地基（migration 031）：消息级反馈
+            "rate_message",
+            # 2026-05-28 Phase A+/A++（migration 032）：bug 记忆库 + 客户端日志
+            "log_client_event", "report_bug", "list_bugs", "update_bug",
+        }
+        names = {getattr(t, "name", str(t)) for t in tools}
+        missing = wanted - names
+        # extra = 已注册但不在 wanted 契约里的 tool。
+        # 加新 tool 忘了同步 wanted 时，这里会列出来提醒"该把它加进契约"——
+        # 不算 FAIL（不影响功能），只是把漂移暴露出来，免得自检越用越名不副实。
+        extra = names - wanted
+        n = len(wanted)
+        live = len(names)
+        if missing:
+            detail = f"missing={sorted(missing)}"
+        elif extra:
+            detail = f"contract {n} ok; live {live}; 新增未入契约 extra={sorted(extra)}（建议补进 wanted）"
+        else:
+            detail = f"all {n} ok (live {live})"
+        report.checks.append(CheckResult(
+            f"{n} tools registered", not missing, detail,
+        ))
+    except Exception as exc:
+        report.checks.append(CheckResult("tools registered", False, str(exc)))
+
+
+def _check_prompts(report: DoctorReport) -> None:
+    """W3a：检 config/prompts/ 关键模板都在。"""
+    try:
+        from app.mcp import prompts as _p
+        existing = set(_p.list_templates())
+        wanted = {
+            "anti_ai_voice",
+            "generate_brief.system", "generate_brief.user",
+            "compute_margin.system", "compute_margin.user",
+            "channel_profiles/douyin",
+            "channel_profiles/tmall",
+            "channel_profiles/jd",
+            # W4-B 切片 14.1：sku-pipeline step 2
+            "selling_points_matrix.system", "selling_points_matrix.user",
+            # W4-B 切片 14.2：sku-pipeline step 3
+            "audience_match.system", "audience_match.user",
+            # W4-B 切片 14.3 phase B：sku-pipeline step 4
+            "audience_pack.system", "audience_pack.user",
+            # W4-B 切片 14.3 phase B+：keyword 扩展
+            "keyword_pack.system", "keyword_pack.user",
+            # W4-B 切片 14.4 phase C：6 类素材 system + 1 共用 user
+            "creative_pack.video_soft_ad.system",
+            "creative_pack.video_planting.system",
+            "creative_pack.video_harvest.system",
+            "creative_pack.graphic_harvest.system",
+            "creative_pack.product_main_image.system",
+            "creative_pack.product_detail_page.system",
+            "creative_pack.user",
+            # t2v 模式角色锚点
+            "video_anchor.system", "video_anchor.user",
+            # 2026-05-28 反推视频
+            "reverse_storyboard.system", "reverse_storyboard.user",
+        }
+        missing = wanted - existing
+        report.checks.append(CheckResult(
+            "prompt templates",
+            not missing,
+            f"missing={sorted(missing)}" if missing else f"all {len(wanted)} ok",
+        ))
+    except Exception as exc:
+        report.checks.append(CheckResult("prompt templates", False, str(exc)))
+
+
+async def _check_mcp_http(report: DoctorReport) -> None:
+    url = f"http://localhost:{settings.service_port}/mcp/"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as cli:
+            # 用 initialize JSON-RPC 探活；MCP 协议要求 Accept SSE
+            r = await cli.post(
+                url,
+                json={
+                    "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "doctor", "version": "0.0"},
+                    },
+                },
+                headers={"Accept": "application/json, text/event-stream"},
+            )
+            ok = r.status_code in (200, 202)
+            report.checks.append(CheckResult("/mcp HTTP", ok, f"status={r.status_code}"))
+    except Exception as exc:
+        report.checks.append(CheckResult("/mcp HTTP", False, str(exc)))
+
+
+async def run(*, skip_http: bool = False) -> DoctorReport:
+    report = DoctorReport()
+    await _check_db_pool(report)
+    await _check_mcp_schema(report)
+    _check_yaml(report)
+    _check_prompts(report)
+    await _check_tools_registered(report)
+    if not skip_http:
+        await _check_mcp_http(report)
+    return report
+
+
+async def _deferred_http_check(delay: float = 2.0) -> None:
+    """等 uvicorn 完成端口绑定后再探 /mcp HTTP。"""
+    await asyncio.sleep(delay)
+    report = DoctorReport()
+    await _check_mcp_http(report)
+    c = report.checks[0]
+    if c.ok:
+        logger.info("[doctor] %s OK %s", c.name, c.detail)
+    else:
+        logger.warning("[doctor] %s FAIL %s", c.name, c.detail)
+
+
+async def run_at_startup() -> None:
+    """启动期非阻塞自检：只 logger.warning 不抛。
+
+    前 4 项（DB / schema / yaml / tools）在 lifespan 内同步检查；
+    /mcp HTTP 探针通过后台任务延迟 2 s 执行（uvicorn 端口绑定完成后）。
+    """
+    try:
+        report = await run(skip_http=True)
+        for c in report.checks:
+            if c.ok:
+                logger.info("[doctor] %s OK %s", c.name, c.detail)
+            else:
+                logger.warning("[doctor] %s FAIL %s", c.name, c.detail)
+        # HTTP 探针延迟触发，不阻塞 lifespan
+        asyncio.create_task(_deferred_http_check(delay=2.0))
+    except Exception:
+        logger.warning("doctor self-check failed", exc_info=True)
+
+
+async def _cli() -> int:
+    await init_pool()
+    try:
+        report = await run()
+    finally:
+        await close_pool()
+    print(report.render())
+    return 0 if report.all_green else 1
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(_cli()))
