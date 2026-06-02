@@ -12,8 +12,10 @@ from app.services.fetch_verdict import compute_verdict
 
 _RUNNER_JS = (Path(__file__).parent / "runner.js").read_text(encoding="utf-8")
 
-# 平台 → cookies host 池（storage_state 文件名）
-_PLATFORM_SESSION = {"yuntu": "yuntu", "compass": "jinritemai", "doudian": "jinritemai"}
+# 平台 → cookies session 目录名（sessions/<name>/storage_state.json）
+# 2026-06-03 修阻断 bug：原映射到不存在的 'jinritemai'，对齐 sessions.py relogin 实际写的目录名
+# （douyin_compass / douyin_shop_admin），否则 compass/doudian 的 has_cookies 恒 False → 永远 FAIL_AUTH。
+_PLATFORM_SESSION = {"yuntu": "yuntu", "compass": "douyin_compass", "doudian": "douyin_shop_admin"}
 
 
 class LiveFetchExecutor:

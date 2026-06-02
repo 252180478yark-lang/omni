@@ -52,6 +52,8 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+# L0-7：限定收集 tests/，避免 scripts/ 下一次性抓取探针 test_*.py 被收集 import 报错污染（2026-06-03 整理，对齐 scout-agent pytest.ini）
+testpaths = ["tests"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "module"
 asyncio_default_test_loop_scope = "module"

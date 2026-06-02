@@ -34,3 +34,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# playwright 测试产物（构建产物非源码，2026-06-03 整理）
+/test-results/

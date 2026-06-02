@@ -85,6 +85,13 @@ services/scout-agent/sessions/
 services/scout-agent/snapshots/
 services/scout-agent/downloads/
 
+# scout-agent 一次性脚本（调选择器/taxonomy 抓取上传/dev；app 零引用，盘上保留不入库）2026-06-03 整理
+services/scout-agent/_inspect_*.py
+services/scout-agent/dump_*.py
+services/scout-agent/upload_taxonomy_to_kb.py
+services/scout-agent/yuntu_taxonomy_to_md.py
+services/scout-agent/_dev_server.py
+
 # 本地临时脚本与备份
 *.bak
 .tmp-*.ps1
