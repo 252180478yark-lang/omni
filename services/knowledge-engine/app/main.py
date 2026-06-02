@@ -27,6 +27,8 @@ from app.routers.accounting import router as accounting_router
 from app.routers.mcp_tool_calls import router as mcp_tool_calls_router
 from app.routers.human_gates import router as human_gates_router
 from app.routers.mcp_exec import router as mcp_exec_router
+from app.routers.notify import router as notify_router
+from app.routers.bug_memory import router as bug_memory_router
 from contextlib import AsyncExitStack
 from app.mcp.server import mcp_http_app
 
@@ -70,16 +72,18 @@ async def lifespan(app: FastAPI):
         from app.mcp.doctor import run_at_startup
         await run_at_startup()
 
-        # W4-B 切片 4 + 11：后台 cron 任务（3 个互不干扰的 loop）
+        # W4-B 切片 4 + 11 + 飞轮 Phase B：后台 cron 任务（4 个互不干扰的 loop）
         from app.mcp.cron import (
             daily_pulse_loop,
             dynamic_block_refresh_loop,
+            feedback_digest_loop,
             weekly_self_review_loop,
         )
         cron_tasks = [
             asyncio.create_task(weekly_self_review_loop()),
             asyncio.create_task(daily_pulse_loop()),
             asyncio.create_task(dynamic_block_refresh_loop()),
+            asyncio.create_task(feedback_digest_loop()),
         ]
 
         try:
@@ -110,6 +114,8 @@ app.include_router(accounting_router)
 app.include_router(mcp_tool_calls_router)
 app.include_router(human_gates_router)
 app.include_router(mcp_exec_router)
+app.include_router(notify_router)
+app.include_router(bug_memory_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)

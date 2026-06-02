@@ -42,6 +42,9 @@ async def search_kb(
     kb_ids: list[str] | None = None,
     kb_roles: list[str] | None = None,
     top_k: int = 8,
+    rerank: bool = True,
+    use_hyde: bool = False,
+    context_window: bool = False,
 ) -> dict:
     """KB 检索；返回排序后的 chunks。
 
@@ -50,6 +53,10 @@ async def search_kb(
         kb_ids: 显式指定 KB id 列表
         kb_roles: 按角色筛 KB（自动解析为 kb_ids）；与 kb_ids 同时给则取并集
         top_k: 总返回上限（默认 8）
+        rerank: 交叉编码重排把最相关的顶上来（默认开；整池只多 1 次 LLM ≈ +2s，要极速可关）
+        use_hyde: 先把 query 写成假设答案再 embed（query 抽象/跟文档风格差异大时提召回；
+                  多 1 次 LLM；默认关，要更准时开）
+        context_window: 给命中块拉 ±N 个邻块补全（chunk 被切碎时有用；默认关）
 
     Returns:
         {"ok": True, "count": N, "hits": [{source, kb_id, id, score, content,
@@ -79,6 +86,9 @@ async def search_kb(
         score_threshold=0.0,
         total_limit=top_k,
         kb_name_map=name_map,
+        rerank=rerank,
+        use_hyde=use_hyde,
+        context_window=context_window,
     )
     return {"ok": True, "count": len(hits), "hits": hits}
 
@@ -102,6 +112,8 @@ async def kb_upload_doc(
     file_path: str,
     title: str | None = None,
     source_type: str = "doc",
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
 ) -> dict:
     """上传文件入 KB（require_approval=True，CLI 批后才执行 ingestion）。
 
@@ -112,6 +124,9 @@ async def kb_upload_doc(
         file_path: 文件绝对路径（容器内可访问）
         title: 文档标题，None 自动用文件名
         source_type: doc/manual/runbook 等
+        chunk_size: 切块大小覆盖（None=用 settings 默认 768）。人群/5A KB 想让
+                    "1 chunk = 1 个完整人群画像" 时传更大值（如 1800-2400），重灌该 KB
+        chunk_overlap: 切块重叠覆盖（None=用 settings 默认 128）
 
     Returns:
         {ok, result: {task_id, kb_id, title, ...}, trace}
@@ -158,6 +173,8 @@ async def kb_upload_doc(
         text=text,
         source_url=f"file://{file_path}",
         source_type=source_type,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
 
     return {

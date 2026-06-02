@@ -123,6 +123,9 @@ async def _check_tools_registered(report: DoctorReport) -> None:
             "pipeline_list_audience_runs", "pipeline_get_audience_run",
             "pipeline_list_audience_records", "pipeline_get_audience_record",
             "pipeline_adopt",
+            # W4-B 切片 14.4 phase D：投后 ad_metrics 回传闭环
+            "record_ad_metrics", "pipeline_get_asset_lineage",
+            "pipeline_list_asset_performance",
             # W4-B 切片 14.3 phase B（sku-pipeline step 4 圈包 SOP）
             "generate_audience_pack",
             # W4-B 切片 14.3 phase B+（关键词扩展 500 词）
@@ -139,13 +142,29 @@ async def _check_tools_registered(report: DoctorReport) -> None:
             "realman_create_avatar", "realman_generate_portrait_video",
             # t2v 模式角色锚点生成
             "generate_video_anchor",
+            # 2026-05-28 反推视频→故事板提示词(直调 Gemini Files API)
+            "reverse_storyboard_video",
+            # 2026-05-28 反馈飞轮地基（migration 031）：消息级反馈
+            "rate_message",
+            # 2026-05-28 Phase A+/A++（migration 032）：bug 记忆库 + 客户端日志
+            "log_client_event", "report_bug", "list_bugs", "update_bug",
         }
         names = {getattr(t, "name", str(t)) for t in tools}
         missing = wanted - names
+        # extra = 已注册但不在 wanted 契约里的 tool。
+        # 加新 tool 忘了同步 wanted 时，这里会列出来提醒"该把它加进契约"——
+        # 不算 FAIL（不影响功能），只是把漂移暴露出来，免得自检越用越名不副实。
+        extra = names - wanted
         n = len(wanted)
+        live = len(names)
+        if missing:
+            detail = f"missing={sorted(missing)}"
+        elif extra:
+            detail = f"contract {n} ok; live {live}; 新增未入契约 extra={sorted(extra)}（建议补进 wanted）"
+        else:
+            detail = f"all {n} ok (live {live})"
         report.checks.append(CheckResult(
-            f"{n} tools registered", not missing,
-            f"missing={sorted(missing)}" if missing else f"all {n} ok",
+            f"{n} tools registered", not missing, detail,
         ))
     except Exception as exc:
         report.checks.append(CheckResult("tools registered", False, str(exc)))
@@ -181,6 +200,8 @@ def _check_prompts(report: DoctorReport) -> None:
             "creative_pack.user",
             # t2v 模式角色锚点
             "video_anchor.system", "video_anchor.user",
+            # 2026-05-28 反推视频
+            "reverse_storyboard.system", "reverse_storyboard.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

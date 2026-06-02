@@ -1393,6 +1393,131 @@ async def list_assets(
 
 
 # ═══════════════════════════════════════════════════════
+# 投后数据回传（phase D 闭环：测试投放后把 ad_metrics 写回血缘）
+# ═══════════════════════════════════════════════════════
+
+async def record_ad_metrics(
+    *,
+    asset_id: str | None = None,
+    external_video_id: str | None = None,
+    external_creative_id: str | None = None,
+    metrics: dict[str, Any] | None = None,
+    mark_published: bool = True,
+) -> dict[str, Any] | None:
+    """投后回传：把广告数据合并进 pipeline.assets.ad_metrics。
+
+    定位资产三选一（优先级 asset_id > external_video_id > external_creative_id）。
+    metrics 用 jsonb `||` 合并（同 key 覆盖、新 key 追加），所以可多次回传累积
+    （如先回传 plays/ctr，几天后补 roi/gmv）。
+    mark_published=True 时把非 discarded 资产状态推到 'published'。
+    返回更新后 {asset_id, sku_id, status, ad_metrics, last_metrics_at}；定位不到返 None。
+    """
+    metrics = metrics or {}
+    pool = get_pool()
+
+    if asset_id:
+        where, val = "id = $1::uuid", asset_id
+    elif external_video_id:
+        where, val = "external_video_id = $1", external_video_id
+    elif external_creative_id:
+        where, val = "external_creative_id = $1", external_creative_id
+    else:
+        logger.warning(
+            "record_ad_metrics: 缺定位锚（asset_id / external_video_id / external_creative_id 三选一）"
+        )
+        return None
+
+    try:
+        rec = await pool.fetchrow(
+            f"""
+            UPDATE pipeline.assets
+               SET ad_metrics = ad_metrics || $2::jsonb,
+                   last_metrics_at = NOW(),
+                   status = CASE
+                       WHEN $3::bool AND status <> 'discarded' THEN 'published'
+                       ELSE status
+                   END
+             WHERE {where}
+            RETURNING id::text AS asset_id, sku_id, status,
+                      ad_metrics, last_metrics_at
+            """,
+            val, json.dumps(metrics), mark_published,
+        )
+    except Exception as exc:
+        logger.exception("record_ad_metrics failed: %s", exc)
+        return None
+    if not rec:
+        return None
+    d = dict(rec)
+    d["ad_metrics"] = _coerce_jsonb_dict(d.get("ad_metrics"))
+    if d.get("last_metrics_at"):
+        d["last_metrics_at"] = d["last_metrics_at"].isoformat()
+    return d
+
+
+async def get_asset_lineage(asset_id: str) -> dict[str, Any] | None:
+    """按 asset_id 一句 SELECT 反查全链路（SKU/卖点矩阵/人群/圈包/脚本 + 投后 ad_metrics）。"""
+    pool = get_pool()
+    try:
+        rec = await pool.fetchrow(
+            "SELECT * FROM pipeline.v_asset_full_lineage WHERE asset_id = $1::uuid",
+            asset_id,
+        )
+    except Exception as exc:
+        logger.exception("get_asset_lineage failed: %s", exc)
+        return None
+    if not rec:
+        return None
+    d = dict(rec)
+    d["ad_metrics"] = _coerce_jsonb_dict(d.get("ad_metrics"))
+    if d.get("asset_created_at"):
+        d["asset_created_at"] = d["asset_created_at"].isoformat()
+    for k in ("asset_id", "script_id", "audience_pack_id", "audience_record_id",
+              "audience_run_id", "matrix_run_id"):
+        if d.get(k) is not None:
+            d[k] = str(d[k])
+    return d
+
+
+async def list_asset_performance(
+    *, sku_id: str | None = None, limit: int = 50,
+) -> list[dict[str, Any]]:
+    """列已回传投后数据的资产（ad_metrics 非空），按 last_metrics_at 倒序。
+
+    给"哪套卖点+人群+脚本真带货"复盘用——配合 get_asset_lineage 反查具体链路。
+    """
+    pool = get_pool()
+    where = ["a.ad_metrics <> '{}'::jsonb"]
+    params: list[Any] = []
+    if sku_id:
+        params.append(sku_id)
+        where.append(f"a.sku_id = ${len(params)}")
+    params.append(limit)
+    rows = await pool.fetch(
+        f"""
+        SELECT a.id::text AS asset_id, a.sku_id, a.asset_type, a.file_url,
+               a.ad_metrics, a.status, a.last_metrics_at,
+               a.script_id::text AS script_id,
+               a.audience_record_id::text AS audience_record_id,
+               a.matrix_run_id::text AS matrix_run_id
+        FROM pipeline.assets a
+        WHERE {" AND ".join(where)}
+        ORDER BY a.last_metrics_at DESC NULLS LAST
+        LIMIT ${len(params)}
+        """,
+        *params,
+    )
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["ad_metrics"] = _coerce_jsonb_dict(d.get("ad_metrics"))
+        if d.get("last_metrics_at"):
+            d["last_metrics_at"] = d["last_metrics_at"].isoformat()
+        out.append(d)
+    return out
+
+
+# ═══════════════════════════════════════════════════════
 # Lineage context enrichment (step 6 / 6.5 / 7 injection)
 # ═══════════════════════════════════════════════════════
 

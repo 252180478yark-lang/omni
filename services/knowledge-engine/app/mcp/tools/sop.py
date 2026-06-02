@@ -36,13 +36,19 @@ async def gather_brief_context(
     sku_id: str,
     channel: str,
     top_k_per_role: int = 3,
+    use_hyde: bool = False,
 ) -> dict:
     """聚合三类 KB 上下文，给 generate_brief 喂料。
+
+    检索默认开**交叉编码重排 + 上下文窗口扩展**（brief 质量关键路径：把最相关的 chunk
+    顶上来 + 命中块拉邻块补全，缓解 chunk 偏小被切碎）。每个 role 多 1 次重排 LLM ≈ +2s。
 
     Args:
         sku_id: SKU id（拼 query 用）
         channel: 渠道（拼 query 用）
         top_k_per_role: 每个 role 最多返几条 chunk（默认 3）
+        use_hyde: 额外开 HyDE（把 query 写成假设答案再 embed 提召回；每 role 多 1 次 LLM；
+                  默认关，brief 召回不理想时开）
 
     Returns:
         {
@@ -81,6 +87,9 @@ async def gather_brief_context(
                 score_threshold=0.0,
                 total_limit=top_k_per_role,
                 kb_name_map=name_map,
+                rerank=True,
+                context_window=True,
+                use_hyde=use_hyde,
             )
         except TypeError:
             # retrieve_multi_kb 签名兼容（不同版本可能少 kw）
