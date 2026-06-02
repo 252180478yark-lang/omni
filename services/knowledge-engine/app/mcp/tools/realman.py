@@ -36,6 +36,7 @@ async def realman_create_avatar(
         model="realman_avatar_picture_v2",
         prompt=f"image_url={image_url[:80]}",
         params={"req_key": "realman_avatar_picture_v2"},
+        cost_estimate="1 次火山视觉调用（按量计费）",
     )
 
     if not result.get("ok"):
@@ -97,6 +98,7 @@ async def realman_generate_portrait_video(
             "req_key": "realman_avatar_imitator_v2v_gen_video",
             "task_id": result.get("task_id", ""),
         },
+        cost_estimate="1 次火山视觉 v2v 视频生成（按量计费）",
     )
 
     if not result.get("ok"):

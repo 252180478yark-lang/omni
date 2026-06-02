@@ -1689,7 +1689,7 @@ async def generate_selling_points_matrix(
         provider=model_cfg.get("provider", "gemini"),
         model=model_cfg.get("model", "gemini-3-flash-preview"),
         temperature=model_cfg.get("temperature", 0.5),
-        max_tokens=6000,  # 5 部分输出（产品档案 + 三层卖点地图 + 5 心智 + 标签 + 信息补全）较长
+        max_tokens=model_cfg.get("max_tokens", 10000),  # 7 要素微剧本 × N 卖点 + 5 心智 + 50+ 标签
         enforce_human_voice=True,
     )
     matrix_md = (
@@ -4021,6 +4021,7 @@ async def generate_video_anchor(script_id: str) -> dict:
             model=cfg["model"],
             temperature=0.7,
             max_tokens=300,
+            enforce_human_voice=True,  # 蓝图 §5：跟其它视频工具对齐，强制反 AI 化人话锚
         )
     except Exception as exc:
         logger.exception("generate_video_anchor llm failed")
@@ -4045,3 +4046,275 @@ async def generate_video_anchor(script_id: str) -> dict:
             cost_estimate="~300 tokens",
         ),
     }
+
+
+# ============================================================================
+# reverse_storyboard_video (2026-05-28)
+# 反推视频→故事板提示词:直接喂回 AI 图像/视频生成模型,跨主流模型对齐
+# 设计文档:docs/superpowers/specs/2026-05-28-video-reverse-storyboard-design.md
+# ============================================================================
+
+@tool_with_audit(mcp, require_approval=False)
+async def reverse_storyboard_video(
+    video_path: str | None = None,
+    share_url: str | None = None,
+    model: str | None = None,
+    extra_context: str | None = None,
+    product_ref_count: int = 1,
+    face_ref_count: int = 1,
+    target_kind: str | None = None,
+) -> dict:
+    """反推视频→可喂回 AI 图像/视频生成模型的结构化故事板提示词。
+
+    输出 3 类即用 prompt 包(scene 级) + 3 类全局产物:
+    - image_set: 一组分镜图(喂 generate_image / Imagen / MJ)
+    - video_segments: i2v 视频段组(喂 generate_video / Veo3.1 i2v / Seedance i2v)
+    - video_long: t2v 长视频(喂 Sora2 / Runway / Veo3.1 t2v)
+
+    输入二选一:
+    - 本地视频:`video_path` 给 KE 容器内可访问的绝对路径(host Desktop 已 mount 成 /host/Desktop)
+    - 抖音链接:`share_url` 给 v.douyin.com 短链或 iesdouyin.com 长链 → tool 自动
+      解析 SSR HTML 拉无水印 mp4 落 /host/Desktop/omni_video_cache/(同一视频
+      不重复下载),再走反推主流程
+
+    Args:
+        video_path: 视频文件路径(容器内绝对路径,或 host bind-mount 路径);跟 share_url 二选一
+        share_url: 抖音分享链接(v.douyin.com 短链 / iesdouyin.com 长链);跟 video_path 二选一
+        model: 显式覆盖 tool_models.yaml 配的模型;None=用 yaml
+        extra_context: 老板临时方向("这视频是抖音收割款"/"重点反推钩子")
+        product_ref_count: 期望产品占位符数(LLM 视频里实际识别数可能不一致,差异写 warnings)
+        face_ref_count: 期望人脸占位符数
+        target_kind: 可选,引导方法论 (video_planting/video_harvest/video_soft_ad)
+
+    Returns:
+        {ok, result: {scenes, placeholders, storyboard_for_*, methodology_guess,
+                      hook_analysis, meta, markdown},
+         trace, next_step_hint}
+    """
+    import os
+    import time
+
+    source_url: str | None = None
+    resolver_meta: dict | None = None
+
+    # ── 1a. share_url 模式:先解析下载 ──
+    if share_url and not video_path:
+        from app.services.douyin_resolver import resolve_douyin_share_url
+
+        resolved = await resolve_douyin_share_url(share_url.strip())
+        if not resolved.get("ok"):
+            return {
+                "ok": False,
+                "error": f"douyin_resolve_failed:{resolved.get('error')}",
+                "hint": resolved.get("hint", "抖音链接解析失败"),
+                "share_url": share_url,
+            }
+        video_path = resolved["video_path"]
+        source_url = resolved.get("source_url")
+        resolver_meta = {
+            "aweme_id": resolved.get("aweme_id"),
+            "watermark": resolved.get("watermark"),
+            "from_cache": resolved.get("from_cache"),
+            "desc": resolved.get("desc"),
+            "author_nickname": resolved.get("author_nickname"),
+        }
+        logger.info(
+            "[reverse-sb] share_url=%s → video_path=%s (cache=%s wm=%s)",
+            share_url, video_path, resolver_meta["from_cache"], resolver_meta["watermark"],
+        )
+
+    # ── 1b. 校验文件 ──
+    if not video_path or not isinstance(video_path, str):
+        return {
+            "ok": False,
+            "error": "missing_input",
+            "hint": "video_path 或 share_url 至少传一个(抖音链接 share_url='https://v.douyin.com/xxx/')",
+        }
+    if not os.path.exists(video_path):
+        return {
+            "ok": False,
+            "error": "file_not_found",
+            "hint": (
+                f"video_path={video_path} 不存在(容器内视角)。"
+                f"host 路径需要在 docker-compose.yml 给 KE service 加 volume bind-mount。"
+                f"测试用 C:/Users/Administrator/Desktop/* 已 mount 到 /host/Desktop/*"
+            ),
+        }
+    if os.path.isdir(video_path):
+        return {"ok": False, "error": "is_directory", "hint": f"{video_path} 是目录,要文件"}
+
+    file_size_mb = os.path.getsize(video_path) / 1024 / 1024
+    logger.info(f"[reverse-sb] video_path={video_path} size={file_size_mb:.1f}MB")
+
+    # ── 2. 拿模型配置 ──
+    cfg = get_model_for_tool("reverse_storyboard_video")
+    used_model = (model or cfg.get("model") or "gemini-3.1-flash-lite-preview").strip()
+    temperature = float(cfg.get("temperature", 0.2))
+    max_tokens = int(cfg.get("max_tokens", 16000))
+
+    # ── 3. 加载 prompt ──
+    try:
+        system_prompt = prompts.load(cfg.get("prompts", {}).get("system", "reverse_storyboard.system"))
+    except FileNotFoundError as exc:
+        return {"ok": False, "error": "prompt_missing", "hint": str(exc)}
+
+    extra_context_block = (extra_context or "").strip() or "(无,LLM 按视频内容自判)"
+    target_kind_block = (
+        f"老板要求按 `{target_kind}` 方法论偏向反推(详见 system §5.1 白名单)"
+        if target_kind else "(无,LLM 自由选 8 个方法论中最贴合的)"
+    )
+
+    try:
+        user_prompt = prompts.render(
+            cfg.get("prompts", {}).get("user", "reverse_storyboard.user"),
+            extra_context_block=extra_context_block,
+            product_ref_count=product_ref_count,
+            face_ref_count=face_ref_count,
+            target_kind_block=target_kind_block,
+        )
+    except (FileNotFoundError, KeyError) as exc:
+        return {"ok": False, "error": "prompt_render_failed", "hint": str(exc)}
+
+    final_prompt_preview = (system_prompt + "\n\n---\n\n" + user_prompt)[:8000]
+
+    # ── 4. 调 Gemini Files API ──
+    try:
+        from app.services.gemini_video_client import GeminiVideoClient
+    except ImportError as exc:
+        return {
+            "ok": False,
+            "error": "gemini_sdk_missing",
+            "hint": f"google-generativeai 未装(KE rebuild?): {exc}",
+        }
+
+    try:
+        client = GeminiVideoClient(model=used_model)
+    except RuntimeError as exc:
+        return {"ok": False, "error": "gemini_not_configured", "hint": str(exc)}
+
+    start = time.time()
+    try:
+        llm_result, usage = await client.analyze_video(
+            video_path=video_path,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except (FileNotFoundError, TimeoutError) as exc:
+        return {"ok": False, "error": "upload_or_timeout", "hint": str(exc)}
+    except Exception as exc:
+        logger.exception("reverse_storyboard_video LLM call failed")
+        msg = str(exc).lower()
+        if "vision" in msg or "video" in msg or "modality" in msg or "400" in msg:
+            return {
+                "ok": False,
+                "error": "model_no_vision",
+                "hint": (
+                    f"模型 {used_model} 可能不支持视频输入。建议换 "
+                    f"gemini-2.5-flash / gemini-3-flash-preview / gemini-3.1-pro-preview。原始错误: {exc}"
+                ),
+            }
+        return {"ok": False, "error": "llm_call_failed", "hint": f"{type(exc).__name__}: {exc}"}
+    elapsed = time.time() - start
+
+    # ── 5. 拿视频时长(用 LLM 自报 + 校验) ──
+    meta = llm_result.get("meta") or {}
+    video_duration = float(meta.get("video_duration_sec") or 0) or None
+
+    # ── 6. 校验 ──
+    from app.services.reverse_storyboard_helpers import (
+        render_markdown_report,
+        validate_reverse_result,
+    )
+
+    errors, warnings = validate_reverse_result(
+        llm_result,
+        video_duration_sec=video_duration,
+        expected_product_refs=product_ref_count,
+        expected_face_refs=face_ref_count,
+    )
+    if errors:
+        # 校验硬错(字段缺/scene 时间重叠)→ 返失败但带 raw_result 让老板能 debug
+        return {
+            "ok": False,
+            "error": "schema_validation_failed",
+            "hint": "LLM 输出 schema 不符,见 errors 字段;查 raw_result 看具体内容",
+            "errors": errors,
+            "warnings": warnings,
+            "raw_result": llm_result,
+            "trace": build_trace(
+                provider="gemini",
+                model=used_model,
+                prompt=final_prompt_preview,
+                params={"temperature": temperature, "max_tokens": max_tokens},
+                cost_estimate=f"input={usage.get('input_tokens', 0)} output={usage.get('output_tokens', 0)} tokens",
+            ),
+        }
+
+    # 合并 LLM 自报的 warnings 跟后端校验的
+    llm_warnings = (meta.get("warnings") or [])
+    all_warnings = list(dict.fromkeys(llm_warnings + warnings))   # 去重保序
+
+    # ── 7. 拼装 meta ──
+    full_meta = {
+        "video_path": video_path,
+        "video_duration_sec": video_duration,
+        "model_used": used_model,
+        "scene_count": len(llm_result.get("scenes") or []),
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "file_size_mb": round(file_size_mb, 1),
+        "elapsed_sec": round(elapsed, 1),
+        "warnings": all_warnings,
+        "usage": usage,
+    }
+    if source_url:
+        full_meta["source_url"] = source_url
+    if resolver_meta:
+        full_meta["source"] = resolver_meta
+    llm_result["meta"] = full_meta
+
+    # ── 8. 渲染 markdown ──
+    markdown = render_markdown_report(llm_result, full_meta)
+    llm_result["markdown"] = markdown
+
+    # ── 9. 返回 ──
+    result = {
+        "ok": True,
+        "result": llm_result,
+        "trace": build_trace(
+            provider="gemini",
+            model=used_model,
+            prompt=final_prompt_preview,
+            params={
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+                "product_ref_count": product_ref_count,
+                "face_ref_count": face_ref_count,
+                "target_kind": target_kind,
+                "source_url": source_url,
+                "source": resolver_meta,
+            },
+            cost_estimate=(
+                f"input={usage.get('input_tokens', 0)} output={usage.get('output_tokens', 0)} tokens "
+                f"+ {file_size_mb:.1f}MB video upload"
+            ),
+        ),
+    }
+
+    suggested_kind = target_kind or "video_planting"
+    return attach_next_step(
+        result,
+        suggested_tool="generate_creative_pack",
+        suggested_args={
+            "kind": suggested_kind,
+            "extra_context": (
+                "参考反推故事板分镜图组:\n"
+                + (llm_result.get("storyboard_for_image_set") or {}).get("prompt_zh", "")[:2000]
+            ),
+        },
+        human_text=(
+            f"反推完成({len(llm_result.get('scenes') or [])} 个 scene, "
+            f"{elapsed:.1f}s)。或直接把 storyboard_for_video_segments.segments 喂 generate_image+generate_video i2v 重做这段视频。"
+        ),
+    )

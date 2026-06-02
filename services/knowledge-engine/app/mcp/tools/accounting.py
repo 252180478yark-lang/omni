@@ -109,6 +109,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from app.mcp.model_config import get_model_for_tool
 from app.mcp.trace import attach_next_step, build_trace
+from app.services.accounting_tool import _margin_core  # §3/R-4 单一口径核心
 from app.services.ai_hub_client import AIHubClient
 
 
@@ -201,17 +202,20 @@ async def compute_margin(
         sku_id, allowed_vis,
     )
 
-    cost_items = []
-    cost_total = Decimal("0")
-    for r in cost_rows:
-        line = _to_dec(r["unit_cost"]) / _to_dec(r["quantity_per_unit"])
-        cost_total += line
-        cost_items.append({
+    # core 需要 cost_lines（透传 visibility，core 算完原样带回 breakdown）。
+    # 注意：这里成本 quantity_per_unit 缺失按 1 折算，与老实现一致。
+    core_cost_lines = [
+        {
             "category": r["category"],
+            "unit_cost": r["unit_cost"],
+            "quantity_per_unit": r["quantity_per_unit"],
             "item_name": r["item_name"],
-            "line_cost": str(line.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)),
             "visibility": r["visibility"],
-        })
+            # 这里行不带 sku_id；core 用 sku_id 判 shared，缺失即 None=shared，
+            # 但本入口历史 breakdown 不输出 shared，故无影响。
+        }
+        for r in cost_rows
+    ]
 
     # 2. 拿售价（如未给）。mvp_sku 实际 schema：PK=id，价格列是 price_min/price_max
     # （不是 plan 字面写的 sku_id/sale_price）。默认用 price_min（最低档），
@@ -223,17 +227,43 @@ async def compute_margin(
         sale_price = str(srow["price_min"]) if srow and srow["price_min"] else "0"
 
     sale_dec = _to_dec(sale_price)
-    qty_dec = _to_dec(qty)
     fee_rate, fee_rate_source = await _resolve_channel_fee_rate(
         channel, channel_fee_rate,
     )
 
-    # 3. 算账
-    gmv = sale_dec * qty_dec
-    channel_fee = (gmv * fee_rate).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    cost_subtotal = (cost_total * qty_dec).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    net_profit = (gmv - cost_subtotal - channel_fee).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    margin_pct = (net_profit / gmv).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP) if gmv > 0 else Decimal("0")
+    # 3. 算账 —— §3/R-4：math 收口到 _margin_core（单一口径），此入口只做"量化 + 转 str"
+    core = _margin_core(
+        cost_lines=core_cost_lines,
+        sale_price=sale_dec,
+        quantity=qty,
+        fee_rate=fee_rate,
+    )
+
+    # 量化沿用本入口历史精度（gmv/cost 用 0.01，fee/net/margin 用 0.0001），字段全转 str 不变
+    _q4 = lambda d: d.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    _q2 = lambda d: d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    channel_fee = _q4(core["channel_fee"])
+    cost_subtotal = _q2(core["cost_subtotal"])
+    net_profit = _q4(core["net_profit"])
+    margin_pct = _q4(core["margin"]) if core["gmv"] > 0 else Decimal("0")
+
+    # items：保持历史每行 {category,item_name,line_cost(str@0.0001),visibility}
+    cost_items = [
+        {
+            "category": row.get("category"),
+            "item_name": row.get("item_name"),
+            # 历史 items 的 line_cost 是"单件该项成本"（未乘 qty），core 的 line_cost 乘了 qty，
+            # 故按 qty 还原回单件值，保持口径不变（qty 缺省 1 时两者相等）。
+            "line_cost": str(_q4(row["line_cost"] / _to_dec(qty)) if _to_dec(qty) != 0 else row["line_cost"]),
+            "visibility": row.get("visibility"),
+        }
+        for row in core["breakdown"]
+    ]
+
+    # 新增字段（加法）：roi / breakeven_roas / breakeven_price（None 透传，非 None 转 str）
+    roi = core["roi"]  # 此入口无广告花费 → None（投后归因层算，蓝图 R-4 拒手填）
+    breakeven_roas = str(_q4(core["breakeven_roas"])) if core["breakeven_roas"] is not None else None
+    breakeven_price = str(_q4(core["breakeven_price"])) if core["breakeven_price"] is not None else None
 
     breakdown = {
         "sku_id": sku_id,
@@ -242,11 +272,15 @@ async def compute_margin(
         "sale_price": str(sale_dec),
         "channel_fee_rate": str(fee_rate),
         "fee_rate_source": fee_rate_source,
-        "gmv": str(gmv.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        "gmv": str(_q2(core["gmv"])),
         "cost_total": str(cost_subtotal),
         "channel_fee": str(channel_fee),
         "net_profit": str(net_profit),
         "margin_pct": str(margin_pct),
+        # ── §3/R-4 新增（加法）──
+        "roi": roi,
+        "breakeven_roas": breakeven_roas,
+        "breakeven_price": breakeven_price,
         "view": view,
         "items": cost_items,
     }

@@ -92,7 +92,7 @@ async def test_smoke_gate_rejected():
 
 @pytest.mark.asyncio
 async def test_smoke_gate_timeout():
-    """timeout 内无人批 → 返 rejected (timeout 当 reject 处理)。"""
+    """timeout 内无人批 → 返 expired（蓝图 §1.6/§7 R-1：超时绝不等于 rejected，系统永不替老板说 No）。"""
     pool = get_pool()
     tc_id = await _create_pending_tool_call(pool)
 
@@ -102,7 +102,7 @@ async def test_smoke_gate_timeout():
         timeout_seconds=1,
         poll_interval_seconds=0.1,
     )
-    assert decision["decision"] == "rejected"
+    assert decision["decision"] == "expired"
     assert "timeout" in (decision.get("decision_note") or "").lower()
 
     # 验证 DB 也写了 timeout 标记
@@ -111,7 +111,7 @@ async def test_smoke_gate_timeout():
         uuid.UUID(tc_id),
     )
     assert row is not None
-    assert row["decision"] == "rejected"
+    assert row["decision"] == "expired"
 
     await pool.execute("DELETE FROM mcp.human_gates WHERE tool_call_id=$1", uuid.UUID(tc_id))
     await pool.execute("DELETE FROM mcp.tool_calls WHERE id=$1", uuid.UUID(tc_id))

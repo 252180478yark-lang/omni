@@ -423,11 +423,16 @@ async def dynamic_block_refresh_loop(
 # 老板看完 feedback_digest.md 自己决定改哪个 prompt（三通道改）。
 # 这是"可改进"层的入口，但改的决定权留在老板手里（反幻觉 + 反过度自动化）。
 
-async def _collect_feedback_digest(now: datetime) -> dict:
+async def _collect_feedback_digest(now: datetime, lookback_days: int | None = None) -> dict:
     """跑 3 段 SQL 聚类，返 {msg_by_cat, tool_by_cat, asset_perf}。每段独立 try，
-    单段失败不影响其他段（表/列缺失容忍）。"""
+    单段失败不影响其他段（表/列缺失容忍）。
+
+    lookback_days：消息级/工具级负反馈的回看窗口（天）。None → 用 cron 默认
+    FEEDBACK_DIGEST_INTERVAL_DAYS（7）。diagnose tool 传自定义值时按它取窗口，
+    保证"observation 文案标的 N 天"与"实际聚类窗口"一致。投后 asset_perf 固定 30 天。"""
     from app.database import get_pool
     pool = get_pool()
+    window = lookback_days if (lookback_days and lookback_days > 0) else FEEDBACK_DIGEST_INTERVAL_DAYS
     out: dict = {"msg_by_cat": [], "tool_by_cat": [], "asset_perf": [], "errors": []}
 
     # 1. 消息级负反馈 by category（7 天）
@@ -443,7 +448,7 @@ async def _collect_feedback_digest(now: datetime) -> dict:
             WHERE rating = 'bad' AND created_at > $1
             GROUP BY 1 ORDER BY n DESC
             """,
-            now - timedelta(days=FEEDBACK_DIGEST_INTERVAL_DAYS),
+            now - timedelta(days=window),
         )
         out["msg_by_cat"] = [dict(r) for r in rows]
     except Exception as exc:
@@ -460,7 +465,7 @@ async def _collect_feedback_digest(now: datetime) -> dict:
             WHERE user_rating = 'bad' AND created_at > $1
             GROUP BY tool_name, 2 ORDER BY n DESC LIMIT 20
             """,
-            now - timedelta(days=FEEDBACK_DIGEST_INTERVAL_DAYS),
+            now - timedelta(days=window),
         )
         out["tool_by_cat"] = [dict(r) for r in rows]
     except Exception as exc:
@@ -572,7 +577,26 @@ async def _run_feedback_digest_cycle(now: datetime | None = None) -> dict:
     FEEDBACK_DIGEST_REPORT_FILE.write_text(md, encoding="utf-8")
     _write_last_run(now, FEEDBACK_DIGEST_LAST_FILE)
     logger.info("feedback_digest 写入 %s", FEEDBACK_DIGEST_REPORT_FILE)
-    return {"ran": True, "reason": "ok", "report_path": str(FEEDBACK_DIGEST_REPORT_FILE)}
+
+    # §6.2 诊断官：周期同时把负反馈+投后聚类成结构化《改进提议》入库（带 R-20 生命周期：
+    # dedupe 不堆叠 / 过期归档 / 三态），老板在 web /insights「改进建议」inbox 看 + 拍板。
+    # 独立 try：诊断失败不影响 digest 主流程。懒导入避免 import 环（diagnose_service 反向引用本模块）。
+    diag_summary = None
+    try:
+        from app.services.diagnose_service import run_diagnose
+        diag_summary = await run_diagnose(
+            mode="content", lookback_days=FEEDBACK_DIGEST_INTERVAL_DAYS, persist=True,
+        )
+        logger.info(
+            "feedback_digest: diagnose 持久化提议 created=%s refreshed=%s open=%s",
+            diag_summary.get("created"), diag_summary.get("refreshed"),
+            diag_summary.get("total_open"),
+        )
+    except Exception:
+        logger.exception("feedback_digest: diagnose 持久化失败（不影响 digest）")
+
+    return {"ran": True, "reason": "ok", "report_path": str(FEEDBACK_DIGEST_REPORT_FILE),
+            "diagnose": diag_summary}
 
 
 async def feedback_digest_loop(

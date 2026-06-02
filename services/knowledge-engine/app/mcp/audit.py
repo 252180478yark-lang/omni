@@ -81,13 +81,19 @@ def tool_with_audit(
                     tool_call_id=tool_call_id,
                     tool_name=tool_name,
                     summary=summary,
-                    timeout_seconds=timeout_seconds or 3600,
+                    timeout_seconds=timeout_seconds or 21600,
                 )
                 if decision["decision"] != "approved":
-                    await _finalize_error(pool, tool_call_id, "rejected_by_user", start)
+                    # 区分"老板驳回" vs "超时未决"（§1.6：超时绝不等于驳回）
+                    _err = (
+                        "approval_timeout_expired"
+                        if decision["decision"] == "expired"
+                        else "rejected_by_user"
+                    )
+                    await _finalize_error(pool, tool_call_id, _err, start)
                     return {
                         "ok": False,
-                        "error": "rejected_by_user",
+                        "error": _err,
                         "note": decision.get("decision_note"),
                     }
 
@@ -103,6 +109,16 @@ def tool_with_audit(
                 await _finalize_error(pool, tool_call_id, err_msg, start)
                 if isinstance(exc, (KeyboardInterrupt, SystemExit)):
                     raise
+                # L0-3：异常被吞成 {ok:False} 返回前，再显式 error 级告警一次（带完整堆栈）。
+                # 上面 logger.exception 已记一遍；这里专对"静默吞错→对外返成功结构"这条路径
+                # 补一条明确的 server 日志告警，确保被吞的真异常不静默（向后兼容，返回结构不变）。
+                logger.error(
+                    "tool %s 异常被吞成 {ok:False} 返回（call_id=%s）: %s",
+                    tool_name,
+                    tool_call_id,
+                    err_msg,
+                    exc_info=True,
+                )
                 return {"ok": False, "error": err_msg, "hint": "tool 内部异常，看 server 日志定位"}
 
             duration_ms = int((time.perf_counter() - start) * 1000)

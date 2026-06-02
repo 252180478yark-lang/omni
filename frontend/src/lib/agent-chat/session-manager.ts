@@ -57,7 +57,16 @@ export class SessionManager extends EventEmitter {
     return sess
   }
 
-  spawn(id: string, prompt: string, allowedTools?: string[]): ClaudeRunner {
+  spawn(
+    id: string,
+    prompt: string,
+    extra?: {
+      allowedTools?: string[]
+      maxTurns?: number
+      model?: string
+      appendSystemPrompt?: string
+    },
+  ): ClaudeRunner {
     const sess = this.sessions.get(id)
     if (!sess) throw new Error(`session ${id} not opened`)
     if (sess.runner && !sess.runner.proc.killed) {
@@ -67,7 +76,10 @@ export class SessionManager extends EventEmitter {
       prompt,
       mcpConfigPath: sess.mcpConfigPath,
       resumeSessionId: sess.claudeSessionId || undefined,
-      allowedTools,
+      allowedTools: extra?.allowedTools,
+      maxTurns: extra?.maxTurns,
+      model: extra?.model,
+      appendSystemPrompt: extra?.appendSystemPrompt,
     }
     const runner = startClaudeRunner(opts)
     sess.runner = runner

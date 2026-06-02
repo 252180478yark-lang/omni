@@ -3,7 +3,7 @@
 行为：
 1. `request_approval` 写一行 mcp.human_gates（decision=NULL）
 2. 起 DB poll 循环，等 `decision IS NOT NULL`
-3. 超时（默认 timeout_seconds 秒）→ 写 decision=rejected,note=timeout，返 rejected
+3. 超时（默认 timeout_seconds 秒）→ 写 decision=expired（不是 rejected！§1.6 不替老板做否定决定）
 4. 调用方（audit.py wrapper）拿到 decision 决定继续/中止
 
 不做：前端 /inbox（W3a 起步走 CLI 批），多用户隔离（个人自用）
@@ -66,7 +66,7 @@ async def _notify_human_gate(short_id: str, tool_name: str, summary: str) -> Non
 
 
 class GateDecision(TypedDict):
-    decision: str          # "approved" | "rejected"
+    decision: str          # "approved" | "rejected" | "expired"（expired=超时未决，非老板驳回）
     decision_note: str | None
 
 
@@ -75,7 +75,7 @@ async def request_approval(
     tool_call_id: str,
     tool_name: str = "",
     summary: str,
-    timeout_seconds: int = 3600,
+    timeout_seconds: int = 21600,  # 6h；超时=expired 不是 rejected，适配异步/路上用
     poll_interval_seconds: float = 2.0,
 ) -> GateDecision:
     """写 human_gates → 等批/驳/超时 → 返决策。
@@ -84,7 +84,7 @@ async def request_approval(
         tool_call_id: 关联的 mcp.tool_calls.id（uuid str）
         tool_name: tool 名称（W5-B：用于 Redis publish payload）
         summary: 给人看的摘要（CLI list / 未来 /inbox 卡片显示）
-        timeout_seconds: 超时（默认 3600 = 1h）；超时算 rejected
+        timeout_seconds: 超时（默认 21600 = 6h，适配异步/路上用）；超时标 expired，绝不替老板 rejected
         poll_interval_seconds: DB poll 间隔（默认 2 秒；测试用 0.1）
 
     Returns:
@@ -122,15 +122,17 @@ async def request_approval(
         await asyncio.sleep(poll_interval_seconds)
         elapsed += poll_interval_seconds
 
-    # 3. 超时 → 标 rejected,note=timeout（让 CLI list 看到结果，不留孤儿）
+    # 3. 超时 → 标 expired（不是 rejected！宪法 §1.6：系统永远不替老板做否定决定）。
+    #    expired 让 CLI list / 复盘时能区分"我驳的" vs "超时没决定"；record_cost 这类纯写入
+    #    超时不算"老板拒绝"，需要时重发即可。decision 列是 TEXT 无 CHECK，免迁移。
     await pool.execute(
-        "UPDATE mcp.human_gates SET decision='rejected', "
-        "decision_note=COALESCE(decision_note,'') || '[timeout]', decided_at=NOW() "
+        "UPDATE mcp.human_gates SET decision='expired', "
+        "decision_note=COALESCE(decision_note,'') || '[timeout-未经你决定]', decided_at=NOW() "
         "WHERE id=$1 AND decision IS NULL",
         gate_id,
     )
-    logger.warning("human gate timeout id=%s after %ds", gate_id, timeout_seconds)
-    return {"decision": "rejected", "decision_note": "timeout"}
+    logger.warning("human gate EXPIRED id=%s after %ds（超时未决，未替老板驳回）", gate_id, timeout_seconds)
+    return {"decision": "expired", "decision_note": "timeout_expired"}
 
 
 async def list_pending() -> list[dict]:

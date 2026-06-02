@@ -34,6 +34,10 @@ dependencies = [
   "volcengine>=1.0.0",
   # 图片处理（人脸网格覆盖，step 7 content_sensitive 绕路）
   "Pillow>=10.0.0",
+  # Gemini Files API（reverse_storyboard_video 直调,绕过 ai-provider-hub 的 ≤20MB inline_data 限制）
+  "google-generativeai>=0.8.0",
+  # httplib2 proxy patch 用（Gemini Files API 上传走 httplib2，国内代理需要 PySocks）
+  "PySocks>=1.7.1",
 ]
 
 [project.optional-dependencies]

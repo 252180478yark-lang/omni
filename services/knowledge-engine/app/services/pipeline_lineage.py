@@ -1407,10 +1407,15 @@ async def record_ad_metrics(
     """投后回传：把广告数据合并进 pipeline.assets.ad_metrics。
 
     定位资产三选一（优先级 asset_id > external_video_id > external_creative_id）。
-    metrics 用 jsonb `||` 合并（同 key 覆盖、新 key 追加），所以可多次回传累积
-    （如先回传 plays/ctr，几天后补 roi/gmv）。
+    可多次回传累积（如先回传 plays/ctr，几天后补 roi/gmv）。
     mark_published=True 时把非 discarded 资产状态推到 'published'。
     返回更新后 {asset_id, sku_id, status, ad_metrics, last_metrics_at}；定位不到返 None。
+
+    入库校验（蓝图 §1.4 / §5 白名单 / R-4 拒手填 roi）：在**一个事务 + SELECT ... FOR UPDATE
+    行锁**内读当前 ad_metrics → Python 累积合并 → **对合并后的全量做校验**（否则多次回传时上次
+    标过 suspect 的 key 这次没带，_validation 会覆盖丢历史标记）→ 全量写回。FOR UPDATE 锁住该
+    行，杜绝 SELECT-UPDATE 之间被并发回传覆盖（lost update）；恢复原 `||` 单步写的原子性。
+    fail-open：不拒收任何 key，只把存疑/未知/手填roi 标进 _validation，分析层据此排除聚合。
     """
     metrics = metrics or {}
     pool = get_pool()
@@ -1427,22 +1432,37 @@ async def record_ad_metrics(
         )
         return None
 
+    from app.services.ad_metrics_validation import validate_ad_metrics
+    _val_report: dict[str, Any] = {}
     try:
-        rec = await pool.fetchrow(
-            f"""
-            UPDATE pipeline.assets
-               SET ad_metrics = ad_metrics || $2::jsonb,
-                   last_metrics_at = NOW(),
-                   status = CASE
-                       WHEN $3::bool AND status <> 'discarded' THEN 'published'
-                       ELSE status
-                   END
-             WHERE {where}
-            RETURNING id::text AS asset_id, sku_id, status,
-                      ad_metrics, last_metrics_at
-            """,
-            val, json.dumps(metrics), mark_published,
-        )
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                existing = await conn.fetchrow(
+                    f"SELECT id, ad_metrics FROM pipeline.assets WHERE {where} FOR UPDATE",
+                    val,
+                )
+                if not existing:
+                    return None
+                current = _coerce_jsonb_dict(existing["ad_metrics"]) or {}
+                current.pop("_validation", None)        # 剔旧校验元数据，不当指标参与重校验
+                merged = {**current, **metrics}          # 累积合并（保留可多次回传语义）
+                _val_report = validate_ad_metrics(merged)  # 校验全量 → _validation 反映所有累积 key
+                merged["_validation"] = _val_report
+                rec = await conn.fetchrow(
+                    """
+                    UPDATE pipeline.assets
+                       SET ad_metrics = $2::jsonb,
+                           last_metrics_at = NOW(),
+                           status = CASE
+                               WHEN $3::bool AND status <> 'discarded' THEN 'published'
+                               ELSE status
+                           END
+                     WHERE id = $1
+                    RETURNING id::text AS asset_id, sku_id, status,
+                              ad_metrics, last_metrics_at
+                    """,
+                    existing["id"], json.dumps(merged), mark_published,
+                )
     except Exception as exc:
         logger.exception("record_ad_metrics failed: %s", exc)
         return None
@@ -1452,6 +1472,8 @@ async def record_ad_metrics(
     d["ad_metrics"] = _coerce_jsonb_dict(d.get("ad_metrics"))
     if d.get("last_metrics_at"):
         d["last_metrics_at"] = d["last_metrics_at"].isoformat()
+    # 把校验结论也回给调用方（agent/老板能立刻看到哪些 key 被标存疑、为什么）
+    d["validation"] = _val_report
     return d
 
 

@@ -1,0 +1,113 @@
+# omni 最小 CI —— 回归网门禁（蓝图 §4 L0-7【R-29】· 阶段0）
+#
+# 目的：把 KE pytest + stream-json 契约测试纳入门禁，「改地基/schema/runner 先绿再合并」。
+# 不追求一上来覆盖全套——分两层，先有一条**永远能绿的快门**，再挂一条**信息性全量**。
+#
+# job 分层：
+#   1) unit-gate（**阻断合并**）：只装 pytest，跑「零外部依赖」的纯单元测试
+#      （含本切片新增的 stream-json 契约测试）。秒级、不需 DB/网络/重依赖，
+#      保证门禁稳定为绿。这是 L0-7 的最小达标线。
+#   2) full-suite（**不阻断 · 信息性**）：起 Postgres + 装全部 KE 依赖，尝试跑整套
+#      pytest。很多测试依赖 app.database / 全量 schema，CI 里需先 bootstrap migration
+#      （属另一阶段0切片：DB schema/口径）。在那之前本 job 用 continue-on-error 收集
+#      真实通过率，不让它红掉挡合并。等 migration 自举接好，再把它提级为阻断 job。
+#
+# 注意：纯加法。本文件只新增 CI，不改任何业务代码 / 测试 / 现有脚本。
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支新 push 取消旧 run，省 CI 额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 阻断门禁：零外部依赖纯单元测试（含 stream-json 契约）。必须绿才能合并。
+  # ---------------------------------------------------------------------------
+  unit-gate:
+    name: KE 纯单元 + stream-json 契约（门禁）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/knowledge-engine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 装最小测试依赖（不装重业务依赖，保证快且稳）
+        run: |
+          python -m pip install --upgrade pip
+          # 仅 pytest 栈；下面挑的测试不 import fastmcp/asyncpg/langgraph 等重依赖。
+          pip install "pytest>=8.0.0" "pytest-asyncio>=0.23.0"
+
+      - name: 跑零依赖纯单元测试（含契约测试）
+        run: |
+          # 这批测试不碰 DB / 网络 / fastmcp，本地已验证可独立跑绿。
+          # 改 runner 契约 / trace / prompt 渲染 / 成本工具，必须先让这条绿。
+          python -m pytest -q \
+            tests/test_streamjson_contract.py \
+            tests/test_mcp_config.py \
+            tests/test_mcp_prompts.py \
+            tests/test_mcp_trace.py \
+            tests/test_mcp_utils.py \
+            tests/test_mcp_pattern_lib.py \
+            tests/test_harvester_parser.py
+
+  # ---------------------------------------------------------------------------
+  # 信息性全量：起 DB + 装全依赖跑整套。当前不阻断（migration 自举接好后提级）。
+  # ---------------------------------------------------------------------------
+  full-suite:
+    name: KE 全量 pytest（信息性 · 暂不阻断）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/knowledge-engine
+    services:
+      postgres:
+        # 注意：业务库用的是带 pgvector 的自定义镜像（services/infra-core/postgres）。
+        # 这里先挂官方 pgvector 镜像占位，schema/migration 自举属另一阶段0切片，
+        # 接好前本 job 用 continue-on-error 不阻断。
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: omni_user
+          POSTGRES_PASSWORD: changeme_in_production
+          POSTGRES_DB: omni_vibe_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U omni_user -d omni_vibe_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 装 KE 全部依赖（含 dev）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: 跑全套 pytest（信息性，不阻断合并）
+        # 全套很多测试依赖 schema/migration 自举，CI 里尚未 bootstrap。
+        # 先收集真实通过情况，红了不挡合并；接好后删掉 continue-on-error 提级为门禁。
+        continue-on-error: true
+        env:
+          DATABASE_URL: "postgresql+asyncpg://omni_user:changeme_in_production@localhost:5432/omni_vibe_db"
+        run: |
+          python -m pytest -q tests

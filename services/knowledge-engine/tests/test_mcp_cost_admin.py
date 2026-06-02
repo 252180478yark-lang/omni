@@ -21,7 +21,7 @@ async def _pool():
 @pytest_asyncio.fixture
 async def _approve_immediately(monkeypatch):
     """测试用 monkey patch：让 request_approval 立刻返 approved。"""
-    async def _fake_approve(*, tool_call_id, summary, timeout_seconds=3600, poll_interval_seconds=2.0):
+    async def _fake_approve(*, tool_call_id, summary, tool_name=None, timeout_seconds=3600, poll_interval_seconds=2.0):
         return {"decision": "approved", "decision_note": "auto-approved in test"}
     monkeypatch.setattr(_hg, "request_approval", _fake_approve)
     yield
@@ -29,7 +29,7 @@ async def _approve_immediately(monkeypatch):
 
 @pytest_asyncio.fixture
 async def _reject_immediately(monkeypatch):
-    async def _fake_reject(*, tool_call_id, summary, timeout_seconds=3600, poll_interval_seconds=2.0):
+    async def _fake_reject(*, tool_call_id, summary, tool_name=None, timeout_seconds=3600, poll_interval_seconds=2.0):
         return {"decision": "rejected", "decision_note": "auto-rejected in test"}
     monkeypatch.setattr(_hg, "request_approval", _fake_reject)
     yield

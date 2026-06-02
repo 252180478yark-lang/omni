@@ -223,6 +223,8 @@ services:
       VOLCENGINE_SECRET_KEY: "${VOLCENGINE_SECRET_KEY:-}"
       # 竞品调研：KE 的 competitor_* tool 经 HTTP 调 scout-agent 抓淘宝
       SCOUT_AGENT_URL: "http://scout-agent:8009"
+      # R-22 文档体检：容器内挂仓库根 CLAUDE.md 后指过去，doctor 能真比对工具数（否则 WARN-skip）
+      OMNI_CLAUDE_MD_PATH: "/app/CLAUDE.md"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     expose:
       - "8002"
@@ -238,6 +240,8 @@ services:
       - ./services/knowledge-engine/scripts:/app/scripts:rw
       - ./data/agent_state:/app/agent_state:rw
       - ./data/uploads:/app/data/uploads
+      # R-22 文档体检：只读挂仓库根 CLAUDE.md，让容器内 doctor 能比对工具数
+      - ./CLAUDE.md:/app/CLAUDE.md:ro
       # reverse_storyboard_video tool 测试用,挂载 host Desktop 让 KE 能访问千川视频测试文件 + 测试日志写回
       - "C:/Users/Administrator/Desktop:/host/Desktop:rw"
     depends_on:

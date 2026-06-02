@@ -7,7 +7,6 @@ import { cn } from '@/lib/utils'
 import {
   BrainCircuit,
   BookOpen,
-  MessageSquare,
   Database,
   Newspaper,
   Cpu,
@@ -32,6 +31,7 @@ import {
   Calculator,
   Activity,
   Brain,
+  FlaskConical,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -126,12 +126,15 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/decisions', icon: ClipboardCheck, label: '决策日志', hint: 'AI 给的所有建议都存这里，跟踪命中率' },
   { href: '/inbox', icon: Inbox, label: '待批', hint: '点头让 omni 做要紧的事 / 不点超时自动驳' },
   { href: '/agent-log', icon: Activity, label: 'Agent 日志', hint: '看 omni 跑了啥 / 给好坏打分 / 自动累积模式' },
+  { href: '/insights', icon: Brain, label: '运营洞察', hint: '诊断官改进建议 + omni 运行成本 + 自动周期报 + 底座就绪度' },
   { href: '/review', icon: CalendarDays, label: '周末复盘', hint: '本周 AI 命中率 + 前后对比卡 + 策略归档' },
 
   { kind: 'section', label: '系统' },
   { href: '/models', icon: Cpu, label: '模型配置', hint: '填 AI Key，模型不可用时先检查这里' },
   { href: '/tasks', icon: ListTodo, label: '任务进度', hint: '看采集、分析、生成这些后台任务' },
   { href: '/prompt-lab', icon: Sparkles, label: 'Prompt 实验室', hint: '微调 AI 生成规则和反馈记录' },
+  { href: '/playground', icon: FlaskConical, label: 'Playground', hint: 'tool / skill / MCP 调试场:多层 trace + raw JSON + 隔离 session' },
+  { href: '/playground/reverse-storyboard', icon: Wand2, label: '反推故事板(测试)', hint: 'reverse_storyboard_video tool 专属页:贴视频路径→3 类 prompt 包+方法论判断' },
   { href: '/', icon: Home, label: '控制台', hint: '系统服务、指标、监控' },
 ]
 

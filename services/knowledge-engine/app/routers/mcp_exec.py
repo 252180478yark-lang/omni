@@ -625,3 +625,52 @@ async def exec_generate_video_anchor(
     except Exception as exc:
         logger.exception("generate_video_anchor REST 异常")
         return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+# ════════════════════════════════════════════════════════════════
+# 2026-05-28 反推视频→故事板提示词(直调 Gemini Files API)
+# ════════════════════════════════════════════════════════════════
+
+
+class ReverseStoryboardVideoRequest(BaseModel):
+    video_path: str | None = None
+    share_url: str | None = None
+    model: str | None = None
+    extra_context: str | None = None
+    product_ref_count: int = 1
+    face_ref_count: int = 1
+    target_kind: str | None = None
+
+
+@router.post("/exec/reverse_storyboard_video")
+async def exec_reverse_storyboard_video(
+    payload: ReverseStoryboardVideoRequest,
+) -> Any:
+    """反推视频→可喂回 AI 图像/视频生成模型的结构化故事板提示词。
+
+    video_path 或 share_url 二选一:
+    - video_path: KE 容器内绝对路径(host Windows 路径 C:/Users/Administrator/Desktop/X.mp4
+      对应容器内 /host/Desktop/X.mp4,docker-compose.yml 已 bind-mount,前端表单帮老板自动转)
+    - share_url: 抖音分享链接(v.douyin.com 短链 / iesdouyin.com 长链),tool 自动解析下载
+    """
+    from app.mcp.tools.media import reverse_storyboard_video
+    try:
+        return await reverse_storyboard_video(
+            video_path=payload.video_path,
+            share_url=payload.share_url,
+            model=payload.model,
+            extra_context=payload.extra_context,
+            product_ref_count=payload.product_ref_count,
+            face_ref_count=payload.face_ref_count,
+            target_kind=payload.target_kind,
+        )
+    except Exception as exc:
+        logger.exception("reverse_storyboard_video REST 异常")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "hint": "看 KE 日志(docker logs omni-knowledge-engine | tail)",
+            },
+        )

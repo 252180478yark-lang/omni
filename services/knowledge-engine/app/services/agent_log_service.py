@@ -195,10 +195,19 @@ async def rate_tool_call_logic(
     call_id: str,
     rating: str,
     note: str = "",
+    category: str | None = None,
 ) -> dict[str, Any]:
     """评分核心逻辑：写库 + pattern_lib 双写。
 
     给 router (POST /tool-calls/{id}/rate) 与 mcp tool feedback.rate_tool_call 共用。
+
+    Args:
+        call_id: mcp.tool_calls.id (uuid str)
+        rating: good | bad | redo
+        note: 可选备注
+        category: 负反馈归因分类（migration 031；可空，向后兼容）
+            prompt_bad / tradeoff_wrong / factual_error / tone_off /
+            wrong_tool / incomplete / other
 
     Returns:
         {ok:true, result:{call_id,rating,tool_name}}
@@ -223,10 +232,11 @@ async def rate_tool_call_logic(
 
     pool = get_pool()
     row = await pool.fetchrow(
-        "UPDATE mcp.tool_calls SET user_rating=$1, rating_note=$2 "
-        "WHERE id=$3 RETURNING tool_name",
+        "UPDATE mcp.tool_calls SET user_rating=$1, rating_note=$2, rating_category=$3 "
+        "WHERE id=$4 RETURNING tool_name",
         rating,
         note,
+        category,
         call_uuid,
     )
     if row is None:
@@ -261,4 +271,150 @@ async def rate_tool_call_logic(
     }
     if warning:
         response["warning"] = warning
+    return response
+
+
+# ---------------------------------------------------------------------------
+# message_feedback (migration 031)
+# ---------------------------------------------------------------------------
+
+_VALID_MESSAGE_RATINGS = {"good", "bad"}
+_MAX_SNAPSHOT_BYTES = 4096
+
+
+async def _resolve_session_uuid(session_id: str) -> uuid.UUID | None:
+    """session_id 接受 mcp.agent_sessions.id (uuid) 或 claude_session_id (text).
+
+    先试 uuid 转换，fail 就用 claude_session_id 字段查。两个都查不到返 None。
+    """
+    pool = get_pool()
+    # try as uuid first
+    try:
+        candidate = uuid.UUID(session_id)
+    except (ValueError, TypeError):
+        candidate = None
+
+    if candidate is not None:
+        row = await pool.fetchrow(
+            "SELECT id FROM mcp.agent_sessions WHERE id=$1",
+            candidate,
+        )
+        if row is not None:
+            return row["id"]
+
+    # fallback：当 text 当 claude_session_id 查
+    row = await pool.fetchrow(
+        "SELECT id FROM mcp.agent_sessions WHERE claude_session_id=$1",
+        session_id,
+    )
+    if row is None:
+        return None
+    return row["id"]
+
+
+async def rate_message_logic(
+    *,
+    session_id: str,
+    message_id: str,
+    rating: str,
+    category: str | None = None,
+    note: str | None = None,
+    message_text_snapshot: str | None = None,
+    tool_use_ids: list[str] | None = None,
+    client: str = "desktop",
+) -> dict[str, Any]:
+    """对 AI 整条消息打分（写 mcp.message_feedback）。
+
+    给 router (POST /messages/rate) 与 mcp tool feedback.rate_message 共用。
+
+    Returns:
+        {ok:true, feedback_id, replaced:bool}
+        {ok:false, error:..., hint:...}
+    """
+    if rating not in _VALID_MESSAGE_RATINGS:
+        return {
+            "ok": False,
+            "error": "invalid_rating",
+            "hint": f"rating 必须是 {sorted(_VALID_MESSAGE_RATINGS)} 之一",
+        }
+    if not session_id or not isinstance(session_id, str):
+        return {
+            "ok": False,
+            "error": "invalid_session_id",
+            "hint": "session_id 不能为空",
+        }
+    if not message_id or not isinstance(message_id, str):
+        return {
+            "ok": False,
+            "error": "invalid_message_id",
+            "hint": "message_id 不能为空",
+        }
+
+    session_uuid = await _resolve_session_uuid(session_id)
+    if session_uuid is None:
+        return {
+            "ok": False,
+            "error": "session_not_found",
+            "hint": (
+                f"session_id={session_id} 既不是 mcp.agent_sessions.id 也不是 "
+                "claude_session_id；先确认 chat session 是否真存在"
+            ),
+        }
+
+    # snapshot 大小观测（不强校验，超长记 warning）
+    snapshot_len: int | None = None
+    snapshot_warning: str | None = None
+    if message_text_snapshot is not None:
+        snapshot_bytes = message_text_snapshot.encode("utf-8", errors="ignore")
+        snapshot_len = len(snapshot_bytes)
+        if snapshot_len > _MAX_SNAPSHOT_BYTES:
+            snapshot_warning = (
+                f"message_text_snapshot {snapshot_len}B 超过 {_MAX_SNAPSHOT_BYTES}B "
+                "约定但已落库（建议客户端裁剪）"
+            )
+
+    pool = get_pool()
+    # 先查 existing 决定 replaced 标位（ON CONFLICT 拿不到这个语义）
+    existing_id = await pool.fetchval(
+        "SELECT id FROM mcp.message_feedback "
+        "WHERE session_id=$1 AND message_id=$2",
+        session_uuid,
+        message_id,
+    )
+
+    row = await pool.fetchrow(
+        """
+        INSERT INTO mcp.message_feedback (
+            session_id, message_id, rating, category, note,
+            message_text_snapshot, tool_use_ids, client
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (session_id, message_id) DO UPDATE SET
+            rating = EXCLUDED.rating,
+            category = EXCLUDED.category,
+            note = EXCLUDED.note,
+            message_text_snapshot = EXCLUDED.message_text_snapshot,
+            tool_use_ids = EXCLUDED.tool_use_ids,
+            client = EXCLUDED.client
+        RETURNING id
+        """,
+        session_uuid,
+        message_id,
+        rating,
+        category,
+        note,
+        message_text_snapshot,
+        tool_use_ids,
+        client,
+    )
+
+    response: dict[str, Any] = {
+        "ok": True,
+        "feedback_id": str(row["id"]),
+        "replaced": existing_id is not None,
+    }
+    if snapshot_warning:
+        response["warning"] = snapshot_warning
+    if snapshot_len is not None:
+        response["snapshot_bytes"] = snapshot_len
     return response

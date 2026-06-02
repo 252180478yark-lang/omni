@@ -4,16 +4,24 @@
 
 ## omni MCP server
 
-omni 暴露 46 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14）：
+omni 暴露 69 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14 + realman/video_anchor + reverse_storyboard + 飞轮地基 + bug 记忆库 + 竞品调研 + 阶段0 L0-2成本/诊断官 + 趋势归因问数）。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 69 ok`）：
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
 - 编排辅助：`gather_brief_context`
-- 生成：`generate_brief`, `generate_image`, `generate_video`, `generate_image_compare`
+- 生成（旧链，无血缘）：`generate_brief`, `generate_image`, `generate_video`, `generate_image_compare`
 - sku-pipeline LLM：`generate_selling_points_matrix`（step 2）, `generate_audience_match`（step 3）, `generate_audience_pack`（step 4，phase B）, `generate_keyword_pack`（500 词扩展，phase B+）, `generate_creative_pack`（step 5 创意素材 6 类，phase C）
+- sku-pipeline 出片（新链，挂血缘，见下"新旧两条出片链分流"）：`generate_storyboard_images`（step 6 分镜图，挂 pipeline.assets）, `generate_character_sheets`（step 6.5 角色定妆白底像锁脸）, `generate_video_segments`（step 7 视频段：分镜图当 first_frame + character_sheet 锁脸）
+- 真人视频（绕 Seedance content_sensitive）：`realman_create_avatar`, `realman_generate_portrait_video`, `generate_video_anchor`（t2v 模式角色锚点）
+- 反推故事板（直调 Gemini Files API）：`reverse_storyboard_video`（视频→可喂回 AI 的 image/video i2v/video t2v 三类 prompt 包）
 - KB 写入：`kb_upload_doc`, `kb_set_role`
 - 抓数：`fetch_compass_*` (3), `fetch_yuntu_5a`, `fetch_yuntu_brand_mind`
 - 通用：`summarize_text`, `parse_long_doc_with_gemini`, `query_template_chunks`
 - Agent 进化：`rate_tool_call`, `agent_self_review`, `codify_pattern_to_skill`, `refresh_project_context`
+- 反馈飞轮（migration 031）：`rate_message`（消息级 👍👎 入 mcp.message_feedback）
+- Bug 记忆库 + 客户端日志（migration 032）：`log_client_event`（批量记客户端运行事件）, `report_bug`（一键报 bug，自动 dedupe）, `list_bugs`（拉 bug 列表）, `update_bug`（标修复/补根因）
+- 竞品调研（淘宝，2026-06-01）：`competitor_search`（搜词抓前 50 榜单 + 相关性过滤）, `competitor_decompose`（主图/详情页拆卖点/构图/配色/设计/内容 5 维度）
+- 阶段0 L0-2 成本闸（2026-06-02）：`query_monthly_spend`（omni 自身月度运行成本 + 软上限超额检测）
+- 诊断官（§6.2，2026-06-02）：`diagnose`（content 聚类两路反馈 / analysis 聚类趋势异动出《改进提议》，R-14 分层/R-15 样本量/R-20 生命周期，只提议不碰开关）, `list_proposals`（看待办提议+消化率）, `resolve_proposal`（三态 accept/ignore=不再提醒同类/snooze）, `explain_anomaly`（解释某条趋势异动：分层归因+近28天序列）, `query_metric_trend`（某指标近N天序列+基线mean/std）
 - W4 加分：`save_decision`, `schedule_observation`, `send_wecom_message`, `dy_publish_creative`
 - 字典查询：`list_product_prices`（工厂出厂价）, `list_channel_fees`（渠道扣点）
 - 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
@@ -21,6 +29,17 @@ omni 暴露 46 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14）：
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
 调用见 `services/knowledge-engine/app/mcp/tools/`。
+
+## 新旧两条出片链分流
+
+sku-pipeline 出图/出视频有两条链，**进 pipeline（要血缘、要投后回溯）默认走新链**：
+
+| 链 | tool | 血缘 | 落库 | 投后回溯 | 何时用 |
+|---|---|---|---|---|---|
+| **旧链** | `generate_image` / `generate_video` | 无 | 不挂 pipeline.assets | 不可回溯 | 无血缘的临时/兜底产物（老板临时要张图、单测、一次性试拍）——一次性产物，不进正式链路 |
+| **新链** | `generate_storyboard_images`（step 6）/ `generate_character_sheets`（step 6.5）/ `generate_video_segments`（step 7） | 有，全 denorm sku_id | 挂 `pipeline.assets`（ad_metrics 投后回传字段就在这表） | 可（`pipeline_get_asset_lineage` 一句 SQL 反查 SKU/卖点/人群/脚本全链路 + `v_asset_full_lineage` 视图） | sku-pipeline 正式出片，要投后 `record_ad_metrics` 回传 ROI/GMV 反查"哪套内容真带货" |
+
+**默认约定**：跑 sku-pipeline 正式出片 → 走**新链**（`generate_storyboard_images` → `generate_character_sheets` → `generate_video_segments`），产物自动挂血缘可投后回溯。旧链 `generate_image`/`generate_video` 是**无血缘的临时/兜底**通路（仍可正常调，没弃用），只在不需要进正式链路的一次性场景用。
 
 ## 成本两版 + 口令解锁（W4-B 切片 7）
 
@@ -300,7 +319,7 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 | `weekly_self_review` | 7 天 | 调 `agent_self_review(period_days=7)` | `data/agent_state/weekly_review.md` |
 | `daily_pulse` | 1 天 | 调 `fetch_compass_store_daily` + `fetch_yuntu_brand_mind` | `data/agent_state/daily_pulse.md` |
 | `dynamic_block_refresh` | 7 天 | 调 `agent_meta._refresh_impl`（绕 require_approval）| `data/agent_state/dynamic_block.md` |
-| `feedback_digest` | 7 天 | 聚类负反馈(消息级+工具级)+ 30 天投后数据 → 改进草稿（只聚类不自动改） | `data/agent_state/feedback_digest.md` |
+| `feedback_digest` | 7 天 | 聚类负反馈(消息级+工具级)+ 30 天投后数据 → 改进草稿（只聚类不自动改）**+ 调 diagnose 把提议结构化入库（§6.2，进 /insights）** | `data/agent_state/feedback_digest.md` + `mcp.improvement_proposals` |
 
 每个 cron 各一个 `last_*.txt` 文件持久化时间戳。**老板手动**把 dynamic_block.md
 新内容粘到本文件 `<!-- omni-dynamic:start ... :end -->` marker 之间（cron 不
@@ -611,3 +630,77 @@ doctor 总数 61 → **63**（竞品 2 tool）。**京东后续接**（platform 
 - **详情页 = 淘宝最硬的墙**：PC item 页"验证码拦截"（goto/referer/真点击全拦），移动 H5 不弹验证码但 SPA 抓不到 DOM、且实测也常返"访问被拒绝"。`competitor_decompose` **三层兜底**：① 先试 scout `/taobao/detail_shots`（移动 H5 滚动截图喂视觉，渲染出来就用真截图）② 被挡 → 退用**搜索主图**（传 `items` 带 main_image_url）拆 卖点/构图/配色/设计，"内容"标缺 ③ `local_images=["/host/Desktop/x.jpg",...]`：老板手动截详情页（真实登录态无反爬）**100% 可靠全 5 维**。调用优先传 `items`；要真详情页用 `local_images`。
 - scout-agent 已改**不走 VPN**（compose 清空它的 proxy env；它只抓国内站 + 内网 ai-hub）。
 - 调试辅助脚本：`services/scout-agent/_login_taobao.py`（host 弹窗登录淘宝写 storage_state）、`services/knowledge-engine/scripts/_test_competitor_{scrape,full}.py`。
+
+## 阶段0 地基 wiring + L0-2 + 诊断官 + 运营洞察前端（2026-06-02）
+
+蓝图 §8 阶段0 的 schema 地基（034 platform 维 / 035 tool_use_id 列 / 036 actor_id / 037 product+listing+v_metric_rollup）**晨确认已 apply 到 live DB**，本切片把它们**接通用上** + 补 L0-2 + 上线诊断官 + 前端 surfacing。全程 T0/T1 加法可逆，未碰 STEP 2 contract / 未 commit / 未轮换密码（T2 待老板）。
+
+### 后端（KE）
+- **L0-2 月度成本闭环**：apply migration 033（`mcp.monthly_spend` + 视图）。`app/routers/spend.py`（`POST /spend/record` 前端 task_done 归集 + `GET /spend/month` 累计+软上限）。MCP tool `query_monthly_spend`。软上限读 `OMNI_MONTHLY_SPEND_CAP_USD`（缺省回退 500，老板配才启用超额提示）。复用夜间 `cost_ledger_service`。
+- **tool_use_id 焊归因链**：`app/routers/tool_uses.py`（`POST /tool-uses/link`，按 tool_name+时间窗回填最早未焊接 tool_calls 行；幂等 fail-open）。前端在 task_done 批量 POST。打通"差评→哪次调用→哪段 prompt"。
+- **ad_metrics 入库校验（§1.4）**：`app/services/ad_metrics_validation.py`（白名单+上下界，R-4 拒手填 roi，未知/越界标 `_validation` 不进聚合，fail-open 不丢数据）。接入 `record_ad_metrics`。
+- **诊断官（§6.2，能力即工具）**：apply migration 038（`mcp.improvement_proposals` 生命周期表）。`app/services/diagnose_service.py`（**确定性生成不调 LLM**，复用 cron `_collect_feedback_digest` 聚类；R-14 observation/hypothesis 分层禁伪因果、R-15 样本量 preliminary、R-17 投后口径、R-20 dedupe/priority/expiry/三态）。3 个 tool `diagnose`/`list_proposals`/`resolve_proposal` + `app/routers/proposals.py`。**只提议不碰开关**。
+- **周期报端点**：`app/routers/agent_state.py`（`GET /agent-state/reports` 读 cron 写的 weekly_review/daily_pulse/feedback_digest/dynamic_block md）。
+- doctor wanted 63→**67**；L0 gate 预算 env key 对齐 `OMNI_MONTHLY_SPEND_CAP_USD`；doc体检路径改 env 可配 `OMNI_CLAUDE_MD_PATH`。
+- 回归网修绿（L0-7）：7 个夜间遗留过时单测（gate 超时 expired / audit tool_name kwarg / hub status_code / knowledge 分页 dict）全按已落地正确行为对齐；**268 单测全过**。
+
+### 前端（Next.js）
+- ws-handler.ts：task_done 后 fire-and-forget POST 成本归集 + tool_use_id 焊链（host-friendly KE base）。
+- claude-runner.ts：stream-json 运行时形状校验（fail-open warn）+ CLI 版本一次性记日志（L0-1 部分；完整 L0-1 含三端共享 runner 包是 T2）。
+- 新 `/insights` 页（运营洞察）4 tab：改进建议（诊断官 inbox + 三态拍板按钮）/ 运行成本（月度 spend + 软上限进度）/ 周期报（cron md 渲染）/ 底座状态（阶段0 就绪度 + R-8 接现成 BI 声明）。4 个 `/api/omni/{proposals,spend,cron-reports}` 代理路由 + sidebar「运营洞察」入口。
+
+### 老板话术 → tool
+- "这月 omni 烧了多少 / 超预算没" → `query_monthly_spend`
+- "诊断一下 / 最近反馈啥模式 / 本周改进建议" → `diagnose` → 看 `/insights` 改进建议 tab
+- "接受第 N 条 / 这条忽略别再提 / 先放放" → `resolve_proposal`（或前端按钮）
+
+### 故意没做（T2 待老板）
+STEP 2 contract（解绑 douyin 主键 / 换 UNIQUE 含 platform / NOT NULL）、GMV·ROI 归一口径、三端 runner 共享包、密码轮换/git 历史、commit、多平台京东淘天数据接入（§8.5 等数据源）、诊断官 LLM 叙事增强、诊断官接 cron。
+
+doctor 总数 63 → **67**（query_monthly_spend + diagnose + list_proposals + resolve_proposal）。
+
+## 诊断官·分析面趋势归因 + 问数工具（§6.2 + R-14 + R-15，2026-06-02）
+
+诊断官补齐**分析面（mode='analysis'）**——此前是 stub（返 pending_multiplatform_data），现接通
+真实现（§8.5 单平台抖音最小可用）+ 2 个问数工具。**全程确定性，归因走模板化映射不调 LLM**
+（R-14：LLM 最会编"逻辑自洽实则编造"的归因，所以归因按 metric/rule 查表，不交给 LLM）。
+
+### `diagnose(mode='analysis', platform='douyin')`
+读近 N 天 `mvp_anomaly`（unhandled + 非 expected + 平台过滤，带 migration 039 列
+`as_of`/`baseline_value`/`today_value`/`baseline_days`/`delta_pct`），按 metric 聚合成提议，
+**R-14 强制分层**：
+- observation：客观相关（每条 sku/delta/今值 vs 基线/窗口天数/数据新鲜度 as_of），不含因果断言。
+- hypothesis：**模板化**（`_ANALYSIS_METRIC_HYPOTHESIS` 按 metric/rule 关键词查表）。每条三段式：
+  "假设（拆解维度）+ 未排除混杂因子 + 要证实需对比 X"，禁"主因是 X"断言，每条可一句话证伪。
+  范例映射：gmv 跌→拆 UV×转化×客单三因子 + 排季节性/竞品；CTR 连降→素材疲劳/定向漂移/竞争加剧。
+- R-15：sample_size=异动条数，n<5 → confidence='preliminary' + 标"（初步观察·样本 n<5 待验证）"。
+- 落 `mcp.improvement_proposals`（mode='analysis'，dedupe_key='analysis:anomaly:{metric}:{rule}'），
+  复用 content mode 同一 `_upsert_proposal`/`_expire_stale`/`list_proposals` 基建（禁漂移）。
+
+### 2 个问数工具（确定性查询，参照 query_costs 风格：@tool_with_audit、不返 trace、不走 Gate）
+- `explain_anomaly(anomaly_id)`：读该异动 + 其指标近 28 天序列，返分层归因
+  （observation / hypothesis / unaddressed_confounders / falsification + recent_series + baseline）。
+- `query_metric_trend(metric_name, sku_id?, platform='douyin', days=28)`：返该指标近 days 天序列
+  （sku_id 省略=同日聚合大盘口径）+ 基线 mean/std/min/max/latest。序列是 `mvp_daily_metric` 真实数据原样返回，不编造不归因。
+
+### REST endpoint（桌面经 IPC→http 调，调不了 MCP tool；与 tool 共用同一 service 函数禁漂移）
+- `GET /api/v1/mcp/explain-anomaly?anomaly_id=`
+- `GET /api/v1/mcp/metric-trend?metric_name=&sku_id=&platform=&days=`
+（挂在 `proposals.py` 新增 `query_router`，main.py include）。
+
+### 老板话术 → tool
+- "分析一下趋势 / 为啥指标掉了 / 看看异动" → `diagnose(mode='analysis')`
+- "为啥这条异动 / 解释下这个异常" → `explain_anomaly(anomaly_id)`
+- "看看 X 指标最近趋势 / gmv 走势" → `query_metric_trend(metric_name='X')`
+
+### 实现
+- `app/services/diagnose_service.py`（`_ANALYSIS_METRIC_HYPOTHESIS` 模板表 + `_collect_anomalies` +
+  `_build_analysis_proposals` + `run_diagnose` analysis 分支 + `query_metric_trend`/`explain_anomaly`/`_metric_series`）
+- `app/mcp/tools/diagnose.py`（diagnose 加 platform 参 + `explain_anomaly`/`query_metric_trend` 2 tool）
+- `app/routers/proposals.py`（DiagnoseRequest 加 platform + query_router 2 endpoint）+ `app/main.py`（挂 query_router）
+- `app/mcp/doctor.py`（wanted +2）+ CLAUDE.md 头 67→69
+
+### 故意没做（T2 待数据/老板）
+跨平台归因（京东淘天数据未入库，§8.5）、滚动基线/断更守卫（A 异动引擎管）、LLM 叙事增强、诊断官接 cron。
+
+doctor 总数 67 → **69**（explain_anomaly + query_metric_trend）。

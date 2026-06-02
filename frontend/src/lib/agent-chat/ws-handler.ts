@@ -14,13 +14,22 @@ import type {
   ChatAttachment,
 } from './types'
 
-const pool = new Pool({
-  host: process.env.PGHOST || 'localhost',
-  port: parseInt(process.env.PGPORT || '5432'),
-  user: process.env.PGUSER || 'omni_user',
-  password: process.env.PGPASSWORD || 'omni_pass',
-  database: process.env.PGDATABASE || 'omni_vibe_db',
-})
+// Lazy init: server.ts 用 @next/env loadEnvConfig 加载 .env.local, 但 ESM import
+// hoisting 会让模块顶层 new Pool() 在 env 加载前执行 → 拿到默认 'omni_pass' 错密码.
+// 改成第一次 query 时才建实例, 此时 env 已就位.
+let _pool: Pool | null = null
+function getPool(): Pool {
+  if (!_pool) {
+    _pool = new Pool({
+      host: process.env.PGHOST || 'localhost',
+      port: parseInt(process.env.PGPORT || '5432'),
+      user: process.env.PGUSER || 'omni_user',
+      password: process.env.PGPASSWORD || 'omni_pass',
+      database: process.env.PGDATABASE || 'omni_vibe_db',
+    })
+  }
+  return _pool
+}
 
 // W5-B 切片 3.2: Redis 订阅 mcp.human_gates.new + 广播到所有连接的 ws
 const REDIS_URL = process.env.REDIS_URL || 'redis://:changeme_redis@localhost:6379/1'
@@ -184,7 +193,7 @@ async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise
   const mgr = getSessionManager()
 
   if (msg.kind === 'open_session') {
-    const r = await pool.query<{
+    const r = await getPool().query<{
       id: string
       claude_session_id: string
       title: string
@@ -203,7 +212,12 @@ async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise
     const row = r.rows[0]
     const mcpConfigPath = await writeTempMcpConfig(msg.session_id)
     const sess = mgr.open(msg.session_id, { mcpConfigPath })
-    sess.claudeSessionId = row.claude_session_id
+    // 只在真正跑过对话(message_count>0)时 resume claude session;
+    // 否则 row.claude_session_id 是 sessions POST 时塞的 placeholder fake UUID,
+    // 传给 claude --resume 会报 "No conversation found" 直接退出
+    if (row.message_count > 0 && row.claude_session_id) {
+      sess.claudeSessionId = row.claude_session_id
+    }
     const projectDir = process.env.OMNI_PROJECT_DIR || process.cwd()
     const sessionsDir = path.join(os.homedir(), '.claude', 'projects', encodeProjectDir(projectDir))
     const jsonlPath = path.join(sessionsDir, `${row.claude_session_id}.jsonl`)
@@ -228,8 +242,28 @@ async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise
 
   if (msg.kind === 'send_prompt') {
     if (!mgr.has(msg.session_id)) return send(ws, { kind: 'error', error: 'session_not_open' })
-    const runner = mgr.spawn(msg.session_id, msg.prompt)
+    const cfg = msg.config
+    const runner = mgr.spawn(msg.session_id, msg.prompt, {
+      allowedTools: cfg?.allowed_tools && cfg.allowed_tools.length > 0 ? cfg.allowed_tools : undefined,
+      maxTurns: cfg?.max_turns,
+      model: cfg?.model,
+      appendSystemPrompt: cfg?.append_system_prompt,
+    })
+    // 阶段0 块2（tool_use_id 焊归因链）：累积这一轮的 (tool_use_id, tool_name)，
+    // 在 task_done（所有 tool 已执行完、KE 的 tool_calls 行已落库）后批量 POST 回填，
+    // 避免 tool_use 出现时 KE 行还没落的时序坑。
+    const turnToolUses: Array<{ tool_use_id: string; tool_name: string }> = []
+    let claudeSessionId = ''
     runner.on('chunk', (chunk: ClaudeStreamChunk) => {
+      // 累积本轮 tool_use + 捕获 Claude 侧 session id
+      if (chunk.type === 'assistant' && chunk.message) {
+        for (const block of chunk.message.content) {
+          if (block.type === 'tool_use' && block.id && block.name) {
+            turnToolUses.push({ tool_use_id: block.id, tool_name: block.name })
+          }
+        }
+      }
+      if (chunk.session_id) claudeSessionId = chunk.session_id
       const msgs = chunkToMessages(chunk)
       for (const m of msgs) {
         send(ws, { kind: 'chunk', session_id: msg.session_id, message: m })
@@ -262,6 +296,33 @@ async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise
           }).catch((err) => {
             console.warn('[notify task_done] failed:', err?.message || err)
           })
+        }
+        // 阶段0 L0-2：把这次会话成本归集进月度总账（fire-and-forget，记账不阻断业务）。
+        // host dev 跑前端时走 localhost；KNOWLEDGE_ENGINE_URL/OMNI_KE_URL 可覆盖。
+        const keBase =
+          process.env.KNOWLEDGE_ENGINE_URL || process.env.OMNI_KE_URL || 'http://localhost:8002'
+        if (costUsd > 0) {
+          fetch(`${keBase}/api/v1/mcp/spend/record`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              total_cost_usd: costUsd,
+              session_id: msg.session_id,
+              claude_session_id: claudeSessionId || undefined,
+              client: 'web',
+            }),
+          }).catch((err) => console.warn('[spend record] failed:', err?.message || err))
+        }
+        // 阶段0 块2：批量回填本轮 tool_use_id 焊归因链（fire-and-forget）。
+        if (turnToolUses.length > 0) {
+          fetch(`${keBase}/api/v1/mcp/tool-uses/link`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              items: turnToolUses.map((t) => ({ ...t, claude_session_id: claudeSessionId || undefined })),
+              within_minutes: 15,
+            }),
+          }).catch((err) => console.warn('[tool-uses link] failed:', err?.message || err))
         }
       }
     })
@@ -303,7 +364,7 @@ async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise
 
 async function updateSessionStats(sessionId: string, chunk: ClaudeStreamChunk): Promise<void> {
   const usage = chunk.message?.usage
-  await pool.query(
+  await getPool().query(
     `UPDATE mcp.agent_sessions
         SET tokens_input_total = tokens_input_total + $1,
             tokens_output_total = tokens_output_total + $2,

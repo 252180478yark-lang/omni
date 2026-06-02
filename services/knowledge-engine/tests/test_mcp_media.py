@@ -78,6 +78,7 @@ async def test_smoke_generate_image_v2_passes_face_and_product_refs():
     captured = {}
 
     class FakeResp:
+        status_code = 200  # ai_hub_client._post_hub 现在先查 status_code（>=400 抛 HubError）
         def raise_for_status(self): return None
         def json(self): return {"images": [{"url": "https://fake/1.png"}]}
 
@@ -114,6 +115,7 @@ async def test_smoke_generate_video_v2_passes_first_last_frame():
     captured = {}
 
     class FakeResp:
+        status_code = 200  # ai_hub_client._post_hub 现在先查 status_code（>=400 抛 HubError）
         def raise_for_status(self): return None
         def json(self): return {"task_id": "t-001", "status": "pending"}
 

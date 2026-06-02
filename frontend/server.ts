@@ -1,3 +1,8 @@
+import { loadEnvConfig } from '@next/env'
+// 必须在 import ws-handler 前加载 .env.local, 否则 ws-handler.ts 顶层创建的
+// pg.Pool 拿到的 process.env.PGPASSWORD 还是 undefined → 走默认 'omni_pass' 错密码
+loadEnvConfig(process.cwd())
+
 import { createServer } from 'node:http'
 import { parse } from 'node:url'
 import next from 'next'

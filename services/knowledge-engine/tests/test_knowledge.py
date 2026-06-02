@@ -114,7 +114,9 @@ def test_query_empty_results(mock_kb, mock_search, client):
 # ═══ Documents ═══
 
 
-@patch("app.routers.knowledge.list_documents", new_callable=AsyncMock, return_value=[])
+# 路由现返分页 dict（result["items"]/["total"]）；mock 跟上契约（旧版返裸 list 已过时）
+@patch("app.routers.knowledge.list_documents", new_callable=AsyncMock,
+       return_value={"items": [], "total": 0})
 def test_list_documents_empty(mock_docs, client):
     resp = client.get("/api/v1/knowledge/documents")
     assert resp.status_code == 200

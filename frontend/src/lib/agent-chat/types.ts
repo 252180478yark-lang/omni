@@ -82,10 +82,28 @@ export interface SessionState {
 }
 
 // === WebSocket 消息协议（前后端互通）===
+export interface PlaygroundSpawnConfig {
+  /** 'sonnet' / 'opus' / 'haiku' / 'claude-opus-4-7' 等 */
+  model?: string
+  /** 空数组或不传 = 全开;非空 = 限定为这几个 */
+  allowed_tools?: string[]
+  /** --append-system-prompt 内容 */
+  append_system_prompt?: string
+  /** --max-turns */
+  max_turns?: number
+}
+
 export type WsClientMessage =
   | { kind: 'open_session'; session_id: string }
   | { kind: 'close_session'; session_id: string }
-  | { kind: 'send_prompt'; session_id: string; prompt: string; attachments?: ChatAttachment[] }
+  | {
+      kind: 'send_prompt'
+      session_id: string
+      prompt: string
+      attachments?: ChatAttachment[]
+      /** /playground 专用:覆盖 spawn args(model / allowed_tools / append_system_prompt / max_turns) */
+      config?: PlaygroundSpawnConfig
+    }
   | { kind: 'cancel'; session_id: string }
   | { kind: 'human_gate_decide'; short_id: string; decision: 'approved' | 'rejected'; note?: string }
 

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { AppSidebar } from './app-sidebar'
 import { BeginnerGuide } from './beginner-guide'
 
-const FULL_SCREEN_ROUTES = ['/chat']
+const FULL_SCREEN_ROUTES = ['/chat', '/playground']
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

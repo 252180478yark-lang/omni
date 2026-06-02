@@ -29,6 +29,11 @@ from app.routers.human_gates import router as human_gates_router
 from app.routers.mcp_exec import router as mcp_exec_router
 from app.routers.notify import router as notify_router
 from app.routers.bug_memory import router as bug_memory_router
+from app.routers.spend import router as spend_router
+from app.routers.tool_uses import router as tool_uses_router
+from app.routers.proposals import router as proposals_router
+from app.routers.proposals import query_router as diagnose_query_router
+from app.routers.agent_state import router as agent_state_router
 from contextlib import AsyncExitStack
 from app.mcp.server import mcp_http_app
 
@@ -116,6 +121,11 @@ app.include_router(human_gates_router)
 app.include_router(mcp_exec_router)
 app.include_router(notify_router)
 app.include_router(bug_memory_router)
+app.include_router(spend_router)
+app.include_router(tool_uses_router)
+app.include_router(proposals_router)
+app.include_router(diagnose_query_router)
+app.include_router(agent_state_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)

@@ -1,0 +1,8 @@
+# 实时登录 cookies（敏感凭证，绝不入库）
+sessions/
+# 虚拟环境
+.venv/
+# playwright 临时
+.playwright-mcp/
+# sweep 原始大报告（保留 .md 汇总即可）
+catalog/_sweep_*.json

@@ -14,6 +14,7 @@ import json
 import logging
 import re
 from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 from uuid import uuid4
 
@@ -237,6 +238,128 @@ async def query_costs(
     return [_row_to_dict(r) for r in rows]
 
 
+# ═══ Margin 核心（单一口径纯函数，§3/R-4 地基）═══
+
+
+def _dec(x: Any) -> Decimal:
+    """任意数值 → Decimal（先转 str 避 float 二进制误差）。"""
+    return Decimal(str(x))
+
+
+# 口径常量（§3 难改地基；改前先改蓝图 + 标 needs_boss）
+#   - 报价类 partner_quote 不计入成本（仅供比价参考）
+#   - 共享成本 sku_id IS NULL（如物流）由调用方决定是否纳入，core 只算给它的行
+_COST_CATEGORIES_IN_MARGIN = {"product", "logistics"}  # partner_quote 排除
+
+
+def _margin_core(
+    *,
+    cost_lines: list[dict],
+    sale_price: Any,
+    quantity: Any = 1,
+    fee_rate: Any = 0,
+) -> dict:
+    """毛利/ROI/保本线**单一口径**纯函数（无 DB、无 LLM、无副作用）。
+
+    把原本散在两套 compute_margin 里的算法收口成一处，两个公共入口都调它，
+    保证"同一 SKU 同一天毛利两套返回完全相同的数"（蓝图 §3/R-4 DoD：diff=0）。
+
+    Args:
+        cost_lines: 已查好的成本行，每行至少含
+            {"category": str, "unit_cost": 数值, "quantity_per_unit": 数值,
+             ...其它字段原样透传给 breakdown}
+            语义同两套老实现："一箱 N 件" → 每件成本 = unit_cost / quantity_per_unit。
+            category='partner_quote' 的行**不计入成本**（仅比价用）。
+        sale_price: 单件售价
+        quantity: 件数（默认 1）
+        fee_rate: 渠道/平台扣点率（小数，如 0.02 = 2%）
+
+    口径假设（保守默认，有争议项见 needs_boss）：
+        - GMV = sale_price * quantity（**不扣退款**：core 拿到的是成交口径售价，
+          退款维度由上游数据负责，core 不在此处估退款）
+        - 成本 = Σ(unit_cost/quantity_per_unit) * quantity，仅 product+logistics
+        - 渠道费 = GMV * fee_rate
+        - 净利 = GMV - 成本 - 渠道费
+        - 毛利率 margin = 净利 / GMV
+        - ★ROI（保本/广告维度）：core 不接广告花费入参，故 roi 在此返 None，
+          由"投后归因"层用真实 ad_metrics 的 spend 算（蓝图 R-4：ROI 后端算非手填）。
+          这里只产出**保本线**给老板看"投放要回多少本"：
+            - breakeven_roas = 1 / margin（毛利率，毛利率<=0 时 None，无意义）
+            - breakeven_price = 单件保本售价（净利=0 时的 sale_price，
+              含同比例渠道费：price*(1-fee_rate) = 单件成本 → price = 单件成本/(1-fee_rate)）
+
+    Returns:
+        全 Decimal 的规范结果（调用方按各自历史格式量化/转 float/转 str）：
+        {
+          "gmv": Decimal, "cost_subtotal": Decimal, "channel_fee": Decimal,
+          "net_profit": Decimal, "margin": Decimal,
+          "unit_cost_total": Decimal,   # 单件成本合计（含份数折算）
+          "cost_by_category": {cat: Decimal, ...},
+          "breakdown": [ {原行字段 + "line_cost": Decimal, "shared": bool}, ... ],
+          "items_used": int,
+          "roi": None,                  # core 无广告花费入参 → None（投后层算）
+          "breakeven_roas": Decimal | None,
+          "breakeven_price": Decimal | None,
+        }
+    """
+    sale = _dec(sale_price)
+    qty = _dec(quantity)
+    rate = _dec(fee_rate)
+
+    gmv = sale * qty
+
+    unit_cost_total = Decimal("0")  # 单件成本合计（已按份数折算）
+    cost_by_category: dict[str, Decimal] = {"product": Decimal("0"), "logistics": Decimal("0")}
+    breakdown: list[dict] = []
+
+    for it in cost_lines:
+        cat = it.get("category")
+        if cat not in _COST_CATEGORIES_IN_MARGIN:
+            continue  # partner_quote 等不计入成本
+        unit_cost = _dec(it.get("unit_cost") or 0)
+        per = _dec(it.get("quantity_per_unit") or 1)
+        if per == 0:
+            per = Decimal("1")  # 防除零；份数缺失按 1 件
+        line_unit = unit_cost / per           # 单件该项成本
+        unit_cost_total += line_unit
+        cost_by_category[cat] = cost_by_category.get(cat, Decimal("0")) + line_unit
+        row = dict(it)  # 原样透传调用方给的字段（item_id/vendor/visibility 等）
+        row["line_cost"] = line_unit * qty    # 该项按 qty 件的总成本
+        row["shared"] = it.get("sku_id") is None
+        breakdown.append(row)
+
+    cost_subtotal = unit_cost_total * qty
+    channel_fee = gmv * rate
+    net_profit = gmv - cost_subtotal - channel_fee
+    margin = (net_profit / gmv) if gmv > 0 else Decimal("0")
+
+    # ── 新增（加法）：ROI / 保本线 ─────────────────────────────
+    # roi：core 无广告花费入参 → None（蓝图 R-4：ROI 由投后归因层用真实 spend 算，拒手填）
+    roi: Decimal | None = None
+    # breakeven_roas = 1 / 毛利率（毛利率 <= 0 时不存在保本点 → None）
+    breakeven_roas: Decimal | None = (Decimal("1") / margin) if margin > 0 else None
+    # breakeven_price = 单件保本售价：price*(1-rate) = 单件成本 → price = 单件成本/(1-rate)
+    #   rate >= 1（扣点 ≥100%，异常）时无解 → None
+    breakeven_price: Decimal | None = (
+        (unit_cost_total / (Decimal("1") - rate)) if rate < 1 else None
+    )
+
+    return {
+        "gmv": gmv,
+        "cost_subtotal": cost_subtotal,
+        "channel_fee": channel_fee,
+        "net_profit": net_profit,
+        "margin": margin,
+        "unit_cost_total": unit_cost_total,
+        "cost_by_category": cost_by_category,
+        "breakdown": breakdown,
+        "items_used": len(breakdown),
+        "roi": roi,
+        "breakeven_roas": breakeven_roas,
+        "breakeven_price": breakeven_price,
+    }
+
+
 # ═══ Margin ═══
 
 
@@ -267,36 +390,61 @@ async def compute_margin(
         include_shared=include_shared_logistics,
     )
 
-    revenue = sale_price * quantity
-    platform_fee = revenue * platform_fee_rate
-
-    cost_by_cat: dict[str, float] = {"product": 0.0, "logistics": 0.0}
-    breakdown: list[dict] = []
-
-    for it in items:
-        cat = it["category"]
-        if cat == "partner_quote":
-            continue  # 报价不计成本
-        unit_cost = float(it["unit_cost"])
-        per = float(it.get("quantity_per_unit") or 1.0)
-        # "一箱 24 瓶"语义：unit_cost 是箱单价，每瓶成本 = unit_cost / per
-        # 直接卖 quantity 件 → 总成本 = unit_cost / per * quantity
-        line_cost = unit_cost / per * quantity
-        cost_by_cat[cat] = cost_by_cat.get(cat, 0.0) + line_cost
-        breakdown.append({
+    # ── §3/R-4：算法收口到 _margin_core（单一口径），此入口只做"取数 + 映回历史字段名"──
+    # 给 core 的 cost_lines 透传 item_id/item_name/vendor，core 算完原样带回 breakdown。
+    cost_lines = [
+        {
+            "category": it["category"],
+            "unit_cost": float(it["unit_cost"]),
+            "quantity_per_unit": float(it.get("quantity_per_unit") or 1.0),
             "item_id": it["id"],
             "item_name": it["item_name"],
-            "category": cat,
-            "unit_cost": unit_cost,
-            "quantity_per_unit": per,
             "vendor": it.get("vendor"),
-            "line_cost": round(line_cost, 4),
-            "shared": it.get("sku_id") is None,
-        })
+            "sku_id": it.get("sku_id"),
+        }
+        for it in items
+    ]
+    core = _margin_core(
+        cost_lines=cost_lines,
+        sale_price=sale_price,
+        quantity=quantity,
+        fee_rate=platform_fee_rate,
+    )
 
-    total_cost = sum(cost_by_cat.values()) + platform_fee
-    net_profit = revenue - total_cost
-    net_margin = net_profit / revenue if revenue > 0 else 0.0
+    # core 返回全 Decimal；本入口历史契约是 float + 这套字段名，逐一映回（字段名/结构不变）
+    revenue = float(core["gmv"])
+    platform_fee = float(core["channel_fee"])
+    # total_cost 历史口径 = 成本 + 平台费（保持不变）
+    total_cost = float(core["cost_subtotal"] + core["channel_fee"])
+    net_profit = float(core["net_profit"])
+    net_margin = float(core["margin"])
+
+    # breakdown 映回历史字段名（item_id/item_name/category/unit_cost/quantity_per_unit/
+    # vendor/line_cost/shared），不引入 core 内部新键
+    breakdown: list[dict] = []
+    for row in core["breakdown"]:
+        breakdown.append({
+            "item_id": row.get("item_id"),
+            "item_name": row.get("item_name"),
+            "category": row.get("category"),
+            "unit_cost": float(row.get("unit_cost") or 0.0),
+            "quantity_per_unit": float(row.get("quantity_per_unit") or 1.0),
+            "vendor": row.get("vendor"),
+            "line_cost": round(float(row["line_cost"]), 4),
+            "shared": row.get("shared", False),
+        })
+    cost_by_cat = {k: round(float(v), 2) for k, v in core["cost_by_category"].items()}
+
+    # 新增字段（加法，不动现有键）：roi / breakeven_roas / breakeven_price
+    roi = core["roi"]  # 此入口无广告花费 → None（投后归因层算）
+    breakeven_roas = (
+        round(float(core["breakeven_roas"]), 4)
+        if core["breakeven_roas"] is not None else None
+    )
+    breakeven_price = (
+        round(float(core["breakeven_price"]), 4)
+        if core["breakeven_price"] is not None else None
+    )
 
     return {
         "sku_id": sku_id,
@@ -306,11 +454,15 @@ async def compute_margin(
         "platform_fee_rate": platform_fee_rate,
         "platform_fee": round(platform_fee, 2),
         "cost_breakdown": breakdown,
-        "cost_by_category": {k: round(v, 2) for k, v in cost_by_cat.items()},
+        "cost_by_category": cost_by_cat,
         "total_cost": round(total_cost, 2),
         "net_profit": round(net_profit, 2),
         "net_margin": round(net_margin, 4),
         "items_used": len(breakdown),
+        # ── §3/R-4 新增（加法）──
+        "roi": roi,
+        "breakeven_roas": breakeven_roas,
+        "breakeven_price": breakeven_price,
     }
 
 
