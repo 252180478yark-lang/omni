@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db, close_db
 from app.scheduler import start_scheduler, stop_scheduler
-from app.routers import health, runbooks, runs, sessions, anomalies, skus, dashboard, taobao
+from app.routers import health, runbooks, runs, sessions, anomalies, skus, dashboard, taobao, fetch
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 log = logging.getLogger(__name__)
@@ -26,6 +26,24 @@ log = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     await init_db()
     log.info("scout-agent: DB pool ready")
+
+    # 三平台实时取数底座：注入 live_fetch executor（从 catalog/*.json 载入端点目录）
+    try:
+        import json
+        from pathlib import Path
+        from app.services.catalog_loader import CatalogLoader
+        from app.services.live_fetch import LiveFetchExecutor
+        from app.routers.fetch import set_executor
+
+        cat_dir = Path(__file__).resolve().parent.parent / "catalog"
+        files = {p: cat_dir / f"{p}.json" for p in ("yuntu", "compass", "doudian")
+                 if (cat_dir / f"{p}.json").exists()}
+        context = json.loads((cat_dir / "context.json").read_text("utf-8")) if (cat_dir / "context.json").exists() else {}
+        sessions_root = Path(getattr(settings, "sessions_dir", "./sessions"))
+        set_executor(LiveFetchExecutor(CatalogLoader.from_files(files, context), sessions_root))
+        log.info("scout-agent: live_fetch executor ready (%d catalog files)", len(files))
+    except Exception as exc:
+        log.warning("live_fetch executor init failed: %s", exc)
 
     # Bootstrap SKUs on startup (non-blocking)
     try:
@@ -59,3 +77,4 @@ app.include_router(anomalies.router, prefix="/api/v1/scout")
 app.include_router(skus.router, prefix="/api/v1/scout")
 app.include_router(dashboard.router, prefix="/api/v1/scout")
 app.include_router(taobao.router, prefix="/api/v1/scout")  # 竞品调研：淘宝抓取
+app.include_router(fetch.router, prefix="/api/v1/scout")  # 三平台实时取数底座

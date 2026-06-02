@@ -170,6 +170,9 @@ def _wanted_tools() -> set[str]:
             "diagnose", "list_proposals", "resolve_proposal",
             # 2026-06-02 §6.2 分析面趋势归因问数（R-14 模板化归因不调 LLM）
             "explain_anomaly", "query_metric_trend",
+            # 2026-06-03 三平台实时取数底座（Mac 开发→集成）：4 个 platform_* tool
+            "platform_fetch", "platform_batch_fetch",
+            "platform_list_endpoints", "platform_auth_status",
     }
 
 

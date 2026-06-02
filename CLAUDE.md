@@ -4,7 +4,7 @@
 
 ## omni MCP server
 
-omni 暴露 69 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14 + realman/video_anchor + reverse_storyboard + 飞轮地基 + bug 记忆库 + 竞品调研 + 阶段0 L0-2成本/诊断官 + 趋势归因问数）。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 69 ok`）：
+omni 暴露 73 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14 + realman/video_anchor + reverse_storyboard + 飞轮地基 + bug 记忆库 + 竞品调研 + 阶段0 L0-2成本/诊断官 + 趋势归因问数 + 三平台实时取数底座 platform_*×4）。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 73 ok`）：
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
 - 编排辅助：`gather_brief_context`

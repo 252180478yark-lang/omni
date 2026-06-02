@@ -355,6 +355,9 @@ services:
       - ./services/scout-agent/snapshots:/app/snapshots
       # 源码 bind-mount：调淘宝选择器时改完 docker restart omni-scout-agent 即生效，免 rebuild
       - ./services/scout-agent/app:/app/app
+      # 三平台实时取数底座（2026-06-03 集成）：端点目录 catalog 必挂（executor 启动读它）+ 重验工具链 scripts
+      - ./services/scout-agent/catalog:/app/catalog
+      - ./services/scout-agent/scripts:/app/scripts
     depends_on:
       postgres:
         condition: service_healthy
