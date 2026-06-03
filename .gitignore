@@ -117,3 +117,16 @@ docs/调试问题/
 services/scout-agent/_inspect_*.py
 services/scout-agent/_kb_*.py
 services/scout-agent/data/
+
+# BI 2.0 探测/survey 衍生 dump（大文件 + 含真实业务数据，不入库；可由 _probe_*.py 重抓）
+services/scout-agent/catalog/_bi_probe/
+services/scout-agent/catalog/_kpi_raw/
+services/scout-agent/catalog/_survey_*.json
+services/scout-agent/catalog/_survey_*.jsonl
+services/scout-agent/catalog/_survey_*.log
+services/scout-agent/catalog/_bi_endpoint_index.json
+services/scout-agent/catalog/_kpi_extractions.json
+# 散落的关键词/选品包输出（一次性产物）
+/_keywords_*.txt
+/_packs_*.md
+/SKU*_关键词*.txt

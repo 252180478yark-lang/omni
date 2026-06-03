@@ -4,7 +4,7 @@
 
 ## omni MCP server
 
-omni 暴露 73 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14 + realman/video_anchor + reverse_storyboard + 飞轮地基 + bug 记忆库 + 竞品调研 + 阶段0 L0-2成本/诊断官 + 趋势归因问数 + 三平台实时取数底座 platform_*×4）。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 73 ok`）：
+omni 暴露 76 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14 + realman/video_anchor + reverse_storyboard + 飞轮地基 + bug 记忆库 + 竞品调研 + 阶段0 L0-2成本/诊断官 + 趋势归因问数 + 三平台实时取数底座 platform_*×4 + 落库桥 ingest_platform_metrics + 综合经营分析/临时问数×2）。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 76 ok`）：
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
 - 编排辅助：`gather_brief_context`
@@ -26,6 +26,9 @@ omni 暴露 73 个 tool（W1+W2+W3a+W3b+W3c+W4-A+W4-B 切片 5/8/9/14 + realman/
 - 字典查询：`list_product_prices`（工厂出厂价）, `list_channel_fees`（渠道扣点）
 - 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
 - 投后回传闭环（W1 phase D，2026-05-29）：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
+- 三平台实时取数底座（2026-06-03，经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
+- 落库桥（2026-06-03）：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 29 抽取器 + 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
+- 综合经营分析 + 临时问数（2026-06-03，§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，支持已落库 29 指标）
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
 调用见 `services/knowledge-engine/app/mcp/tools/`。
@@ -704,3 +707,117 @@ doctor 总数 63 → **67**（query_monthly_spend + diagnose + list_proposals + 
 跨平台归因（京东淘天数据未入库，§8.5）、滚动基线/断更守卫（A 异动引擎管）、LLM 叙事增强、诊断官接 cron。
 
 doctor 总数 67 → **69**（explain_anomaly + query_metric_trend）。
+
+## 落库桥：实时取数 → 29 指标 + 同行标杆落库（2026-06-03）
+
+把已验证的抽取脚本 `services/scout-agent/scripts/_ingest_kpi.py`（29 抽取器 + series/snap
++ 口径换算，干跑 29/29 过）升级成**真落库管线**。fetch 实时（不读 `_kpi_raw` 缓存）→
+跑 29 抽取器 → upsert 两表。全程纯加法、fail-open（单端点/单抽取器失败不挂整批）。
+
+### 落库目标（共享契约）
+
+- **`mvp_daily_metric`**：全店行 `sku_id='_SHOP_'`（哨兵，metric_ingest 自动确保 mvp_sku 有此行）、
+  `platform='douyin'`（云图/罗盘/抖店同属抖音生态）。`ON CONFLICT(sku_id,date,metric_name)` upsert。
+  - series 端点（gmv_paid 14 天 / asset_5a_* 90 天 / search_sov 等）落整段历史每天一行；
+    snap 端点落今日一行（趋势靠 cron 日累积）。一次全量约 **428 行**。
+  - 口径：罗盘金额「分」→ ÷100 元；rate/sov/占比 存原始 0-1；rank 越小越好。
+- **`mvp_industry_benchmark`**（"你 vs 同行"，category_id `'14'`）：
+  - 罗盘 GMV 同行标杆（core_trend `income_amt_benchmark`，14 天）
+  - 5A 行业 TOP5/20/50/100 + 行业均值（asset_trend `cover_industry_5/20/50/100` + `count_average`，90 天×4）
+  - 抖店同行分位（doudian_shop_overview 卡片 `benchmark` + `rank_percentage_promotion`，3 卡）
+  - 一次全量约 **377 行**。
+
+### 取数：复用 LiveFetchExecutor（绕缓存抓真返回）
+
+`fetch()` 只返 verdict/抽字段，落库要看全结构 → 新加 `fetch_raw()` / `batch_raw()`
+（返回整段 `parsed` JSON；`batch_raw` 按 host 分组复用一个浏览器会话）。10 个核心端点
+（compass core_trend/flow_funnel + doudian overview/shop_overview + yuntu 6 个）一会话连打。
+
+### 触发三路
+
+1. **MCP tool** `ingest_platform_metrics()`（KE，require_approval=False）→ httpx 调 scout REST。
+   老板话术"落库一次 / 把今天数据入库 / 刷新指标库"→ 调它。需三平台 cookies 有效（先 `platform_auth_status` 查）。
+2. **scout REST**：`POST /api/v1/scout/metrics/ingest`（手动触发）+
+   `GET /api/v1/scout/metrics/series?metric=&days=`（给桌面/AI 读序列）。
+3. **日级 cron**：scout-agent scheduler 每天 09:00 跑 `_run_metric_ingest`（失败容忍，登录态失效就 log warning 跳过）。
+
+### 实现
+
+- scout-agent：
+  - `app/services/metric_ingest.py`（新，CFG 29 抽取器 + `_extract_benchmarks` + upsert 两表 + `_ensure_shop_sentinel` + `fetch_series`）
+  - `app/services/live_fetch.py`（加 `fetch_raw` / `batch_raw` 取整段 parsed JSON）
+  - `app/routers/metrics.py`（新，ingest + series 两 endpoint）+ `app/main.py`（挂 router）
+  - `app/scheduler.py`（加 `daily-metric-ingest` job 09:00）
+- KE：`app/mcp/tools/platform_fetch.py`（加 `ingest_platform_metrics` tool）+ `app/mcp/doctor.py`（wanted +1）
+
+doctor 总数 73 → **74**（ingest_platform_metrics）。
+
+### 实测落地（2026-06-03 跑通）
+
+- 触发一次：`metric_rows_written=428` + `benchmark_rows_written=377`，`metrics_ok=29/29`，零错误。
+- 抽样核对：`gmv_paid` 06/02 = **498.5**（罗盘金额分 49850÷100）；同日同行标杆 industry_avg=874.55 / shop_value=498.5。
+- 踩坑修：asyncpg DATE 列要 `datetime.date`（不吃 ISO str）、NUMERIC 列要 `Decimal`（不吃 float）——
+  upsert 前 `_as_date` / `_as_num` 归一。
+- 需国内登录态有效（同罗盘/云图抓数：cookies 在 `sessions/{yuntu,douyin_compass,douyin_shop_admin}/storage_state.json`）。
+- 调试脚本仍可干跑验证抽取器：`python services/scout-agent/scripts/_ingest_kpi.py`（读 `_kpi_raw` 缓存不落库）。
+
+## 综合经营分析 + 临时问数（2026-06-03，§6 分析半）
+
+落库桥把 29 指标灌进 `mvp_daily_metric` 后，本切片在它上面盖**分析层**——把"看见数据"升级成
+"看懂经营 + 随口问数"。两个能力（确定性为主，复用诊断官 `diagnose_service` 的 R-14 分层 +
+R-15 样本量套路，禁伪因果）：
+
+### 1. 综合经营分析 `generate_business_analysis(face, days=28, platform='douyin', polish=False, focus=None)`
+
+读 `mvp_daily_metric`(近 N 天序列) + `mvp_industry_benchmark`(同行) + `mvp_anomaly`(异动)，
+**R-14 强制四段分层**：
+- 一、**观察到的**：客观事实带数据（每指标最新值 / 窗口首尾 % / 后半段 vs 前半段环比 / vs 同行均值·分位·排名），**不含因果**。
+- 二、**异动**：异动引擎检出的未处理/非预期异常（同 diagnose analysis 口径）。
+- 三、**可能的原因**：**模板化假设**（按 metric 走 `_match_analysis_hypothesis`，禁"主因是 X"断言），
+  每条标"假设 + 未排除混杂因子 + 要证实需对比 X"。
+- 四、**口径与样本量警示**：R-15 样本不足（序列点 <5）标待验证 / R-17 单平台抖音口径 / 缺数据指标。
+
+**两面分别出**（`face`）：`owner`=经营诊断（北极星 gmv/buyer/转化/uv/体验分/行业排名/SOV + 同行分位）；
+`operator`=投放选品建议（5A 分层 A1-A5/新增/流失/排名 + 货品结构爆款/常规品占比 + 商品卡 + 搜索排名）。
+
+`polish=False` 默认纯确定性零 token；`polish=True` 在确定性骨架之上跑**LLM 叙事层**——把骨架当
+**ground truth** 喂 hub（gemini-3.1-pro-preview），按**外置提示词** `config/prompts/business_analysis.{system,user}.md`
+（命门·热加载可调）写成给老板看的可读经营分析：允许**把分散指标连成"形态"**（相关性，如"曝光涨了转化没跟上"）、
+指出重点、给"待验证的下一步"，但**禁新增任何数值、禁伪因果**（观察/假设严格分层，假设必带"要证实需对比 X"），
+保留 R-15 样本量警示，说人话反 AI 腔。失败 fail-open 回退确定性骨架（`narrated=False`）。
+`focus`=老板临时关注点，注入提示词让总览优先回应（仅 polish 生效）。
+返回除 `markdown` 叙事外还给 `sections`（桌面可分层展开视图：observation/hypothesis 卡片 + evidence 逐指标真值下钻）+ `as_of`。
+
+### 2. 临时问数 `query_metric_nl(question, default_days=28, platform='douyin')`
+
+口语问句 → 解析 `metric_name`（精确名/中文全名/alias 子串，`metric_registry.resolve_metric`）
++ 时间窗（'近 N 天/周/月' + '本周/本月/今天…'）+ 维度（含 'SKU-xxxx' → 该 SKU；否则全店 `_SHOP_`）
+→ 查 `mvp_daily_metric` 返**序列 + 一句话简述**（确定性，不调 LLM、不归因）。
+没听出指标 → 返 29 指标候选清单让老板再说清。先支持已落库的 29 指标。
+
+### 老板话术 → tool
+
+| 老板说 | Claude 应做 |
+|---|---|
+| "出一份经营分析 / 综合分析一下 / 这个月经营咋样" | `generate_business_analysis(face='owner')` |
+| "投放选品建议 / 操盘手看一下 / 5A 货品结构咋样" | `generate_business_analysis(face='operator')` |
+| "最近 gmv 多少 / 本月转化率走势 / 看下 SKU-X 近 7 天点击" | `query_metric_nl(question=原话)` |
+
+### 共享契约（落库目标 + 哨兵 + 口径，所有分析读取严格对齐）
+
+- 落库表 `mvp_daily_metric(sku_id, date, metric_name, value, platform)`；全店行 `sku_id='_SHOP_'`、
+  `platform='douyin'`；`UNIQUE(sku_id,date,metric_name)`。
+- 同行标杆 `mvp_industry_benchmark(date, category_id, metric_name, industry_avg, industry_top,
+  shop_value, percentile, industry_rank)`（category_id='14'）。
+- 口径：金额已 ÷100 为元；rate/sov/占比 0-1 原始值；rank 越小越好。
+
+### 实现
+
+- KE：`app/services/metric_registry.py`（29 指标元信息 + `resolve_metric` NL 解析【空白不敏感：'5A 总资产'/'GMV 走势' 带空格也命中】+ `BENCHMARK_METRICS` + owner/operator 两面指标清单）+
+  `app/services/business_analysis_service.py`（`generate_business_analysis` 确定性分层 + **`_narrate` LLM 叙事层**【外置提示词 + `get_model_for_tool` 解析模型 + `focus`】+ **`_build_sections`** 分层卡片 + `query_metric_nl`）+
+  `config/prompts/business_analysis.{system,user}.md`（**命门·经营分析师提示词**，确定性骨架当 ground truth，R-14 分层/反幻觉/反 AI 腔）+
+  `app/mcp/tools/analytics.py`（2 tool）+ `app/routers/analytics.py`（GET 直测 `/api/v1/analytics/*` + **桌面契约 POST `/api/v1/mcp/analysis/{comprehensive,nl-query}`**，range/filter/focus/face 壳→service）+
+  `config/tool_models.yaml`（`generate_business_analysis`→gemini-3.1-pro-preview）+ `server.py`/`main.py`（挂 `mcp_analysis_router`）/`doctor.py`。
+- omni-desktop（installer **0.2.3**）：`AiAnalysisPanel` 加 `face` prop（owner 默认 / operator）；`OperatorPanel` 顶部加 `<AiAnalysisPanel face="operator"/>`（操盘手面也有 AI 投放选品建议）；`ipc-handler.ts` comprehensive body 加 `face`；`shared/types.ts` `AnalyticsAiAnalysisArg` 加 `face`。**owner 面已在 0.2.2 装机版可用（IPC 路径早对齐）；operator 面 + 两面叙事质量需装 0.2.3**。
+
+doctor 总数 74 → **76**（generate_business_analysis + query_metric_nl）。两面叙事层均实测跑通（narrated=True，数字全 grounded、观察/假设分层、反 AI 腔）。

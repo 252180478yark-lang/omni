@@ -120,3 +120,117 @@ class LiveFetchExecutor:
                 params=r.get("params"), body=r.get("body"),
             ))
         return out
+
+    # ---- 落库桥专用：取端点【完整 parsed JSON】（不止 verdict/抽字段）----
+    async def fetch_raw(
+        self,
+        platform: str,
+        endpoint: str,
+        params: dict | None = None,
+        body: dict | None = None,
+    ) -> dict:
+        """跟 fetch() 同样的 URL 渲染 + 浏览器执行，但返回**整个 parsed JSON**。
+
+        落库桥（metric_ingest）的抽取器需要看全结构（不止 expected_fields 几个字段），
+        所以这里把 _run_in_page 拿到的 raw['parsed'] 整段返回。
+
+        Returns:
+            {ok, status, parsed, url, elapsed_ms} 或 {ok:false, error, hint, ...}
+        """
+        entry = self.catalog.get(endpoint)
+        if entry is None:
+            return {"ok": False, "error": "endpoint_not_in_catalog",
+                    "hint": f"目录无 key={endpoint}", "endpoint_key": endpoint,
+                    "status": None, "parsed": None}
+        if not self.has_cookies(platform):
+            return {"ok": False, "error": "no_cookies",
+                    "hint": f"{platform} 无有效 cookies，去 /scout 扫码登录",
+                    "endpoint_key": endpoint, "status": None, "parsed": None}
+
+        host = entry["host"]
+        method = (entry.get("method") or "GET").upper()
+        ctx = build_render_context(self.catalog.context.get(platform, {}), self._today)
+        merged_params = render_params(entry.get("params"), ctx, overrides=params)
+        merged_body = body if body is not None else entry.get("body")
+
+        url = f"https://{host}{entry['path']}"
+        if merged_params:
+            qs = urlencode({k: v for k, v in merged_params.items() if v is not None})
+            if qs:
+                url += ("&" if "?" in url else "?") + qs
+
+        start = time.monotonic()
+        raw = await self._run_in_page(host, method, url, merged_body)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+
+        parsed = raw.get("parsed")
+        if parsed is None:
+            return {"ok": False, "error": raw.get("error") or "no_parsed_json",
+                    "hint": (raw.get("firstChars") or "")[:200],
+                    "endpoint_key": endpoint, "status": raw.get("status"),
+                    "parsed": None, "url": url, "elapsed_ms": elapsed_ms}
+        return {"ok": True, "endpoint_key": endpoint, "platform": platform,
+                "status": raw.get("status"), "parsed": parsed,
+                "url": url, "elapsed_ms": elapsed_ms}
+
+    async def batch_raw(self, requests: list[dict]) -> dict[str, dict]:
+        """一个浏览器会话连打多个端点取 parsed JSON。返回 {endpoint_key: result}。
+
+        按 host 分组复用同一 browser/context（开 context 是淘宝/抖音的主要耗时），
+        镜像 scripts/_fetch_kpi_raw.py 的分组逻辑，但收成内存 dict 供 metric_ingest 直接消费。
+        """
+        from playwright.async_api import async_playwright
+
+        # 按 host 分组（同 host 共用一个浏览器会话）
+        by_host: dict[str, list[dict]] = {}
+        for r in requests:
+            entry = self.catalog.get(r["endpoint"])
+            if entry is None:
+                continue
+            by_host.setdefault(entry["host"], []).append({"req": r, "entry": entry})
+
+        out: dict[str, dict] = {}
+        async with async_playwright() as p:
+            for host, items in by_host.items():
+                platform = self._host_platform(host)
+                if not self.has_cookies(platform):
+                    for it in items:
+                        out[it["req"]["endpoint"]] = {
+                            "ok": False, "error": "no_cookies",
+                            "hint": f"{platform} 无有效 cookies",
+                            "endpoint_key": it["req"]["endpoint"], "parsed": None}
+                    continue
+                browser = await p.chromium.launch(headless=True)
+                bctx = await browser.new_context(
+                    storage_state=str(self.storage_state_path(platform)))
+                page = await bctx.new_page()
+                try:
+                    await page.goto(f"https://{host}/", wait_until="domcontentloaded", timeout=30000)
+                    for it in items:
+                        req, entry = it["req"], it["entry"]
+                        ep = req["endpoint"]
+                        method = (entry.get("method") or "GET").upper()
+                        ctx = build_render_context(self.catalog.context.get(platform, {}), self._today)
+                        merged_params = render_params(entry.get("params"), ctx, overrides=req.get("params"))
+                        merged_body = req.get("body") if req.get("body") is not None else entry.get("body")
+                        url = f"https://{host}{entry['path']}"
+                        if merged_params:
+                            qs = urlencode({k: v for k, v in merged_params.items() if v is not None})
+                            if qs:
+                                url += ("&" if "?" in url else "?") + qs
+                        try:
+                            raw = await page.evaluate(
+                                _RUNNER_JS, {"method": method, "url": url,
+                                             "body": merged_body, "retry": 2})
+                            parsed = raw.get("parsed")
+                            out[ep] = {"ok": parsed is not None, "endpoint_key": ep,
+                                       "platform": platform, "status": raw.get("status"),
+                                       "parsed": parsed, "url": url,
+                                       "error": None if parsed is not None else (raw.get("error") or "no_parsed_json")}
+                        except Exception as exc:
+                            out[ep] = {"ok": False, "endpoint_key": ep, "platform": platform,
+                                       "parsed": None, "error": f"{type(exc).__name__}: {exc}"}
+                finally:
+                    await bctx.close()
+                    await browser.close()
+        return out

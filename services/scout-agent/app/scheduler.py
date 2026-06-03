@@ -51,6 +51,21 @@ async def _run_dual_track_merge() -> None:
     await merge_pending()
 
 
+async def _run_metric_ingest() -> None:
+    """落库桥日级 ingest：实时取 10 端点 → 29 抽取器 + 同行标杆 → upsert 两表。失败容忍。"""
+    from app.routers.fetch import _EXECUTOR
+    from app.services.metric_ingest import ingest_metrics
+    if _EXECUTOR is None:
+        log.warning("scheduler: metric_ingest skipped (live_fetch executor 未初始化)")
+        return
+    try:
+        res = await ingest_metrics(_EXECUTOR)
+        log.info("scheduler: metric_ingest wrote %s metric + %s benchmark rows",
+                 res.get("metric_rows_written"), res.get("benchmark_rows_written"))
+    except Exception as exc:
+        log.error("scheduler: metric_ingest failed: %s", exc)
+
+
 def start_scheduler() -> None:
     if not settings.enable_scheduler:
         log.info("scheduler disabled (ENABLE_SCHEDULER=false)")
@@ -85,6 +100,13 @@ def start_scheduler() -> None:
         _run_dual_track_merge,
         CronTrigger.from_crontab("0 3 * * *", timezone=tz),
         id="daily-dual-track-merge",
+        replace_existing=True,
+    )
+    # 落库桥：每天 09:00 全量 ingest（罗盘/云图/抖店登录态有效时落库；失败容忍）
+    _scheduler.add_job(
+        _run_metric_ingest,
+        CronTrigger.from_crontab("0 9 * * *", timezone=tz),
+        id="daily-metric-ingest",
         replace_existing=True,
     )
 

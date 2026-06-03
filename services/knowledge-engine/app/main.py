@@ -34,6 +34,7 @@ from app.routers.tool_uses import router as tool_uses_router
 from app.routers.proposals import router as proposals_router
 from app.routers.proposals import query_router as diagnose_query_router
 from app.routers.agent_state import router as agent_state_router
+from app.routers.analytics import router as analytics_router, mcp_analysis_router
 from contextlib import AsyncExitStack
 from app.mcp.server import mcp_http_app
 
@@ -126,6 +127,8 @@ app.include_router(tool_uses_router)
 app.include_router(proposals_router)
 app.include_router(diagnose_query_router)
 app.include_router(agent_state_router)
+app.include_router(analytics_router)
+app.include_router(mcp_analysis_router)  # 桌面契约 POST /api/v1/mcp/analysis/*
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)

@@ -44,6 +44,7 @@ from app.mcp.tools import competitor as _competitor  # noqa: E402, F401  # 2026-
 from app.mcp.tools import spend as _spend  # noqa: E402, F401  # 2026-06-02 阶段0 L0-2 月度成本总账查询
 from app.mcp.tools import diagnose as _diagnose  # noqa: E402, F401  # 2026-06-02 §6.2 诊断官（可调用 + 提议生命周期）
 from app.mcp.tools import platform_fetch as _platform_fetch  # noqa: E402, F401  # 2026-06-03 三平台实时取数底座（Mac→集成）
+from app.mcp.tools import analytics as _analytics  # noqa: E402, F401  # 2026-06-03 综合经营分析 + 临时问数（§6 分析半）
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
 # path="/" 使子应用内路由为 "/"，挂载到 /mcp 后完整路径即 /mcp

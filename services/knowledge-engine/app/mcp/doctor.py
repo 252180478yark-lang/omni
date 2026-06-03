@@ -173,6 +173,10 @@ def _wanted_tools() -> set[str]:
             # 2026-06-03 三平台实时取数底座（Mac 开发→集成）：4 个 platform_* tool
             "platform_fetch", "platform_batch_fetch",
             "platform_list_endpoints", "platform_auth_status",
+            # 2026-06-03 落库桥：手动触发全量 ingest → mvp_daily_metric + mvp_industry_benchmark
+            "ingest_platform_metrics",
+            # 2026-06-03 综合经营分析 + 临时问数（§6 分析半）：读库 → R-14 分层分析 / NL → 指标序列
+            "generate_business_analysis", "query_metric_nl",
     }
 
 

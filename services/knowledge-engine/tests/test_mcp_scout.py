@@ -33,6 +33,22 @@ async def setup_pool():
         "DELETE FROM mvp_daily_metric WHERE source_run_id LIKE $1",
         SMOKE_PREFIX + "%",
     )
+    # 落库桥(source_runbook='metric_ingest')会往 (_SHOP_, 今/昨, gmv_paid 等) 写真数据，
+    # 跟本测试种子的 (_SHOP_, YESTERDAY, <同名 metric>) 撞唯一键 (sku_id,date,metric_name)。
+    # 先保存被撞的真行 → 删 → 让测试 seed；teardown 再恢复，绝不丢老板的落库桥数据。
+    _SEED_SHOP_METRICS = ["gmv_paid", "visit_uv", "search_uv", "paid_clicks"]
+    saved_real_rows = await pool.fetch(
+        """
+        SELECT sku_id, date, metric_name, value, source_runbook, source_run_id, raw
+        FROM mvp_daily_metric
+        WHERE date = $1 AND sku_id = '_SHOP_' AND metric_name = ANY($2::text[])
+        """,
+        YESTERDAY, _SEED_SHOP_METRICS,
+    )
+    await pool.execute(
+        "DELETE FROM mvp_daily_metric WHERE date = $1 AND sku_id = '_SHOP_' AND metric_name = ANY($2::text[])",
+        YESTERDAY, _SEED_SHOP_METRICS,
+    )
     # 先插全店日报数据（sku_id='_SHOP_'，scout-agent 约定的 sentinel）
     await pool.execute(
         """
@@ -107,7 +123,7 @@ async def setup_pool():
         YESTERDAY,
     )
     yield
-    # teardown：清理 _smoke 数据
+    # teardown：清理 _smoke 数据（_SHOP_ 测试行 source_run_id 也是 _smoke_W3b_run1，一并删）
     await pool.execute(
         "DELETE FROM mvp_daily_metric WHERE source_run_id LIKE $1",
         SMOKE_PREFIX + "%",
@@ -118,6 +134,19 @@ async def setup_pool():
     await pool.execute(
         "DELETE FROM mvp_brand_mind_daily WHERE brand_id = '_smoke_W3b_brand'",
     )
+    # 恢复被测试临时接管的落库桥真行（绝不丢老板真实数据）
+    for r in saved_real_rows:
+        await pool.execute(
+            """
+            INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+            ON CONFLICT (sku_id, date, metric_name) DO UPDATE
+              SET value = EXCLUDED.value, source_runbook = EXCLUDED.source_runbook,
+                  source_run_id = EXCLUDED.source_run_id, raw = EXCLUDED.raw
+            """,
+            r["sku_id"], r["date"], r["metric_name"], r["value"],
+            r["source_runbook"], r["source_run_id"], r["raw"],
+        )
     await close_pool()
 
 

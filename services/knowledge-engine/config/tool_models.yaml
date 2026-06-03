@@ -164,3 +164,17 @@ competitor_decompose:
   prompts:
     system: competitor_decompose.system
     user: competitor_decompose.user
+
+# 2026-06-03 综合经营分析 AI 叙事层（§6 分析半）
+# 确定性骨架（库内真值）当 ground truth 喂进来，LLM 只写叙事、禁新增数值/因果。
+# 切 pro：要把分散指标连成"形态"+ R-14 分层叙事，需要推理深度，flash 偏浅。
+# temp 0.3：要稳要准（数字不能漂）；max_tokens 8000：综述+观察+假设+建议一屏内但留 buffer。
+# 注意：老板 Anthropic 是 Claude Max（主脑用）非 API key → hub 内部 LLM 不能用 anthropic，走 gemini。
+generate_business_analysis:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.3
+  max_tokens: 8000
+  prompts:
+    system: business_analysis.system
+    user: business_analysis.user

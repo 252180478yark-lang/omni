@@ -53,7 +53,10 @@ dev = [
 
 [tool.pytest.ini_options]
 # L0-7：限定收集 tests/，避免 scripts/ 下一次性抓取探针 test_*.py 被收集 import 报错污染（2026-06-03 整理，对齐 scout-agent pytest.ini）
+# testpaths 在无路径参数 + 某些 pytest 版本下不被尊重（实测 `python -m pytest` 仍收集 scripts/test_img_*.py
+# 并卡死在模块级浏览器探针）。addopts 的 --ignore 强制排除，恒生效，作为 testpaths 的兜底（2026-06-03）。
 testpaths = ["tests"]
+addopts = "--ignore=scripts"
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "module"
 asyncio_default_test_loop_scope = "module"

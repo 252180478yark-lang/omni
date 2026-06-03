@@ -1,7 +1,8 @@
 """实时取数 MCP tool：HTTP 调 scout-agent /api/v1/scout/fetch。
 
-4 个 tool（均 read，require_approval=False）：
+5 个 tool（均 read/触发，require_approval=False）：
 - platform_fetch / platform_batch_fetch / platform_list_endpoints / platform_auth_status
+- ingest_platform_metrics（落库桥：手动触发全量 ingest → mvp_daily_metric + mvp_industry_benchmark）
 """
 from __future__ import annotations
 
@@ -111,3 +112,37 @@ async def platform_list_endpoints(platform: str | None = None, query: str | None
 async def platform_auth_status() -> dict:
     """报告三平台 cookies 是否有效（无效需去 /scout 扫码登录）。"""
     return await _auth_status_impl()
+
+
+async def _ingest_metrics_impl() -> dict:
+    """触发 scout-agent 落库桥全量 ingest（实时取 10 端点 → 29 抽取器 → upsert 两表）。"""
+    try:
+        # ingest 走浏览器 + 多端点，给足时间
+        async with httpx.AsyncClient(timeout=600.0) as cli:
+            resp = await cli.post(f"{_base()}/api/v1/scout/metrics/ingest")
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        return {"ok": False, "error": "scout_agent_unreachable",
+                "hint": f"调 scout-agent /metrics/ingest 失败：{exc}；确认容器在跑 + 三平台已登录"}
+    if not data.get("ok"):
+        return {"ok": False, "error": data.get("error", "ingest_failed"), "result": data}
+    return {"ok": True, "result": data,
+            "trace": {"metric_rows": data.get("metric_rows_written"),
+                      "benchmark_rows": data.get("benchmark_rows_written"),
+                      "extractors": f"{data.get('metrics_ok')}/{data.get('metrics_total')}"}}
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def ingest_platform_metrics() -> dict:
+    """落库桥：手动触发一次全量落库（罗盘/云图/抖店真返回 → 29 指标 + 同行标杆）。
+
+    实时取 10 个核心端点 → 跑 29 抽取器（series 落整段历史/snap 落今日）→
+    upsert mvp_daily_metric（sku_id='_SHOP_', platform='douyin'）+ mvp_industry_benchmark。
+    需三平台 cookies 有效（先用 platform_auth_status 查）。日级 cron 也自动跑。
+
+    Returns:
+        {ok, result:{metric_rows_written, benchmark_rows_written, metrics_ok/total,
+         fetch_errors, extract_errors, benchmark_errors}, trace} 或 {ok:false,error,hint}
+    """
+    return await _ingest_metrics_impl()
