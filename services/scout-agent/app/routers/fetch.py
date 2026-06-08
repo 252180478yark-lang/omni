@@ -37,6 +37,14 @@ async def auth_status():
     return {p: {"has_cookies": ex.has_cookies(p)} for p in _PLATFORMS}
 
 
+@router.post("/fetch/auth-health")
+async def auth_health():
+    """深度登录态检查：每平台轻量真取数探针 → 判活(FAIL_AUTH=失效) → 失效告警 + 写 mvp_session.health。
+    比 auth-status(仅查 cookie 存在性) 准——能抓出'cookie 在但服务端已过期'。可手动触发/桌面面板调。"""
+    from app.services.auth_health import check_auth_health
+    return await check_auth_health(_exec())
+
+
 @router.get("/fetch/endpoints")
 async def list_endpoints(platform: str | None = None, query: str | None = None,
                          verified_only: bool = False):

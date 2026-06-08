@@ -51,6 +51,24 @@ async def _run_dual_track_merge() -> None:
     await merge_pending()
 
 
+async def _run_auth_health() -> None:
+    """每日 cookie 健康检查：探针真取数判活 → 失效则告警 + 写 mvp_session.health。失败容忍。
+    排在 metric_ingest(09:00) 之前(08:50)，cookie 隔夜死了能先告警，老板重登后当天数据照常落。"""
+    from app.routers.fetch import _EXECUTOR
+    from app.services.auth_health import check_auth_health
+    if _EXECUTOR is None:
+        log.warning("scheduler: auth_health skipped (live_fetch executor 未初始化)")
+        return
+    try:
+        res = await check_auth_health(_EXECUTOR)
+        if res.get("stale_auth"):
+            log.warning("scheduler: auth_health 检出失效平台 %s（已告警）", res["stale_auth"])
+        else:
+            log.info("scheduler: auth_health 三平台登录态正常")
+    except Exception as exc:
+        log.error("scheduler: auth_health failed: %s", exc)
+
+
 async def _run_metric_ingest() -> None:
     """落库桥日级 ingest：实时取 10 端点 → 29 抽取器 + 同行标杆 → upsert 两表。失败容忍。"""
     from app.routers.fetch import _EXECUTOR
@@ -100,6 +118,13 @@ def start_scheduler() -> None:
         _run_dual_track_merge,
         CronTrigger.from_crontab("0 3 * * *", timezone=tz),
         id="daily-dual-track-merge",
+        replace_existing=True,
+    )
+    # cookie 健康检查：每天 08:50（ingest 前 10 分钟）探针判活，失效告警 + 写 mvp_session.health
+    _scheduler.add_job(
+        _run_auth_health,
+        CronTrigger.from_crontab("50 8 * * *", timezone=tz),
+        id="daily-auth-health",
         replace_existing=True,
     )
     # 落库桥：每天 09:00 全量 ingest（罗盘/云图/抖店登录态有效时落库；失败容忍）
