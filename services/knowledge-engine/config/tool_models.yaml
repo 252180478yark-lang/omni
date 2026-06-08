@@ -178,3 +178,16 @@ generate_business_analysis:
   prompts:
     system: business_analysis.system
     user: business_analysis.user
+
+# 2026-06-08 人群包投前诊断 AI 叙事层（《和田宽人群包评估方法论》）
+# 确定性《投前诊断卡》骨架当 ground truth + 巨量云图 KB grounding，LLM 只写叙事/内容策略定调，
+# 禁新增数值/伪因果（R-14）。切 pro：要把三维方向连成"漏斗定位 → 内容打法"+ 小白可操作落地，
+# 需要推理深度。temp 0.3 稳准（定位不能漂）；max_tokens 9000：诊断卡五段 + 提纯施工单 + KB 引用。
+diagnose_audience_pack:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.3
+  max_tokens: 9000
+  prompts:
+    system: audience_pack_diagnose.system
+    user: audience_pack_diagnose.user

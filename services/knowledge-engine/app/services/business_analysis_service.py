@@ -551,10 +551,31 @@ async def generate_business_analysis(
 
     sections = _build_sections(result, narrative_md, narrated)
 
+    # 执行过程透出（蓝图 §1.8 可观测 / 客户端"执行过程展开"）——确定性内部步骤，桌面时间线按步渲染。
+    _face_cn = "经营诊断（老板面）" if face == "owner" else "投放选品（操盘手面）"
+    _obs = result.get("observed") or {}
+    _metrics_n = len(_obs.get("metrics") or []) if isinstance(_obs, dict) else 0
+    _hyps = result.get("hypotheses") or []
+    steps = [
+        {"i": 1, "label": f"读取指标序列 · {_face_cn}",
+         "detail": f"{len(metrics)} 指标 · 近 {days} 天 · {platform}", "status": "ok"},
+        {"i": 2, "label": "对齐同行标杆",
+         "detail": "mvp_industry_benchmark 同行均值/分位/排名", "status": "ok"},
+        {"i": 3, "label": "拉取未处理异动",
+         "detail": f"{len(anomalies)} 条", "status": "ok" if anomalies else "skip"},
+        {"i": 4, "label": "R-14 强制分层骨架",
+         "detail": f"观察 {_metrics_n} 指标 · 假设 {len(_hyps)} · 样本警示已附", "status": "ok"},
+    ]
+    if polish:
+        steps.append({"i": 5, "label": "LLM 叙事层（骨架为 ground truth）",
+                      "detail": "已生成" if narrated else "hub 不可用 → 回退确定性骨架",
+                      "status": "ok" if narrated else "warn"})
+
     return {
         "ok": True,
         **result,
         "sections": sections,
+        "steps": steps,
         "as_of": as_of,
         "narrated": narrated,
         "polished": narrated,  # 向后兼容旧字段名

@@ -5,7 +5,7 @@
 
 ## omni MCP server
 
-omni 暴露 **76 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 76 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
+omni 暴露 **78 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 78 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
 
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
@@ -31,6 +31,8 @@ omni 暴露 **76 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - 三平台实时取数底座（经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
 - 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 29 抽取器 + 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
 - 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，支持已落库 29 指标）
+- 人群包投前诊断 + 提纯（方法论沉淀）：`diagnose_audience_pack`（候选包画像 vs 行业 A4 真需求标尺 → 逐维度看方向不算总相似分 → 投前诊断卡：价值维正向偏离/购买行为软硬/需求重叠真需求指纹/身份维差异不计 → 漏斗定位 + 内容策略定调 + 三刀提纯施工单；确定性为主、polish=True 巨量云图 KB grounding LLM 叙事过 R-14；详见下「人群包投前诊断」节）
+- 巨量云图标签体系确定性查询：`query_yuntu_taxonomy`（圈包/提纯/答疑的标签 ground truth——总览两大入口+各维度 / dimension=某维度全量树 / search=某标签的真实层级路径+勾选菜单 / section=字段全集·行业特色·固定清单·提纯三刀法；**回答标签体系问题优先调它，别去硬读 30k 大文件 v2 字典、别靠 lossy RAG**。数据源 config/audience 画像 CSV + dump v1 常量，确定性不截断不虚构）
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
 ## 新旧两条出片链分流
@@ -321,7 +323,7 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 
 ## 调试常用命令
 
-- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 76 ok` 的 tool 列表
+- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 78 ok` 的 tool 列表
 - **审计表**：`docker exec omni-postgres psql -U omni_user -d omni_vibe_db -c "SELECT tool_name, status, duration_ms FROM mcp.tool_calls ORDER BY created_at DESC LIMIT 20"`
 - **ai-provider-hub 状态**：`curl http://localhost:8001/api/v1/ai/providers`
 - **Human Gate 批/驳**（W3a）：
@@ -453,3 +455,38 @@ REST（桌面经 IPC→http 调，与 tool 共用同一 service 禁漂移）：`
 | "出一份经营分析 / 综合分析一下 / 这个月经营咋样" | `generate_business_analysis(face='owner')` |
 | "投放选品建议 / 操盘手看一下 / 5A 货品结构咋样" | `generate_business_analysis(face='operator')` |
 | "最近 gmv 多少 / 本月转化率走势 / 看下 SKU-X 近 7 天点击" | `query_metric_nl(question=原话)` |
+
+## 人群包投前诊断 + 提纯（《和田宽人群包评估方法论》沉淀，2026-06-08）
+
+老板痛点：和田宽**出厂价已 ≥ 竞品线上零售价，打不了价格战**，投放靠"做用户喜欢的内容 → 软植入 → 深度种草 → 收割"。所以做内容/投放**之前**必须判断一个候选人群包适不适合——这群"会被内容打动"的人必须是**真需求**。方法论备忘 + 两份说明书见 `docs/audience-pack/`。
+
+> **⚠️ 「诊断」路由硬规则（两个工具别搞混，已多次踩坑——必须机械执行，不准凭感觉）**：
+> 1. 句子里**只要出现下列任一**：`包` / `人群包` / `候选包` / `这个包` / `适不适合投` / `提纯` / `圈的人` / **任何包名（地域寻味人 / 行业A4 / diyu_xunwei / 候选包名…）** / **本轮带了 CSV 附件** → **一律直接调 `diagnose_audience_pack`**。**禁止反问、禁止走 `diagnose`（诊断官）、禁止说"无包字"**。先扫一遍整句再判，别只看"诊断"两个字。
+> 2. 句子里**完全没有上述词**、只是「诊断一下 / 最近反馈啥模式 / 本周改进建议 / 趋势异动 / 为啥指标掉了」→ 才走 `diagnose`（诊断官）。
+> 3. 真·两可（既无包名也无明确反馈/异动语境）→ **默认按人群包走 `diagnose_audience_pack`**（老板自用最高频是诊人群包），别反问。
+
+### tool `diagnose_audience_pack(candidate, baseline='baseline_a4', with_purify_plan=True, polish=False, focus=None)`
+读候选包画像 + 行业 A4 画像（`标签类型,标签,占比,tgi`，巨量引擎/云图人群分析导出），**确定性逐维度比对**（镜像 generate_business_analysis 的"确定性骨架 + 可选 polish"+ R-14 分层）。
+
+**方法论主线铁律（确定性映射，不靠 LLM 编）——比对看方向，不算总相似分**：
+- **价值维（付得起：消费力/城市层级/手机价位）** → 期望**正向偏离 A4 高端尾部**；贴近 A4 均值是**反的**（A4 大多价格敏感，恰是和田宽最打不动的人，要主动往高端偏）。
+- **购买行为维（线上客单/购买频次）** → 比 A4 软 = **种草信号**（非扣分，定漏斗位）。
+- **需求维（品类成交/品牌/抖音头条西瓜兴趣/触点）** → 期望**重叠 A4 真需求指纹**（品类锚 TGI 1300+ / 兴趣锚 220–280 / 触点锚 300–490），重叠高 = 真需求强。
+- **身份维（八大消费群体/年龄/性别/职业/人生阶段/地域）** → **差异不计**（构成不同 ≠ 质量缺口，A4 是真需求标尺，不是模仿对象）。
+- **噪音维（手机品牌/活跃用户）** → 忽略。
+- → **漏斗定位**（种草型 / 即投收割型 / 价值流失·慎投）+ **内容策略定调** + 可选**《提纯施工单》三刀法**（价值切到死 → 需求相邻"切到会下厨不切到已买酱油" → 内容亲和收紧，每刀落到画像里**真实可勾的巨量云图标签**：`数据工厂 → 维度 → 标签`，小白能照着点）。
+
+**输入约定**：`candidate` 传内置/dropbox 文件名（`diyu_xunwei`、`x.csv`）/ 容器可达绝对路径 / 原始 CSV 文本。老板新包从巨量云图导出 CSV → 丢进 `services/knowledge-engine/config/audience/`（或配 `OMNI_AUDIENCE_PACK_DIR`）→ 按文件名调。内置 `baseline_a4`（行业 A4 真需求标尺，静态）+ `diyu_xunwei`（范例）。
+
+**⚠️ 老板从客户端上传 CSV 时（铁律，否则卡死）**：上传落 `C:\Users\Administrator\.omni-desktop\uploads\<sid>\<uuid>.csv`（KE 容器读不到该目录）。**绝不 `Read` 整个画像 CSV**（~3000 行 / 200KB 撑爆 Read 25k 上限，会翻不完卡死——已踩）。正确做法：用 Bash `Copy-Item` 把上传文件 copy 进 `config/audience/<干净名>.csv` 再 `diagnose_audience_pack(candidate='<干净名>')`（工具容器内直接读、不进上下文、秒出）；上传的若是 地域寻味人/行业A4 直接用内置 `diyu_xunwei`/`baseline_a4` 不用 copy。
+
+**polish=False** 默认纯确定性零 token；**polish=True** 在骨架上跑 LLM 叙事层——把骨架当 **ground truth** + **巨量云图 KB grounding**（召回 methodology/authoritative，内容打法标 `[KB]`/`[行业推理]`），按外置提示词 `config/prompts/audience_pack_diagnose.{system,user}.md`（命门·热加载）写成**小白可操作**的诊断卡，**禁新增数值/伪因果**（R-14），失败 fail-open 回退骨架。
+
+**铁律（写进每份诊断卡）**：**画像比对只是投前的冷启动代理**——能判断圈选合不合理、生成"先测哪些细分"的假设，但**判断不了真实投放价值**；真实价值只有 CTR/CVR/ROI/GMV 说了算，有了转化数据转化永远压过画像相似度。提纯**之后**再跑一次诊断（诊断的是最终真投出去那个包）。
+
+### skill `audience-pack-diagnosis`
+| 老板说 | Claude 应做 |
+|---|---|
+| "诊断一下 X 这个包 / X 包适不适合投 / 帮我看看地域寻味人这个包" | `diagnose_audience_pack(candidate='X')` 出投前诊断卡 + 漏斗定位 |
+| "提纯一下 X 包 / X 包该怎么收窄 / 太大了帮我切" | `diagnose_audience_pack(candidate='X', with_purify_plan=True)` 出三刀施工单 |
+| "把诊断写细点 / 给我能落地的内容打法" | 加 `polish=True`（巨量云图 KB grounding 叙事，小白可操作）|

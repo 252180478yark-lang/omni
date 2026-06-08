@@ -10,6 +10,31 @@
 
 ---
 
+## BI 2.0 收尾：维表全可见 + 诊断标量 KPI 化 + migration 042（2026-06-05）
+
+> 接 `docs/plans/2026-06-03-bi2-*` 蓝图。数据层（per-SKU + 16 维表 + bi_batch1 标量）此前已落，本次把"落库但看不见"的全补上前端，并收尾 042。
+
+### 后端（omni · feat/competitor-research）
+- **migration 042** `042_bi2_service_flow.sql` 应用到 live DB（IF NOT EXISTS 幂等）：`mvp_negative_comment_tag`（差评原因榜）/ `mvp_comment_tag_agg`（差评聚合×类目）/ `mvp_flow_entry_structure`（货架MALL vs 内容FEED GMV 占比，本店/竞品/行业）。
+- `dim_ingest.py` +3 抽取器（`_extract_negative_comment_tag` / `_extract_comment_tag_agg` / `_extract_flow_entry_structure`，fail-open），`metric_ingest.py` INGEST_ENDPOINTS +3 端点（doudian.getnegativecommenttagscount / allcommenttagaggstat / yuntu.flowentrystructure）。实测已落（neg=4 / agg=2 / flow_entry=6）。scout-agent 源码 bind-mount，容器内已含 042 代码，日级 cron 自动跟跑。
+
+### 前端（omni-desktop · feat/w1-tool-feedback）
+- **诊断标量 KPI 化**：`METRIC_META` +28 条（行业排名 4 channel + 涨跌 / 体验 3 子分 / 好评率 vs 同行 / 投放 ad_cost_ratio·ad_costed_amt / 新老客 / 品牌 NSR·心智 / 搜索 / 待办），label/unit/agg/lower_is_better 全配齐。snapshot 类一律 `latest` 防跨日错误求和；rank 越小越好；rank-delta 用新 `名Δ` 单位渲染带符号不加"第"（修了 `industry_pay_rank_change`/`industry_rank_diff` 之前 -16 错渲成"第-16名"的 bug）。
+- **老板面** BossPanel 加 3 组 KpiSection（行业位置 / 服务健康红线 / 品牌资产，点卡跳趋势）。**操盘手面** OperatorPanel 数据全景加 2 条 KPI（投放·转化诊断 / 搜索·货品诊断）。
+- **维表全可见**：`DataPanoramaPanel`（操盘手数据全景）已用 `DimBarChart`/`DimTableCard` + 专用炫图（PriceBand/CrowdBig8/CrowdTrendLines/HotwordScatter/FlowSankey/FlowEntry）surface 全部维表；本次补 `mvp_industry_bestseller` 行业畅销榜表格（此前只被 PriceBandChart 当价格信号用）。
+- 全部走既有 `window.api.analytics.dim`（IPC→PG 直查，表名白名单 + 列名正则校验 + 参数化防注入）。`npm run build` 三段全过（main+preload+renderer，2605 模块，0 error）。
+
+### 验证
+- 6-agent 对抗验证 workflow（按 dim-charts / kpi-surfacing / 042-backend / completeness 四维 review → 每条 finding 找 skeptic 反驳）：确认 1 个真 bug（rank-delta 单位，已修），其余 finding 多为 gap（见下）。9 张维表卡的列名 / kind / asOfKey 全核对过真 schema。
+
+### 故意没做（下一批 · 需后端抽取器，各有 100x 口径风险）
+- **投放 ROI**（compass.core_index_v3）→ 新维表 `mvp_ad_roi`（千川 boss 最痛，全盘唯一"投钱回报"维度）。
+- **转化流失定位**（compass.flow_loss_card）→ 全店标量 + FunnelChart 每级补"流失 N 人/X%"。
+- **搜索四档对标**（compass.overview_data）→ `mvp_industry_benchmark` 加 search 行，复用 kpiSnapshot 同行分位。
+- **品牌市占率**（yuntu.insightbrandoccupancy）→ 全店标量 brand_market_share，进 BOSS_RANK_KPIS。
+
+---
+
 ## 综合经营分析 + 临时问数（2026-06-03，§6 分析半）
 
 doctor 总数 74 → **76**（generate_business_analysis + query_metric_nl）。两面叙事层均实测跑通（narrated=True，数字全 grounded、观察/假设分层、反 AI 腔）。

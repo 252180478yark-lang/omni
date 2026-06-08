@@ -129,6 +129,25 @@ _DIM_TABLES: dict[str, dict] = {
         "conflict": ["date", "keyword"],
         "date": {"date"}, "num": {"opportunity_score"}, "int": {"search_index", "rank"}, "json": set(), "bool": set(),
     },
+    # ── migration 042: 服务健康(差评) + 流量入口 ──
+    "negative_comment_tag": {
+        "table": "mvp_negative_comment_tag",
+        "cols": ["date", "platform", "tag_id", "tag_name", "comment_count"],
+        "conflict": ["date", "tag_id"],
+        "date": {"date"}, "num": set(), "int": {"tag_id", "comment_count"}, "json": set(), "bool": set(),
+    },
+    "comment_tag_agg": {
+        "table": "mvp_comment_tag_agg",
+        "cols": ["date", "platform", "cat_key", "tag_key", "tag_name", "aggr_count", "priority"],
+        "conflict": ["date", "cat_key", "tag_key"],
+        "date": {"date"}, "num": set(), "int": {"aggr_count", "priority"}, "json": set(), "bool": set(),
+    },
+    "flow_entry_structure": {
+        "table": "mvp_flow_entry_structure",
+        "cols": ["date", "platform", "metrics_type", "dimension", "brand_type", "value"],
+        "conflict": ["date", "metrics_type", "dimension", "brand_type"],
+        "date": {"date"}, "num": {"value"}, "int": set(), "json": set(), "bool": set(),
+    },
 }
 
 
@@ -1117,7 +1136,93 @@ def _extract_realtime_hotword(parsed, today):
     return rows
 
 
+def _extract_negative_comment_tag(parsed, today):
+    """doudian getNegativeCommentTagsCount -> mvp_negative_comment_tag (差评原因标签榜).
+    data[].{tag_id, tag_name, comment_count}。快照无日期 -> date=today。platform 由 upsert 补。"""
+    rows = []
+    if not isinstance(parsed, dict):
+        return rows
+    data = parsed.get("data")
+    if not isinstance(data, list):
+        return rows
+    for d in data:
+        try:
+            if not isinstance(d, dict):
+                continue
+            if d.get("tag_id") is None or not d.get("tag_name"):
+                continue
+            rows.append({
+                "date": today,
+                "tag_id": d.get("tag_id"),
+                "tag_name": str(d.get("tag_name")),
+                "comment_count": d.get("comment_count"),
+            })
+        except Exception:  # noqa: BLE001
+            continue
+    return rows
+
+
+def _extract_comment_tag_agg(parsed, today):
+    """doudian allCommentTagAggStat -> mvp_comment_tag_agg (差评聚合标签×类目).
+    data{cat_key:[{tag_key,tag_name,aggr_count,priority}]}。外层键=评价类目。"""
+    rows = []
+    if not isinstance(parsed, dict):
+        return rows
+    data = parsed.get("data")
+    if not isinstance(data, dict):
+        return rows
+    for cat_key, tags in data.items():
+        if not isinstance(tags, list):
+            continue
+        for t in tags:
+            try:
+                if not isinstance(t, dict) or t.get("tag_key") is None:
+                    continue
+                rows.append({
+                    "date": today,
+                    "cat_key": str(cat_key),
+                    "tag_key": str(t.get("tag_key")),
+                    "tag_name": t.get("tag_name"),
+                    "aggr_count": t.get("aggr_count"),
+                    "priority": t.get("priority"),
+                })
+            except Exception:  # noqa: BLE001
+                continue
+    return rows
+
+
+def _extract_flow_entry_structure(parsed, today):
+    """yuntu flowEntryStructure -> mvp_flow_entry_structure (流量入口结构 货架MALL vs 内容FEED).
+    data[].{metricsType, dimension, brandType, value(0-1占比)}。快照无日期 -> date=today。"""
+    rows = []
+    if not isinstance(parsed, dict):
+        return rows
+    data = parsed.get("data")
+    if not isinstance(data, list):
+        return rows
+    for d in data:
+        try:
+            if not isinstance(d, dict):
+                continue
+            mt, dim, bt = d.get("metricsType"), d.get("dimension"), d.get("brandType")
+            if not (mt and dim and bt) or d.get("value") is None:
+                continue
+            rows.append({
+                "date": today,
+                "metrics_type": str(mt),
+                "dimension": str(dim),
+                "brand_type": str(bt),
+                "value": d.get("value"),
+            })
+        except Exception:  # noqa: BLE001
+            continue
+    return rows
+
+
 _EXTRACTORS: list[tuple[str, str, Callable]] = [
+    ("negative_comment_tag", "doudian.getnegativecommenttagscount", _extract_negative_comment_tag),
+    ("comment_tag_agg", "doudian.allcommenttagaggstat", _extract_comment_tag_agg),
+    ("flow_entry_structure", "yuntu.flowentrystructure", _extract_flow_entry_structure),
     ("flow_source", "compass.flow_source_detail_v2", _extract_flow_source_self),
     ("live_room_rank", "compass.top_list", _extract_live_room_rank),
     ("industry_author", "yuntu.bestsellingauthor", _extract_industry_author),

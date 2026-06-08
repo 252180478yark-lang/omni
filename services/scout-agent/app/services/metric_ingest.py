@@ -89,6 +89,10 @@ INGEST_ENDPOINTS = [
     {"platform": "doudian", "endpoint": "doudian.get_ticket_list"},       # 平台罚单(维表)
     {"platform": "compass", "endpoint": "compass.shop_video_list"},       # 视频看后搜(维表)
     {"platform": "compass", "endpoint": "compass.realtime_word_overview_v2"},  # 搜索热词机会(维表)
+    # ── migration 042: 服务健康(差评) + 流量入口 (维表) ──
+    {"platform": "doudian", "endpoint": "doudian.getnegativecommenttagscount"},  # 差评原因标签榜
+    {"platform": "doudian", "endpoint": "doudian.allcommenttagaggstat"},          # 差评聚合标签×类目
+    {"platform": "yuntu", "endpoint": "yuntu.flowentrystructure"},                # 流量入口结构(货架vs内容)
 ]
 
 

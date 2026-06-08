@@ -177,6 +177,12 @@ def _wanted_tools() -> set[str]:
             "ingest_platform_metrics",
             # 2026-06-03 综合经营分析 + 临时问数（§6 分析半）：读库 → R-14 分层分析 / NL → 指标序列
             "generate_business_analysis", "query_metric_nl",
+            # 2026-06-08 人群包投前诊断 + 提纯（《和田宽人群包评估方法论》沉淀）：
+            # 候选包画像 vs 行业 A4 真需求标尺 → 投前诊断卡（漏斗定位 + 内容策略）+ 三刀提纯施工单
+            "diagnose_audience_pack",
+            # 2026-06-08 巨量云图标签体系确定性查询（修 "agent 硬读 30k 大文件答不全" 根因）：
+            # 总览/按维度/搜标签/常量段，圈包/提纯/答疑的标签 ground truth，完整不截断
+            "query_yuntu_taxonomy",
     }
 
 
@@ -243,6 +249,8 @@ def _check_prompts(report: DoctorReport) -> None:
             # 2026-06-01 竞品调研：相关性过滤 + 主图/详情页视觉拆解
             "competitor_relevance.system", "competitor_relevance.user",
             "competitor_decompose.system", "competitor_decompose.user",
+            # 2026-06-08 人群包投前诊断 AI 叙事层（巨量云图 KB grounding）
+            "audience_pack_diagnose.system", "audience_pack_diagnose.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(
@@ -309,7 +317,8 @@ def _check_smoke(report: DoctorReport) -> None:
 # 路径优先 env OMNI_CLAUDE_MD_PATH（容器内可挂 CLAUDE.md 后指过去激活体检），
 # 缺省回退 Windows 宿主路径（本机直接跑 doctor 时能读到）。容器内读不到 → 优雅 WARN-skip。
 _CLAUDE_MD_PATH = Path(os.environ.get("OMNI_CLAUDE_MD_PATH") or r"E:\agent\omni\CLAUDE.md")
-_TOOL_COUNT_RE = re.compile(r"omni\s*暴露\s*(\d+)\s*个\s*tool")
+# 容忍 markdown 粗体/空格：'omni 暴露 **77 个 tool**' 里 暴露 与数字间有 `**`。
+_TOOL_COUNT_RE = re.compile(r"omni\s*暴露[\s*]*(\d+)\s*个\s*tool")
 
 
 def _check_doc_consistency(report: DoctorReport) -> None:
