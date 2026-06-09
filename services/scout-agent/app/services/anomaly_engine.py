@@ -84,6 +84,7 @@ class Rule:
     #   "relative" 相对偏离 — 改走滚动基线 mean+std z-score
     kind: str = "absolute"
     direction: str = "both"  # relative 用：'drop'/'surge'/'both'（只关心跌/涨/双向）
+    min_delta_pct: float | None = None  # relative 用：覆盖全局 MIN_DELTA_PCT（稳态 rate 如好评率需更小阈值）
 
 
 # ── Rule definitions ──────────────────────────────────────────────────────────
@@ -150,13 +151,17 @@ RULES: list[Rule] = [
         check=lambda today, avg7: today == 0 and avg7 > 0,
         kind="absolute",
     ),
+    # 好评率显著下降（z-score 相对规则）——替代原 negative_reviews：它盯的 review_count 落库桥根本不写、
+    # 是死规则。好评率是 0-1 rate、行为稳，比 30 天窗口差评数（常 0、相对%不稳）做异动更干净。
+    # 差评原因分布看 mvp_negative_comment_tag dim 表。
     Rule(
-        id="negative_reviews",
-        metric="review_count",
+        id="positive_comment_rate_drop",
+        metric="positive_comment_rate",
         severity="warning",
-        template="新增差评 {today:.0f} 条",
-        check=lambda today, avg7: today >= 3,
-        kind="absolute",
+        template="好评率异常下降（今日 {today:.1%} vs 基线 {baseline:.1%}）",
+        kind="relative",
+        direction="drop",
+        min_delta_pct=0.02,  # 好评率稳态高、几乎不动 20%，掉 2% 即显著（仍需过 z-score 2.5σ）
     ),
     # 抖店后台 rules
     Rule(
@@ -254,8 +259,10 @@ def _relative_fire(
     diff = today_val - mean
     delta_pct = diff / mean * 100.0
 
-    # 最小变动百分比门槛：防平稳指标 std 极小时 z-score 噪声爆量。
-    if abs(diff) < mean * MIN_DELTA_PCT:
+    # 最小变动百分比门槛：防平稳指标 std 极小时 z-score 噪声爆量。支持 per-rule 覆盖
+    # （稳态 rate 如好评率几乎不动 20%，需更小阈值才不至于钝成死规则）。
+    floor_pct = rule.min_delta_pct if rule.min_delta_pct is not None else MIN_DELTA_PCT
+    if abs(diff) < mean * floor_pct:
         return False, mean, delta_pct
 
     # z-score 偏离：std 为 0（历史全相同）时只靠上面的百分比门槛兜底。
