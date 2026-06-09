@@ -150,6 +150,45 @@ def test_value_verdict_aggregation():
     assert aps._value_verdict(rows2) == "偏离低端(价值流失)"
 
 
+# ───────────────────────── 预计收窄力度（粗估自画像占比，非云图真值）─────────────────────────
+
+def test_strength_label_bands():
+    """ratio 越小切得越狠：None=力度未知 / ≤0.15 强 / ≤0.40 中 / >0.40 弱。"""
+    assert aps._strength_label(None)[0] == "力度未知"
+    assert aps._strength_label(0.10)[0] == "强"
+    assert aps._strength_label(0.30)[0] == "中"
+    assert aps._strength_label(0.70)[0] == "弱"
+
+
+def test_cut_keep_ratio_value_lever():
+    """价值刀：保留高端尾部占比 / 该维总占比（属性维近似分区）。"""
+    cand = _prof({"预测消费能力": {
+        "高消费": {"share": 0.10, "tgi": 200}, "低消费": {"share": 0.90, "tgi": 50},
+    }})
+    ratio = aps._cut_keep_ratio(cand, "value", [])
+    assert ratio == pytest.approx(0.10)          # 只留 10% 高消费
+    assert aps._strength_label(ratio)[0] == "强"  # 切得狠
+
+
+def test_cut_keep_ratio_demand_lever_uses_kept_anchors():
+    """需求刀：留住的 A4 锚在候选上的占比和 / 该维总占比；未留住(kept=False)的锚不算。"""
+    cand = _prof({"电商品类成交偏好": {
+        "锚A": {"share": 0.20, "tgi": 200}, "其他": {"share": 0.80, "tgi": 50},
+    }})
+    demand_rows = [{"type": "电商品类成交偏好", "anchors": [
+        {"label": "锚A", "kept": True}, {"label": "锚X", "kept": False},
+    ]}]
+    ratio = aps._cut_keep_ratio(cand, "category", demand_rows)
+    assert ratio == pytest.approx(0.20)          # kept=锚A 0.20 / total 1.0
+    assert aps._strength_label(ratio)[0] == "中"
+
+
+def test_cut_keep_ratio_no_data_is_unknown():
+    """该维画像无标签 → None → 力度未知（不瞎报）。"""
+    assert aps._cut_keep_ratio(_prof({}), "value", []) is None
+    assert aps._cut_keep_ratio(_prof({}), "category", []) is None
+
+
 # ───────────────────────── worked-example 集成（bundled，缺文件 skip）─────────────────────────
 
 _BUNDLED = Path(aps._AUDIENCE_DIR) / "diyu_xunwei.csv"
@@ -175,9 +214,13 @@ def test_worked_example_diyu_xunwei():
     ecom = {c["lever"]: c["ecommerce"] for c in p["cuts"]}
     assert ecom["interest"] is False and ecom["value"] is False and ecom["touch"] is False
     assert ecom["category"] is True and ecom["brand"] is True and ecom["behavior"] is True
+    # 每刀带预计收窄力度（强/中/弱/力度未知）+ plan 带 legend
+    assert all(c["strength"] in ("强", "中", "弱", "力度未知") for c in p["cuts"])
+    assert "strength_legend" in p and "非云图真实覆盖人数" in p["strength_legend"]
     # markdown 含关键段
     md = r["markdown"]
     assert "投前诊断卡" in md and "漏斗定位" in md and "提纯施工单" in md
+    assert "预计收窄力度" in md
     # 口径警示：画像是投前冷启动代理
     assert "冷启动代理" in md
 

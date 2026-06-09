@@ -466,6 +466,67 @@ _PURIFY_RATIONALE: dict[str, str] = {
 }
 
 
+# 预计收窄力度（**粗估自画像占比，非云图真实覆盖人数**）：这刀保留的标签覆盖画像里多少占比的人。
+# 留得少=切得狠=强；留得多=微调=弱。给老板排刀序用（"想掉一个量级先挑强刀"），不是真实覆盖人数。
+def _cut_keep_ratio(cand: dict, lever: str, demand_rows: list[dict]) -> float | None:
+    """这刀保留的标签在画像里的占比集中度（0-1）；None = 该维画像无可用标签（力度未知）。
+
+    属性维（value/behavior，标签近似互斥分区）：各维 kept占比/该维总占比 的均值。
+    需求维（interest/touch/category/brand，多标签可叠加）：留住的 A4 锚在候选上的占比和 / 该维总占比。
+    口径：这是**画像占比**的粗估代理，不是云图真实覆盖人数（只有云图后台看得到）。
+    """
+    def _attr(dims: list[dict]) -> float | None:
+        ratios: list[float] = []
+        for d in dims:
+            labels = cand.get("by_type", {}).get(d["type"], {})
+            total = sum(v["share"] for v in labels.values())
+            if total <= 0:
+                continue
+            kept = sum(v["share"] for lab, v in labels.items() if d["tail"](lab))
+            ratios.append(min(kept / total, 1.0))
+        return sum(ratios) / len(ratios) if ratios else None
+
+    def _demand(types: tuple[str, ...]) -> float | None:
+        kept = 0.0
+        total = 0.0
+        for r in demand_rows:
+            if r["type"] not in types:
+                continue
+            labels = cand.get("by_type", {}).get(r["type"], {})
+            total += sum(v["share"] for v in labels.values())
+            for a in r["anchors"]:
+                if a["kept"]:
+                    cv = labels.get(a["label"])
+                    if cv:
+                        kept += cv["share"]
+        return min(kept / total, 1.0) if total > 0 else None
+
+    if lever == "value":
+        return _attr(_VALUE_DIMS)
+    if lever == "behavior":
+        return _attr(_BEHAVIOR_DIMS)
+    if lever == "interest":
+        return _demand(_INTEREST_TYPES)
+    if lever == "touch":
+        return _demand(("触点互动偏好",))
+    if lever == "category":
+        return _demand(("电商品类成交偏好",))
+    if lever == "brand":
+        return _demand(("电商品牌成交偏好",))
+    return None
+
+
+def _strength_label(ratio: float | None) -> tuple[str, str]:
+    """(力度词, 量级括注)。ratio 越小切得越狠。阈值是粗带，仅排刀序参考。"""
+    if ratio is None:
+        return "力度未知", "画像缺该维标签·导出可能不全"
+    if ratio <= 0.15:
+        return "强", "约留 ≤15% 画像占比·切得狠（约掉一个量级）"
+    if ratio <= 0.40:
+        return "中", "约留 15–40% 画像占比·切小半"
+    return "弱", "约留 >40% 画像占比·微调"
+
+
 def _value_cut_actions(cand: dict) -> list[str]:
     out: list[str] = []
     for d in _VALUE_DIMS:
@@ -525,15 +586,22 @@ def _purify_plan(
     for rank, lever in enumerate(order, start=1):
         d = _CUT_DEFS[lever]
         actions = builders[lever]() or [d["placeholder"]]
+        ratio = _cut_keep_ratio(cand, lever, demand_rows)
+        strength, strength_note = _strength_label(ratio)
         cuts.append({
             "rank": rank, "lever": lever, "name": f"第 {rank} 刀 · {d['name']}",
             "rule": d["rule"], "ecommerce": d["ecommerce"], "actions": actions,
+            "strength": strength, "strength_note": strength_note,
+            "keep_ratio": round(ratio, 3) if ratio is not None else None,
         })
     return {
         "funnel": label,
         "order_rationale": _PURIFY_RATIONALE.get(label, _PURIFY_RATIONALE[_DEFAULT_ORDER]),
         "ecommerce_note": ("标 ⚠电商 的刀会让人群包含电商成交数据 → **只能上品牌广告，不能上传非品牌广告**。"
                            "要走非品牌广告（可投范围更大）就只用 ✅非电商 的刀，电商刀跳过。"),
+        "strength_legend": ("预计收窄力度 = 这刀保留的标签覆盖画像占比多少（**粗估自画像占比，非云图真实覆盖"
+                            "人数**，只有云图后台看得到真实人数）。强=切得狠（约掉一个量级）／ 中=切小半 ／ "
+                            "弱=微调。想快掉量级先挑「强」刀，但仍按刀序来：靠前的刀对包性质伤害小、先切。"),
         "cuts": cuts,
         "note": ("不限刀数，按优先级从上往下切；**每切完去云图看实际覆盖人数**，量级不满意就把缩窄后的"
                  "画像重新导出再跑一次本工具做**二次提纯**。A4 不参与提纯（它是真需求标尺）。"),
@@ -676,10 +744,11 @@ def _build_diagnosis(
             "", "## 四、提纯施工单（优先级阶梯 · A4 不参与）",
             f"> 排序按漏斗定位「{purify['funnel']}」：{purify['order_rationale']}",
             f"> {purify['ecommerce_note']}",
+            f"> {purify['strength_legend']}",
         ]
         for c in purify["cuts"]:
             tag = "⚠电商（仅品牌广告）" if c["ecommerce"] else "✅非电商（可上非品牌广告）"
-            lines.append(f"### {c['name']}　｜　{tag}")
+            lines.append(f"### {c['name']}　｜　{tag}　｜　预计收窄力度：{c['strength']}（{c['strength_note']}）")
             lines.append(f"> {c['rule']}")
             for act in c["actions"]:
                 lines.append(f"- {act}")
@@ -758,7 +827,7 @@ def _build_sections(result: dict, narrative_md: str, narrated: bool) -> list[dic
     if result.get("purify_plan"):
         p = result["purify_plan"]
         body = "\n\n".join(
-            f"**{c['name']}｜{'⚠电商' if c['ecommerce'] else '✅非电商'}**\n{c['rule']}\n"
+            f"**{c['name']}｜{'⚠电商' if c['ecommerce'] else '✅非电商'}｜收窄力度 {c['strength']}**\n{c['rule']}\n"
             + "\n".join(f"- {a}" for a in c["actions"])
             for c in p["cuts"]
         )
@@ -766,7 +835,7 @@ def _build_sections(result: dict, narrative_md: str, narrated: bool) -> list[dic
             "layer": "recommendation",
             "title": f"提纯施工单（优先级阶梯·{p['funnel']}）",
             "body": body,
-            "evidence": [p["ecommerce_note"], p["note"]],
+            "evidence": [p["ecommerce_note"], p["strength_legend"], p["note"]],
         })
     return sections
 
