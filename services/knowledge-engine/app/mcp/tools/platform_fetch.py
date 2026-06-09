@@ -69,9 +69,15 @@ async def _list_endpoints_impl(platform: str | None, query: str | None,
 
 
 async def _auth_status_impl() -> dict:
+    """三平台登录态：调 scout **深度探针**（真取数判活），不是只查 cookie 文件存在性。
+
+    auth-health 对每平台打一个轻量真取数探针，verdict=FAIL_AUTH 才算真失效——
+    能查出"cookie 文件在但服务端 token 已过期"这种 auth-status（has_cookies）查不出的盲区。
+    深度探针要打 3 次真请求，故 timeout 放宽到 90s。
+    """
     try:
-        async with httpx.AsyncClient(timeout=15.0) as cli:
-            resp = await cli.get(f"{_base()}/api/v1/scout/fetch/auth-status")
+        async with httpx.AsyncClient(timeout=90.0) as cli:
+            resp = await cli.post(f"{_base()}/api/v1/scout/fetch/auth-health")
             resp.raise_for_status()
             data = resp.json()
     except Exception as exc:
@@ -110,12 +116,18 @@ async def platform_list_endpoints(platform: str | None = None, query: str | None
 
 @tool_with_audit(mcp, require_approval=False)
 async def platform_auth_status() -> dict:
-    """报告三平台 cookies 是否有效（无效需去 /scout 扫码登录）。"""
+    """报告三平台登录态是否**真有效**（深度探针·真取数判活，不是只查 cookie 文件在不在）。
+
+    对云图/罗盘/抖店各打一个轻量真取数探针：verdict=FAIL_AUTH=登录态真失效
+    （cookie 文件在但服务端已拒也能查出来）→ 该平台需去 /scout 扫码重登，否则当天
+    metric_ingest 会静默落空数据。返回 result.results{平台:{verdict,alive}} +
+    result.stale_auth[失效平台]。**落库前以此为准**（比旧的文件存在性检查准）。
+    """
     return await _auth_status_impl()
 
 
 async def _ingest_metrics_impl() -> dict:
-    """触发 scout-agent 落库桥全量 ingest（实时取 10 端点 → 29 抽取器 → upsert 两表）。"""
+    """触发 scout-agent 落库桥全量 ingest（实时取 10 端点 → 抽取器落 90 指标 → upsert 两表）。"""
     try:
         # ingest 走浏览器 + 多端点，给足时间
         async with httpx.AsyncClient(timeout=600.0) as cli:
@@ -137,7 +149,7 @@ async def _ingest_metrics_impl() -> dict:
 async def ingest_platform_metrics() -> dict:
     """落库桥：手动触发一次全量落库（罗盘/云图/抖店真返回 → 29 指标 + 同行标杆）。
 
-    实时取 10 个核心端点 → 跑 29 抽取器（series 落整段历史/snap 落今日）→
+    实时取 10 个核心端点 → 跑抽取器落 90 指标（series 落整段历史/snap 落今日）→
     upsert mvp_daily_metric（sku_id='_SHOP_', platform='douyin'）+ mvp_industry_benchmark。
     需三平台 cookies 有效（先用 platform_auth_status 查）。日级 cron 也自动跑。
 

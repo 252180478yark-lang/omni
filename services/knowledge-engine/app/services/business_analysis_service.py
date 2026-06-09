@@ -338,6 +338,15 @@ def _build_analysis(
         "归因严格分层（R-14）：第一部分是相关不是因果；第三部分是模板化假设，"
         "需老板按每条的「要证实需对比 X」自行验证，禁当成结论。"
     )
+    _bench_have = [b["cn"] for b in blocks if b["metric"] in reg.BENCHMARK_METRICS and b.get("benchmark")]
+    _bench_miss = [b["cn"] for b in blocks if not (b["metric"] in reg.BENCHMARK_METRICS and b.get("benchmark"))]
+    if _bench_have or _bench_miss:
+        _msg = "同行对比："
+        _msg += ("有同行基准的指标：" + "、".join(_bench_have) + "。") if _bench_have else "本面指标暂无同行基准数据。"
+        if _bench_miss:
+            _shown = "、".join(_bench_miss[:8]) + ("…" if len(_bench_miss) > 8 else "")
+            _msg += f"其余指标（{_shown}）暂无同行参照——是数据未接，非缺失/bug。"
+        caveats.append(_msg)
     lines += ["## 四、口径与样本量警示"]
     lines += [f"- {c}" for c in caveats]
 
@@ -654,7 +663,7 @@ async def query_metric_nl(
     if not metric_name:
         return {
             "ok": False, "error": "metric_not_resolved",
-            "hint": "没听出要查哪个指标。已支持的 29 指标（说中文名或 metric_name 都行）。",
+            "hint": "没听出要查哪个指标。已支持的 90 指标（说中文名或 metric_name 都行）。",
             "supported": [{"metric": k, "cn": v["cn"]} for k, v in reg.METRIC_REGISTRY.items()],
         }
     days, window_note = _parse_window(question, default_days)
@@ -692,8 +701,11 @@ async def query_metric_nl(
             "change_window_pct": block["change_window_pct"], "mom_pct": block.get("mom_pct"),
         },
         "benchmark": block.get("benchmark"),
+        "has_benchmark": bool(metric_name in reg.BENCHMARK_METRICS and block.get("benchmark")),
         "note": ("库内真实序列原样返回（mvp_daily_metric），不归因、不编造。"
-                 "单平台抖音口径（§8.5）；只支持已落库的 29 指标。"),
+                 "单平台抖音口径（§8.5）；覆盖已落库的 90 指标。"
+                 + ("" if (metric_name in reg.BENCHMARK_METRICS and block.get("benchmark"))
+                    else "（此指标暂无同行对比数据——没接同行基准、不是 bug；只返本店序列。）")),
     }
 
 

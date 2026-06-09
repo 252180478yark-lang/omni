@@ -80,6 +80,14 @@ async def _run_metric_ingest() -> None:
         res = await ingest_metrics(_EXECUTOR)
         log.info("scheduler: metric_ingest wrote %s metric + %s benchmark rows",
                  res.get("metric_rows_written"), res.get("benchmark_rows_written"))
+        # 落库成功后立即触发异动检测（消除"挂 08:30 runbook、09:00 落库后等 24h 才扫"的延迟；
+        # detect_all_focus_skus 现已含全店 _SHOP_ 大盘）。fail-open，不挂 ingest。
+        try:
+            from app.services.anomaly_engine import detect_all_focus_skus
+            await detect_all_focus_skus(run_id="metric_ingest")
+            log.info("scheduler: anomaly detection triggered post-ingest")
+        except Exception as exc:
+            log.warning("scheduler: post-ingest anomaly detection failed: %s", exc)
     except Exception as exc:
         log.error("scheduler: metric_ingest failed: %s", exc)
 

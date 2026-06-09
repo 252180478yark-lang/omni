@@ -342,6 +342,15 @@ async def detect_anomalies_for_sku(sku_id: str, run_id: str) -> list[int]:
                     )
                     continue
 
+                # ── 幂等守卫：同 sku/metric/rule 今天已 fire 过 → 跳过（避免多次触发产生重复行）──
+                dup = await conn.fetchval(
+                    "SELECT 1 FROM mvp_anomaly WHERE sku_id=$1 AND metric_name=$2 "
+                    "AND rule_id=$3 AND detected_at::date = CURRENT_DATE LIMIT 1",
+                    sku_id, rule.metric, rule.id,
+                )
+                if dup:
+                    continue
+
                 # ── R-30 新鲜度戳：as_of 取该指标最新数据日 vs 最近成功 runbook，更晚者 ──
                 as_of = await _resolve_as_of(conn, sku_id, latest_date)
 
@@ -380,13 +389,24 @@ async def detect_anomalies_for_sku(sku_id: str, run_id: str) -> list[int]:
     return fired
 
 
+async def detect_shop_level(run_id: str) -> list[int]:
+    """对全店哨兵 '_SHOP_' 跑异动检测（gmv/uv/转化/差评等全店指标）。
+
+    分析面/问数都读 _SHOP_，但 detect_all_focus_skus 此前只扫单 SKU——全店大盘
+    （如全店 GMV 暴跌）永远不产异动。这里补上；规则 fail-open，缺该指标自动跳过。
+    """
+    return await detect_anomalies_for_sku("_SHOP_", run_id)
+
+
 async def detect_all_focus_skus(run_id: str) -> None:
-    """Run anomaly detection for all SKUs in the focus pool."""
+    """Run anomaly detection for focus-pool SKUs + 全店大盘哨兵 _SHOP_."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT id FROM mvp_sku WHERE in_focus_pool = TRUE AND status = 'active'")
     for row in rows:
         await detect_anomalies_for_sku(row["id"], run_id)
+    # 全店大盘（分析面/问数读的 _SHOP_ 哨兵）——此前漏扫，补上
+    await detect_shop_level(run_id)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -482,11 +502,11 @@ async def _fetch_today_baseline(conn, sku_id: str, metric_name: str, today: date
         SELECT
             MAX(value) FILTER (WHERE date = $3) AS today_val,
             AVG(value) FILTER (
-                WHERE date BETWEEN $3 - INTERVAL '{BASELINE_DAYS} days' AND $3 - INTERVAL '1 day'
+                WHERE date BETWEEN $3::date - INTERVAL '{BASELINE_DAYS} days' AND $3::date - INTERVAL '1 day'
             ) AS avg_baseline
         FROM mvp_daily_metric
         WHERE sku_id = $1 AND metric_name = $2
-          AND date BETWEEN $3 - INTERVAL '{BASELINE_DAYS} days' AND $3
+          AND date BETWEEN $3::date - INTERVAL '{BASELINE_DAYS} days' AND $3
         """,
         sku_id, metric_name, today,
     )
@@ -507,7 +527,7 @@ async def _fetch_today_and_baseline_series(
         f"""
         SELECT date, value FROM mvp_daily_metric
         WHERE sku_id = $1 AND metric_name = $2
-          AND date BETWEEN $3 - INTERVAL '{BASELINE_DAYS} days' AND $3
+          AND date BETWEEN $3::date - INTERVAL '{BASELINE_DAYS} days' AND $3
         ORDER BY date ASC
         """,
         sku_id, metric_name, today,
@@ -530,7 +550,7 @@ async def _fetch_trend(conn, sku_id: str, metric_name: str, today: date, days: i
         """
         SELECT date, value FROM mvp_daily_metric
         WHERE sku_id=$1 AND metric_name=$2
-          AND date BETWEEN $3 - INTERVAL '%s days' AND $3
+          AND date BETWEEN $3::date - INTERVAL '%s days' AND $3
         ORDER BY date ASC
         """ % days,
         sku_id, metric_name, today,
