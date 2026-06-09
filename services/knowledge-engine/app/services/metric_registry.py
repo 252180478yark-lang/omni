@@ -290,6 +290,18 @@ METRIC_REGISTRY: dict[str, dict] = {
                           "aliases": ["正面声量", "正面数"]},
     "brand_negative_cnt": {"cn": "品牌负面声量数", "unit": "条", "direction": "down_good",
                           "aliases": ["负面声量", "负面数"]},
+    # 抖店 homepage 今日实时口径（与罗盘 canonical 趋势指标解耦：canonical 由罗盘 series/snap 单源拥有，
+    # 这些是抖店今日实时单独落、互不覆盖。详见 bi_batch1 §双写消歧）。
+    "gmv_paid_realtime": {"cn": "用户支付金额(抖店今日实时)", "unit": "元", "direction": "up_good",
+                          "aliases": ["今日实时gmv", "抖店实时支付金额", "实时成交额", "今日实时成交"]},
+    "buyer_count_realtime": {"cn": "成交人数(抖店今日实时)", "unit": "人", "direction": "up_good",
+                          "aliases": ["今日实时成交人数", "实时买家数"]},
+    "product_show_uv_realtime": {"cn": "商品曝光人数(抖店今日实时)", "unit": "人", "direction": "up_good",
+                          "aliases": ["今日实时曝光人数"]},
+    "product_click_uv_realtime": {"cn": "商品点击人数(抖店今日实时)", "unit": "人", "direction": "up_good",
+                          "aliases": ["今日实时点击人数"]},
+    "experience_score_realtime": {"cn": "店铺体验分(抖店今日实时)", "unit": "分", "direction": "up_good",
+                          "aliases": ["今日实时体验分"]},
 }
 
 # 同行标杆表 mvp_industry_benchmark 实际存的 metric_name（落库桥 metric_ingest._extract_benchmarks）。

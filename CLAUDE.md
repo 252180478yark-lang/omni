@@ -29,8 +29,8 @@ omni 暴露 **78 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
 - 投后回传闭环：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
 - 三平台实时取数底座（经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
-- 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 抽取器落 90 指标 + 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
-- 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，覆盖已落库 90 指标）
+- 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 抽取器落 95 指标 + 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
+- 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，覆盖已落库 95 指标）
 - 人群包投前诊断 + 提纯（方法论沉淀）：`diagnose_audience_pack`（候选包画像 vs 行业 A4 真需求标尺 → 逐维度看方向不算总相似分 → 投前诊断卡：价值维正向偏离/购买行为软硬/需求重叠真需求指纹/身份维差异不计 → 漏斗定位 + 内容策略定调 + **提纯优先级阶梯施工单**（不限刀数、按漏斗定位排序、每刀标 ✅非电商/⚠电商 资格 + 预计收窄力度 强/中/弱（粗估自画像占比·非云图真值，想快掉一个量级先挑「强」刀）——⚠电商刀只能上品牌广告不能上非品牌广告；老板一刀一刀切看云图真实覆盖人数、不满意重导出做二次提纯）；确定性为主、polish=True 巨量云图 KB grounding LLM 叙事过 R-14；详见下「人群包投前诊断」节）
 - 巨量云图标签体系确定性查询：`query_yuntu_taxonomy`（圈包/提纯/答疑的标签 ground truth——总览两大入口+各维度 / dimension=某维度全量树 / search=某标签的真实层级路径+勾选菜单 / section=字段全集·行业特色·固定清单·提纯三刀法；**回答标签体系问题优先调它，别去硬读 30k 大文件 v2 字典、别靠 lossy RAG**。数据源 config/audience 画像 CSV + dump v1 常量，确定性不截断不虚构）
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
@@ -429,7 +429,7 @@ REST（桌面经 IPC→http 调，与 tool 共用同一 service 禁漂移）：`
 ## 落库桥 + 综合经营分析（§6 分析半，2026-06-03）
 
 ### 落库桥
-`ingest_platform_metrics()`（KE，require_approval=False）→ httpx 调 scout REST，实时取 10 端点 → 跑抽取器落 90 指标 + 同行标杆 → upsert 两表。全程纯加法、fail-open。触发三路：① MCP tool（老板"落库一次 / 把今天数据入库 / 刷新指标库"，需 cookies 有效先 `platform_auth_status` 查）② scout REST `POST /api/v1/scout/metrics/ingest` + `GET /metrics/series?metric=&days=` ③ scout scheduler 每天 09:00 自动跑（失败容忍）。一次全量约 metric 428 行 + benchmark 377 行。
+`ingest_platform_metrics()`（KE，require_approval=False）→ httpx 调 scout REST，实时取 10 端点 → 跑抽取器落 95 指标 + 同行标杆 → upsert 两表。全程纯加法、fail-open。触发三路：① MCP tool（老板"落库一次 / 把今天数据入库 / 刷新指标库"，需 cookies 有效先 `platform_auth_status` 查）② scout REST `POST /api/v1/scout/metrics/ingest` + `GET /metrics/series?metric=&days=` ③ scout scheduler 每天 09:00 自动跑（失败容忍）。一次全量约 metric 428 行 + benchmark 377 行。
 
 ### 共享契约（落库目标 + 哨兵 + 口径，**所有分析读取严格对齐**）
 - `mvp_daily_metric(sku_id, date, metric_name, value, platform)`：全店行哨兵 `sku_id='_SHOP_'`、`platform='douyin'`（云图/罗盘/抖店同属抖音生态）；`UNIQUE(sku_id,date,metric_name)` upsert。series 端点落整段历史每天一行，snap 端点落今日一行（趋势靠 cron 日累积）。
@@ -448,7 +448,7 @@ REST（桌面经 IPC→http 调，与 tool 共用同一 service 禁漂移）：`
 `polish=False` 默认纯确定性零 token；`polish=True` 在确定性骨架之上跑 LLM 叙事层——把骨架当 **ground truth** 喂 hub，按外置提示词 `config/prompts/business_analysis.{system,user}.md`（命门·热加载可调）写成可读经营分析：允许把分散指标连成"形态"（相关性）、指出重点、给"待验证的下一步"，但**禁新增任何数值、禁伪因果**（观察/假设严格分层，假设必带"要证实需对比 X"），保留 R-15 警示，反 AI 腔。失败 fail-open 回退骨架（`narrated=False`）。`focus`=老板临时关注点（仅 polish 生效）。返回 `markdown` 叙事 + `sections`（桌面分层卡片下钻）+ `as_of`。
 
 ### 临时问数 `query_metric_nl(question, default_days=28, platform='douyin')`
-口语问句 → 解析 `metric_name`（`metric_registry.resolve_metric`，空白不敏感）+ 时间窗 + 维度（含 'SKU-xxxx' → 该 SKU；否则全店 `_SHOP_`）→ 查 `mvp_daily_metric` 返**序列 + 一句话简述**（确定性，不调 LLM、不归因）。没听出指标 → 返 90 指标候选清单让老板再说清。
+口语问句 → 解析 `metric_name`（`metric_registry.resolve_metric`，空白不敏感）+ 时间窗 + 维度（含 'SKU-xxxx' → 该 SKU；否则全店 `_SHOP_`）→ 查 `mvp_daily_metric` 返**序列 + 一句话简述**（确定性，不调 LLM、不归因）。没听出指标 → 返 95 指标候选清单让老板再说清。
 
 | 老板说 | Claude 应做 |
 |---|---|

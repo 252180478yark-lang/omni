@@ -203,13 +203,16 @@ def _extract_bi_doudian_homepage(parsed, today):
     # ── 1. operating_data_card_v4.compass_list（今日经营指标） ──
     # compass key → (registry metric_name, 类型) ; 类型: 'yuan_str' | 'int' | 'pct'
     _COMPASS_MAP = {
-        "pay_amt":                            ("gmv_paid", "yuan_str"),          # 用户支付金额 ¥362.51
-        "pay_cnt":                            ("pay_order_cnt", "int"),          # 成交订单数 14
-        "pay_ucnt":                           ("buyer_count", "int"),            # 成交人数 14
-        "income_amt":                         ("income_amt", "yuan_str"),        # 成交金额 ¥428.70
-        "per_usr_pay_amt":                    ("per_customer_price", "yuan_str"),# 客单价 ¥25.89
-        "product_show_ucnt":                  ("product_show_uv", "int"),        # 商品曝光人数 2462
-        "product_click_ucnt":                 ("product_click_uv", "int"),       # 商品点击人数 105
+        # ⚠ 与 CFG 罗盘 series/snap 同名的全店指标改 *_realtime（抖店今日实时口径）——避免覆盖罗盘趋势单源
+        # （gmv_paid←core_trend_v3 / buyer_count·product_*_uv←flow_source_funnel / experience_score←getoverviewbyversion）。
+        # 罗盘 series 跨天口径一致拥有 canonical 趋势；homepage 抖店今日实时单独落 *_realtime、互不覆盖。
+        "pay_amt":                            ("gmv_paid_realtime", "yuan_str"),    # 用户支付金额 ¥362.51（抖店今日实时）
+        "pay_cnt":                            ("pay_order_cnt", "int"),             # 成交订单数 14（homepage 独有）
+        "pay_ucnt":                           ("buyer_count_realtime", "int"),      # 成交人数 14（抖店今日实时）
+        "income_amt":                         ("income_amt", "yuan_str"),           # 成交金额 ¥428.70（homepage 独有）
+        "per_usr_pay_amt":                    ("per_customer_price", "yuan_str"),   # 客单价 ¥25.89（homepage 独有）
+        "product_show_ucnt":                  ("product_show_uv_realtime", "int"),  # 商品曝光人数 2462（抖店今日实时）
+        "product_click_ucnt":                 ("product_click_uv_realtime", "int"), # 商品点击人数 105（抖店今日实时）
         "product_show_click_ucnt_ratio":      ("show_click_rate", "pct"),        # 曝光-点击转化率 4.26%
         "product_click_pay_ucnt_ratio":       ("click_pay_rate", "pct"),         # 点击-成交转化率 13.33%
         "cost_amt":                           ("cost_amt", "yuan_str"),          # 支出金额 ¥126.87
@@ -244,7 +247,7 @@ def _extract_bi_doudian_homepage(parsed, today):
         try:
             expr = ((sic.get("data") or {}).get("shop_info_card_data") or {}).get("expr_score") or {}
             main = expr.get("main_compass") or {}
-            _push("experience_score", _int(main.get("val")))
+            _push("experience_score_realtime", _int(main.get("val")))  # 抖店今日实时；canonical experience_score 由 CFG getoverviewbyversion 单源
             _SUB_MAP = {
                 "商品": "experience_goods_score",
                 "物流": "experience_logistics_score",

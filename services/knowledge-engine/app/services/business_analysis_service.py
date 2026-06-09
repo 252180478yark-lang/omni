@@ -663,7 +663,7 @@ async def query_metric_nl(
     if not metric_name:
         return {
             "ok": False, "error": "metric_not_resolved",
-            "hint": "没听出要查哪个指标。已支持的 90 指标（说中文名或 metric_name 都行）。",
+            "hint": "没听出要查哪个指标。已支持的 95 指标（说中文名或 metric_name 都行）。",
             "supported": [{"metric": k, "cn": v["cn"]} for k, v in reg.METRIC_REGISTRY.items()],
         }
     days, window_note = _parse_window(question, default_days)
@@ -703,7 +703,7 @@ async def query_metric_nl(
         "benchmark": block.get("benchmark"),
         "has_benchmark": bool(metric_name in reg.BENCHMARK_METRICS and block.get("benchmark")),
         "note": ("库内真实序列原样返回（mvp_daily_metric），不归因、不编造。"
-                 "单平台抖音口径（§8.5）；覆盖已落库的 90 指标。"
+                 "单平台抖音口径（§8.5）；覆盖已落库的 95 指标。"
                  + ("" if (metric_name in reg.BENCHMARK_METRICS and block.get("benchmark"))
                     else "（此指标暂无同行对比数据——没接同行基准、不是 bug；只返本店序列。）")),
     }

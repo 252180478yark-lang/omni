@@ -127,7 +127,7 @@ async def platform_auth_status() -> dict:
 
 
 async def _ingest_metrics_impl() -> dict:
-    """触发 scout-agent 落库桥全量 ingest（实时取 10 端点 → 抽取器落 90 指标 → upsert 两表）。"""
+    """触发 scout-agent 落库桥全量 ingest（实时取 10 端点 → 抽取器落 95 指标 → upsert 两表）。"""
     try:
         # ingest 走浏览器 + 多端点，给足时间
         async with httpx.AsyncClient(timeout=600.0) as cli:
@@ -149,7 +149,7 @@ async def _ingest_metrics_impl() -> dict:
 async def ingest_platform_metrics() -> dict:
     """落库桥：手动触发一次全量落库（罗盘/云图/抖店真返回 → 29 指标 + 同行标杆）。
 
-    实时取 10 个核心端点 → 跑抽取器落 90 指标（series 落整段历史/snap 落今日）→
+    实时取 10 个核心端点 → 跑抽取器落 95 指标（series 落整段历史/snap 落今日）→
     upsert mvp_daily_metric（sku_id='_SHOP_', platform='douyin'）+ mvp_industry_benchmark。
     需三平台 cookies 有效（先用 platform_auth_status 查）。日级 cron 也自动跑。
 
