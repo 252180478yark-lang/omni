@@ -172,7 +172,9 @@ async def generate_image(
     aspect_ratio: str = "9:16",
     n_per_prompt: int = 1,
 ) -> dict:
-    """多 prompt 并发出多张图（gpt-image-2）。
+    """⚠️旧链·无血缘临时/兜底专用（sku-pipeline 正式出片走 generate_storyboard_images，挂 pipeline.assets 可投后回溯）。本工具仅限：老板临时要张图/单测/一次性试拍。
+
+    多 prompt 并发出多张图（gpt-image-2）。
 
     Args:
         prompts: prompt 列表（典型 3 张分镜）
@@ -817,7 +819,9 @@ async def generate_video(
     product_refs: list[str] | None = None,
     aspect_ratio: str = "9:16",
 ) -> dict:
-    """多段分镜视频，并发跑 Seedance；不自动拼接（老板下载多段交剪辑）。
+    """⚠️旧链·无血缘临时/兜底专用（sku-pipeline 正式出片走 generate_video_segments，挂 pipeline.assets 可投后回溯）。本工具仅限临时/一次性试拍。
+
+    多段分镜视频，并发跑 Seedance；不自动拼接（老板下载多段交剪辑）。
 
     Args:
         segments: [{prompt, first_frame?, last_frame?, duration_s?}, ...]

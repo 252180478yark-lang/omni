@@ -1,6 +1,6 @@
 ---
 name: crowd-sop
-description: 圈一个人群包/受众包的策略 SOP。老板说"圈一个 X 的人群包"、"针对 X 出个圈人策略"、"X 受众咋定"等，触发标准 4 步走 SOP，从 KB authoritative + methodology + 模板 → 出可执行圈人策略文档。
+description: 圈一个人群包/受众包的策略 SOP。老板说"圈一个 X 的人群包"、"针对 X 出个圈人策略"、"X 受众咋定"等，触发标准 4 步走 SOP，从 KB authoritative + methodology + 模板 → 出可执行圈人策略文档。本 skill 只**从 0 生成**圈人策略；要**评估/诊断/提纯一个已有候选包**（"诊断/提纯/适不适合投/太大了帮我切"）走 audience-pack-diagnosis，不走本 skill。
 ---
 
 # crowd-sop：人群包圈选策略 SOP

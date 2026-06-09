@@ -1,6 +1,6 @@
 ---
 name: daily-store-pulse
-description: 看店铺今天/昨天/最近的整体脉搏。老板说"看一下今天店铺咋样"、"今日大盘"、"店铺数据日报"、"最近两天店铺变化"等，触发标准 4 步走 SOP，串 fetch_compass_store_daily + fetch_yuntu_brand_mind + search_kb 异动模板出日报。
+description: 看店铺今天/昨天/最近的整体脉搏。老板说"看一下今天店铺咋样"、"今日大盘"、"店铺数据日报"、"最近两天店铺变化"等，触发标准 4 步走 SOP，串 fetch_compass_store_daily + fetch_yuntu_brand_mind + search_kb 异动模板出日报。仅**全店当日/近几日**脉搏日报：单 SKU 体检走 product-analysis、跨月/趋势经营分析走 generate_business_analysis、要此刻实时真值走 platform-data。
 ---
 
 # daily-store-pulse：店铺脉搏日报 SOP

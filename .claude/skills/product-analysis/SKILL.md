@@ -1,6 +1,6 @@
 ---
 name: product-analysis
-description: 分析一个 SKU 的健康度（成本/利润/数据/历史决策综合体检）。老板说"分析 SKU-X"、"看下 X 这款卖得咋样"、"X 健康度报告"、"X 还能不能继续推"等，触发标准 5 步走 SOP，串 get_sku + query_costs + compute_margin + fetch_compass_sku_detail + search_kb 出体检报告。
+description: 分析一个 SKU 的健康度（成本/利润/数据/历史决策综合体检）。老板说"分析 SKU-X"、"看下 X 这款卖得咋样"、"X 健康度报告"、"X 还能不能继续推"等，触发标准 5 步走 SOP，串 get_sku + query_costs + compute_margin + fetch_compass_sku_detail + search_kb 出体检报告。仅**单个 SKU** 体检：看全店大盘走 daily-store-pulse、跨月/趋势经营分析走 generate_business_analysis、只问单指标数走 query_metric_nl、纯取原始数走 platform-data；**不走** startup-metrics-framework/product-manager-toolkit 等通用 KPI 框架。
 ---
 
 # product-analysis：SKU 健康度体检 SOP

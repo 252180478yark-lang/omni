@@ -1,6 +1,6 @@
 ---
 name: platform-data
-description: 实时取云图/罗盘/抖店三平台真实数据的统一入口。老板问任何平台数据（5A人群/GMV/订单/库存/搜索/体验分/排名等）时，把话术路由到 platform_fetch MCP tool 取真数据。这是数据底座，不做分析（分析交给上层）。
+description: 实时取云图/罗盘/抖店三平台真实数据的统一入口。老板问任何平台数据（5A人群/GMV/订单/库存/搜索/体验分/排名等）时，把话术路由到 platform_fetch MCP tool 取真数据。这是数据底座、只取**此刻实时原始数**、不做分析也不读历史：要结构化日报+异动判断走 daily-store-pulse、要单 SKU 体检走 product-analysis、要已落库历史序列/趋势走 query_metric_nl（不触发抓取）。
 ---
 
 # platform-data：三平台实时取数底座

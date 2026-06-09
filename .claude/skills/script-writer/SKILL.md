@@ -1,6 +1,6 @@
 ---
 name: script-writer
-description: 给一个 SKU 写脚本（视频脚本 / 图文脚本 / 直播话术）。老板说"给 SKU-X 写个脚本"、"X 写个直播话术"、"出 X 的图文文案"等，触发标准 5 步走 SOP，串 SKU + 模板 + KB + generate_brief 出脚本。
+description: 给一个 SKU 写脚本（视频脚本 / 图文脚本 / 直播话术）。老板说"给 SKU-X 写个脚本"、"X 写个直播话术"、"出 X 的图文文案"等，触发标准 5 步走 SOP，串 SKU + 模板 + KB + generate_brief 出脚本。⚠️调味品 SKU 专用、必须基于 omni 真实 SKU/KB 数据：凡写脚本/文案/直播话术/带货内容一律走本 skill，**不走**通用 copywriting/content-creator/social-content/copy-editing；只出脚本不出图视频（要完整出片走 sku-pipeline）。
 ---
 
 # script-writer：SKU 脚本生成 SOP

@@ -1,6 +1,6 @@
 ---
 name: cost-luru
-description: 录入或重录 SKU 成本。老板说"录 sku-X 物流费 5 块"/"加成本 包装 0.8"/"录运费"走单笔录入 5 步 SOP；说"算 sku-X 出厂价"/"重录 X 成本"/"X 用工厂出厂价"走桥接 SOP（list_product_prices 找候选 → disable 旧拆分 → record 新出厂价合计）。
+description: 录入或重录 SKU 成本。老板说"录 sku-X 物流费 5 块"/"加成本 包装 0.8"/"录运费"走单笔录入 5 步 SOP；说"算 sku-X 出厂价"/"重录 X 成本"/"X 用工厂出厂价"走桥接 SOP（list_product_prices 找候选 → disable 旧拆分 → record 新出厂价合计）。⚠️凡 SKU 成本/出厂价/利润/这单赚多少/定价走本 skill（确定性查 list_product_prices/compute_margin 算真账），**不走** pricing-strategy/startup-financial-modeling 等战略/融资建模 skill。
 ---
 
 # cost-luru：录成本/重录成本 SOP

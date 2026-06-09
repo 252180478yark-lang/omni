@@ -35,6 +35,24 @@ omni 暴露 **78 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - 巨量云图标签体系确定性查询：`query_yuntu_taxonomy`（圈包/提纯/答疑的标签 ground truth——总览两大入口+各维度 / dimension=某维度全量树 / search=某标签的真实层级路径+勾选菜单 / section=字段全集·行业特色·固定清单·提纯三刀法；**回答标签体系问题优先调它，别去硬读 30k 大文件 v2 字典、别靠 lossy RAG**。数据源 config/audience 画像 CSV + dump v1 常量，确定性不截断不虚构）
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
+## 工具路由总则（撞车消歧 · 选 skill/tool 前必读）
+
+老板自用环境里 12 个业务 skill 跟 50+ 通用英文 skill 同池竞争，**最常见的错是把中文业务话术路由给通用英文 skill（copywriting / competitive-landscape / pricing-strategy / market-sizing / apify-* 等）→ 它们不调 omni 真实数据，凭空编卖点/价格（违反反幻觉）或调 omni 没接的后端空跑**。铁律：
+
+- **元规则**：凡有对应业务 skill 的话术，**优先走业务 skill**，不走通用英文 marketing/strategy/finance skill，也别裸调底层 tool。业务话术 = 和田宽 / SKU / 酱油醋 / 调味品 / 店铺 / 人群包 / 竞品 / 经营。
+- **写文案/脚本/直播话术/带货内容** → `script-writer`（**不走** copywriting/content-creator/social-content/copy-editing）
+- **找卖点/产品力/差异化** → `selling-point-finder`（**不走** marketing-psychology/competitive-landscape）
+- **竞品/对标/扒别人怎么做的** → `competitor-product-research`（**不走** competitive-landscape/apify-*/market-sizing）
+- **成本/出厂价/利润/这单赚多少/定价** → `cost-luru`（**不走** pricing-strategy/startup-financial-*）
+- **分析（按粒度分）**：句中有 SKU 号/名 → `product-analysis`（单 SKU 体检）；"今天/今日大盘/店铺日报" → `daily-store-pulse`；"经营/这个月/趋势/综合" → `generate_business_analysis`(owner/operator)；只问单指标数/走势 → `query_metric_nl`；"为啥异动/解释异常" → `explain_anomaly`，"最近反馈/趋势异动模式" → `diagnose(mode=analysis)`。（**不走** startup-metrics-framework/product-manager-toolkit）
+- **取数（三层）**：要此刻实时真值 → `platform_fetch`（platform-data skill）；要结构化日报+异动判断 → `daily-store-pulse`；要已落库历史序列 → `query_metric_nl`（不触发抓取）。`fetch_compass_*`/`fetch_yuntu_*` 是读存量底层端点、日常话术别直点（除非 skill 内部调）。
+- **人群包**：从 0 生成圈人策略 → `crowd-sop`；step4 圈包 SOP（有 audience_record_id）→ `generate_audience_pack`；**投前诊断/提纯一个已有包** → `diagnose_audience_pack`（audience-pack-diagnosis）。**"包"字 + 生成动词（圈/做/出/写一个…包、受众咋定、圈人策略）= 生成侧，不是诊断**（见下「诊断路由硬规则」的生成例外）。
+- **出片**：正式出片挂血缘 → `generate_storyboard_images`/`generate_video_segments`；无血缘临时/试拍 → `generate_image`/`generate_video`；只要脚本 → `script-writer`；要成片/全链路（烧 token）→ `sku-pipeline`（明确要全链路才触发）。
+- **标签体系 / 某标签在哪个维度 / 圈包提纯用哪些标签** → `query_yuntu_taxonomy`（确定性全量不截断），**别用** `search_kb` RAG（只返碎片）。
+- **禁**：`brainstorming`/`using-superpowers`/`test-driven-development` 等工程元 skill **不要**在业务话术（出片/脚本/人群包/分析/成本）上触发，直接进对应业务 skill。
+
+> 这张总则是「老板说→走哪个」的唯一权威；下面各 section 的细表只是它的展开。新增/改 skill 后回这里补一行。
+
 ## 新旧两条出片链分流
 
 sku-pipeline 出图/出视频有两条链，**进 pipeline（要血缘、要投后回溯）默认走新链**：
@@ -461,7 +479,7 @@ REST（桌面经 IPC→http 调，与 tool 共用同一 service 禁漂移）：`
 老板痛点：和田宽**出厂价已 ≥ 竞品线上零售价，打不了价格战**，投放靠"做用户喜欢的内容 → 软植入 → 深度种草 → 收割"。所以做内容/投放**之前**必须判断一个候选人群包适不适合——这群"会被内容打动"的人必须是**真需求**。方法论备忘 + 两份说明书见 `docs/audience-pack/`。
 
 > **⚠️ 「诊断」路由硬规则（两个工具别搞混，已多次踩坑——必须机械执行，不准凭感觉）**：
-> 1. 句子里**只要出现下列任一**：`包` / `人群包` / `候选包` / `这个包` / `适不适合投` / `提纯` / `圈的人` / **任何包名（地域寻味人 / 行业A4 / diyu_xunwei / 候选包名…）** / **本轮带了 CSV 附件** → **一律直接调 `diagnose_audience_pack`**。**禁止反问、禁止走 `diagnose`（诊断官）、禁止说"无包字"**。先扫一遍整句再判，别只看"诊断"两个字。
+> 1. 句子里**只要出现下列任一**：`包` / `人群包` / `候选包` / `这个包` / `适不适合投` / `提纯` / `圈的人` / **任何包名（地域寻味人 / 行业A4 / diyu_xunwei / 候选包名…）** / **本轮带了 CSV 附件** → **一律直接调 `diagnose_audience_pack`**。**禁止反问、禁止走 `diagnose`（诊断官）、禁止说"无包字"**。先扫一遍整句再判，别只看"诊断"两个字。**⚠️生成侧例外**：句中同时含**生成动词**（圈/做/出/写/搞「一个…包」、"受众咋定"、"出个圈人策略"）→ 这是**生成意图、不是诊断**，走 `crowd-sop`（纯口头要策略）或 `generate_audience_pack`（有 audience_record_id），**不走 diagnose_audience_pack**。只有"诊断/提纯/适不适合投/太大了帮我切/缩量级"这类**评估已有包**的才走诊断。
 > 2. 句子里**完全没有上述词**、只是「诊断一下 / 最近反馈啥模式 / 本周改进建议 / 趋势异动 / 为啥指标掉了」→ 才走 `diagnose`（诊断官）。
 > 3. 真·两可（既无包名也无明确反馈/异动语境）→ **默认按人群包走 `diagnose_audience_pack`**（老板自用最高频是诊人群包），别反问。
 

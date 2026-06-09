@@ -1,6 +1,6 @@
 ---
 name: competitor-product-research
-description: 竞品调研（淘宝）。老板说"调研淘宝有机酱油"、"看看淘宝上卖 X 的怎么做的"、"扒一下淘宝 X 竞品"、"对标淘宝 X"、"淘宝竞品调研 X"等，触发两段式 SOP：先 competitor_search 抓前 50 榜单（显示价/月销/主图/链接）+ 相关性过滤给老板挑，老板挑中后 competitor_decompose 对每个商品的主图+详情页拆「卖点/构图/配色/设计/内容」。每步停下等老板反馈。
+description: 竞品调研（淘宝）。老板说"调研淘宝有机酱油"、"看看淘宝上卖 X 的怎么做的"、"扒一下淘宝 X 竞品"、"对标淘宝 X"、"淘宝竞品调研 X"等，触发两段式 SOP：先 competitor_search 抓前 50 榜单（显示价/月销/主图/链接）+ 相关性过滤给老板挑，老板挑中后 competitor_decompose 对每个商品的主图+详情页拆「卖点/构图/配色/设计/内容」。每步停下等老板反馈。⚠️凡竞品/对标/扒别人怎么做的（不论是否点名淘宝）走本 skill，**不走** competitive-landscape/competitor-alternatives/apify-*/market-sizing-analysis 等通用战略 skill（它们走 omni 没接的渠道、不抓真实淘宝数据）。
 ---
 
 # competitor-product-research：淘宝竞品调研 SOP

@@ -1,6 +1,6 @@
 ---
 name: sku-pipeline
-description: SKU 出片全链路。老板说"SKU-X 全链路"、"给 X 出片"、"跑通 X"、"X 完整流程"等，触发 5 步标准编排：query_costs → compute_margin → script-writer 子流程出 brief → generate_image 3 张分镜 → generate_video 3 段，每步停下等老板反馈。
+description: SKU 出片全链路。老板说"SKU-X 全链路"、"给 X 出片"、"跑通 X"、"X 完整流程"等，触发 5 步标准编排：query_costs → compute_margin → script-writer 子流程出 brief → generate_image 3 张分镜 → generate_video 3 段，每步停下等老板反馈。⚠️烧 token 的**完整出片编排**，仅当老板**明确要成片/全链路**时触发；只要脚本/文案/直播话术走 script-writer，不走本 skill（别把"写个脚本"误当全链路白烧出图出视频）。
 ---
 
 # sku-pipeline：SKU 出片全链路 SOP

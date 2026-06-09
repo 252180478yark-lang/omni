@@ -1,6 +1,6 @@
 ---
 name: selling-point-finder
-description: 找一个 SKU 的卖点。老板说"找 SKU-X 的卖点"、"X 这款酱油有啥好讲的"、"挖一下 X 的产品力"等，触发标准 4 步走 SOP，从 SKU 基础信息 → 模板素材 → 三类卖点（功能 / 情绪 / 场景）。
+description: 找一个 SKU 的卖点。老板说"找 SKU-X 的卖点"、"X 这款酱油有啥好讲的"、"挖一下 X 的产品力"等，触发标准 4 步走 SOP，从 SKU 基础信息 → 模板素材 → 三类卖点（功能 / 情绪 / 场景）。⚠️凡找调味品 SKU 卖点/产品力/差异化走本 skill（用 get_sku 的 owner_selling_points 真实字段+KB），**不走** marketing-psychology/competitive-landscape 等通用营销框架 skill。
 ---
 
 # selling-point-finder：SKU 卖点挖掘 SOP

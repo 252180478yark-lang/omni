@@ -46,7 +46,7 @@ async def search_kb(
     use_hyde: bool = False,
     context_window: bool = False,
 ) -> dict:
-    """KB 检索；返回排序后的 chunks。
+    """KB 检索；返回排序后的 chunks。⚠️巨量云图标签体系/某标签在哪个维度/圈包提纯用哪些标签 → 用 query_yuntu_taxonomy（确定性全量不截断），别用本工具 RAG（只返碎片）。
 
     Args:
         query: 自然语言查询
