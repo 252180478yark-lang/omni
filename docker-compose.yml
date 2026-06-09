@@ -225,6 +225,10 @@ services:
       SCOUT_AGENT_URL: "http://scout-agent:8009"
       # R-22 文档体检：容器内挂仓库根 CLAUDE.md 后指过去，doctor 能真比对工具数（否则 WARN-skip）
       OMNI_CLAUDE_MD_PATH: "/app/CLAUDE.md"
+      # 本地语音转写(faster-whisper)：国内走 HF 镜像下模型；HF_HOME 指进 knowledge_data 卷 → 1.5GB 模型只下一次、重建容器不重下
+      HF_ENDPOINT: "${HF_ENDPOINT:-https://hf-mirror.com}"
+      HF_HOME: "/app/data/hf"
+      WHISPER_MODEL: "${WHISPER_MODEL:-medium}"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     expose:
       - "8002"
