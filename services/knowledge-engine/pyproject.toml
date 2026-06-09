@@ -38,6 +38,9 @@ dependencies = [
   "google-generativeai>=0.8.0",
   # httplib2 proxy patch 用（Gemini Files API 上传走 httplib2，国内代理需要 PySocks）
   "PySocks>=1.7.1",
+  # 本地语音转文字（桌面输入框口述）：faster-whisper CPU·medium·中文，离线不走云。
+  # 拉 ctranslate2 + av(PyAV 内置 ffmpeg 解 webm/opus) + huggingface_hub（首次下模型，国内设 HF_ENDPOINT 镜像）。
+  "faster-whisper>=1.0.0",
 ]
 
 [project.optional-dependencies]
