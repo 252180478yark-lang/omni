@@ -354,21 +354,25 @@ async def detect_anomalies_for_sku(sku_id: str, run_id: str) -> list[int]:
                 # ── R-30 新鲜度戳：as_of 取该指标最新数据日 vs 最近成功 runbook，更晚者 ──
                 as_of = await _resolve_as_of(conn, sku_id, latest_date)
 
-                # Insert anomaly（新列 platform/as_of/baseline_days/baseline_value/today_value 一并写）
+                # LLM 一句话行动建议（前移：同时写进 mvp_anomaly.description_llm，让 explain_anomaly
+                # 也能带出 engine_suggestion，不再只埋在 decision_log）。fail-open 返 ''。
+                ai_suggestion = await _llm_one_liner(sku_id, rule.id, description, delta_pct)
+
+                # Insert anomaly（新列 platform/as_of/baseline_days/baseline_value/today_value/description_llm）
                 anomaly_id = await conn.fetchval(
                     """
                     INSERT INTO mvp_anomaly
                         (sku_id, severity, metric_name, rule_id, description, delta_pct,
-                         platform, as_of, baseline_days, baseline_value, today_value)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                         platform, as_of, baseline_days, baseline_value, today_value, description_llm)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                     RETURNING id
                     """,
                     sku_id, rule.severity, rule.metric, rule.id, description, delta_pct,
                     DEFAULT_PLATFORM, as_of, BASELINE_DAYS, baseline_value, today_val,
+                    ai_suggestion or None,
                 )
 
-                # Auto-create decision_log entry (with LLM one-liner if available)
-                ai_suggestion = await _llm_one_liner(sku_id, rule.id, description, delta_pct)
+                # Auto-create decision_log entry（复用上面已生成的 LLM one-liner）
                 await conn.execute(
                     """
                     INSERT INTO mvp_decision_log

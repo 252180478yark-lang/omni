@@ -321,7 +321,24 @@ async def _run_daily_pulse_cycle(now: datetime | None = None) -> dict:
     DAILY_PULSE_REPORT_FILE.write_text(md, encoding="utf-8")
     _write_last_run(now, DAILY_PULSE_LAST_FILE)
     logger.info("daily_pulse 写入 %s", DAILY_PULSE_REPORT_FILE)
-    return {"ran": True, "reason": "ok", "report_path": str(DAILY_PULSE_REPORT_FILE)}
+
+    # 顺带预热综合经营分析缓存（owner+operator × 常用窗口 28/30），桌面 AiAnalysisPanel 打开秒返。
+    # 独立 try，失败不影响 pulse。
+    warmed = 0
+    try:
+        from app.services import business_analysis_service as _ba, ba_cache as _bac
+        for _face in ("owner", "operator"):
+            for _days in (28, 30):
+                _r = await _ba.generate_business_analysis(face=_face, days=_days, polish=True)
+                if _r.get("ok"):
+                    _bac.put(_bac.key(_face, _days, "douyin", True, None), _r)
+                    warmed += 1
+        logger.info("daily_pulse: 预热经营分析缓存 %d 项", warmed)
+    except Exception:
+        logger.exception("daily_pulse: 预热分析缓存失败（不影响 pulse）")
+
+    return {"ran": True, "reason": "ok", "report_path": str(DAILY_PULSE_REPORT_FILE),
+            "analysis_cache_warmed": warmed}
 
 
 async def daily_pulse_loop(
@@ -595,8 +612,22 @@ async def _run_feedback_digest_cycle(now: datetime | None = None) -> dict:
     except Exception:
         logger.exception("feedback_digest: diagnose 持久化失败（不影响 digest）")
 
+    # §8.5 分析面趋势归因：同周期也跑一次 analysis（lookback=21 对齐 TTL，避免旧提议无声过期）——
+    # 让老板周一打开 /insights 同时看到内容改进 + 趋势异动提议，不必手动调。独立 try，失败不影响主流程。
+    diag_analysis_summary = None
+    try:
+        from app.services.diagnose_service import run_diagnose as _run_diag_analysis
+        diag_analysis_summary = await _run_diag_analysis(mode="analysis", lookback_days=21, persist=True)
+        logger.info(
+            "feedback_digest: analysis 提议 created=%s refreshed=%s open=%s",
+            diag_analysis_summary.get("created"), diag_analysis_summary.get("refreshed"),
+            diag_analysis_summary.get("total_open"),
+        )
+    except Exception:
+        logger.exception("feedback_digest: analysis 诊断失败（不影响 digest）")
+
     return {"ran": True, "reason": "ok", "report_path": str(FEEDBACK_DIGEST_REPORT_FILE),
-            "diagnose": diag_summary}
+            "diagnose": diag_summary, "diagnose_analysis": diag_analysis_summary}
 
 
 async def feedback_digest_loop(

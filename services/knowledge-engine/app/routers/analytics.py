@@ -92,13 +92,22 @@ async def comprehensive_post(req: _ComprehensiveReq):
     platform = _platform_of(req.filter)
     face = req.face if req.face in ("owner", "operator") else "owner"
     polish = True if req.polish is None else bool(req.polish)
+    # 进程内缓存（仅 focus=None 常规视图）：命中即秒返，避开每次 10-30s 重算（cron 每日预热）。
+    from app.services import ba_cache as _ba_cache
+    ck = _ba_cache.key(face, days, platform, polish, req.focus)
+    if req.focus is None:
+        cached = _ba_cache.get(ck)
+        if cached is not None:
+            return {**cached, "cached": True}
     result = await svc.generate_business_analysis(
         face=face, days=days, platform=platform, polish=polish, focus=req.focus,
     )
     if not result.get("ok"):
         code = 400 if str(result.get("error", "")).startswith("invalid") else 500
         return JSONResponse(content=result, status_code=code)
-    return result
+    if req.focus is None:
+        _ba_cache.put(ck, result)
+    return {**result, "cached": False}
 
 
 @mcp_analysis_router.post("/nl-query")

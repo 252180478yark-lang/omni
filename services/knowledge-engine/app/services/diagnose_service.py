@@ -460,7 +460,7 @@ async def _expire_stale(pool, now: _dt.datetime) -> int:
 
 async def run_diagnose(
     mode: str = "content",
-    lookback_days: int = 7,
+    lookback_days: int | None = None,
     persist: bool = True,
     platform: str = "douyin",
 ) -> dict:
@@ -481,6 +481,11 @@ async def run_diagnose(
     if mode not in ("content", "analysis"):
         return {"ok": False, "error": "invalid_mode",
                 "hint": "mode 需 ∈ {content, analysis}"}
+
+    # 默认窗口随 mode：analysis 对齐提议 TTL（21d）——否则 TTL 内的旧提议会因 7d 窗口读不到
+    # 而无法刷新 last_seen_at、只能无声过期；content 沿用 7d（周报窗口）。显式传值优先。
+    if lookback_days is None:
+        lookback_days = _PROPOSAL_TTL_DAYS if mode == "analysis" else 7
 
     # —— 1. 聚类 + 确定性生成提议（两 mode 各走各路，禁漂移）——
     if mode == "content":
@@ -770,7 +775,7 @@ async def explain_anomaly(anomaly_id: int) -> dict:
             """
             SELECT id, sku_id, metric_name, rule_id, severity, description,
                    delta_pct, baseline_value, today_value, baseline_days,
-                   as_of, detected_at, platform, handled, expected
+                   as_of, detected_at, platform, handled, expected, description_llm
             FROM mvp_anomaly WHERE id = $1
             """,
             int(anomaly_id),
@@ -840,6 +845,7 @@ async def explain_anomaly(anomaly_id: int) -> dict:
             "expected": a["expected"],
         },
         "observation": observation,
+        "engine_suggestion": (a["description_llm"] or None),
         "hypothesis": parts["hypothesis"],
         "unaddressed_confounders": parts["unaddressed_confounders"],
         "falsification": parts["falsification"],

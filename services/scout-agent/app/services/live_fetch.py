@@ -1,6 +1,7 @@
 """实时取数执行器：cookies → Playwright context → page.evaluate(runner.js) → verdict。"""
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import date as date_cls
 from pathlib import Path
@@ -219,14 +220,21 @@ class LiveFetchExecutor:
                             if qs:
                                 url += ("&" if "?" in url else "?") + qs
                         try:
-                            raw = await page.evaluate(
-                                _RUNNER_JS, {"method": method, "url": url,
-                                             "body": merged_body, "retry": 2})
+                            # 单端点超时截断：一个卡住的端点不许拖垮整批日落库（fail-open 跳过该端点）。
+                            raw = await asyncio.wait_for(
+                                page.evaluate(
+                                    _RUNNER_JS, {"method": method, "url": url,
+                                                 "body": merged_body, "retry": 2}),
+                                timeout=45,
+                            )
                             parsed = raw.get("parsed")
                             out[ep] = {"ok": parsed is not None, "endpoint_key": ep,
                                        "platform": platform, "status": raw.get("status"),
                                        "parsed": parsed, "url": url,
                                        "error": None if parsed is not None else (raw.get("error") or "no_parsed_json")}
+                        except asyncio.TimeoutError:
+                            out[ep] = {"ok": False, "endpoint_key": ep, "platform": platform,
+                                       "parsed": None, "error": "timeout(45s)"}
                         except Exception as exc:
                             out[ep] = {"ok": False, "endpoint_key": ep, "platform": platform,
                                        "parsed": None, "error": f"{type(exc).__name__}: {exc}"}
