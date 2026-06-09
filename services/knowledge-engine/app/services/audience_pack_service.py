@@ -23,9 +23,11 @@
    - **噪音维** = 手机品牌/活跃用户等 → 忽略。
    → 输出**漏斗定位**（种草型/收割型/价值流失警告）+ **内容策略定调**（可 KB grounding）。
 
-2. 可选《01 提纯施工单》（with_purify_plan=True）：三刀法（**A4 不参与**）：
-   价值/付得起（切到死）→ 需求相邻（切到"会下厨"，不切到"已买酱油"）→ 内容亲和（收紧）。
-   每刀落到画像里**真实可勾的巨量云图标签**（数据工厂维度+值），让小白能照着点。
+2. 可选《01 提纯施工单》（with_purify_plan=True）：**提纯优先级阶梯**（**A4 不参与**）：
+   不限刀数，**按漏斗定位排序**（种草型先非电商需求/内容，收割型先高客单/品类成交），
+   每刀落到画像里**真实可勾的巨量云图标签**（数据工厂维度+值）+ 标**是否电商成交数据**
+   （⚠电商刀只能上品牌广告、不能上非品牌广告；✅非电商刀可上非品牌广告投放范围更大）。
+   老板一刀一刀切、每刀去云图看覆盖人数，不满意把缩窄后画像重导出再跑做二次提纯。
 
 反幻觉/口径铁律（写进每份诊断卡第四节）：**画像比对只是投前的冷启动代理**——能判断圈选合不
 合理、生成"先测哪些细分"的假设，但**判断不了真实投放价值**；真实价值只有 CTR/CVR/ROI/GMV
@@ -405,57 +407,136 @@ def _position(value_v: str, behavior_v: str, demand_v: str) -> dict:
     }
 
 
-# ───────────────────────── 提纯施工单（三刀法，A4 不参与）─────────────────────────
+# ───────────────────────── 提纯施工单（优先级阶梯，A4 不参与）─────────────────────────
+
+# 内容兴趣类（非电商交易数据：抖音/头条/西瓜观看兴趣分类）
+_INTEREST_TYPES = (
+    "抖音视频观看兴趣分类v2", "抖音视频观看兴趣分类",
+    "头条用户阅读兴趣分类", "西瓜视频观看兴趣分类",
+)
+
+# 每把"刀"的定义：name / rule / ecommerce（是否引入电商成交数据 → 破坏非品牌广告资格）。
+_CUT_DEFS: dict[str, dict] = {
+    "value": {
+        "name": "价值/付得起（切到死）", "ecommerce": False,
+        "rule": "付得起内容补不了，价格敏感的切到死，只留高端尾部。消费力/城市/手机价位都是用户属性，非电商数据。",
+        "placeholder": "（价值维高端尾部标签缺失，先确认画像导出是否完整）",
+    },
+    "interest": {
+        "name": "需求相邻·内容兴趣（非电商）", "ecommerce": False,
+        "rule": "用抖音/头条/西瓜观看兴趣分类交集到\"会下厨/讲究吃\"，非电商交易数据，不影响非品牌广告资格。",
+        "placeholder": "（兴趣锚留存偏弱，建议靠内容偏好 + 关键词包收紧）",
+    },
+    "touch": {
+        "name": "内容亲和·广告触点（非电商）", "ecommerce": False,
+        "rule": "按高 TGI 广告触点收紧，留平时就爱看做饭/家庭内容的人。目的地是云图数据工厂 / 自定义人群。",
+        "placeholder": "（触点锚留存偏弱，建议靠内容偏好收紧）",
+    },
+    "category": {
+        "name": "需求相邻·品类成交（⚠电商）", "ecommerce": True,
+        "rule": "交集买过相邻品类（食用油调味油 / 调味品果酱沙拉等）——最准但属电商成交数据。切到\"会下厨\"，不切到\"已买酱油\"（那是收割层 filter）。",
+        "placeholder": "（品类成交锚留存偏弱，提纯空间有限，建议保量靠内容唤醒）",
+    },
+    "brand": {
+        "name": "需求相邻·品牌成交（⚠电商）", "ecommerce": True,
+        "rule": "交集买过同类 / 高端调味品牌——电商成交数据。",
+        "placeholder": "（品牌成交锚留存偏弱，跳过）",
+    },
+    "behavior": {
+        "name": "购买行为·高客单高频（⚠电商）", "ecommerce": True,
+        "rule": "保留高客单 / 高频次档——强买意图，属电商交易数据，慎用于种草包。",
+        "placeholder": "（线上客单/频次高端尾部标签缺失，确认画像导出是否完整）",
+    },
+}
+
+# 优先级随漏斗定位重排（同一刀对不同功能的包优先级不同——老板明确要求）。
+# 原则：提质高 + 不伤包性质的刀排前面；电商刀（污染非品牌广告资格）默认压后，收割型例外。
+_PURIFY_ORDER: dict[str, list[str]] = {
+    "价值流失·慎投": ["value", "interest", "touch", "category", "brand", "behavior"],
+    "即投/收割型": ["behavior", "category", "value", "brand", "interest", "touch"],
+    "种草型": ["interest", "touch", "value", "category", "brand", "behavior"],
+    "种草偏收割（中间型）": ["interest", "value", "touch", "category", "brand", "behavior"],
+}
+_DEFAULT_ORDER = "种草偏收割（中间型）"
+_PURIFY_RATIONALE: dict[str, str] = {
+    "价值流失·慎投": "这包本就偏价格敏感，先把买不起的切到死（价值刀），其余靠内容唤醒。",
+    "即投/收割型": "核心价值是强买意图，先保高客单/品类成交（即便含电商数据），内容兴趣最后才动。",
+    "种草型": "怕误杀\"潜在真需求但还没买\"的人，先用非电商需求/内容信号收，电商刀压最后（且会破坏非品牌广告资格）。",
+    "种草偏收割（中间型）": "以非电商需求 + 价值为主收窄，电商刀压后当兜底。",
+}
 
 
-def _purify_plan(cand: dict, value_rows: list[dict], demand_rows: list[dict]) -> dict:
-    """《01 提纯施工单》三刀法：价值(切到死)→需求相邻(切到会下厨)→内容亲和(收紧)。
-
-    每刀落到画像里**真实可勾的巨量云图标签**（数据工厂维度 + 值），小白能照着点。
-    原则：哪条轴切错不可逆就在那切最狠 → 付得起切到死；需求轴内容能改造，留松；
-    **不切到"已买酱油"**（那是收割层 filter，不是种草包 filter）。A4 不参与提纯。
-    """
-    # 第一刀：价值/付得起（切到死）——保留高端尾部，给出要勾的真实标签
-    knife1_keep: list[str] = []
+def _value_cut_actions(cand: dict) -> list[str]:
+    out: list[str] = []
     for d in _VALUE_DIMS:
         labels = cand.get("by_type", {}).get(d["type"], {})
         kept = [lab for lab in labels if d["tail"](lab)]
         if kept:
-            knife1_keep.append(f"{d['cn']}（数据工厂 → {d['type']}）：保留 {('、'.join(kept))}")
-    # 第二刀：需求相邻（切到"会下厨"）——交集核心品类/兴趣 over-index 锚
-    knife2_anchors: list[str] = []
+            out.append(f"{d['cn']}（数据工厂 → {d['type']}）：保留 {('、'.join(kept))}")
+    return out
+
+
+def _behavior_cut_actions(cand: dict) -> list[str]:
+    out: list[str] = []
+    for d in _BEHAVIOR_DIMS:
+        labels = cand.get("by_type", {}).get(d["type"], {})
+        kept = [lab for lab in labels if d["tail"](lab)]
+        if kept:
+            out.append(f"{d['cn']}（数据工厂 → {d['type']}）：保留 {('、'.join(kept))}")
+    return out
+
+
+def _demand_cut_actions(demand_rows: list[dict], types: tuple[str, ...]) -> list[str]:
+    out: list[str] = []
     for r in demand_rows:
-        if r["type"] not in ("电商品类成交偏好", "抖音视频观看兴趣分类v2", "头条用户阅读兴趣分类"):
+        if r["type"] not in types:
             continue
         kept = [a["label"] for a in r["anchors"] if a["kept"]][:6]
         if kept:
-            knife2_anchors.append(f"{r['cn']}（数据工厂 → {r['type']}）：交集 {('、'.join(kept))}")
-    # 第三刀：内容亲和（收紧）——按高 TGI 触点收紧
-    knife3: list[str] = []
-    for r in demand_rows:
-        if r["type"] != "触点互动偏好":
-            continue
-        kept = [a["label"] for a in r["anchors"] if a["kept"]][:5]
-        if kept:
-            knife3.append(f"广告触点（数据工厂 → 触点互动偏好）：收紧到 {('、'.join(kept))}")
+            out.append(f"{r['cn']}（数据工厂 → {r['type']}）：交集 {('、'.join(kept))}")
+    return out
+
+
+def _purify_plan(
+    cand: dict, value_rows: list[dict], beh_rows: list[dict],
+    demand_rows: list[dict], position: dict,
+) -> dict:
+    """《01 提纯施工单》优先级阶梯：按漏斗定位排序的 N 刀（不限刀数），每刀落到画像里
+    **真实可勾的巨量云图标签**（数据工厂维度 + 值），并标**是否引入电商成交数据**。
+
+    核心（老板要求）：
+    - **不限三刀** —— 把所有可切的杠杆都列出来，老板能不断测、一刀一刀往下切。
+    - **优先级随包功能（漏斗定位）重排** —— 同一刀对种草型 / 收割型 / 价值流失型的先后不同。
+    - **每刀标电商资格** —— 含电商成交数据的刀（品类/品牌成交、高客单高频）只能上品牌广告，
+      不能上传非品牌广告；要走非品牌广告（投放范围更大）就只用非电商刀。
+    - **A4 不参与提纯**（它是真需求标尺，不是提纯工具）。
+    """
+    label = position.get("label", _DEFAULT_ORDER)
+    order = _PURIFY_ORDER.get(label, _PURIFY_ORDER[_DEFAULT_ORDER])
+    builders: dict[str, Callable[[], list[str]]] = {
+        "value": lambda: _value_cut_actions(cand),
+        "interest": lambda: _demand_cut_actions(demand_rows, _INTEREST_TYPES),
+        "touch": lambda: _demand_cut_actions(demand_rows, ("触点互动偏好",)),
+        "category": lambda: _demand_cut_actions(demand_rows, ("电商品类成交偏好",)),
+        "brand": lambda: _demand_cut_actions(demand_rows, ("电商品牌成交偏好",)),
+        "behavior": lambda: _behavior_cut_actions(cand),
+    }
+    cuts: list[dict] = []
+    for rank, lever in enumerate(order, start=1):
+        d = _CUT_DEFS[lever]
+        actions = builders[lever]() or [d["placeholder"]]
+        cuts.append({
+            "rank": rank, "lever": lever, "name": f"第 {rank} 刀 · {d['name']}",
+            "rule": d["rule"], "ecommerce": d["ecommerce"], "actions": actions,
+        })
     return {
-        "knife1_value": {
-            "name": "第一刀 · 价值/付得起（切到死）",
-            "rule": "付得起内容补不了，价格敏感的切到死。只留高端尾部。",
-            "actions": knife1_keep or ["（候选包价值维高端尾部标签缺失，建议先确认画像导出是否完整）"],
-        },
-        "knife2_demand": {
-            "name": "第二刀 · 需求相邻（切到\"会下厨\"，不切到\"已买酱油\"）",
-            "rule": "需求轴内容能改造，留松；切到相邻烹饪/下厨行为为止，别切到\"已购酱油\"（那是收割层 filter）。",
-            "actions": knife2_anchors or ["（核心品类/兴趣锚留存偏弱，提纯空间有限，建议保量靠内容唤醒）"],
-        },
-        "knife3_content": {
-            "name": "第三刀 · 内容亲和（收紧）",
-            "rule": "按内容/触点偏好收紧，目的地是云图数据工厂关键词夹 / 自定义人群。",
-            "actions": knife3 or ["（触点锚留存偏弱，建议靠内容偏好 + 关键词包收紧）"],
-        },
-        "note": ("提纯靠\"商品 + 圈层\"逻辑，**A4 不参与**（A4 是真需求标尺，不是提纯工具）。"
-                 "切量会改变需求成色——提纯**之后**再用本工具跑一次诊断（02），诊断的是最终真正投出去那个包。"),
+        "funnel": label,
+        "order_rationale": _PURIFY_RATIONALE.get(label, _PURIFY_RATIONALE[_DEFAULT_ORDER]),
+        "ecommerce_note": ("标 ⚠电商 的刀会让人群包含电商成交数据 → **只能上品牌广告，不能上传非品牌广告**。"
+                           "要走非品牌广告（可投范围更大）就只用 ✅非电商 的刀，电商刀跳过。"),
+        "cuts": cuts,
+        "note": ("不限刀数，按优先级从上往下切；**每切完去云图看实际覆盖人数**，量级不满意就把缩窄后的"
+                 "画像重新导出再跑一次本工具做**二次提纯**。A4 不参与提纯（它是真需求标尺）。"),
     }
 
 
@@ -589,14 +670,18 @@ def _build_diagnosis(
         "- **要证实需对比**：按这个定调做 2–3 条内容小预算测，看 A3 转化 / CTR / CVR，转化了再放量。",
     ]
 
-    # —— 四、提纯施工单（可选）——
+    # —— 四、提纯施工单（优先级阶梯 · 可选）——
     if purify:
-        lines += ["", "## 四、提纯施工单（三刀法 · A4 不参与）"]
-        for key in ("knife1_value", "knife2_demand", "knife3_content"):
-            k = purify[key]
-            lines.append(f"### {k['name']}")
-            lines.append(f"> {k['rule']}")
-            for act in k["actions"]:
+        lines += [
+            "", "## 四、提纯施工单（优先级阶梯 · A4 不参与）",
+            f"> 排序按漏斗定位「{purify['funnel']}」：{purify['order_rationale']}",
+            f"> {purify['ecommerce_note']}",
+        ]
+        for c in purify["cuts"]:
+            tag = "⚠电商（仅品牌广告）" if c["ecommerce"] else "✅非电商（可上非品牌广告）"
+            lines.append(f"### {c['name']}　｜　{tag}")
+            lines.append(f"> {c['rule']}")
+            for act in c["actions"]:
                 lines.append(f"- {act}")
             lines.append("")
         lines.append(f"> {purify['note']}")
@@ -673,14 +758,15 @@ def _build_sections(result: dict, narrative_md: str, narrated: bool) -> list[dic
     if result.get("purify_plan"):
         p = result["purify_plan"]
         body = "\n\n".join(
-            f"**{p[k]['name']}**\n{p[k]['rule']}\n" + "\n".join(f"- {a}" for a in p[k]["actions"])
-            for k in ("knife1_value", "knife2_demand", "knife3_content")
+            f"**{c['name']}｜{'⚠电商' if c['ecommerce'] else '✅非电商'}**\n{c['rule']}\n"
+            + "\n".join(f"- {a}" for a in c["actions"])
+            for c in p["cuts"]
         )
         sections.append({
             "layer": "recommendation",
-            "title": "提纯施工单（三刀法·A4 不参与）",
+            "title": f"提纯施工单（优先级阶梯·{p['funnel']}）",
             "body": body,
-            "evidence": [p["note"]],
+            "evidence": [p["ecommerce_note"], p["note"]],
         })
     return sections
 
@@ -788,7 +874,7 @@ async def diagnose_audience_pack(
     demand_v = _demand_verdict(demand_rows)
     position = _position(value_v, behavior_v, demand_v)
 
-    purify = _purify_plan(cand, value_rows, demand_rows) if with_purify_plan else None
+    purify = _purify_plan(cand, value_rows, beh_rows, demand_rows, position) if with_purify_plan else None
 
     result = _build_diagnosis(
         cand, base, value_rows, beh_rows, demand_rows, identity_rows,
@@ -821,8 +907,9 @@ async def diagnose_audience_pack(
         {"i": 6, "label": "漏斗定位（规则映射）", "detail": position["label"], "status": "ok"},
     ]
     if purify:
-        steps.append({"i": len(steps) + 1, "label": "生成三刀提纯施工单",
-                      "detail": "价值切到死 → 需求相邻 → 内容亲和", "status": "ok"})
+        steps.append({"i": len(steps) + 1, "label": "生成提纯优先级阶梯",
+                      "detail": f"按「{position['label']}」排序 · {len(purify['cuts'])} 刀（标电商资格）",
+                      "status": "ok"})
     if polish:
         steps.append({"i": len(steps) + 1, "label": "LLM 叙事层（巨量云图 KB grounding）",
                       "detail": "已生成" if narrated else "hub 不可用 → 回退确定性骨架",

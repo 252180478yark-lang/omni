@@ -1,7 +1,7 @@
 """人群包投前诊断引擎纯函数单测（2026-06-08）。
 
 只测确定性逻辑（无 DB / 无 LLM）：画像解析、四/五维分类、价值正向偏离 / 购买软硬 /
-需求真需求指纹重叠、漏斗定位规则、三刀提纯施工单。纳入 L0-7 回归网（跑得快、不打外部）。
+需求真需求指纹重叠、漏斗定位规则、提纯优先级阶梯施工单。纳入 L0-7 回归网（跑得快、不打外部）。
 
 worked-example 集成测（bundled diyu_xunwei vs baseline_a4）放最后，缺文件自动 skip。
 """
@@ -165,8 +165,16 @@ def test_worked_example_diyu_xunwei():
     assert r["position"]["label"] == "种草型"
     # 价值维三轴都应正向偏离（消费力/城市/手机）
     assert all(x["verdict"] == "正向偏离" for x in r["value_axis"])
-    # 提纯施工单三刀齐全
-    assert set(r["purify_plan"]) >= {"knife1_value", "knife2_demand", "knife3_content"}
+    # 提纯施工单优先级阶梯：按漏斗定位「种草型」排序，非电商刀（兴趣/内容/价值）排在电商刀前
+    p = r["purify_plan"]
+    assert p["funnel"] == "种草型"
+    levers = [c["lever"] for c in p["cuts"]]
+    assert levers == ["interest", "touch", "value", "category", "brand", "behavior"]
+    # 每刀都带电商资格标记；价值/兴趣/触点是非电商，品类/品牌/行为是电商
+    assert all("ecommerce" in c for c in p["cuts"])
+    ecom = {c["lever"]: c["ecommerce"] for c in p["cuts"]}
+    assert ecom["interest"] is False and ecom["value"] is False and ecom["touch"] is False
+    assert ecom["category"] is True and ecom["brand"] is True and ecom["behavior"] is True
     # markdown 含关键段
     md = r["markdown"]
     assert "投前诊断卡" in md and "漏斗定位" in md and "提纯施工单" in md

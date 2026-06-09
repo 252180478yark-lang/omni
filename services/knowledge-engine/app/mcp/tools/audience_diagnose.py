@@ -52,7 +52,10 @@ async def diagnose_audience_pack(
       绝对路径 / 原始 CSV 文本。CSV 结构 `标签类型,标签,占比,tgi`（巨量引擎/云图人群分析导出）。
       老板新包导出 CSV 丢进 `config/audience/`（或 OMNI_AUDIENCE_PACK_DIR）即可按文件名调。
     - baseline：基准包，默认 'baseline_a4'（内置行业 A4 真需求标尺）。
-    - with_purify_plan：True 附《提纯施工单》三刀法（价值切到死→需求相邻→内容亲和，落到真实可勾标签）。
+    - with_purify_plan：True 附《提纯施工单·优先级阶梯》——不限刀数、**按漏斗定位排序**（种草型
+      先非电商需求/内容，收割型先高客单/品类成交），每刀落到真实可勾标签 + 标 ✅非电商/⚠电商
+      资格（⚠电商刀只能上品牌广告，不能上非品牌广告）。老板一刀一刀切、每刀看云图覆盖人数，不满意
+      把缩窄后画像重导出再跑做二次提纯。
     - polish：True 在确定性骨架上跑 LLM 叙事层（巨量云图 KB grounding；骨架为 ground truth，
       禁新增数值/伪因果；失败 fail-open 回退骨架）。默认 False（纯确定性、零 token）。
     - focus：老板临时关注点，注入叙事（仅 polish 生效）。

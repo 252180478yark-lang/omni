@@ -31,7 +31,7 @@ omni 暴露 **78 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - 三平台实时取数底座（经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
 - 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 29 抽取器 + 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
 - 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，支持已落库 29 指标）
-- 人群包投前诊断 + 提纯（方法论沉淀）：`diagnose_audience_pack`（候选包画像 vs 行业 A4 真需求标尺 → 逐维度看方向不算总相似分 → 投前诊断卡：价值维正向偏离/购买行为软硬/需求重叠真需求指纹/身份维差异不计 → 漏斗定位 + 内容策略定调 + 三刀提纯施工单；确定性为主、polish=True 巨量云图 KB grounding LLM 叙事过 R-14；详见下「人群包投前诊断」节）
+- 人群包投前诊断 + 提纯（方法论沉淀）：`diagnose_audience_pack`（候选包画像 vs 行业 A4 真需求标尺 → 逐维度看方向不算总相似分 → 投前诊断卡：价值维正向偏离/购买行为软硬/需求重叠真需求指纹/身份维差异不计 → 漏斗定位 + 内容策略定调 + **提纯优先级阶梯施工单**（不限刀数、按漏斗定位排序、每刀标 ✅非电商/⚠电商 资格——⚠电商刀只能上品牌广告不能上非品牌广告；老板一刀一刀切看云图覆盖人数、不满意重导出做二次提纯）；确定性为主、polish=True 巨量云图 KB grounding LLM 叙事过 R-14；详见下「人群包投前诊断」节）
 - 巨量云图标签体系确定性查询：`query_yuntu_taxonomy`（圈包/提纯/答疑的标签 ground truth——总览两大入口+各维度 / dimension=某维度全量树 / search=某标签的真实层级路径+勾选菜单 / section=字段全集·行业特色·固定清单·提纯三刀法；**回答标签体系问题优先调它，别去硬读 30k 大文件 v2 字典、别靠 lossy RAG**。数据源 config/audience 画像 CSV + dump v1 常量，确定性不截断不虚构）
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
@@ -474,7 +474,7 @@ REST（桌面经 IPC→http 调，与 tool 共用同一 service 禁漂移）：`
 - **需求维（品类成交/品牌/抖音头条西瓜兴趣/触点）** → 期望**重叠 A4 真需求指纹**（品类锚 TGI 1300+ / 兴趣锚 220–280 / 触点锚 300–490），重叠高 = 真需求强。
 - **身份维（八大消费群体/年龄/性别/职业/人生阶段/地域）** → **差异不计**（构成不同 ≠ 质量缺口，A4 是真需求标尺，不是模仿对象）。
 - **噪音维（手机品牌/活跃用户）** → 忽略。
-- → **漏斗定位**（种草型 / 即投收割型 / 价值流失·慎投）+ **内容策略定调** + 可选**《提纯施工单》三刀法**（价值切到死 → 需求相邻"切到会下厨不切到已买酱油" → 内容亲和收紧，每刀落到画像里**真实可勾的巨量云图标签**：`数据工厂 → 维度 → 标签`，小白能照着点）。
+- → **漏斗定位**（种草型 / 即投收割型 / 价值流失·慎投）+ **内容策略定调** + 可选**《提纯施工单·优先级阶梯》**（**不限刀数、按漏斗定位排序**——种草型先非电商需求/内容刀、收割型先高客单/品类成交刀；每刀落到画像里**真实可勾的巨量云图标签** `数据工厂 → 维度 → 标签` + 标 **✅非电商/⚠电商** 资格：⚠电商刀含电商成交数据**只能上品牌广告、不能上非品牌广告**，要走非品牌广告就只切非电商刀。老板**一刀一刀切、每刀去云图看实际覆盖人数**，量级不满意把缩窄后画像重导出再跑一次做**二次提纯**）。
 
 **输入约定**：`candidate` 传内置/dropbox 文件名（`diyu_xunwei`、`x.csv`）/ 容器可达绝对路径 / 原始 CSV 文本。老板新包从巨量云图导出 CSV → 丢进 `services/knowledge-engine/config/audience/`（或配 `OMNI_AUDIENCE_PACK_DIR`）→ 按文件名调。内置 `baseline_a4`（行业 A4 真需求标尺，静态）+ `diyu_xunwei`（范例）。
 
@@ -488,5 +488,5 @@ REST（桌面经 IPC→http 调，与 tool 共用同一 service 禁漂移）：`
 | 老板说 | Claude 应做 |
 |---|---|
 | "诊断一下 X 这个包 / X 包适不适合投 / 帮我看看地域寻味人这个包" | `diagnose_audience_pack(candidate='X')` 出投前诊断卡 + 漏斗定位 |
-| "提纯一下 X 包 / X 包该怎么收窄 / 太大了帮我切" | `diagnose_audience_pack(candidate='X', with_purify_plan=True)` 出三刀施工单 |
+| "提纯一下 X 包 / X 包该怎么收窄 / 太大了帮我切 / 缩一个量级" | `diagnose_audience_pack(candidate='X', with_purify_plan=True)` 出**优先级阶梯施工单**（按漏斗定位排序的 N 刀 + 电商资格标记）；切完不满意把缩窄后画像重导出再跑做二次提纯 |
 | "把诊断写细点 / 给我能落地的内容打法" | 加 `polish=True`（巨量云图 KB grounding 叙事，小白可操作）|

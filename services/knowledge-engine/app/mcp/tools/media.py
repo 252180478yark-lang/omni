@@ -2345,16 +2345,52 @@ async def _recall_platform_kb_chunks(
     return diversified
 
 
+def _build_ecommerce_policy_block(include_ecommerce_data: bool) -> str:
+    """电商数据政策块（注入 audience_pack.user prompt）。
+
+    含电商成交数据的人群包（商品人群标签的购买/加购/成交、电商品类·品牌成交偏好）
+    只能上品牌广告、不能上传非品牌广告。默认 False → 强制走非电商替代信号，产出可上
+    非品牌广告（投放范围最大）的包。
+    """
+    if not include_ecommerce_data:
+        return (
+            "## ⚠️ 电商数据政策（本次：**不含电商数据 → 可上传非品牌广告**）\n\n"
+            "**本次 include_ecommerce_data=False，以下为硬约束（违反 = 重写）**：\n"
+            "- **禁用一切电商成交数据标签**：数据工厂「商品人群标签」的 曝光/点击/浏览/加购/购买 行为、"
+            "以及「电商品类成交偏好」「电商品牌成交偏好」两棵树——它们会让人群包被标记为含电商数据，"
+            "**只能上品牌广告、不能上传非品牌广告**（投放范围最小）。\n"
+            "- 因此 system **§4.5.4（商品人群标签按电商品类圈人）+ §5 提纯三刀法的「买过相邻品类」刀 本次一律禁用**。\n"
+            "- 「会下厨 / 讲究吃 / 真需求」改用**非电商替代信号**描绘：行业品类兴趣（食品饮料）、"
+            "内容人群标签（看做饭/家庭美食内容）、搜索人群标签（有机酱油等意向词）、"
+            "抖音/头条/西瓜兴趣分类、用户属性/八大消费群体/地域、触点场景（非电商项）。\n"
+            "- **第 1.1 概览表正上方打一行横幅**：`✅ 本包不含电商数据 → 可上传非品牌广告（投放范围最大）`。\n"
+        )
+    return (
+        "## ⚠️ 电商数据政策（本次：**允许含电商数据 → 仅限品牌广告**）\n\n"
+        "**本次 include_ecommerce_data=True**：允许使用电商成交数据标签（商品人群标签的购买/加购/成交、"
+        "电商品类·品牌成交偏好，§4.5.4 正常用）。硬约束：\n"
+        "- 一旦用了电商成交标签，人群包**只能上品牌广告、不能上传非品牌广告**，务必让老板知道这个代价。\n"
+        "- **第 1.1 概览表正上方打一行横幅**：用了电商标签 → `⚠️ 本包含电商数据 → 仅限品牌广告，不能上传非品牌广告`；"
+        "实际没用到电商标签 → 改打 `✅ 本包不含电商数据 → 可上传非品牌广告`。\n"
+    )
+
+
 @tool_with_audit(mcp, require_approval=False)
 async def generate_audience_pack(
     audience_record_id: str,
     extra_context: str | None = None,
+    include_ecommerce_data: bool = False,
 ) -> dict:
     """生成单个人群的圈包 SOP（sku-pipeline step 4）。
 
     输入老板已勾选的某个 audience_record，自动拉它关联的 matrix_run + sku +
     巨量云图/千川 authoritative KB 召回，LLM 翻译成可在巨量云图后台一步步勾选 +
     可推到千川的圈人 SOP。
+
+    **电商数据开关（include_ecommerce_data，默认 False）**：含电商成交数据的人群包
+    （商品人群标签的购买/加购/成交、电商品类·品牌成交偏好）**只能上品牌广告，不能上传
+    非品牌广告**。默认 False → 产出可上非品牌广告的包（投放范围最大），用行业品类兴趣 /
+    内容·搜索人群标签 / 兴趣分类 等**非电商替代信号**描绘真需求；要电商精度时手动传 True。
 
     输出固定 5 节：
     - 第 0 部分 4 维度人群画像扩展（带 KB / matrix / 行业推理 来源 tag）
@@ -2463,6 +2499,7 @@ async def generate_audience_pack(
     platform_kb_context = _format_kb_recall(platform_chunks)
 
     # 6. system + user prompt
+    ecommerce_policy_block = _build_ecommerce_policy_block(include_ecommerce_data)
     sys_msg = prompts.load("audience_pack.system")
     user_msg = prompts.render(
         "audience_pack.user",
@@ -2476,6 +2513,7 @@ async def generate_audience_pack(
         audience_match_reasons_md=reasons_md,
         extra_context=extra_context.strip() if extra_context else "（无）",
         platform_kb_context=platform_kb_context,
+        ecommerce_policy_block=ecommerce_policy_block,
     )
     final_prompt = sys_msg + "\n\n" + user_msg
 
@@ -2537,6 +2575,7 @@ async def generate_audience_pack(
                 "temperature": model_cfg.get("temperature", 0.3),
                 "max_tokens": model_cfg.get("max_tokens", 8000),
                 "audience_pack_id": audience_pack_id,
+                "include_ecommerce_data": include_ecommerce_data,
                 "platform_kb_queries": len(platform_queries),
                 "platform_kb_chunks": len(platform_chunks),
                 "platform_kb_ids": list(_PLATFORM_KB_IDS),
