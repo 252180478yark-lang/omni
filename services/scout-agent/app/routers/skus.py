@@ -27,6 +27,22 @@ log = logging.getLogger(__name__)
 
 # ── SKUs ──────────────────────────────────────────────────────────────────────
 
+@router.post("/skus/sync")
+async def sync_skus():
+    """手动触发 sku_bootstrapper 全量同步（价格/库存/状态）。
+
+    与每日 08:00 cron / 容器启动同一条链路；douyin_shop_admin session
+    过期时 fail-open 返 ok=False 不抛。约 30-90s。桌面「重爬数据」按钮串它。
+    """
+    from app.services.sku_bootstrapper import bootstrap_skus
+    try:
+        n = await bootstrap_skus()
+        return {"ok": True, "upserted": n}
+    except Exception as exc:  # noqa: BLE001
+        log.warning("skus/sync failed: %s", exc)
+        return {"ok": False, "upserted": 0, "error": f"{type(exc).__name__}: {exc}"}
+
+
 @router.get("/skus")
 async def list_skus(
     status: Optional[str] = None,
