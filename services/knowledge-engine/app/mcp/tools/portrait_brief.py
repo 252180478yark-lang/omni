@@ -49,7 +49,7 @@ async def _portrait_recall(record: dict, matrix_md: str) -> tuple[str, dict]:
     layer_tags = record.get("layer_tags") or []
 
     # 路①：本圈层深挖 —— 直打来源文档，context_window 拉邻块（≤30）
-    route1_queries = [q for q in {f"{kb_doc} {name}".strip(), name} if q]
+    route1_queries = [q for q in dict.fromkeys([f"{kb_doc} {name}".strip(), name]) if q]
     route1: list[dict] = []
     for q in route1_queries:
         try:
@@ -76,30 +76,29 @@ async def _portrait_recall(record: dict, matrix_md: str) -> tuple[str, dict]:
     route2_queries = [f"{name} {d}" for d in _LIFE_DIMENSIONS]
     for tag in layer_tags[:2]:
         route2_queries += [f"{tag} 内容偏好", f"{tag} 消费决策"]
-    route2 = await _multi_query_recall(
-        queries=route2_queries, kb_id=AUDIENCE_KB_ID,
-        top_k_per_query=2, max_chunks=24,
-    )
 
     # 路③：八大情绪交叉（≤12）
     route3_queries = [f"{name} {e}" for e in _EMOTION_CROWDS[:4]] + [
         "8大情绪人群 " + name,
         "情绪人群 画像 " + (layer_tags[0] if layer_tags else "食饮"),
     ]
-    route3 = await _multi_query_recall(
-        queries=route3_queries, kb_id=AUDIENCE_KB_ID,
-        top_k_per_query=2, max_chunks=12,
-    )
 
     # 路④：卖点反打 —— 从 matrix 抓 USP/推荐主打行做 query（≤12）
     usp_lines = re.findall(r"(?:USP|推荐主打)[^\n]{0,60}", matrix_md or "")[:4]
     route4_queries = [re.sub(r"[#*`\[\]【】]", " ", l).strip() for l in usp_lines if l.strip()]
-    route4 = (
-        await _multi_query_recall(
-            queries=route4_queries, kb_id=AUDIENCE_KB_ID,
-            top_k_per_query=2, max_chunks=12,
+
+    async def _maybe_recall(queries: list[str], max_chunks: int) -> list[dict]:
+        if not queries:
+            return []
+        return await _multi_query_recall(
+            queries=queries, kb_id=AUDIENCE_KB_ID,
+            top_k_per_query=2, max_chunks=max_chunks,
         )
-        if route4_queries else []
+
+    route2, route3, route4 = await asyncio.gather(
+        _maybe_recall(route2_queries, 24),
+        _maybe_recall(route3_queries, 12),
+        _maybe_recall(route4_queries, 12),
     )
 
     # 合并去重（路① 优先保留）
@@ -129,13 +128,18 @@ async def _portrait_recall(record: dict, matrix_md: str) -> tuple[str, dict]:
 
 _KB_MARK_RE = re.compile(r"\[KB[:：][^\]]+\]")
 _INFER_MARK_RE = re.compile(r"🧠")
-_SPECULATE_MARK_RE = re.compile(r"⚠️?推测|⚠推测")
+_SPECULATE_MARK_RE = re.compile(r"⚠️?\s*推测")
 
 
 def _validate_portrait_markers(portrait_md: str) -> list[str]:
     """标记配额闸（spec §4.2 防臆想三道闸之二）。返回警告列表（空 = 过）。"""
     warnings: list[str] = []
-    m = re.search(r"第\s*1\s*部分(.*?)(?=第\s*2\s*部分|$)", portrait_md, re.S)
+    m = re.search(
+        r"^#{1,6}[^\n]*第\s*1\s*部分(.*?)(?=^#{1,6}[^\n]*第\s*2\s*部分|\Z)",
+        portrait_md, re.S | re.M,
+    )
+    if not m:
+        m = re.search(r"第\s*1\s*部分(.*?)(?=第\s*2\s*部分|$)", portrait_md, re.S)
     section1 = m.group(1) if m else portrait_md
     kb_n = len(_KB_MARK_RE.findall(section1))
     infer_n = len(_INFER_MARK_RE.findall(section1))
@@ -307,8 +311,12 @@ async def generate_audience_portrait(
         model_provider=model_cfg.get("provider", "gemini"),
         model=model_cfg.get("model", "gemini-3.1-pro-preview"),
         final_prompt=final_prompt,
-        cost_estimate="1 quota call (~6-10k tokens) + 四路定向 KB 召回",
+        cost_estimate="1 quota call (~30-50k input + 6-10k output tokens) + 四路定向 KB 召回",
     )
+    if not portrait_id:
+        validation_warnings = list(validation_warnings) + [
+            "⚠ 画像未成功落库（portrait_id 为空，可能输出为空或 DB 异常）——别直接调 step 3.6，先重跑本步"
+        ]
 
     result = {
         "ok": True,
@@ -333,7 +341,7 @@ async def generate_audience_portrait(
                 "chunks_recalled": recall_meta.get("chunk_count"),
                 "portrait_id": portrait_id,
             },
-            cost_estimate="1 quota call (~6-10k tokens) + 四路定向 KB 召回",
+            cost_estimate="1 quota call (~30-50k input + 6-10k output tokens) + 四路定向 KB 召回",
         ),
     }
     return attach_next_step(

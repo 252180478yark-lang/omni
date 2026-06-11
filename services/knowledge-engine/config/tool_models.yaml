@@ -191,3 +191,17 @@ diagnose_audience_pack:
   prompts:
     system: audience_pack_diagnose.system
     user: audience_pack_diagnose.user
+
+# step 3.5 人群画像：长输出+KB 锚定推理，pro 级
+generate_audience_portrait:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.4
+  max_tokens: 10000
+
+# step 3.6 编导 brief：创意任务高温+含 AI 映射段长输出，pro 级
+generate_director_brief:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.7
+  max_tokens: 12000
