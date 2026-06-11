@@ -35,6 +35,10 @@ from app.mcp import human_gate
 
 logger = logging.getLogger(__name__)
 
+# 工具注册表：catalog/exec-any 端点用（tool_name → wrapper + 业务属性）。
+# 在 tool_with_audit 注册时顺手维护，与 FastMCP 注册天然同步、零漂移。
+TOOL_REGISTRY: dict[str, dict] = {}
+
 
 def tool_with_audit(
     mcp: FastMCP,
@@ -140,6 +144,13 @@ def tool_with_audit(
         import inspect as _inspect
         wrapper.__signature__ = _inspect.signature(fn)  # type: ignore[attr-defined]
         wrapper.__annotations__ = dict(fn.__annotations__)
+
+        # 维护全局注册表（catalog/exec-any 端点用）
+        TOOL_REGISTRY[tool_name] = {
+            "fn": wrapper,
+            "require_approval": require_approval,
+            "timeout_seconds": timeout_seconds,
+        }
 
         # 注册到 FastMCP
         mcp.tool(**mcp_kwargs)(wrapper)
