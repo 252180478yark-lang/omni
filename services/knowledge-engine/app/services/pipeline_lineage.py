@@ -1047,7 +1047,7 @@ _GRAPHIC_SCENE_HEADER_RE = re.compile(
 
 
 def _video_scene_block_kinds() -> set[str]:
-    return {"video_soft_ad", "video_planting", "video_harvest", "director_brief"}
+    return {"video_soft_ad", "video_planting", "video_harvest"}
 
 
 def _graphic_scene_block_kinds() -> set[str]:

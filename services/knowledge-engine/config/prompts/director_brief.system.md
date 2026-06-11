@@ -112,19 +112,16 @@
 - 封面：[截哪个画面 + ≤8 字]
 - 评论区置顶：[像博主自己说的碎碎念/自嘲/追问。**不放链接、不提价格、不罗列卖点**]
 
-## 第 5 部分 · AI 出片映射（仅当任务要求包含时输出；不要求则整节跳过、连标题都不写）
+## 第 5 部分 · AI 出片提示词（仅当任务要求包含时输出；不要求则整节跳过、连标题都不写）
 
-逐段输出（与第 2 部分的段一一对应；**字段名加粗、段头用"分镜"二字**——下游程序按此格式逐段抽取）：
+**不出分镜三件套**。出**一大段连续的故事描述提示词**——实测结论：拆开的分镜提示词出不了满意素材，一整段最详细的叙事描述才行：
 
-### 分镜 X · 映射
-- **image_prompt**（首帧 · 英文 · 100-180 词）：本段第 0 秒静止入帧，动作开始前的预备态。画面向量元素自然入画。**开头先复用全局风格锚关键词，结尾带全局负向词**。
-- **last_frame_prompt**（尾帧 · 英文 · 80-150 词）：本段最后 0.5 秒静止出帧，动作完成态。同样复用风格锚+负向词。
-- **motion_prompt**（运动 · 英文 · 60-160 词）：首帧→尾帧的可见视觉运动，带时间锚（0-2s.../2-3.5s...），每段至少 1 个动机性可见动作（伸手取物/转头≥10°/明显笑），不写情绪叙事意图。
-
-全局视觉锚（此处只展示一次，但**每段 image_prompt / last_frame_prompt 必须实际内嵌**——下游逐段单独喂图像模型，不会自动拼锚）——**短视频真人感锚，禁电影锚**：
-- 风格：Vertical 9:16 iPhone handheld video frame, natural indoor light, subtle handheld micro-shake, slightly off-center framing, ordinary natural skin texture, visible pores, no AI face smoothing, authentic lived-in appearance
-- 禁：cinematic / Kodak Portra / 50mm / Rule of thirds / shallow DOF / 3D render
-- 负向词：AI face, plastic skin, oversaturated, distorted hands, extra fingers, blurry text, watermark, brand logo text, cartoon rendering
+- **英文输出**，连续散文体（任务要求拆 N 块时按下面拆块规则）
+- **细节密度拉满且不冗余**：按时间顺序写完整条视频——人物（外貌/年龄/衣着/身体状态，与第 0 部分人群一致）、场景（空间布局/光线/真实杂物细节）、**每一次镜头变化**（机位/景别/运动）、每个动作的起止、表情微变化、产品何时入画/在画面什么位置、环境声——全部织进叙事，不写情绪意图词（"温馨""感人"），只写可见可听的
+- **时间锚贯穿**：用 (0:00-0:08) 风格时间戳标注每个节拍，总时长与第 2 部分各段时长一致
+- **真人感锚通篇内嵌**（开头先立风格，叙事中自然重申）：Vertical 9:16 iPhone handheld video frame, natural indoor light, subtle handheld micro-shake, slightly off-center framing, ordinary natural skin texture, visible pores, no AI face smoothing, authentic lived-in appearance；**禁**：cinematic / Kodak Portra / 50mm / Rule of thirds / shallow DOF / 3D render
+- **段尾独立一行负向词**：Negative: AI face, plastic skin, oversaturated, distorted hands, extra fingers, blurry text, watermark, brand logo text, cartoon rendering
+- **拆块规则**（任务要求拆 N 块时）：按时间均分拆 N 块，标题 `### 提示词块 X（时间范围）`；**每块开头必须重述人物外观+场景+风格锚**（块与块独立喂模型，不共享上下文），块尾写清结束帧状态（给下一块当衔接参考）
 
 ## 自检结果（逐项打勾输出 ✓/✗，有 ✗ 必须先改再交付）
 

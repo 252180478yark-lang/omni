@@ -365,6 +365,7 @@ async def generate_director_brief(
     portrait_id: str,
     idea_seed: str | None = None,
     include_ai_mapping: bool = True,
+    ai_prompt_count: int = 1,
     extra_context: str | None = None,
     num_variants: int = 1,
 ) -> dict:
@@ -373,15 +374,15 @@ async def generate_director_brief(
     输入 step 3.5 的人群画像，输出 V7.2 风格「今天拍什么」备忘录（真人编导直接能拍）：
     第 0 人群描述 / 第 1 今天拍什么（一件事+两次偏+卖点藏哪）/ 第 2 分段拍摄备忘 /
     第 3 算法信号三向量（画面/文案/音乐，让抖音算法把内容映射对人群）/ 第 4 发的时候 /
-    第 5 AI 出片映射（可关；分镜格式对齐 step 6/7 新链输入）/ 尾部 12 项自检。
+    第 5 AI 出片提示词（一大段故事描述，可关；ai_prompt_count 控制拆几大块，按模型实测调）/ 尾部 12 项自检。
 
-    落库 pipeline.scripts（kind='director_brief'，挂 portrait_id 全血缘，多版本不覆盖）；
-    第 5 部分的分镜自动解析进 scripts.scenes（generate_storyboard_images 可直接吃）。
+    落库 pipeline.scripts（kind='director_brief'，挂 portrait_id 全血缘，多版本不覆盖）。
 
     Args:
         portrait_id: step 3.5 落库的画像 id
         idea_seed: 可选"想拍的事"（如"闺女给妈寄酱油"）；不给则 LLM 从画像场景库自选一件事
-        include_ai_mapping: 默认 True 带第 5 部分 AI 出片映射；False 省 token
+        include_ai_mapping: 默认 True 带第 5 部分 AI 出片提示词；False 省 token
+        ai_prompt_count: 第 5 部分拆几大块提示词（默认 1=整条一大段；按目标模型单次生成时长实测调）
         extra_context: 一次性临时要求
         num_variants: 1-3 个创意方案并行（temperature 递增 +0.1）
 
@@ -410,11 +411,20 @@ async def generate_director_brief(
         f"- 规格：{sku['specifications'] or '（无）'}\n"
     ) if sku else f"- sku_id：{sku_id}\n"
 
-    ai_directive = (
-        "本次任务**要求输出第 5 部分 AI 出片映射**（逐段 image/last_frame/motion prompt + 全局真人感锚内嵌每段）。"
-        if include_ai_mapping
-        else "本次任务**不要输出第 5 部分**（整节跳过、连标题都不写；自检照常 12 项）。"
-    )
+    _pc = max(1, min(10, int(ai_prompt_count or 1)))
+    if not include_ai_mapping:
+        ai_directive = "本次任务**不要输出第 5 部分**（整节跳过、连标题都不写；自检照常 12 项）。"
+    elif _pc == 1:
+        ai_directive = (
+            "本次任务**要求输出第 5 部分 AI 出片提示词**：整条视频写成 **1 大段**连续故事描述"
+            "（英文，细节拉满，时间戳贯穿，真人感锚内嵌，段尾负向词）。"
+        )
+    else:
+        ai_directive = (
+            f"本次任务**要求输出第 5 部分 AI 出片提示词**：按时间均分拆成 **{_pc} 大块**"
+            "（每块标题 `### 提示词块 X（时间范围）`，块开头重述人物外观+场景+风格锚，"
+            "块内仍是连续故事描述，块尾写结束帧状态）。"
+        )
 
     sys_msg = prompts.load("director_brief.system")
     user_msg = prompts.render(
@@ -501,17 +511,15 @@ async def generate_director_brief(
                 "max_tokens": _max_tokens,
                 "num_variants": _n,
                 "include_ai_mapping": include_ai_mapping,
+                "ai_prompt_count": _pc,
                 "idea_seed": idea_seed,
             },
             cost_estimate=f"{_n} quota call(s) (~10-20k input + 6-12k output tokens each)",
         ),
     }
     if include_ai_mapping:
-        return attach_next_step(
-            result,
-            suggested_tool="generate_storyboard_images",
-            suggested_args={"sku_id": sku_id},
-            human_text="老板审完 brief：真人拍 → 直接发编导；AI 拍 → 第 5 部分分镜已解析进 scripts.scenes，"
-                       "喂 generate_storyboard_images（step 6 新链挂血缘）再 generate_video_segments（step 7）",
+        result["result"]["usage_note"] = (
+            "真人拍 → brief 第 0-4 部分直接发编导；AI 拍 → 第 5 部分大段提示词复制喂目标模型"
+            "（段数不满意用 ai_prompt_count 重跑，按模型单次生成时长实测）"
         )
     return result

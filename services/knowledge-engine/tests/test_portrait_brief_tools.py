@@ -98,21 +98,11 @@ def test_validate_brief_zhiyu_whitelist():
     assert any("禁用词" in w for w in _validate_brief(bad, include_ai_mapping=False))
 
 
-def test_director_brief_scene_parsing():
-    """第 5 部分的 '### 分镜 X · 映射' + 加粗字段能被 parse_scenes_from_script_md 抽出。"""
+def test_director_brief_scene_kinds_reverted():
+    """director_brief 走一大段提示词形态，不进视频分镜解析集合。"""
     from app.services import pipeline_lineage
     md = (
-        "## 第 5 部分 · AI 出片映射\n"
         "### 分镜 1 · 映射\n"
-        "- **image_prompt**（首帧 · 英文 · 100-180 词）：Vertical 9:16 iPhone frame, mom in kitchen.\n"
-        "- **last_frame_prompt**（尾帧 · 英文 · 80-150 词）：Bottle resting on counter.\n"
-        "- **motion_prompt**（运动 · 英文 · 60-160 词）：0-2s hand reaches for bottle.\n"
-        "### 分镜 2 · 映射\n"
-        "- **image_prompt**（首帧 · 英文 · 100-180 词）：Dinner table, steam rising.\n"
-        "- **last_frame_prompt**（尾帧 · 英文 · 80-150 词）：Empty plates.\n"
-        "- **motion_prompt**（运动 · 英文 · 60-160 词）：2-4s chopsticks pick food.\n"
+        "- **image_prompt**（首帧）：x\n"
     )
-    scenes = pipeline_lineage.parse_scenes_from_script_md(md, "director_brief")
-    assert len(scenes) == 2
-    assert scenes[0].get("image_prompt", "").startswith("Vertical 9:16")
-    assert scenes[1].get("motion_prompt", "").startswith("2-4s")
+    assert pipeline_lineage.parse_scenes_from_script_md(md, "director_brief") == []
