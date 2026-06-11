@@ -3,7 +3,7 @@
 - generate_audience_portrait：老板选中 audience_record → 四路定向 KB 召回 →
   生活状态画像（可信度分级标注）+ 专属卖点重构 + 情绪触点矩阵 → 落 pipeline.audience_portraits
 - generate_director_brief：画像 → V7.2 产品化编导备忘录（一件事/起伏≠反转/卖点种情绪/
-  算法信号三向量/可选 AI 出片映射）→ 落 pipeline.scripts kind='director_brief'
+  算法信号三向量/可选 AI 出片提示词）→ 落 pipeline.scripts kind='director_brief'
 
 设计 spec：docs/superpowers/specs/2026-06-11-audience-portrait-director-brief-design.md
 """
@@ -178,7 +178,7 @@ def _validate_brief(brief_md: str, *, include_ai_mapping: bool) -> list[str]:
         if sec not in brief_md:
             warnings.append(f"⚠ 缺「{sec}」——结构不完整，建议重跑")
     if include_ai_mapping and "第 5 部分" not in brief_md:
-        warnings.append("⚠ include_ai_mapping=True 但缺「第 5 部分」AI 出片映射，建议重跑")
+        warnings.append("⚠ include_ai_mapping=True 但缺「第 5 部分」AI 出片提示词，建议重跑")
     if "自检" not in brief_md:
         warnings.append("⚠ 缺尾部自检段——可能输出被截断，建议重跑或调低篇幅")
     hits = [w for w in _BANNED_WORDS if w in brief_md]
@@ -388,7 +388,7 @@ async def generate_director_brief(
 
     Returns:
         {ok, result: {variants:[{script_id, brief_md, variant_label, validation_warnings}],
-         sku_id, portrait_id}, trace, next_step_hint}
+         sku_id, portrait_id}, trace, usage_note}
     """
     portrait = await pipeline_lineage.get_audience_portrait(portrait_id)
     if not portrait:

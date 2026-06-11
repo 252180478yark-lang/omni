@@ -118,7 +118,7 @@
 
 - **英文输出**，连续散文体（任务要求拆 N 块时按下面拆块规则）
 - **细节密度拉满且不冗余**：按时间顺序写完整条视频——人物（外貌/年龄/衣着/身体状态，与第 0 部分人群一致）、场景（空间布局/光线/真实杂物细节）、**每一次镜头变化**（机位/景别/运动）、每个动作的起止、表情微变化、产品何时入画/在画面什么位置、环境声——全部织进叙事，不写情绪意图词（"温馨""感人"），只写可见可听的
-- **时间锚贯穿**：用 (0:00-0:08) 风格时间戳标注每个节拍，总时长与第 2 部分各段时长一致
+- **时间锚贯穿**：用 (0:00-0:08) 风格时间戳标注每个节拍，总时长与第 2 部分各段时长**之和**一致
 - **真人感锚通篇内嵌**（开头先立风格，叙事中自然重申）：Vertical 9:16 iPhone handheld video frame, natural indoor light, subtle handheld micro-shake, slightly off-center framing, ordinary natural skin texture, visible pores, no AI face smoothing, authentic lived-in appearance；**禁**：cinematic / Kodak Portra / 50mm / Rule of thirds / shallow DOF / 3D render
 - **段尾独立一行负向词**：Negative: AI face, plastic skin, oversaturated, distorted hands, extra fingers, blurry text, watermark, brand logo text, cartoon rendering
 - **拆块规则**（任务要求拆 N 块时）：按时间均分拆 N 块，标题 `### 提示词块 X（时间范围）`；**每块开头必须重述人物外观+场景+风格锚**（块与块独立喂模型，不共享上下文），块尾写清结束帧状态（给下一块当衔接参考）

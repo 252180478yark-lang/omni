@@ -106,3 +106,17 @@ def test_director_brief_scene_kinds_reverted():
         "- **image_prompt**（首帧）：x\n"
     )
     assert pipeline_lineage.parse_scenes_from_script_md(md, "director_brief") == []
+
+
+def test_validate_brief_new_part5_title():
+    """include_ai_mapping=True 时，新标题「第 5 部分 · AI 出片提示词」满足裸串检查，零警告。"""
+    md = (
+        "## 第 0 部分 · 这条视频拍给谁\nx\n"
+        "## 第 1 部分 · 今天拍什么\nx\n"
+        "## 第 2 部分 · 分段拍摄备忘\nx\n"
+        "## 第 3 部分 · 算法信号三向量\nx\n"
+        "## 第 4 部分 · 发的时候\nx\n"
+        "## 第 5 部分 · AI 出片提示词\nx\n"
+        "## 自检结果\nx\n"
+    )
+    assert _validate_brief(md, include_ai_mapping=True) == []
