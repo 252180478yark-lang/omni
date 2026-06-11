@@ -120,3 +120,11 @@ def test_validate_brief_new_part5_title():
         "## 自检结果\nx\n"
     )
     assert _validate_brief(md, include_ai_mapping=True) == []
+
+
+def test_video_model_profiles_loadable():
+    """4 个模型档案可加载；未知名由 tool 内部回退 generic（这里仅验证档案文件齐全）。"""
+    from app.mcp import prompts
+    for m in ("generic", "veo", "seedance", "jimeng"):
+        s = prompts.load(f"video_model_profiles/{m}")
+        assert "单次生成时长" in s, m

@@ -365,7 +365,8 @@ async def generate_director_brief(
     portrait_id: str,
     idea_seed: str | None = None,
     include_ai_mapping: bool = True,
-    ai_prompt_count: int = 1,
+    ai_prompt_count: int | None = None,
+    target_model: str = "generic",
     extra_context: str | None = None,
     num_variants: int = 1,
 ) -> dict:
@@ -382,7 +383,8 @@ async def generate_director_brief(
         portrait_id: step 3.5 落库的画像 id
         idea_seed: 可选"想拍的事"（如"闺女给妈寄酱油"）；不给则 LLM 从画像场景库自选一件事
         include_ai_mapping: 默认 True 带第 5 部分 AI 出片提示词；False 省 token
-        ai_prompt_count: 第 5 部分拆几大块提示词（默认 1=整条一大段；按目标模型单次生成时长实测调）
+        ai_prompt_count: 第 5 部分拆几大块提示词（None=按目标模型档案的单次生成时长自行定块数并说明；显式传值强制）
+        target_model: 目标出片模型（generic/veo/seedance/jimeng，对应 config/prompts/video_model_profiles/<model>.md 档案；未知名回退 generic）
         extra_context: 一次性临时要求
         num_variants: 1-3 个创意方案并行（temperature 递增 +0.1）
 
@@ -411,20 +413,37 @@ async def generate_director_brief(
         f"- 规格：{sku['specifications'] or '（无）'}\n"
     ) if sku else f"- sku_id：{sku_id}\n"
 
-    _pc = max(1, min(10, int(ai_prompt_count or 1)))
     if not include_ai_mapping:
         ai_directive = "本次任务**不要输出第 5 部分**（整节跳过、连标题都不写；自检照常 12 项）。"
-    elif _pc == 1:
+        _pc = None
+    elif ai_prompt_count is None:
         ai_directive = (
-            "本次任务**要求输出第 5 部分 AI 出片提示词**：整条视频写成 **1 大段**连续故事描述"
-            "（英文，细节拉满，时间戳贯穿，真人感锚内嵌，段尾负向词）。"
+            "本次任务**要求输出第 5 部分 AI 出片提示词**：拆块数**按下方模型档案的单次生成时长自行决定**"
+            "（总时长 ÷ 单次时长向上取整），并在第 5 部分开头一句话说明\"按 X 模型单次约 Ns，拆 N 块\"。"
+            "每块标题 `### 提示词块 X（时间范围）`，块开头重述人物外观+场景+风格锚，块内连续故事描述，块尾写结束帧状态。"
         )
+        _pc = None
     else:
-        ai_directive = (
-            f"本次任务**要求输出第 5 部分 AI 出片提示词**：按时间均分拆成 **{_pc} 大块**"
-            "（每块标题 `### 提示词块 X（时间范围）`，块开头重述人物外观+场景+风格锚，"
-            "块内仍是连续故事描述，块尾写结束帧状态）。"
-        )
+        _pc = max(1, min(10, int(ai_prompt_count)))
+        if _pc == 1:
+            ai_directive = (
+                "本次任务**要求输出第 5 部分 AI 出片提示词**：整条视频写成 **1 大段**连续故事描述"
+                "（英文，细节拉满，时间戳贯穿，真人感锚内嵌，段尾负向词）。"
+            )
+        else:
+            ai_directive = (
+                f"本次任务**要求输出第 5 部分 AI 出片提示词**：按时间均分拆成 **{_pc} 大块**"
+                "（每块标题 `### 提示词块 X（时间范围）`，块开头重述人物外观+场景+风格锚，"
+                "块内仍是连续故事描述，块尾写结束帧状态）。"
+            )
+
+    _tm = (target_model or "generic").strip().lower()
+    try:
+        target_model_profile = prompts.load(f"video_model_profiles/{_tm}")
+    except FileNotFoundError:
+        logger.warning("video_model_profile 未找到: %s，回退 generic", _tm)
+        _tm = "generic"
+        target_model_profile = prompts.load("video_model_profiles/generic")
 
     sys_msg = prompts.load("director_brief.system")
     user_msg = prompts.render(
@@ -434,6 +453,7 @@ async def generate_director_brief(
         portrait_md=(portrait.get("portrait_md") or "").strip(),
         idea_seed=idea_seed.strip() if idea_seed else "（无）",
         ai_mapping_directive=ai_directive,
+        target_model_profile=target_model_profile,
         extra_context=extra_context.strip() if extra_context else "（无）",
     )
     final_prompt = sys_msg + "\n\n" + user_msg
@@ -512,14 +532,17 @@ async def generate_director_brief(
                 "num_variants": _n,
                 "include_ai_mapping": include_ai_mapping,
                 "ai_prompt_count": _pc,
+                "target_model": _tm,
                 "idea_seed": idea_seed,
             },
             cost_estimate=f"{_n} quota call(s) (~10-20k input + 6-12k output tokens each)",
         ),
     }
+    result["result"]["target_model"] = _tm
     if include_ai_mapping:
         result["result"]["usage_note"] = (
-            "真人拍 → brief 第 0-4 部分直接发编导；AI 拍 → 第 5 部分大段提示词复制喂目标模型"
-            "（段数不满意用 ai_prompt_count 重跑，按模型单次生成时长实测）"
+            f"真人拍 → brief 第 0-4 部分直接发编导；AI 拍 → 第 5 部分大段提示词复制喂 {_tm} 模型"
+            "（块数/写法不满意：调 ai_prompt_count 或 target_model 重跑；模型档案在 "
+            "config/prompts/video_model_profiles/ 热加载可改）"
         )
     return result
