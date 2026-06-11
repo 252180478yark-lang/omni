@@ -7,8 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Target, Film, Network, Image as ImageIcon } from 'lucide-react'
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Target, Film, Network, Image as ImageIcon, ScanFace, Clapperboard } from 'lucide-react'
+import OutputFeedback from '@/components/OutputFeedback'
 import LineageTree, { type PickableNode } from './LineageTree'
 
 interface SkuRow {
@@ -174,6 +176,68 @@ interface CreativePackResp {
   error?: string
   hint?: string
 }
+
+// ── Step 3.5 人群画像 / Step 3.6 编导 brief（2026-06-12） ─────────
+interface PortraitResp {
+  ok: boolean
+  result?: {
+    portrait_md: string
+    portrait_id: string | null
+    sku_id: string
+    audience_record_id: string
+    audience_name?: string | null
+    recall_meta?: {
+      mode: string
+      queries: string[]
+      chunk_count: number
+    }
+    validation_warnings?: string[]
+  }
+  trace?: TraceShape
+  error?: string
+  hint?: string
+}
+
+interface PortraitSummary {
+  id: string
+  sku_id: string
+  audience_record_id: string
+  portrait_preview: string
+  status: string
+  version: number
+  validation_warnings: string[]
+  created_at: string
+}
+
+interface BriefVariant {
+  script_id: string | null
+  brief_md: string
+  variant_label: string
+  validation_warnings?: string[]
+}
+
+interface BriefResp {
+  ok: boolean
+  result?: {
+    variants: BriefVariant[]
+    sku_id: string
+    portrait_id: string
+    audience_name?: string | null
+    include_ai_mapping?: boolean
+    target_model?: string
+    usage_note?: string
+  }
+  trace?: TraceShape
+  error?: string
+  hint?: string
+}
+
+const TARGET_MODEL_LIST: { value: string; label: string }[] = [
+  { value: 'seedance', label: '字节 Seedance 2.0（默认）' },
+  { value: 'veo', label: 'Google Veo' },
+  { value: 'jimeng', label: '即梦' },
+  { value: 'generic', label: '通用' },
+]
 
 // ── 故事板提示词导出 util（W4-B 14.4 phase D step 6 增强 2026-05-11） ─────────
 // 把 step 5 写的 image_prompt 里的 character_sheet[role_id] 占位符
@@ -475,6 +539,29 @@ export default function SkuPipelinePage() {
   const [running5, setRunning5] = useState(false)
   const [resp5, setResp5] = useState<CreativePackResp | null>(null)
   const [showPrompt5, setShowPrompt5] = useState(true)
+
+  // Step 3.5 人群画像（portrait）
+  const [record35Id, setRecord35Id] = useState<string>('')
+  const [extraContext35, setExtraContext35] = useState('')
+  const [running35, setRunning35] = useState(false)
+  const [resp35, setResp35] = useState<PortraitResp | null>(null)
+  const [showPrompt35, setShowPrompt35] = useState(true)
+  const [adoptedPortraitIds, setAdoptedPortraitIds] = useState<Set<string>>(new Set())
+  const [adoptingPortrait, setAdoptingPortrait] = useState<string | null>(null)
+
+  // Step 3.6 编导 brief
+  const [portrait36Id, setPortrait36Id] = useState<string>('')
+  const [portraitList36, setPortraitList36] = useState<PortraitSummary[] | null>(null)
+  const [portraitListLoading36, setPortraitListLoading36] = useState(false)
+  const [ideaSeed36, setIdeaSeed36] = useState('')
+  const [targetModel36, setTargetModel36] = useState('seedance')
+  const [includeAiMapping36, setIncludeAiMapping36] = useState(true)
+  const [aiPromptCount36, setAiPromptCount36] = useState<string>('')  // '' = 自动（按模型档案）
+  const [numVariants36, setNumVariants36] = useState(1)
+  const [extraContext36, setExtraContext36] = useState('')
+  const [running36, setRunning36] = useState(false)
+  const [resp36, setResp36] = useState<BriefResp | null>(null)
+  const [showPrompt36, setShowPrompt36] = useState(true)
 
   useEffect(() => {
     fetch('/api/omni/scout/skus?status=active')
@@ -1354,6 +1441,141 @@ export default function SkuPipelinePage() {
     }
   }
 
+  // === Step 3.5: 人群生活状态画像 ===
+  const runStep35 = async () => {
+    if (!record35Id) return
+    setRunning35(true)
+    setResp35(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/audience-portrait', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audience_record_id: record35Id,
+          extra_context: extraContext35 || null,
+        }),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        setError(json.error || '调用失败')
+      } else {
+        setResp35(json.data)
+        // 成功落库 → 自动把 portrait_id 带去 step 3.6
+        const pid = json.data?.result?.portrait_id
+        if (pid) {
+          setPortrait36Id(pid)
+          setResp36(null)
+        }
+      }
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setRunning35(false)
+    }
+  }
+
+  // 采纳画像（status='draft' → 'adopted'，绑入血缘）
+  const adoptPortrait = async (portraitId: string) => {
+    if (!portraitId || adoptingPortrait) return
+    setAdoptingPortrait(portraitId)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/adopt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          table: 'audience_portraits',
+          run_id: portraitId,
+        }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok) {
+        setAdoptedPortraitIds(prev => {
+          const next = new Set(prev)
+          next.add(portraitId)
+          return next
+        })
+        bumpLineage()
+      } else {
+        setError(`画像采纳失败：${json.data?.error || json.error || '未知错误'}`)
+      }
+    } catch (e) {
+      setError(`画像采纳异常：${String(e)}`)
+    } finally {
+      setAdoptingPortrait(null)
+    }
+  }
+
+  // === Step 3.6: 历史画像列表 + 编导 brief ===
+  const loadPortraits36 = async () => {
+    if (!skuId) return
+    setPortraitListLoading36(true)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/portraits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku_id: skuId, limit: 30 }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok) {
+        setPortraitList36(json.data.portraits || [])
+      } else {
+        setPortraitList36([])
+        setError(`加载历史画像失败：${json.data?.error || json.error || '未知'}`)
+      }
+    } catch (e) {
+      setPortraitList36([])
+      setError(`加载历史画像异常：${String(e)}`)
+    } finally {
+      setPortraitListLoading36(false)
+    }
+  }
+
+  const runStep36 = async () => {
+    if (!portrait36Id) return
+    setRunning36(true)
+    setResp36(null)
+    setError(null)
+    try {
+      const aiCount = aiPromptCount36.trim() ? parseInt(aiPromptCount36, 10) : null
+      const res = await fetch('/api/omni/sku-pipeline/director-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          portrait_id: portrait36Id,
+          idea_seed: ideaSeed36.trim() || null,
+          include_ai_mapping: includeAiMapping36,
+          ai_prompt_count: Number.isFinite(aiCount as number) ? aiCount : null,
+          target_model: targetModel36,
+          extra_context: extraContext36 || null,
+          num_variants: numVariants36,
+        }),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        setError(json.error || '调用失败')
+      } else {
+        setResp36(json.data)
+      }
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setRunning36(false)
+    }
+  }
+
+  // SKU 切换时清空 step 3.5 / 3.6 状态
+  useEffect(() => {
+    setRecord35Id('')
+    setExtraContext35('')
+    setResp35(null)
+    setAdoptedPortraitIds(new Set())
+    setPortrait36Id('')
+    setPortraitList36(null)
+    setIdeaSeed36('')
+    setResp36(null)
+  }, [skuId])
+
   // SKU 切换时清空 step 4 状态
   useEffect(() => {
     setRecord4Id('')
@@ -1542,6 +1764,12 @@ export default function SkuPipelinePage() {
           <TabsTrigger value="step3" className="text-sm font-medium w-full justify-start py-2">
             <Users className="w-4 h-4 mr-1.5" /> Step 3 · 人群匹配
           </TabsTrigger>
+          <TabsTrigger value="step35" className="text-sm font-medium w-full justify-start py-2">
+            <ScanFace className="w-4 h-4 mr-1.5" /> 3.5 人群画像
+          </TabsTrigger>
+          <TabsTrigger value="step36" className="text-sm font-medium w-full justify-start py-2">
+            <Clapperboard className="w-4 h-4 mr-1.5" /> 3.6 编导 Brief
+          </TabsTrigger>
           <TabsTrigger value="step4" className="text-sm font-medium w-full justify-start py-2">
             <Target className="w-4 h-4 mr-1.5" /> Step 4 · 圈包
           </TabsTrigger>
@@ -1710,6 +1938,8 @@ export default function SkuPipelinePage() {
                         )}
                       </div>
                     )}
+
+                    <OutputFeedback toolName="generate_selling_points_matrix" />
                   </>
                 )}
                 {resp2 && !resp2.ok && (
@@ -2141,12 +2371,557 @@ export default function SkuPipelinePage() {
                         )}
                       </div>
                     )}
+
+                    <OutputFeedback toolName="generate_audience_match" />
                   </>
                 )}
                 {resp3 && !resp3.ok && (
                   <div className="text-sm text-red-500">
                     <div>Error: {resp3.error}</div>
                     {resp3.hint && <div className="text-xs text-muted-foreground mt-1">{resp3.hint}</div>}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ============== STEP 3.5: 人群生活状态画像 ============== */}
+        <TabsContent value="step35" className="mt-0 flex-1 min-w-0">
+          {/* SKU 状态卡（已收藏池 — 复用 step 3 的池子，照 step 4 模式）*/}
+          {skuId && (
+            <Card className="mb-4">
+              <CardContent className="pt-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>📌</span>
+                    <span className="font-medium">{skuId}</span>
+                    <span className="text-muted-foreground">已收藏的人群池（step 3.5 候选）</span>
+                    {poolRecords !== null && (
+                      <Badge variant="secondary">{poolRecords.length} 条可选</Badge>
+                    )}
+                    {poolRecords === null && !poolLoading && (
+                      <span className="text-xs text-muted-foreground">（点右侧加载）</span>
+                    )}
+                    {poolLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={loadPool} disabled={poolLoading}>
+                    {poolRecords !== null ? '刷新' : '加载人群池'}
+                  </Button>
+                </div>
+                {poolRecords !== null && poolRecords.length === 0 && (
+                  <div className="mt-3 text-xs text-muted-foreground py-3 text-center border border-dashed rounded">
+                    池子是空的。先去 step 3 跑一次人群匹配，挑认可的点 ⭐ 加入人群池，再回 3.5。
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">输入</CardTitle>
+                <CardDescription>
+                  对选中人群做四路定向 KB 二次召回（本圈层深挖 / 生活维度扫描 / 八大情绪交叉 / 卖点反打），
+                  出 5 部分生活状态画像。每句标 [KB] / 🧠推演 / ⚠️推测，防臆想。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {SkuPicker}
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    选 1 个 audience_record（来自已收藏池）
+                  </label>
+                  {!poolRecords && (
+                    <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                      先点上方「加载人群池」拉候选。
+                    </div>
+                  )}
+                  {poolRecords && poolRecords.length > 0 && (
+                    <select
+                      className="w-full border rounded px-2 py-2 text-sm bg-background"
+                      value={record35Id}
+                      onChange={e => {
+                        setRecord35Id(e.target.value)
+                        setResp35(null)
+                      }}
+                    >
+                      <option value="">— 请选择 —</option>
+                      {poolRecords.map(r => (
+                        <option key={r.id || r.ordinal} value={r.id || ''}>
+                          #{r.ordinal} {r.name} · {(r.layer_tags || []).slice(0, 3).join('/')}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">
+                    额外要求（extra_context）
+                  </label>
+                  <Textarea
+                    placeholder="（可空）例：「重点写她周末的状态」「触媒习惯多写点」"
+                    value={extraContext35}
+                    onChange={e => setExtraContext35(e.target.value)}
+                    rows={4}
+                    className="text-sm"
+                  />
+                </div>
+
+                <Button
+                  onClick={runStep35}
+                  disabled={running35 || !record35Id}
+                  className="w-full"
+                >
+                  {running35
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 生成中（约 2 分钟，四路 KB 召回 + pro 模型）</>
+                    : '生成画像'}
+                </Button>
+
+                {error && (
+                  <div className="text-sm text-red-500 p-2 border border-red-200 rounded bg-red-50">
+                    {error}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">输出</CardTitle>
+                  {resp35?.trace && (
+                    <CardDescription className="text-xs">
+                      {resp35.trace.model_provider}/{resp35.trace.model} · {resp35.trace.cost_estimate}
+                    </CardDescription>
+                  )}
+                </div>
+                {resp35?.result?.portrait_md && (
+                  <div className="space-x-1">
+                    <Button size="sm" variant="outline" onClick={() => copyText(resp35.result?.portrait_md)}>
+                      <Copy className="w-3 h-3 mr-1" /> 复制
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => downloadMd(resp35.result?.portrait_md, `portrait-${skuId}-${new Date().toISOString().slice(0, 10)}.md`)}
+                    >
+                      <Download className="w-3 h-3 mr-1" /> 下载 .md
+                    </Button>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent>
+                {!resp35 && !running35 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    左边选 1 个人群后点「生成画像」，结果会显示在这里。
+                  </div>
+                )}
+                {running35 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" />
+                    四路定向 KB 召回 → pro 模型写生活状态画像（速写 / 时间轴 / 卖点重构 / 情绪触点 / 信息缺口）...
+                  </div>
+                )}
+                {resp35?.result?.portrait_md && (
+                  <>
+                    {/* 防臆想校验警示（配额闸超标 / 落库失败等） */}
+                    {(resp35.result.validation_warnings?.length ?? 0) > 0 && (
+                      <div className="mb-4 border border-amber-300 dark:border-amber-800 rounded p-3 bg-amber-50 dark:bg-amber-950/30 space-y-1">
+                        <div className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                          ⚠ 画像校验警示：{resp35.result.validation_warnings!.length} 条
+                        </div>
+                        <ul className="text-xs text-amber-900 dark:text-amber-200 space-y-1 list-disc pl-5">
+                          {resp35.result.validation_warnings!.map((w, i) => (
+                            <li key={i}>{w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* 落库摘要 + 采纳画像 */}
+                    {resp35.result.portrait_id && (() => {
+                      const pId = resp35.result.portrait_id
+                      const isAdopted = adoptedPortraitIds.has(pId)
+                      const isAdoptingThis = adoptingPortrait === pId
+                      return (
+                        <div className={`mb-4 p-3 border rounded text-xs transition ${isAdopted ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800' : 'bg-blue-50/40 dark:bg-blue-950/20'}`}>
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap min-w-0">
+                              <Badge variant={isAdopted ? 'default' : 'outline'}>
+                                {isAdopted ? '✅ 已采纳' : '已落库 · draft'}
+                              </Badge>
+                              <span>
+                                portrait_id: <code className="text-[10px]">{pId.slice(0, 8)}…</code>
+                              </span>
+                              <span className="ml-2 text-muted-foreground">
+                                ← record_id: <code className="text-[10px]">{resp35.result.audience_record_id.slice(0, 8)}…</code>
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant={isAdopted ? 'default' : 'outline'}
+                              disabled={isAdoptingThis || isAdopted}
+                              onClick={() => adoptPortrait(pId)}
+                              className="shrink-0"
+                              title={isAdopted ? '已采纳 — 血缘反查跟这版走' : '老板审完 OK 后点这里：把这版画像标 adopted，绑入血缘'}
+                            >
+                              {isAdoptingThis
+                                ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 采纳中</>
+                                : isAdopted
+                                  ? <>✅ 已采纳</>
+                                  : <>✓ 采纳画像</>}
+                            </Button>
+                          </div>
+                          <div className="text-muted-foreground mt-2">
+                            画像 OK 就去 3.6 出编导 brief（portrait_id 已自动带过去）。多版本并存：重跑 = 新一行，不覆盖。
+                          </div>
+                        </div>
+                      )
+                    })()}
+
+                    {/* 下一步提示 */}
+                    {resp35.result.portrait_id && (
+                      <div className="mb-4 p-3 border border-dashed rounded text-xs flex items-center justify-between gap-3 flex-wrap bg-muted/30">
+                        <span className="text-muted-foreground">
+                          下一步：去 3.6 出编导 brief（已自动带上这版画像）
+                        </span>
+                        <Button size="sm" variant="default" onClick={() => setActiveTab('step36')}>
+                          <Clapperboard className="w-3 h-3 mr-1" /> 去 3.6 出编导 Brief →
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* 召回元信息 */}
+                    {resp35.result.recall_meta && (
+                      <div className="mb-4 text-xs text-muted-foreground">
+                        召回：{resp35.result.recall_meta.mode === 'override' ? '手动覆盖' : '四路定向'}
+                        · queries {resp35.result.recall_meta.queries?.length ?? 0}
+                        · chunks {resp35.result.recall_meta.chunk_count}
+                      </div>
+                    )}
+
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {resp35.result.portrait_md}
+                      </ReactMarkdown>
+                    </div>
+
+                    {resp35.trace?.final_prompt && (
+                      <div className="mt-6 border-t pt-4">
+                        <button
+                          className="text-sm font-medium flex items-center gap-1"
+                          onClick={() => setShowPrompt35(s => !s)}
+                        >
+                          {showPrompt35 ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          Final Prompt（含四路 KB 召回原文）
+                        </button>
+                        {showPrompt35 && (
+                          <pre className="mt-2 p-3 bg-muted text-xs rounded whitespace-pre-wrap">
+                            {resp35.trace.final_prompt}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+
+                    <OutputFeedback toolName="generate_audience_portrait" />
+                  </>
+                )}
+                {resp35 && !resp35.ok && (
+                  <div className="text-sm text-red-500">
+                    <div>Error: {resp35.error}</div>
+                    {resp35.hint && <div className="text-xs text-muted-foreground mt-1">{resp35.hint}</div>}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ============== STEP 3.6: 编导 Brief（今天拍什么备忘录） ============== */}
+        <TabsContent value="step36" className="mt-0 flex-1 min-w-0">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            {/* 左：画像选择 + 参数 */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Clapperboard className="w-4 h-4" /> 输入
+                </CardTitle>
+                <CardDescription>
+                  输入 3.5 的人群画像 → 出「今天拍什么」编导备忘录（真人编导直接能拍；可带第 5 部分 AI 出片提示词）。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {SkuPicker}
+
+                {/* 画像选择 */}
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="text-sm font-medium">画像（来自 step 3.5）</label>
+                    <Button size="sm" variant="outline" onClick={loadPortraits36} disabled={!skuId || portraitListLoading36}>
+                      {portraitListLoading36
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : (portraitList36 !== null ? '刷新' : '加载历史画像')}
+                    </Button>
+                  </div>
+                  {portrait36Id && (
+                    <div className="text-xs p-2 border rounded bg-muted/30 mb-2">
+                      当前选中：<code className="text-[10px]">{portrait36Id.slice(0, 8)}…</code>
+                      {resp35?.result?.portrait_id === portrait36Id && (
+                        <span className="ml-2 text-muted-foreground">（来自刚跑完的 3.5）</span>
+                      )}
+                    </div>
+                  )}
+                  {!portrait36Id && portraitList36 === null && (
+                    <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                      先去 3.5 生成画像（会自动带过来），或点「加载历史画像」挑一版。
+                    </div>
+                  )}
+                  {portraitList36 !== null && portraitList36.length === 0 && (
+                    <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                      这个 SKU 还没跑过画像。先去 3.5 生成。
+                    </div>
+                  )}
+                  {portraitList36 !== null && portraitList36.length > 0 && (
+                    <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                      {portraitList36.map(p => {
+                        const selected = portrait36Id === p.id
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className={`w-full text-left text-xs p-2 rounded border-2 transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted'}`}
+                            onClick={() => {
+                              setPortrait36Id(p.id)
+                              setResp36(null)
+                            }}
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {selected && <span className="text-primary">✓</span>}
+                              <Badge variant="secondary" className="text-[10px]">v{p.version}</Badge>
+                              <Badge variant={p.status === 'adopted' ? 'default' : 'outline'} className="text-[10px]">
+                                {p.status === 'adopted' ? '已采纳' : 'draft'}
+                              </Badge>
+                              {(p.validation_warnings?.length ?? 0) > 0 && (
+                                <span className="text-amber-600 dark:text-amber-400">⚠ {p.validation_warnings.length} 条警示</span>
+                              )}
+                              <span className="text-muted-foreground ml-auto">
+                                {(p.created_at || '').slice(0, 16).replace('T', ' ')}
+                              </span>
+                            </div>
+                            <div className="text-muted-foreground mt-1 line-clamp-2">
+                              {(p.portrait_preview || '').slice(0, 60)}…
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">想拍的事（idea_seed）</label>
+                  <Input
+                    placeholder="想拍的事，如：闺女给妈寄酱油（可空，AI 自选）"
+                    value={ideaSeed36}
+                    onChange={e => setIdeaSeed36(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">目标出片模型（target_model）</label>
+                  <select
+                    className="w-full border rounded px-2 py-2 text-sm bg-background"
+                    value={targetModel36}
+                    onChange={e => setTargetModel36(e.target.value)}
+                  >
+                    {TARGET_MODEL_LIST.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="includeAiMapping36"
+                    checked={includeAiMapping36}
+                    onChange={e => setIncludeAiMapping36(e.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  <label htmlFor="includeAiMapping36" className="text-sm cursor-pointer select-none">
+                    带 AI 出片提示词（第 5 部分）
+                  </label>
+                </div>
+
+                {includeAiMapping36 && (
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">提示词拆几块（ai_prompt_count）</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10}
+                      placeholder="自动（按模型档案）"
+                      value={aiPromptCount36}
+                      onChange={e => setAiPromptCount36(e.target.value)}
+                      className="text-sm"
+                    />
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      留空 = 按目标模型单次生成时长自动定块数；显式传值强制。
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">并行方案数</label>
+                  <div className="flex gap-2">
+                    {[1, 2, 3].map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setNumVariants36(n)}
+                        className={`flex-1 py-1 text-sm rounded border-2 transition-colors ${numVariants36 === n ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:bg-muted'}`}
+                      >
+                        {n} 个
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-1">
+                    多方案并行生成（temperature 递增），右侧每个方案一张卡对比
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium mb-1 block">额外要求（extra_context）</label>
+                  <Textarea
+                    placeholder="（可空）例：「片子里别出现价格」「这次主打周末家庭餐桌场景」"
+                    value={extraContext36}
+                    onChange={e => setExtraContext36(e.target.value)}
+                    rows={3}
+                    className="text-sm"
+                  />
+                </div>
+
+                <Button
+                  onClick={runStep36}
+                  disabled={running36 || !portrait36Id}
+                  className="w-full"
+                >
+                  {running36
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 生成中（约 1-3 分钟）</>
+                    : numVariants36 > 1 ? `并行生成 ${numVariants36} 个 Brief` : '生成 Brief'}
+                </Button>
+
+                {error && (
+                  <div className="text-sm text-red-500 p-2 border border-red-200 rounded bg-red-50">
+                    {error}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 右：输出（每个方案一张卡） */}
+            <Card className="lg:col-span-3">
+              <CardHeader>
+                <div>
+                  <CardTitle className="text-base">输出</CardTitle>
+                  {resp36?.trace && (
+                    <CardDescription className="text-xs">
+                      {resp36.trace.model_provider}/{resp36.trace.model} · {resp36.trace.cost_estimate}
+                    </CardDescription>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {!resp36 && !running36 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    左边选画像后点「生成 Brief」，结果会显示在这里。
+                  </div>
+                )}
+                {running36 && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" />
+                    LLM 写「今天拍什么」备忘录（一件事 + 两次偏 + 分段拍摄 + 算法信号三向量{includeAiMapping36 ? ' + AI 出片提示词' : ''}）...
+                  </div>
+                )}
+                {resp36 && !resp36.ok && (
+                  <div className="text-sm text-red-500">
+                    <div>Error: {resp36.error}</div>
+                    {resp36.hint && <div className="text-xs text-muted-foreground mt-1">{resp36.hint}</div>}
+                  </div>
+                )}
+                {resp36?.ok && resp36.result && (
+                  <div className="space-y-4">
+                    {resp36.result.usage_note && (
+                      <div className="text-xs p-2 border border-dashed rounded bg-muted/30 text-muted-foreground">
+                        💡 {resp36.result.usage_note}
+                      </div>
+                    )}
+
+                    {(resp36.result.variants || []).map((v, i) => (
+                      <div key={v.script_id || i} className="border rounded-lg p-4 space-y-3 bg-card">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-semibold text-sm">{v.variant_label}</h4>
+                          {v.script_id && (
+                            <span className="text-[10px] text-muted-foreground" title="pipeline.scripts.id（kind=director_brief）">
+                              script_id: <code>{v.script_id.slice(0, 8)}…</code>
+                            </span>
+                          )}
+                          <div className="ml-auto space-x-1">
+                            <Button size="sm" variant="outline" onClick={() => copyText(v.brief_md)}>
+                              <Copy className="w-3 h-3 mr-1" /> 复制
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => downloadMd(v.brief_md, `director-brief-${skuId}-${v.variant_label.replace(/\s/g, '')}-${new Date().toISOString().slice(0, 10)}.md`)}
+                            >
+                              <Download className="w-3 h-3 mr-1" /> 下载 .md
+                            </Button>
+                          </div>
+                        </div>
+
+                        {(v.validation_warnings?.length ?? 0) > 0 && (
+                          <div className="border border-amber-300 dark:border-amber-800 rounded p-3 bg-amber-50 dark:bg-amber-950/30 space-y-1">
+                            <div className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                              ⚠ Brief 校验警示：{v.validation_warnings!.length} 条
+                            </div>
+                            <ul className="text-xs text-amber-900 dark:text-amber-200 space-y-1 list-disc pl-5">
+                              {v.validation_warnings!.map((w, j) => (
+                                <li key={j}>{w}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        <div className="prose prose-sm max-w-none dark:prose-invert border rounded p-4 bg-muted/30">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{v.brief_md}</ReactMarkdown>
+                        </div>
+                      </div>
+                    ))}
+
+                    {resp36.trace?.final_prompt && (
+                      <div className="border-t pt-4">
+                        <button
+                          className="text-sm font-medium flex items-center gap-1"
+                          onClick={() => setShowPrompt36(s => !s)}
+                        >
+                          {showPrompt36 ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          Final Prompt（含画像全文 + 模型档案）
+                        </button>
+                        {showPrompt36 && (
+                          <pre className="mt-2 p-3 bg-muted text-xs rounded whitespace-pre-wrap">
+                            {resp36.trace.final_prompt}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+
+                    <OutputFeedback toolName="generate_director_brief" />
                   </div>
                 )}
               </CardContent>
@@ -2394,6 +3169,8 @@ export default function SkuPipelinePage() {
                         )}
                       </div>
                     )}
+
+                    <OutputFeedback toolName="generate_audience_pack" />
                   </>
                 )}
                 {resp4 && !resp4.ok && (
@@ -3008,6 +3785,8 @@ export default function SkuPipelinePage() {
                           )}
                         </div>
                       )}
+
+                      <OutputFeedback toolName="generate_creative_pack" />
                     </div>
                   )
                 })()}
@@ -3789,6 +4568,8 @@ export default function SkuPipelinePage() {
                     {resp6.trace.model_provider}/{resp6.trace.model} · {resp6.trace.cost_estimate}
                   </div>
                 )}
+
+                {resp6?.result && <OutputFeedback toolName="generate_storyboard_images" />}
               </CardContent>
             </Card>
           </div>
@@ -4382,6 +5163,8 @@ export default function SkuPipelinePage() {
                     {resp7i.trace.model_provider}/{resp7i.trace.model} · {resp7i.trace.cost_estimate}
                   </div>
                 )}
+
+                {resp7i?.result && <OutputFeedback toolName="generate_video_segments" />}
               </CardContent>
             </Card>
           </div>
@@ -4815,6 +5598,8 @@ export default function SkuPipelinePage() {
                     {resp7t.trace.model_provider}/{resp7t.trace.model} · {resp7t.trace.cost_estimate}
                   </div>
                 )}
+
+                {resp7t?.result && <OutputFeedback toolName="generate_video_segments" />}
               </CardContent>
             </Card>
           </div>
