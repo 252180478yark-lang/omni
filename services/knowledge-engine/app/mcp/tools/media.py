@@ -1812,6 +1812,7 @@ def _extract_seed_phrases(matrix_md: str) -> list[str]:
         "卖点", "场景", "心智", "标签", "USP", "信息", "产品", "品牌",
         "强度评分", "匹配场景", "匹配理由", "证据", "合规风险",
         "显性卖点", "隐性卖点", "独特卖点", "结构化标签",
+        "三层拆解", "买点", "三轴评分", "真需求", "搜证缺口",
     }
     skip_phrases = {
         # selling_points_matrix.system.md 的结构性章节标题，不是真卖点/场景/心智名
@@ -1822,6 +1823,7 @@ def _extract_seed_phrases(matrix_md: str) -> list[str]:
         "结构化标签汇总", "信息补全", "信息补全建议",
         "合规与红线", "输出前自检", "品类常识校准",
         "复合心智候选", "排他性检验",
+        "该场景下的真需求",
     }
     seeds = [s for s in seeds if s not in skip_words and s not in skip_phrases]
 
