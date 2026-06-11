@@ -8,8 +8,8 @@
 CREATE TABLE IF NOT EXISTS pipeline.audience_portraits (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     audience_record_id UUID NOT NULL REFERENCES pipeline.audience_records(id) ON DELETE CASCADE,
-    audience_run_id UUID,           -- denorm
-    matrix_run_id UUID,             -- denorm
+    audience_run_id UUID,           -- denorm（从 audience_record 反查回填；record 链路断时允许 NULL，不设 FK 同 audience_packs 先例）
+    matrix_run_id UUID,             -- denorm（同上）
     sku_id VARCHAR(64) NOT NULL,    -- denorm
 
     portrait_md TEXT NOT NULL,
@@ -45,6 +45,8 @@ CREATE INDEX IF NOT EXISTS idx_portraits_sku
     ON pipeline.audience_portraits (sku_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_portraits_record
     ON pipeline.audience_portraits (audience_record_id);
+CREATE INDEX IF NOT EXISTS idx_portraits_status
+    ON pipeline.audience_portraits (status) WHERE status = 'adopted';
 
 COMMENT ON TABLE pipeline.audience_portraits IS
     'step 3.5 人群生活状态画像（KB 锚+可信度分级标注+卖点重构+情绪触点矩阵）；多版本不覆盖';
@@ -67,3 +69,22 @@ ALTER TABLE pipeline.scripts ADD COLUMN IF NOT EXISTS portrait_id UUID
     REFERENCES pipeline.audience_portraits(id) ON DELETE SET NULL;
 COMMENT ON COLUMN pipeline.scripts.portrait_id IS
     '可选：挂 step 3.5 人群画像（director_brief 类必挂；其他 kind 为 NULL）';
+
+-- 4. 触发器：audience_portraits 的 updated_at 自动刷新（照抄 021 的防御模式）
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'content_studio' AND p.proname = 'touch_updated_at'
+    ) THEN
+        DROP TRIGGER IF EXISTS trg_pipeline_audience_portraits_touch ON pipeline.audience_portraits;
+        CREATE TRIGGER trg_pipeline_audience_portraits_touch
+            BEFORE UPDATE ON pipeline.audience_portraits
+            FOR EACH ROW EXECUTE FUNCTION content_studio.touch_updated_at();
+    END IF;
+END $$;
+
+-- 5. 更新 scripts.kind 注释（023 建表时 kind 为 NULL 历史行，现已扩到 7 类）
+COMMENT ON COLUMN pipeline.scripts.kind IS
+    '素材类型：7 类素材（video_soft_ad/planting/harvest, graphic_harvest, product_main_image, product_detail_page, director_brief）；NULL 表示历史行（14.3 phase A 时建表，未启用）';
