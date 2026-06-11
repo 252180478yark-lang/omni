@@ -828,6 +828,107 @@ async def get_audience_record(record_id: str) -> dict[str, Any] | None:
 
 
 # ════════════════════════════════════════════════════════════════
+# step 3.5 人群画像落库（migration 047，audience_portraits）
+# ════════════════════════════════════════════════════════════════
+
+async def save_audience_portrait(
+    *,
+    audience_record_id: str,
+    sku_id: str,
+    portrait_md: str,
+    audience_run_id: str | None = None,
+    matrix_run_id: str | None = None,
+    recall_meta: dict | None = None,
+    validation_warnings: list | None = None,
+    extra_context: str | None = None,
+    kb_recall_override: str | None = None,
+    model_provider: str | None = None,
+    model: str | None = None,
+    final_prompt: str | None = None,
+    cost_estimate: str | None = None,
+    parent_portrait_id: str | None = None,
+) -> str | None:
+    """落 1 行 pipeline.audience_portraits（step 3.5），返回 id。失败返 None 不抛。"""
+    if not portrait_md or not portrait_md.strip():
+        logger.warning("save_audience_portrait: portrait_md 空，跳过落库")
+        return None
+
+    pool = get_pool()
+
+    # 版本号：同 record 下自增；显式 parent 时取其 version+1
+    next_version = 1
+    if parent_portrait_id:
+        row = await pool.fetchrow(
+            "SELECT version FROM pipeline.audience_portraits WHERE id = $1::uuid",
+            parent_portrait_id,
+        )
+        if row and row["version"]:
+            next_version = int(row["version"]) + 1
+    else:
+        row = await pool.fetchrow(
+            "SELECT MAX(version) AS v FROM pipeline.audience_portraits WHERE audience_record_id = $1::uuid",
+            audience_record_id,
+        )
+        if row and row["v"]:
+            next_version = int(row["v"]) + 1
+
+    try:
+        rec = await pool.fetchrow(
+            """
+            INSERT INTO pipeline.audience_portraits (
+                audience_record_id, audience_run_id, matrix_run_id, sku_id,
+                portrait_md, recall_meta, validation_warnings,
+                extra_context, kb_recall_override,
+                model_provider, model, prompt_hash, cost_estimate,
+                status, version, parent_portrait_id
+            ) VALUES (
+                $1::uuid, $2::uuid, $3::uuid, $4,
+                $5, $6::jsonb, $7::jsonb,
+                $8, $9,
+                $10, $11, $12, $13,
+                'draft', $14, $15::uuid
+            ) RETURNING id::text AS id
+            """,
+            audience_record_id,
+            audience_run_id,
+            matrix_run_id,
+            sku_id,
+            portrait_md.strip(),
+            json.dumps(recall_meta or {}, ensure_ascii=False),
+            json.dumps(validation_warnings or [], ensure_ascii=False),
+            extra_context,
+            kb_recall_override,
+            model_provider,
+            model,
+            _prompt_hash(final_prompt) if final_prompt else None,
+            cost_estimate,
+            next_version,
+            parent_portrait_id,
+        )
+        return rec["id"] if rec else None
+    except Exception as exc:
+        logger.exception("save_audience_portrait failed: %s", exc)
+        return None
+
+
+async def get_audience_portrait(portrait_id: str) -> dict[str, Any] | None:
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT id::text, audience_record_id::text, audience_run_id::text,
+               matrix_run_id::text, sku_id,
+               portrait_md, recall_meta, validation_warnings,
+               extra_context, status, version, parent_portrait_id::text,
+               model_provider, model, cost_estimate, created_at, updated_at
+        FROM pipeline.audience_portraits
+        WHERE id = $1::uuid
+        """,
+        portrait_id,
+    )
+    return dict(row) if row else None
+
+
+# ════════════════════════════════════════════════════════════════
 # step 5 创意素材落库（W4-B 切片 14.4 phase C，6 类素材入 pipeline.scripts）
 # ════════════════════════════════════════════════════════════════
 
@@ -838,6 +939,7 @@ CREATIVE_KINDS = (
     "graphic_harvest",
     "product_main_image",
     "product_detail_page",
+    "director_brief",
 )
 
 # kind → 旧 target_purpose 字段映射（向后兼容）
@@ -1143,6 +1245,7 @@ async def save_creative_pack(
     model: str | None = None,
     final_prompt: str | None = None,
     cost_estimate: str | None = None,
+    portrait_id: str | None = None,
     parent_script_id: str | None = None,
 ) -> str | None:
     """落 1 行 pipeline.scripts，返回 id。失败返 None 不抛。
@@ -1202,13 +1305,13 @@ async def save_creative_pack(
                 script_md, hooks, scenes, character_sheets, target_purpose, kind,
                 extra_context,
                 model_provider, model, prompt_hash, cost_estimate,
-                status, version, parent_script_id
+                status, version, parent_script_id, portrait_id
             ) VALUES (
                 $1::uuid, $2::uuid, $3::uuid, $4,
                 $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10,
                 $11,
                 $12, $13, $14, $15,
-                'draft', $16, $17::uuid
+                'draft', $16, $17::uuid, $18::uuid
             ) RETURNING id::text AS id
             """,
             audience_pack_id,
@@ -1228,6 +1331,7 @@ async def save_creative_pack(
             cost_estimate,
             next_version,
             parent_script_id,
+            portrait_id,
         )
         return rec["id"] if rec else None
     except Exception as exc:
@@ -2039,11 +2143,11 @@ async def archive_node(table: str, run_id: str) -> dict[str, Any]:
 
 
 async def adopt_run(table: str, run_id: str, *, set_selected: bool = False) -> dict[str, Any]:
-    """把 status 从 draft 改 adopted。table 在 {matrix_runs, audience_runs, audience_records, audience_packs, scripts, assets}。
+    """把 status 从 draft 改 adopted。table 在 {matrix_runs, audience_runs, audience_records, audience_packs, scripts, assets, audience_portraits}。
 
     audience_records 额外可选 set_selected_for_pack=TRUE。
     """
-    if table not in {"matrix_runs", "audience_runs", "audience_records", "audience_packs", "scripts", "assets"}:
+    if table not in {"matrix_runs", "audience_runs", "audience_records", "audience_packs", "scripts", "assets", "audience_portraits"}:
         return {"ok": False, "error": f"未知 table: {table}"}
 
     pool = get_pool()
