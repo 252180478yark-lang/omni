@@ -677,6 +677,7 @@ async def ingest_metrics(executor: LiveFetchExecutor,
         {ok, metric_rows_written, benchmark_rows_written, metrics_ok, metrics_total,
          fetch_errors, extract_errors, benchmark_errors}
     """
+    # executor._today 已改为每次现算的北京时区 property (2026-06-11 修冻结日期)
     today = today or executor._today
 
     # 1) 一次浏览器会话连打 10 端点取 parsed JSON
@@ -693,6 +694,21 @@ async def ingest_metrics(executor: LiveFetchExecutor,
 
     product_rows, product_errors = _extract_product_metrics(raw, today)
     extract_errors += product_errors
+    # 跌零告警 (2026-06-11 审计): per-SKU 抽取 6/5 起静默挂掉, fail-open 不等于不留痕
+    if not product_rows:
+        log.warning("metric_ingest: per-SKU product_list 抽取 0 行 (errors=%s) — "
+                    "毛利×销售榜/商品榜将停更, 检查 compass cookie 或响应结构", product_errors or "无")
+
+    # 一致性丢弃 (2026-06-11 审计): flow_source_funnel 抽出 buyer_count=0 而当日已有
+    # gmv_paid>0 是抽取节点错位的典型症状, 丢弃该批 funnel 行防假数入库
+    _funnel_metrics = {"buyer_count", "product_click_uv", "product_show_uv", "pay_conversion"}
+    _buyer = next((r for r in metric_rows if r["metric"] == "buyer_count"), None)
+    _gmv_today = next((r for r in metric_rows if r["metric"] == "gmv_paid" and str(r["date"]) == today.isoformat()), None)
+    if (_buyer is not None and float(_buyer.get("value") or 0) == 0
+            and _gmv_today is not None and float(_gmv_today.get("value") or 0) > 0):
+        dropped = [r for r in metric_rows if r["metric"] in _funnel_metrics]
+        metric_rows = [r for r in metric_rows if r["metric"] not in _funnel_metrics]
+        log.warning("metric_ingest: buyer_count=0 但当日 gmv_paid>0, 丢弃 %d 行 funnel 指标 (抽取节点疑似错位)", len(dropped))
 
     # BI 2.0 第1批标量抽取（延迟 import 避免循环）
     from app.services import bi_batch1

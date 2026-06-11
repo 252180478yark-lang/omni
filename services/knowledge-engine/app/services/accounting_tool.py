@@ -226,6 +226,12 @@ async def query_costs(
             f"AND (valid_to IS NULL OR valid_to >= {anchor})"
         )
 
+    # 2026-06-11 安全修复（数据审计）: REST /api/v1/accounting/* 链路无口令防护，这里默认
+    # 只取员工口径（public+shared）——否则老板录入 visibility='real' 行后，REST /margin 会
+    # public+real 双计成本，且任何调用方不带口令即可读到老板真实成本。
+    # real 口径只走 MCP tool（app/mcp/tools/accounting.py 的 _resolve_view 口令校验）。
+    clauses.append("visibility = ANY(ARRAY['public','shared'])")
+
     where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
     args.append(limit)
 

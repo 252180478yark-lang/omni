@@ -74,8 +74,12 @@ async def bootstrap_skus() -> int:
                     locked_stock       = EXCLUDED.locked_stock,
                     growth_class       = EXCLUDED.growth_class,
                     push_tier          = EXCLUDED.push_tier,
-                    price_min          = EXCLUDED.price_min,
-                    price_max          = EXCLUDED.price_max,
+                    -- 2026-06-11 修「0 价覆盖真值」：抓价失败(解析出 0/None)时保留库里旧价,
+                    -- 否则经济账面显示"售价 ¥0 净利 -17.5"假数 (实证 9 个 SKU 被写成 0)
+                    price_min          = CASE WHEN EXCLUDED.price_min IS NOT NULL AND EXCLUDED.price_min > 0
+                                              THEN EXCLUDED.price_min ELSE mvp_sku.price_min END,
+                    price_max          = CASE WHEN EXCLUDED.price_max IS NOT NULL AND EXCLUDED.price_max > 0
+                                              THEN EXCLUDED.price_max ELSE mvp_sku.price_max END,
                     updated_at         = NOW()
                 """,
                 sku_id,
@@ -433,6 +437,8 @@ async def _row_to_dict(row_el, row_text: str, product_id: str) -> dict[str, Any]
                 price_max = float(nums[-1]) if len(nums) > 1 else price_min
             except ValueError:
                 pass
+        if price_min is not None and price_min <= 0:
+            log.warning("sku_bootstrapper: price<=0 parsed from %r — upsert 将保留库里旧价", price_text)
 
     # stock（第 3 列）
     stock_cell = await row_el.query_selector('td[class*="totalInventory"]')

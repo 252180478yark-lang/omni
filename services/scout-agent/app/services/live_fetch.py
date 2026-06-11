@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import date as date_cls
+from datetime import date as date_cls, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from typing import Any
 from urllib.parse import urlencode
 
@@ -23,7 +24,17 @@ class LiveFetchExecutor:
     def __init__(self, catalog: CatalogLoader, sessions_root: Path, today: date_cls | None = None):
         self.catalog = catalog
         self.sessions_root = Path(sessions_root)
-        self._today = today or date_cls.today()
+        # 2026-06-11 修「冻结的今天」：原 self._today = today or date.today() 在容器启动时
+        # 算一次后永不更新（容器 TZ=UTC），导致每日 cron 落库日期戳成启动日、容器不重启
+        # 就同行覆盖（实证断档 06-05..06-07）。改为属性每次现算（北京时区）；
+        # 显式传 today 的测试路径保留 override。
+        self._today_override = today
+
+    @property
+    def _today(self) -> date_cls:
+        if self._today_override is not None:
+            return self._today_override
+        return datetime.now(ZoneInfo("Asia/Shanghai")).date()
 
     # ---- cookies ----
     def storage_state_path(self, platform: str) -> Path:
