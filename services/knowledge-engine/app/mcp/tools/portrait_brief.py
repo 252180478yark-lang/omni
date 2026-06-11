@@ -157,7 +157,9 @@ def _validate_portrait_markers(portrait_md: str) -> list[str]:
     return warnings
 
 
-# V7.2 禁用词 8 类（确定性扫描；标题/正文/置顶都查）
+# V7.2 禁用词 8 类（确定性扫描；标题/正文/置顶都查）。
+# 完整 8 类清单以 config/prompts/director_brief.system.md「禁用词」节为准——
+# 这里只收"裸子串匹配不误伤"的子集，改任一边记得对照另一边防漂移。
 _BANNED_WORDS = [
     "品质生活", "匠心", "臻选", "焕新", "赋能", "甄选", "尊享",
     "家人们", "宝子们", "绝绝子", "YYDS", "闭眼入",
@@ -180,6 +182,9 @@ def _validate_brief(brief_md: str, *, include_ai_mapping: bool) -> list[str]:
     if "自检" not in brief_md:
         warnings.append("⚠ 缺尾部自检段——可能输出被截断，建议重跑或调低篇幅")
     hits = [w for w in _BANNED_WORDS if w in brief_md]
+    # "治愈系"是合法内容风格词（人群内容偏好高频），只拦裸"治愈"（医疗宣称语境）
+    if "治愈" in hits and not re.search(r"治愈(?!系)", brief_md):
+        hits.remove("治愈")
     if hits:
         warnings.append(f"⚠ 命中禁用词：{hits}——人工复核或重跑")
     return warnings
@@ -353,7 +358,7 @@ async def generate_audience_portrait(
     )
 
 
-# ============ step 3.6 tool（Task 6 替换为完整实现，此处占位保证 import 不挂）============
+# ============ step 3.6 tool ============
 
 @tool_with_audit(mcp, require_approval=False)
 async def generate_director_brief(
@@ -363,12 +368,150 @@ async def generate_director_brief(
     extra_context: str | None = None,
     num_variants: int = 1,
 ) -> dict:
-    """（Task 6 替换为完整实现）"""
+    """生成编导备忘录（sku-pipeline step 3.6）。
+
+    输入 step 3.5 的人群画像，输出 V7.2 风格「今天拍什么」备忘录（真人编导直接能拍）：
+    第 0 人群描述 / 第 1 今天拍什么（一件事+两次偏+卖点藏哪）/ 第 2 分段拍摄备忘 /
+    第 3 算法信号三向量（画面/文案/音乐，让抖音算法把内容映射对人群）/ 第 4 发的时候 /
+    第 5 AI 出片映射（可关；分镜格式对齐 step 6/7 新链输入）/ 尾部 12 项自检。
+
+    落库 pipeline.scripts（kind='director_brief'，挂 portrait_id 全血缘，多版本不覆盖）；
+    第 5 部分的分镜自动解析进 scripts.scenes（generate_storyboard_images 可直接吃）。
+
+    Args:
+        portrait_id: step 3.5 落库的画像 id
+        idea_seed: 可选"想拍的事"（如"闺女给妈寄酱油"）；不给则 LLM 从画像场景库自选一件事
+        include_ai_mapping: 默认 True 带第 5 部分 AI 出片映射；False 省 token
+        extra_context: 一次性临时要求
+        num_variants: 1-3 个创意方案并行（temperature 递增 +0.1）
+
+    Returns:
+        {ok, result: {variants:[{script_id, brief_md, variant_label, validation_warnings}],
+         sku_id, portrait_id}, trace, next_step_hint}
+    """
     portrait = await pipeline_lineage.get_audience_portrait(portrait_id)
     if not portrait:
         return {
             "ok": False,
             "error": f"portrait 未找到: {portrait_id}",
-            "hint": "先跑 generate_audience_portrait（step 3.5）",
+            "hint": "先跑 generate_audience_portrait（step 3.5），或查 pipeline.audience_portraits",
         }
-    return {"ok": False, "error": "not_implemented_yet", "hint": "Task 6 实现"}
+    sku_id = portrait.get("sku_id")
+    record = await pipeline_lineage.get_audience_record(portrait["audience_record_id"])
+    audience_name = (record or {}).get("name") or "（未命名人群）"
+
+    pool = get_pool()
+    sku = await pool.fetchrow(
+        "SELECT id, name, category, specifications FROM mvp_sku WHERE id = $1", sku_id
+    )
+    sku_md = (
+        f"- 品名：{sku['name']}\n"
+        f"- 品类：{sku['category'] or '（未分类，调味品）'}\n"
+        f"- 规格：{sku['specifications'] or '（无）'}\n"
+    ) if sku else f"- sku_id：{sku_id}\n"
+
+    ai_directive = (
+        "本次任务**要求输出第 5 部分 AI 出片映射**（逐段 image/last_frame/motion prompt + 全局真人感锚内嵌每段）。"
+        if include_ai_mapping
+        else "本次任务**不要输出第 5 部分**（整节跳过、连标题都不写；自检照常 12 项）。"
+    )
+
+    sys_msg = prompts.load("director_brief.system")
+    user_msg = prompts.render(
+        "director_brief.user",
+        sku_md=sku_md,
+        audience_name=audience_name,
+        portrait_md=(portrait.get("portrait_md") or "").strip(),
+        idea_seed=idea_seed.strip() if idea_seed else "（无）",
+        ai_mapping_directive=ai_directive,
+        extra_context=extra_context.strip() if extra_context else "（无）",
+    )
+    final_prompt = sys_msg + "\n\n" + user_msg
+
+    model_cfg = get_model_for_tool("generate_director_brief")
+    _n = max(1, min(3, int(num_variants or 1)))
+    _base_temp = float(model_cfg.get("temperature", 0.7))
+    _provider = model_cfg.get("provider", "gemini")
+    _model = model_cfg.get("model", "gemini-3.1-pro-preview")
+    _max_tokens = model_cfg.get("max_tokens", 12000)
+
+    async def _call_one(variant_idx: int) -> dict:
+        temp = round(_base_temp + variant_idx * 0.1, 2)
+        _client = AIHubClient(timeout=300.0)
+        _resp = await _client.chat(
+            messages=[
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            provider=_provider,
+            model=_model,
+            temperature=temp,
+            max_tokens=_max_tokens,
+            enforce_human_voice=True,
+        )
+        md = (
+            ((_resp.get("choices") or [{}])[0].get("message") or {}).get("content")
+            or _resp.get("text")
+            or _resp.get("content")
+            or ""
+        ).strip()
+        warnings = _validate_brief(md, include_ai_mapping=include_ai_mapping)
+        sid = await pipeline_lineage.save_creative_pack(
+            sku_id=sku_id,
+            kind="director_brief",
+            script_md=md,
+            audience_record_id=portrait.get("audience_record_id"),
+            audience_run_id=portrait.get("audience_run_id"),
+            matrix_run_id=portrait.get("matrix_run_id"),
+            portrait_id=portrait_id,
+            extra_context=extra_context,
+            model_provider=_provider,
+            model=_model,
+            final_prompt=final_prompt,
+            cost_estimate=f"1 quota call (~10-20k input + 6-12k output tokens, temp={temp})",
+        )
+        if not sid:
+            warnings = list(warnings) + ["⚠ brief 未成功落库（script_id 为空）——重跑本步，别直接拿去拍"]
+        label = chr(ord("A") + variant_idx)
+        return {
+            "script_id": sid,
+            "brief_md": md,
+            "variant_label": f"方案 {label}",
+            "validation_warnings": warnings,
+        }
+
+    raw_variants = await asyncio.gather(*[_call_one(i) for i in range(_n)])
+    variants = list(raw_variants)
+
+    result = {
+        "ok": True,
+        "result": {
+            "variants": variants,
+            "sku_id": sku_id,
+            "portrait_id": portrait_id,
+            "audience_name": audience_name,
+            "include_ai_mapping": include_ai_mapping,
+        },
+        "trace": build_trace(
+            provider=_provider,
+            model=_model,
+            prompt=final_prompt,
+            params={
+                "temperature": _base_temp,
+                "max_tokens": _max_tokens,
+                "num_variants": _n,
+                "include_ai_mapping": include_ai_mapping,
+                "idea_seed": idea_seed,
+            },
+            cost_estimate=f"{_n} quota call(s) (~10-20k input + 6-12k output tokens each)",
+        ),
+    }
+    if include_ai_mapping:
+        return attach_next_step(
+            result,
+            suggested_tool="generate_storyboard_images",
+            suggested_args={"sku_id": sku_id},
+            human_text="老板审完 brief：真人拍 → 直接发编导；AI 拍 → 第 5 部分分镜已解析进 scripts.scenes，"
+                       "喂 generate_storyboard_images（step 6 新链挂血缘）再 generate_video_segments（step 7）",
+        )
+    return result

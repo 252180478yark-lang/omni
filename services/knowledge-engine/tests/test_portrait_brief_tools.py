@@ -81,3 +81,38 @@ def test_validate_brief_clean():
         "## 自检结果\nx\n"
     )
     assert _validate_brief(md, include_ai_mapping=False) == []
+
+
+def test_validate_brief_zhiyu_whitelist():
+    """'治愈系' 是合法内容风格词不报警；裸 '治愈'（医疗宣称）要报。"""
+    base = (
+        "## 第 0 部分 · 这条视频拍给谁\nx\n"
+        "## 第 1 部分 · 今天拍什么\nx\n"
+        "## 第 2 部分 · 分段拍摄备忘\nx\n"
+        "## 第 3 部分 · 算法信号三向量\n音乐向量：温暖治愈系轻音乐\n"
+        "## 第 4 部分 · 发的时候\nx\n"
+        "## 自检结果\nx\n"
+    )
+    assert _validate_brief(base, include_ai_mapping=False) == []
+    bad = base.replace("温暖治愈系轻音乐", "这个酱油能治愈胃病")
+    assert any("禁用词" in w for w in _validate_brief(bad, include_ai_mapping=False))
+
+
+def test_director_brief_scene_parsing():
+    """第 5 部分的 '### 分镜 X · 映射' + 加粗字段能被 parse_scenes_from_script_md 抽出。"""
+    from app.services import pipeline_lineage
+    md = (
+        "## 第 5 部分 · AI 出片映射\n"
+        "### 分镜 1 · 映射\n"
+        "- **image_prompt**（首帧 · 英文 · 100-180 词）：Vertical 9:16 iPhone frame, mom in kitchen.\n"
+        "- **last_frame_prompt**（尾帧 · 英文 · 80-150 词）：Bottle resting on counter.\n"
+        "- **motion_prompt**（运动 · 英文 · 60-160 词）：0-2s hand reaches for bottle.\n"
+        "### 分镜 2 · 映射\n"
+        "- **image_prompt**（首帧 · 英文 · 100-180 词）：Dinner table, steam rising.\n"
+        "- **last_frame_prompt**（尾帧 · 英文 · 80-150 词）：Empty plates.\n"
+        "- **motion_prompt**（运动 · 英文 · 60-160 词）：2-4s chopsticks pick food.\n"
+    )
+    scenes = pipeline_lineage.parse_scenes_from_script_md(md, "director_brief")
+    assert len(scenes) == 2
+    assert scenes[0].get("image_prompt", "").startswith("Vertical 9:16")
+    assert scenes[1].get("motion_prompt", "").startswith("2-4s")
