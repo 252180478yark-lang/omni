@@ -367,7 +367,7 @@ async def generate_director_brief(
     idea_seed: str | None = None,
     include_ai_mapping: bool = True,
     ai_prompt_count: int | None = None,
-    target_model: str = "generic",
+    target_model: str = "seedance",
     extra_context: str | None = None,
     num_variants: int = 1,
 ) -> dict:
@@ -385,7 +385,7 @@ async def generate_director_brief(
         idea_seed: 可选"想拍的事"（如"闺女给妈寄酱油"）；不给则 LLM 从画像场景库自选一件事
         include_ai_mapping: 默认 True 带第 5 部分 AI 出片提示词；False 省 token
         ai_prompt_count: 第 5 部分拆几大块提示词（None=按目标模型档案的单次生成时长自行定块数并说明；显式传值强制）
-        target_model: 目标出片模型（generic/veo/seedance/jimeng，对应 config/prompts/video_model_profiles/<model>.md 档案；未知名回退 generic）
+        target_model: 目标出片模型（默认 seedance=字节 Seedance 2.0 中文一整段；可选 veo/jimeng/generic，对应 config/prompts/video_model_profiles/<model>.md 档案；未知名回退 generic）
         extra_context: 一次性临时要求
         num_variants: 1-3 个创意方案并行（temperature 递增 +0.1）
 

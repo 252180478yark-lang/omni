@@ -127,4 +127,12 @@ def test_video_model_profiles_loadable():
     from app.mcp import prompts
     for m in ("generic", "veo", "seedance", "jimeng"):
         s = prompts.load(f"video_model_profiles/{m}")
-        assert "单次生成时长" in s, m
+        assert s.strip(), f"{m} 档案为空"
+    # seedance 2.0 重写后不再用「单次生成时长」字段，改为不分块整段叙事
+    sd = prompts.load("video_model_profiles/seedance")
+    assert "不分块" in sd, "seedance 档案缺「不分块」关键字"
+    assert "语言：中文" in sd, "seedance 档案缺「语言：中文」声明"
+    # 其余三档仍有单次生成时长字段
+    for m in ("generic", "veo", "jimeng"):
+        s = prompts.load(f"video_model_profiles/{m}")
+        assert "单次生成时长" in s, f"{m} 档案缺「单次生成时长」字段"
