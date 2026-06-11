@@ -50,17 +50,13 @@ generate_character_sheets:
   size: "1024x1024"
 
 generate_video:
-  # 2026-05-13 老板切 Veo 3.1（Google Gemini API）：
-  #   - veo-3.1-generate-preview（当前用，Gemini Developer API 可用）
-  #   - 备选 Vertex AI：veo-3.1-generate-001
-  # 能力：
-  #   - t2v + i2v（first_frame = base64 data: URI）
-  #   - 时长只支持 4 / 6 / 8s，其余自动 clamp
-  #   - 画幅：9:16 或 16:9
-  # 认证：GEMINI_API_KEY（与 Gemini chat 同一个 key，无额外配置）
-  # 回切候选：seedance/doubao-seedance-2-0-260128
-  provider: veo
-  model: veo-3.1-generate-preview
+  # 2026-06-12 老板切回 Seedance 2.0（doubao-seedance-2-0-260128，SEEDANCE_API_KEY 已配）：
+  #   - 提示词配套：brief 第 5 部分默认按 seedance 档案出（中文一整段不分块、白底图参考图）
+  #   - 注意：真人内容 content_sensitive 风险待 2.0 实测（1.x 时代因此绕去 Veo，realman_* 工具因它而建）
+  # 回切候选：veo/veo-3.1-generate-preview（2026-05-13 至 06-12 在用；GEMINI_API_KEY 认证；
+  #   t2v + i2v（first_frame = base64 data: URI）；时长只支持 4/6/8s 自动 clamp；画幅 9:16 或 16:9）
+  provider: seedance
+  model: doubao-seedance-2-0-260128
   duration: 8
 
 summarize_text:
