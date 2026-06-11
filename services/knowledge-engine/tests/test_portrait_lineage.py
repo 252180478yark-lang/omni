@@ -80,6 +80,11 @@ async def test_save_and_get_portrait(seed_record):
     assert "测试画像" in got["portrait_md"]
     # 反查血缘字段齐全
     assert got["audience_record_id"] == seed_record["id"]
+    assert got["audience_run_id"] == seed_record["audience_run_id"]
+    assert got["matrix_run_id"] == seed_record["matrix_run_id"]
+    # jsonb 解码验证（Fix 1）
+    assert got["validation_warnings"] == ["⚠ 测试警告"]
+    assert got["recall_meta"]["chunk_count"] == 1
 
 
 @pytest.mark.asyncio

@@ -925,7 +925,12 @@ async def get_audience_portrait(portrait_id: str) -> dict[str, Any] | None:
         """,
         portrait_id,
     )
-    return dict(row) if row else None
+    if not row:
+        return None
+    d = dict(row)
+    d["recall_meta"] = _coerce_jsonb_dict(d.get("recall_meta"))
+    d["validation_warnings"] = _coerce_jsonb_list(d.get("validation_warnings"))
+    return d
 
 
 # ════════════════════════════════════════════════════════════════
@@ -2128,7 +2133,7 @@ async def archive_node(table: str, run_id: str) -> dict[str, Any]:
 
     table 在 {matrix_runs, audience_runs, audience_records, audience_packs, scripts, assets, keyword_packs}.
     """
-    if table not in {"matrix_runs", "audience_runs", "audience_records", "audience_packs", "scripts", "assets", "keyword_packs"}:
+    if table not in {"matrix_runs", "audience_runs", "audience_records", "audience_packs", "scripts", "assets", "keyword_packs", "audience_portraits"}:
         return {"ok": False, "error": f"未知 table: {table}"}
     pool = get_pool()
     sql = (
