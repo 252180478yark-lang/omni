@@ -933,6 +933,44 @@ async def get_audience_portrait(portrait_id: str) -> dict[str, Any] | None:
     return d
 
 
+async def list_audience_portraits(
+    sku_id: str | None = None,
+    audience_record_id: str | None = None,
+    limit: int = 30,
+) -> list[dict[str, Any]]:
+    """列画像（step 3.5），按时间倒序。portrait_md 截前 200 字做预览。"""
+    pool = get_pool()
+    conds, args = [], []
+    if sku_id:
+        args.append(sku_id)
+        conds.append(f"sku_id = ${len(args)}")
+    if audience_record_id:
+        args.append(audience_record_id)
+        conds.append(f"audience_record_id = ${len(args)}::uuid")
+    where = ("WHERE " + " AND ".join(conds)) if conds else ""
+    args.append(max(1, min(100, limit)))
+    rows = await pool.fetch(
+        f"""
+        SELECT id::text, audience_record_id::text, audience_run_id::text,
+               matrix_run_id::text, sku_id,
+               left(portrait_md, 200) AS portrait_preview,
+               status, version, validation_warnings,
+               model_provider, model, created_at
+        FROM pipeline.audience_portraits
+        {where}
+        ORDER BY created_at DESC
+        LIMIT ${len(args)}
+        """,
+        *args,
+    )
+    out = []
+    for row in rows:
+        d = dict(row)
+        d["validation_warnings"] = _coerce_jsonb_list(d.get("validation_warnings"))
+        out.append(d)
+    return out
+
+
 # ════════════════════════════════════════════════════════════════
 # step 5 创意素材落库（W4-B 切片 14.4 phase C，6 类素材入 pipeline.scripts）
 # ════════════════════════════════════════════════════════════════

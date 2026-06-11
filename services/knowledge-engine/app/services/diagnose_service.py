@@ -212,6 +212,8 @@ def _build_proposals(data: dict, lookback_days: int) -> list[dict]:
         n = int(r.get("n") or 0)
         if n <= 0:
             continue
+        note_samples = [s for s in (r.get("note_samples") or []) if s][:5]
+        note_samples = [s[:100] for s in note_samples]
         proposals.append({
             "mode": "content",
             "source": "tool_feedback",
@@ -222,6 +224,7 @@ def _build_proposals(data: dict, lookback_days: int) -> list[dict]:
                            f"串法该调。未排除：单次调用上下文特殊/样本少。"
                            f"要证实需对比：调整后该 tool 的差评率是否下降。"),
             "evidence": {"tool_name": tool, "rating_category": cat, "count": n,
+                         "note_samples": note_samples,
                          "window_days": lookback_days, "path": "体感路/工具级"},
             "sample_size": n,
             "confidence": _confidence(n),

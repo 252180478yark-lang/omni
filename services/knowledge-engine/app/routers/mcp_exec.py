@@ -628,6 +628,121 @@ async def exec_generate_video_anchor(
 
 
 # ════════════════════════════════════════════════════════════════
+# step 3.5 / 3.6 画像 brief 端点（generate_audience_portrait / generate_director_brief）
+# + 画像 list/get 端点
+# ════════════════════════════════════════════════════════════════
+
+
+class GenerateAudiencePortraitRequest(BaseModel):
+    audience_record_id: str
+    extra_context: str | None = None
+    kb_recall_override: str | None = None
+
+
+@router.post("/exec/generate_audience_portrait")
+async def exec_generate_audience_portrait(
+    payload: GenerateAudiencePortraitRequest,
+) -> Any:
+    from app.mcp.tools.portrait_brief import generate_audience_portrait
+    try:
+        return await generate_audience_portrait(
+            audience_record_id=payload.audience_record_id,
+            extra_context=payload.extra_context,
+            kb_recall_override=payload.kb_recall_override,
+        )
+    except Exception as exc:
+        logger.exception("generate_audience_portrait REST 异常")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": f"{type(exc).__name__}: {exc}",
+                     "hint": "看 KE 日志（docker logs omni-knowledge-engine | tail）"},
+        )
+
+
+class GenerateDirectorBriefRequest(BaseModel):
+    portrait_id: str
+    idea_seed: str | None = None
+    include_ai_mapping: bool = True
+    ai_prompt_count: int | None = None
+    target_model: str = "seedance"
+    extra_context: str | None = None
+    num_variants: int = 1
+
+
+@router.post("/exec/generate_director_brief")
+async def exec_generate_director_brief(
+    payload: GenerateDirectorBriefRequest,
+) -> Any:
+    from app.mcp.tools.portrait_brief import generate_director_brief
+    try:
+        return await generate_director_brief(
+            portrait_id=payload.portrait_id,
+            idea_seed=payload.idea_seed,
+            include_ai_mapping=payload.include_ai_mapping,
+            ai_prompt_count=payload.ai_prompt_count,
+            target_model=payload.target_model,
+            extra_context=payload.extra_context,
+            num_variants=payload.num_variants,
+        )
+    except Exception as exc:
+        logger.exception("generate_director_brief REST 异常")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": f"{type(exc).__name__}: {exc}",
+                     "hint": "看 KE 日志（docker logs omni-knowledge-engine | tail）"},
+        )
+
+
+class PipelineListAudiencePortraitsRequest(BaseModel):
+    sku_id: str | None = None
+    audience_record_id: str | None = None
+    limit: int = 30
+
+
+@router.post("/exec/pipeline_list_audience_portraits")
+async def exec_pipeline_list_audience_portraits(
+    payload: PipelineListAudiencePortraitsRequest,
+) -> Any:
+    from app.services.pipeline_lineage import list_audience_portraits
+    try:
+        rows = await list_audience_portraits(
+            sku_id=payload.sku_id,
+            audience_record_id=payload.audience_record_id,
+            limit=payload.limit,
+        )
+        for r in rows:
+            if r.get("created_at"):
+                r["created_at"] = r["created_at"].isoformat()
+        return {"ok": True, "portraits": rows}
+    except Exception as exc:
+        logger.exception("pipeline_list_audience_portraits REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineGetAudiencePortraitRequest(BaseModel):
+    portrait_id: str
+
+
+@router.post("/exec/pipeline_get_audience_portrait")
+async def exec_pipeline_get_audience_portrait(
+    payload: PipelineGetAudiencePortraitRequest,
+) -> Any:
+    from app.services.pipeline_lineage import get_audience_portrait
+    try:
+        d = await get_audience_portrait(payload.portrait_id)
+        if not d:
+            return {"ok": False, "error": "not_found", "portrait_id": payload.portrait_id}
+        if d.get("created_at"):
+            d["created_at"] = d["created_at"].isoformat()
+        if d.get("updated_at"):
+            d["updated_at"] = d["updated_at"].isoformat()
+        return {"ok": True, "portrait": d}
+    except Exception as exc:
+        logger.exception("pipeline_get_audience_portrait REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+# ════════════════════════════════════════════════════════════════
 # 2026-05-28 反推视频→故事板提示词(直调 Gemini Files API)
 # ════════════════════════════════════════════════════════════════
 

@@ -477,7 +477,8 @@ async def _collect_feedback_digest(now: datetime, lookback_days: int | None = No
             """
             SELECT tool_name,
                    COALESCE(rating_category, 'uncategorized') AS rating_category,
-                   count(*) AS n
+                   count(*) AS n,
+                   array_agg(DISTINCT substr(rating_note, 1, 100)) FILTER (WHERE rating_note IS NOT NULL) AS note_samples
             FROM mcp.tool_calls
             WHERE user_rating = 'bad' AND created_at > $1
             GROUP BY tool_name, 2 ORDER BY n DESC LIMIT 20
@@ -540,6 +541,9 @@ def _render_feedback_digest_markdown(data: dict, ts: datetime) -> str:
     if tools:
         for r in tools:
             parts.append(f"- `{r.get('tool_name')}` / {r.get('rating_category')} × {r.get('n')}")
+            for ns in (r.get("note_samples") or []):
+                if ns:
+                    parts.append(f"  > {ns}")
         parts.append("")
         parts.append("> 同一 tool 高频被踩 → 看它的 config/prompts/<tool>.{system,user}.md 是不是该调。")
     else:
