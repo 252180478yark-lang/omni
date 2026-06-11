@@ -47,6 +47,7 @@ from app.mcp.tools import platform_fetch as _platform_fetch  # noqa: E402, F401 
 from app.mcp.tools import analytics as _analytics  # noqa: E402, F401  # 2026-06-03 综合经营分析 + 临时问数（§6 分析半）
 from app.mcp.tools import audience_diagnose as _audience_diagnose  # noqa: E402, F401  # 2026-06-08 人群包投前诊断 + 提纯（方法论沉淀）
 from app.mcp.tools import yuntu_taxonomy as _yuntu_taxonomy  # noqa: E402, F401  # 2026-06-08 巨量云图标签体系确定性查询（修 agent 答不全）
+from app.mcp.tools import portrait_brief as _portrait_brief  # noqa: E402, F401  # 2026-06-12 step 3.5/3.6 人群画像 + 编导 brief
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
 # path="/" 使子应用内路由为 "/"，挂载到 /mcp 后完整路径即 /mcp

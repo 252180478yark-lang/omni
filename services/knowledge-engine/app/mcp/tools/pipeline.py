@@ -137,7 +137,7 @@ async def pipeline_adopt(
     """把某 run 从 status='draft' 改 'adopted'。下游链路只跟 adopted 的走。
 
     Args:
-        table: matrix_runs / audience_runs / audience_records / audience_packs / scripts 之一
+        table: matrix_runs / audience_runs / audience_records / audience_packs / scripts / assets / audience_portraits 之一
         run_id: 对应表的 id (uuid)
         set_selected: 仅 audience_records 生效；同步把 selected_for_pack 改 TRUE
                       （= 老板"我选这个人群挂 step 4"的语义动作）

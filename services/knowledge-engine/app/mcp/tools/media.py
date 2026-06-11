@@ -2237,7 +2237,8 @@ async def generate_audience_match(
             "audience_run_id": audience_run_id,
             "audience_record_ids_to_choose_from": [r.get("id") for r in records if r.get("id")],
         },
-        human_text="step 4 圈包 SOP — 老板从 records 选 1 个 audience_record_id → 调 generate_audience_pack 出 8 大维度 DMP 标签 + 预算 + A/B 矩阵",
+        human_text="老板从 records 选 1 个人群后分流：投放圈包 → generate_audience_pack（step 4）；"
+                   "内容 brief → generate_audience_portrait（step 3.5 画像）再 generate_director_brief（step 3.6）",
     )
 
 

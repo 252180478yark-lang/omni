@@ -183,6 +183,9 @@ def _wanted_tools() -> set[str]:
             # 2026-06-08 巨量云图标签体系确定性查询（修 "agent 硬读 30k 大文件答不全" 根因）：
             # 总览/按维度/搜标签/常量段，圈包/提纯/答疑的标签 ground truth，完整不截断
             "query_yuntu_taxonomy",
+            # 2026-06-12 sku-pipeline step 3.5/3.6：人群生活状态画像（KB 锚+可信度分级标注）+
+            # 编导 brief（V7.2 备忘录+算法信号三向量+一大段 AI 出片提示词，真人拍/AI 拍两用）
+            "generate_audience_portrait", "generate_director_brief",
     }
 
 
