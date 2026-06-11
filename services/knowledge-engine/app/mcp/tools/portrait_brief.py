@@ -282,7 +282,8 @@ async def generate_audience_portrait(
     final_prompt = sys_msg + "\n\n" + user_msg
 
     model_cfg = get_model_for_tool("generate_audience_portrait")
-    client = AIHubClient(timeout=300.0)
+    # 2026-06-12 300→360：给足 hub 代理重试预算（同 generate_audience_match 注释）
+    client = AIHubClient(timeout=360.0)
     resp = await client.chat(
         messages=[
             {"role": "system", "content": sys_msg},
@@ -467,7 +468,8 @@ async def generate_director_brief(
 
     async def _call_one(variant_idx: int) -> dict:
         temp = round(_base_temp + variant_idx * 0.1, 2)
-        _client = AIHubClient(timeout=300.0)
+        # 2026-06-12 300→360：给足 hub 代理重试预算（同 generate_audience_match 注释）
+        _client = AIHubClient(timeout=360.0)
         _resp = await _client.chat(
             messages=[
                 {"role": "system", "content": sys_msg},

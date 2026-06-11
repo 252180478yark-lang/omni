@@ -2136,8 +2136,10 @@ async def generate_audience_match(
     final_prompt = sys_msg + "\n\n" + user_msg
 
     model_cfg = get_model_for_tool("generate_audience_match")
-    # pro 推理慢 + 输出长（≥ 30 标签 + 多人群 KB 原文 + 假设推断），给 240s
-    client = AIHubClient(timeout=240.0)
+    # pro 推理慢 + 输出长（≥ 30 标签 + 多人群 KB 原文 + 假设推断）。
+    # 2026-06-12 240→360：代理掐长连接时 hub 内部重试 5 次，240s 会在 hub 重试期间先超时
+    # （E2E 实测：hub 侧最终 200 完成但 KE 已放弃，token 白烧）——给足 hub 重试预算。
+    client = AIHubClient(timeout=360.0)
     resp = await client.chat(
         messages=[
             {"role": "system", "content": sys_msg},
