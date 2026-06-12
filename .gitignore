@@ -32,6 +32,9 @@ npm-debug.log*
 .env*.local
 .env.dev
 
+# 工具模型配置 local overlay（桌面「模型配置」面板运行时写入，覆盖 base tool_models.yaml；不入 git）
+services/knowledge-engine/config/tool_models.local.yaml
+
 # Dev mode PID tracking
 .dev-pids
 

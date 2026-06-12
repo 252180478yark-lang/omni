@@ -186,6 +186,8 @@ def _wanted_tools() -> set[str]:
             # 2026-06-12 sku-pipeline step 3.5/3.6：人群生活状态画像（KB 锚+可信度分级标注）+
             # 编导 brief（V7.2 备忘录+算法信号三向量+一大段 AI 出片提示词，真人拍/AI 拍两用）
             "generate_audience_portrait", "generate_director_brief",
+            # 2026-06-12 自建 SOP 存储（migration 050）：桌面拟稿→确认→入库→菜单「我的 SOP」复用
+            "sop_save_custom", "sop_list_custom", "sop_archive_custom",
     }
 
 
