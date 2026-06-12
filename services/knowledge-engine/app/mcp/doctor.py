@@ -186,6 +186,11 @@ def _wanted_tools() -> set[str]:
             # 2026-06-12 sku-pipeline step 3.5/3.6：人群生活状态画像（KB 锚+可信度分级标注）+
             # 编导 brief（V7.2 备忘录+算法信号三向量+一大段 AI 出片提示词，真人拍/AI 拍两用）
             "generate_audience_portrait", "generate_director_brief",
+            # 2026-06-12 画像血缘查询入 MCP——桌面智能下拉/chat 经 catalog/exec 可达
+            "pipeline_list_audience_portraits", "pipeline_get_audience_portrait",
+            # 2026-06-12 竞品人群逆向分析：竞品视频 → 8 项人群信号 + 人群假设（🧠/⚠️ 标注）
+            # + 可选自家画像对照（对照表/人群空白四区/可借鉴打法），段二 fail-open
+            "reverse_audience_analysis",
             # 2026-06-12 自建 SOP 存储（migration 050）：桌面拟稿→确认→入库→菜单「我的 SOP」复用
             "sop_save_custom", "sop_list_custom", "sop_archive_custom",
     }
@@ -256,6 +261,9 @@ def _check_prompts(report: DoctorReport) -> None:
             "competitor_decompose.system", "competitor_decompose.user",
             # 2026-06-08 人群包投前诊断 AI 叙事层（巨量云图 KB grounding）
             "audience_pack_diagnose.system", "audience_pack_diagnose.user",
+            # 2026-06-12 竞品人群逆向分析（段一视频信号提取 + 段二画像对照）
+            "reverse_audience.system", "reverse_audience.user",
+            "reverse_audience_compare.system", "reverse_audience_compare.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

@@ -220,6 +220,49 @@ async def pipeline_get_asset_lineage(asset_id: str) -> dict:
 
 
 @tool_with_audit(mcp, require_approval=False)
+async def pipeline_list_audience_portraits(
+    sku_id: str | None = None,
+    audience_record_id: str | None = None,
+    limit: int = 30,
+) -> dict:
+    """列某 SKU 或某人群记录下的所有画像历史（step 3.5 生活状态画像）。
+
+    Args:
+        sku_id: 过滤某个 SKU；None=全表
+        audience_record_id: 过滤某条 audience_record 下的画像
+        limit: 取最近 N 条（默认 30）
+
+    Returns:
+        {"ok": True, "count": N, "portraits": [{id, sku_id, audience_record_id,
+            portrait_preview, status, version, validation_warnings,
+            model_provider, model, created_at}, ...]}
+    """
+    rows = await pipeline_lineage.list_audience_portraits(
+        sku_id=sku_id,
+        audience_record_id=audience_record_id,
+        limit=limit,
+    )
+    return {"ok": True, "count": len(rows), "portraits": rows}
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def pipeline_get_audience_portrait(portrait_id: str) -> dict:
+    """拉单条人群生活状态画像全字段（含完整 portrait_md + recall_meta + validation_warnings）。
+
+    Args:
+        portrait_id: pipeline.audience_portraits.id (uuid 字符串)
+
+    Returns:
+        成功 {"ok": True, "portrait": {全字段}}
+        失败 {"ok": False, "error": "not_found"}
+    """
+    portrait = await pipeline_lineage.get_audience_portrait(portrait_id)
+    if not portrait:
+        return {"ok": False, "error": "not_found", "portrait_id": portrait_id}
+    return {"ok": True, "portrait": portrait}
+
+
+@tool_with_audit(mcp, require_approval=False)
 async def pipeline_list_asset_performance(
     sku_id: str | None = None, limit: int = 50,
 ) -> dict:
