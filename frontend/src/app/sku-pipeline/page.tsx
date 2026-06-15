@@ -3284,6 +3284,7 @@ export default function SkuPipelinePage() {
                     <div className="text-[11px] text-muted-foreground">
                       格式：每行 1 词、无标点、无数字、长度 2-15 字。下载后用记事本打开，全选复制 → 导入「云图 → 数据工厂 → 关键词夹 → 新建关键词包」。
                     </div>
+                    <OutputFeedback toolName="generate_keyword_pack" />
                   </div>
                 )}
 
@@ -4038,6 +4039,7 @@ export default function SkuPipelinePage() {
                         )
                       })}
                     </div>
+                    {charSheetsResp?.result && <OutputFeedback toolName="generate_character_sheets" />}
                   </div>
                 )}
 
@@ -5255,6 +5257,7 @@ export default function SkuPipelinePage() {
                       根据血缘链路（人群画像+卖点矩阵+脚本场景）自动生成；可手动改。
                       前置注入每段 prompt 开头，维持跨镜角色一致性。
                     </p>
+                    {characterAnchor7t.trim() !== '' && <OutputFeedback toolName="generate_video_anchor" />}
                   </div>
                 )}
 

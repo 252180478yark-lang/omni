@@ -68,8 +68,11 @@ export function buildSpawnArgs(opts: SpawnOptions): string[] {
   if (opts.disallowedTools && opts.disallowedTools.length > 0) {
     args.push('--disallowedTools', opts.disallowedTools.join(','))
   }
-  if (opts.maxTurns && opts.maxTurns > 0) {
-    args.push('--max-turns', String(opts.maxTurns))
+  // 烧钱护栏：显式值（playground）> OMNI_CLAUDE_MAX_TURNS env > 默认 100；设 0 = 关闭
+  const envMaxTurns = parseInt(process.env.OMNI_CLAUDE_MAX_TURNS || '', 10)
+  const maxTurns = opts.maxTurns ?? (Number.isFinite(envMaxTurns) ? envMaxTurns : 100)
+  if (maxTurns > 0) {
+    args.push('--max-turns', String(maxTurns))
   }
   if (opts.model) {
     args.push('--model', opts.model)
