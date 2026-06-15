@@ -799,3 +799,71 @@ async def exec_reverse_storyboard_video(
                 "hint": "看 KE 日志(docker logs omni-knowledge-engine | tail)",
             },
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 投后回传闭环（roadmap E1/E2）：素材测试投放后回传真实数据 → "哪套内容真带货"复盘
+#   - record_ad_metrics            把 ROI/GMV/完播率等写回 pipeline.assets.ad_metrics（E1 录入表单后端）
+#   - pipeline_list_asset_performance  列已回传素材按最近倒序（E2 带货榜数据源）
+#   - pipeline_get_asset_lineage   按 asset_id 反查 SKU/卖点/人群/脚本全链路（E2 榜单下钻）
+# 三个 tool 都 require_approval=False，直接同步返回，不走 Gate。
+# ─────────────────────────────────────────────────────────────────────────────
+
+class RecordAdMetricsRequest(BaseModel):
+    metrics: dict
+    asset_id: str | None = None
+    external_video_id: str | None = None
+    external_creative_id: str | None = None
+    mark_published: bool = True
+
+
+@router.post("/exec/record_ad_metrics")
+async def exec_record_ad_metrics(payload: RecordAdMetricsRequest) -> Any:
+    """投后回传：把素材测试投放后的真实数据写回它的血缘（pipeline.assets.ad_metrics）。
+
+    ROI/ROAS 是计算字段——前端应回传原始 gmv/spend 等让系统校验，手填 ROI 会被
+    ad_metrics_validation 标 suspect 且不进汇总（R-4）。透传 tool 的 _validation 报告。
+    """
+    from app.mcp.tools.pipeline import record_ad_metrics
+    try:
+        return await record_ad_metrics(
+            metrics=payload.metrics or {},
+            asset_id=payload.asset_id,
+            external_video_id=payload.external_video_id,
+            external_creative_id=payload.external_creative_id,
+            mark_published=payload.mark_published,
+        )
+    except Exception as exc:
+        logger.exception("record_ad_metrics REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineListAssetPerformanceRequest(BaseModel):
+    sku_id: str | None = None
+    limit: int = 50
+
+
+@router.post("/exec/pipeline_list_asset_performance")
+async def exec_pipeline_list_asset_performance(payload: PipelineListAssetPerformanceRequest) -> Any:
+    """"哪套内容真带货"榜：列已回传投后数据（ad_metrics 非空）的素材，按最近回传倒序。"""
+    from app.mcp.tools.pipeline import pipeline_list_asset_performance
+    try:
+        return await pipeline_list_asset_performance(sku_id=payload.sku_id, limit=payload.limit)
+    except Exception as exc:
+        logger.exception("pipeline_list_asset_performance REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+class PipelineGetAssetLineageRequest(BaseModel):
+    asset_id: str
+
+
+@router.post("/exec/pipeline_get_asset_lineage")
+async def exec_pipeline_get_asset_lineage(payload: PipelineGetAssetLineageRequest) -> Any:
+    """按 asset_id 反查全链路：这条素材从哪个 SKU/卖点矩阵/人群/圈包/脚本来的 + 投后 ad_metrics。"""
+    from app.mcp.tools.pipeline import pipeline_get_asset_lineage
+    try:
+        return await pipeline_get_asset_lineage(asset_id=payload.asset_id)
+    except Exception as exc:
+        logger.exception("pipeline_get_asset_lineage REST 异常")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})

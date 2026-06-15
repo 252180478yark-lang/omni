@@ -32,6 +32,8 @@ import {
   Activity,
   Brain,
   FlaskConical,
+  Send,
+  Trophy,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -123,6 +125,8 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/cost', icon: Calculator, label: '成本算账', hint: '结构化录入成本，精确算净利率（不走 RAG）' },
   { href: '/ad-review', icon: LineChart, label: '投放复盘', hint: '广告 CSV + 素材报告，生成复盘建议' },
   { href: '/ad-review/flywheel', icon: RefreshCw, label: '飞轮仪表盘', hint: '看多轮投放迭代有没有变好' },
+  { href: '/ad-metrics', icon: Send, label: '投后回传', hint: '测试投放后把真实 ROI/GMV/完播率写回素材血缘' },
+  { href: '/content-leaderboard', icon: Trophy, label: '带货榜', hint: '哪套内容真带货——按投后数据排行 + 反查全链路' },
   { href: '/decisions', icon: ClipboardCheck, label: '决策日志', hint: 'AI 给的所有建议都存这里，跟踪命中率' },
   { href: '/inbox', icon: Inbox, label: '待批', hint: '点头让 omni 做要紧的事 / 不点超时自动驳' },
   { href: '/agent-log', icon: Activity, label: 'Agent 日志', hint: '看 omni 跑了啥 / 给好坏打分 / 自动累积模式' },
