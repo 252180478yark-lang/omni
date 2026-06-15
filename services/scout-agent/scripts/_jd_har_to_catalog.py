@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections import OrderedDict
 from pathlib import Path
@@ -26,7 +27,11 @@ JD_HOST_HINTS = ("jd.com", "jd.hk", "jingdong", "jmworkstation")
 SIGN_KEYS = {"h5st", "_stk", "_ste", "sign", "signature", "x-api-eid-token", "sdkToken", "loginType", "fp", "eid"}
 # 噪音资源：静态/打点/监控，过滤掉
 NOISE_EXT = (".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".woff", ".woff2", ".ico", ".mp4")
-NOISE_PATH_HINTS = ("/log", "/monitor", "/report", "/track", "/beacon", "/jdvc", "/jdcollect", "/t.gif")
+NOISE_PATH_HINTS = ("/log", "/monitor", "/report", "/track", "/beacon", "/jdvc", "/jdcollect", "/t.gif",
+                    "/switch/vendor", "/behavior_report", "/request_algo", "/checkwhitelist", "/jstk", "/bypass")
+# 监控/反爬/SSO 域：非业务数据，整域过滤（实测京麦页混了一堆）
+NOISE_HOSTS = ("sgm-w.jd", "sgm-m.jd", "cactus.jd", "blackhole.", "jra.jd", "seq.jd", "sso.jd",
+               "stream-outside.jd", "dap.jd", "gia.jd", "mitm.jd")
 
 
 def _is_jd(host: str) -> bool:
@@ -82,6 +87,8 @@ def main(har_path: str) -> None:
         host, path = parsed.netloc, parsed.path
         if not _is_jd(host):
             continue
+        if any(h in host for h in NOISE_HOSTS):
+            continue
         low = path.lower()
         if low.endswith(NOISE_EXT) or any(h in low for h in NOISE_PATH_HINTS):
             continue
@@ -100,7 +107,26 @@ def main(har_path: str) -> None:
                 pass
         all_param_keys = sorted(set(list(qs.keys()) + body_keys))
         signed = sorted(SIGN_KEYS.intersection({k.lower() for k in all_param_keys}))
-        key = (method, host, path)
+        # 京东统一网关（api.m.jd.com / sff.jd.com/api 等）：真实接口由 functionId 区分，
+        # 不拆 functionId 会把几十个业务接口塌成一行。从 query / 表单 / json body 三处找。
+        fn = (qs.get("functionId") or qs.get("method") or qs.get("api") or [None])[0]
+        if not fn:
+            _pt = (post.get("text") or "")
+            mfn = re.search(r"(?:functionId|api)=([^&]+)", _pt)
+            if mfn:
+                fn = mfn.group(1)
+            elif _pt.lstrip()[:1] == "{":
+                try:
+                    _j = json.loads(_pt)
+                    fn = _j.get("functionId") or _j.get("method")
+                except Exception:
+                    pass
+        if not fn:
+            for pp in (post.get("params") or []):
+                if pp.get("name") in ("functionId", "method"):
+                    fn = pp.get("value")
+                    break
+        key = (method, host, path, fn or "")
         if key in seen:
             seen[key]["hits"] += 1
             continue
@@ -108,6 +134,7 @@ def main(har_path: str) -> None:
             "method": method,
             "host": host,
             "path": path,
+            "functionId": fn or "",
             "param_keys": all_param_keys,
             "signed": signed,            # 非空=带签名，XHR 回放可能过不去（切片0 一票定 A/B 轨）
             "resp_top_keys": _top_keys(e),
@@ -127,10 +154,11 @@ def main(har_path: str) -> None:
 
     print(f"\n京东 JSON XHR 端点 {len(out)} 个（去重后），带签名 {report['signed_count']} 个")
     print(f"紧凑报告已写：{out_path}\n")
-    print("Top 20（hits / signed / method host path）：")
-    for x in out[:20]:
+    print("Top 30（hits / signed / method host path [functionId]）：")
+    for x in out[:30]:
         sig = "SIGNED:" + ",".join(x["signed"]) if x["signed"] else "plain"
-        print(f"  [{x['hits']:>2}] {sig:<18} {x['method']:<4} {x['host']}{x['path']}")
+        fn = f"  fn={x['functionId']}" if x.get("functionId") else ""
+        print(f"  [{x['hits']:>2}] {sig:<14} {x['method']:<4} {x['host']}{x['path']}{fn}")
 
 
 if __name__ == "__main__":

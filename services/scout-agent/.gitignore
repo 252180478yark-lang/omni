@@ -6,3 +6,9 @@ sessions/
 .playwright-mcp/
 # sweep 原始大报告（保留 .md 汇总即可）
 catalog/_sweep_*.json
+# 切片0 勘测临时产物：HAR 含登录态 token（敏感）、二维码/登录截图、蒸馏报告——绝不入库
+catalog/*.har
+catalog/_jd_*.png
+catalog/_jd_survey.json
+catalog/jd_capture.har
+catalog/jd_survey.har
