@@ -169,11 +169,14 @@ async def exec_generate_audience_pack(
 
 
 class GenerateCreativePackRequest(BaseModel):
-    kind: str
+    kind: str | None = None
     sku_id: str | None = None
     audience_record_id: str | None = None
     audience_pack_id: str | None = None
     extra_context: str | None = None
+    target_model: str = "seedance"  # video_* 的「AI 出片提示词」写法档案
+    audience_record_ids: list[str] | None = None  # 批量人群（与单值二选一）
+    kinds: list[str] | None = None  # 批量类型（与 kind 二选一；可与人群批量交叉）
 
 
 @router.post("/exec/generate_creative_pack")
@@ -188,6 +191,9 @@ async def exec_generate_creative_pack(
             audience_record_id=payload.audience_record_id,
             audience_pack_id=payload.audience_pack_id,
             extra_context=payload.extra_context,
+            target_model=payload.target_model,
+            audience_record_ids=payload.audience_record_ids,
+            kinds=payload.kinds,
         )
     except Exception as exc:
         logger.exception("generate_creative_pack REST 异常")
@@ -634,9 +640,10 @@ async def exec_generate_video_anchor(
 
 
 class GenerateAudiencePortraitRequest(BaseModel):
-    audience_record_id: str
+    audience_record_id: str | None = None
     extra_context: str | None = None
     kb_recall_override: str | None = None
+    audience_record_ids: list[str] | None = None  # 批量模式（与单值二选一）
 
 
 @router.post("/exec/generate_audience_portrait")
@@ -649,6 +656,7 @@ async def exec_generate_audience_portrait(
             audience_record_id=payload.audience_record_id,
             extra_context=payload.extra_context,
             kb_recall_override=payload.kb_recall_override,
+            audience_record_ids=payload.audience_record_ids,
         )
     except Exception as exc:
         logger.exception("generate_audience_portrait REST 异常")
@@ -660,13 +668,14 @@ async def exec_generate_audience_portrait(
 
 
 class GenerateDirectorBriefRequest(BaseModel):
-    portrait_id: str
+    portrait_id: str | None = None
     idea_seed: str | None = None
     include_ai_mapping: bool = True
     ai_prompt_count: int | None = None
     target_model: str = "seedance"
     extra_context: str | None = None
     num_variants: int = 1
+    portrait_ids: list[str] | None = None  # 批量模式（与单值二选一，每画像强制 1 方案）
 
 
 @router.post("/exec/generate_director_brief")
@@ -683,6 +692,7 @@ async def exec_generate_director_brief(
             target_model=payload.target_model,
             extra_context=payload.extra_context,
             num_variants=payload.num_variants,
+            portrait_ids=payload.portrait_ids,
         )
     except Exception as exc:
         logger.exception("generate_director_brief REST 异常")

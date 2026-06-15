@@ -22,7 +22,7 @@ from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
 from app.mcp.tools.media import (
-    AUDIENCE_KB_ID,
+    _audience_kb_id,
     _format_kb_recall,
     _multi_query_recall,
 )
@@ -47,6 +47,7 @@ async def _portrait_recall(record: dict, matrix_md: str) -> tuple[str, dict]:
     name = record.get("name") or ""
     kb_doc = record.get("kb_doc") or ""
     layer_tags = record.get("layer_tags") or []
+    audience_kb_id = await _audience_kb_id()  # 按名解析（KB 重建换 id 不断链）
 
     # 路①：本圈层深挖 —— 直打来源文档，context_window 拉邻块（≤30）
     route1_queries = [q for q in dict.fromkeys([f"{kb_doc} {name}".strip(), name]) if q]
@@ -54,7 +55,7 @@ async def _portrait_recall(record: dict, matrix_md: str) -> tuple[str, dict]:
     for q in route1_queries:
         try:
             hits = await rag_chain.retrieve_multi_kb(
-                q, [AUDIENCE_KB_ID],
+                q, [audience_kb_id],
                 top_k_per_kb=15, total_limit=15,
                 rerank=True, context_window=True,
             )
@@ -91,7 +92,7 @@ async def _portrait_recall(record: dict, matrix_md: str) -> tuple[str, dict]:
         if not queries:
             return []
         return await _multi_query_recall(
-            queries=queries, kb_id=AUDIENCE_KB_ID,
+            queries=queries, kb_id=audience_kb_id,
             top_k_per_query=2, max_chunks=max_chunks,
         )
 
@@ -112,6 +113,7 @@ async def _portrait_recall(record: dict, matrix_md: str) -> tuple[str, dict]:
 
     meta = {
         "mode": "four_route",
+        "audience_kb_id": audience_kb_id,
         "routes": {
             "circle_deep": len(route1_dedup),
             "life_dims": len(route2),
@@ -192,37 +194,18 @@ def _validate_brief(brief_md: str, *, include_ai_mapping: bool) -> list[str]:
 
 # ============ step 3.5 tool ============
 
-@tool_with_audit(mcp, require_approval=False)
-async def generate_audience_portrait(
+# 批量模式预算：semaphore 3（hub 代理重试预算有限别齐打）；上限 6（2 波 ≈ 4-5min，
+# 逼近 MCP 客户端 360s 超时——对话路建议一次 ≤3，批 6 走前端 REST 路）
+_MAX_BATCH = 6
+_BATCH_CONCURRENCY = 3
+
+
+async def _portrait_one(
     audience_record_id: str,
     extra_context: str | None = None,
     kb_recall_override: str | None = None,
 ) -> dict:
-    """生成人群生活状态画像（sku-pipeline step 3.5）。
-
-    输入老板从 step 3 选中的 audience_record，对该人群做四路定向 KB 二次召回
-    （本圈层深挖 / 生活维度扫描 / 八大情绪交叉 / 卖点反打），输出 5 部分画像：
-
-    - 第 0 部分：人群速写
-    - 第 1 部分：生活状态画像（时间轴/场景库/触媒+算法信号原料/消费决策/情绪底色）
-    - 第 2 部分：该人群专属卖点重构（三层拆解 + 对这群人说的那句话）
-    - 第 3 部分：情绪触点矩阵（正向/负向阻断+化解/触达时间窗）
-    - 第 4 部分：信息缺口
-
-    防臆想铁律：每句标 [KB:文档名] / 🧠推演 / ⚠️推测；配额闸超标会在
-    validation_warnings 里提示补 KB 重跑。
-
-    返回后自动落库 pipeline.audience_portraits（draft，多版本不覆盖）。
-
-    Args:
-        audience_record_id: step 3 落库的人群 record id（老板选中的那个）
-        extra_context: 一次性临时要求（如"重点写她周末的状态"）
-        kb_recall_override: 显式覆盖 KB 召回（老板手贴 chunks 时用）
-
-    Returns:
-        {ok, result: {portrait_md, portrait_id, sku_id, audience_record_id,
-         recall_meta, validation_warnings}, trace, next_step_hint(generate_director_brief)}
-    """
+    """单人群画像实现（generate_audience_portrait 单跑路径，逻辑即原函数体不动）。"""
     record = await pipeline_lineage.get_audience_record(audience_record_id)
     if not record:
         return {
@@ -262,6 +245,18 @@ async def generate_audience_portrait(
         recall_meta = {"mode": "override", "queries": [], "chunk_count": 0}
     else:
         kb_recall_md, recall_meta = await _portrait_recall(record, matrix_md)
+        if not recall_meta.get("chunk_count"):
+            # 硬闸：四路召回全空 = KB 空/断链，画像只能全靠臆想（[KB:] 配额闸必挂）——
+            # 拦下不烧 LLM，比生成后再警告省一次 30-50k token 的 pro 调用。
+            return {
+                "ok": False,
+                "error": "kb_recall_empty: 人群分析报告 KB 四路召回 0 chunks，已拦截（不烧 LLM）",
+                "hint": (
+                    "排查：list_kbs 看「人群分析报告」KB 是否存在且有 chunks；"
+                    "临时绕过可传 kb_recall_override 手贴 chunks"
+                ),
+                "recall_meta": recall_meta,
+            }
 
     # === LLM ===
     reasons = record.get("match_reasons") or []
@@ -342,7 +337,7 @@ async def generate_audience_portrait(
             params={
                 "temperature": model_cfg.get("temperature", 0.4),
                 "max_tokens": model_cfg.get("max_tokens", 10000),
-                "audience_kb_id": AUDIENCE_KB_ID,
+                "audience_kb_id": recall_meta.get("audience_kb_id"),
                 "queries_used": len(recall_meta.get("queries") or []),
                 "chunks_recalled": recall_meta.get("chunk_count"),
                 "portrait_id": portrait_id,
@@ -359,10 +354,123 @@ async def generate_audience_portrait(
     )
 
 
-# ============ step 3.6 tool ============
+async def _portrait_batch(
+    audience_record_ids: list[str],
+    extra_context: str | None,
+) -> dict:
+    """批量画像：去重 + 上限 + semaphore 并发 + 单个失败不连坐。"""
+    ids = [i for i in dict.fromkeys(audience_record_ids) if i]
+    dropped = max(0, len(ids) - _MAX_BATCH)
+    ids = ids[:_MAX_BATCH]
+    if not ids:
+        return {"ok": False, "error": "audience_record_ids 为空",
+                "hint": "传 step 3 落库的 record id 列表（pipeline_list_audience_records 可查）"}
+
+    sem = asyncio.Semaphore(_BATCH_CONCURRENCY)
+
+    async def _guarded(rid: str) -> dict:
+        async with sem:
+            # 批量不透传 kb_recall_override（手贴 chunks 只对单人群有意义）
+            return await _portrait_one(rid, extra_context, None)
+
+    raw = await asyncio.gather(*[_guarded(r) for r in ids], return_exceptions=True)
+    items: list[dict] = []
+    for rid, r in zip(ids, raw):
+        if isinstance(r, BaseException):
+            items.append({
+                "ok": False, "audience_record_id": rid,
+                "error": f"{type(r).__name__}: {r}",
+                "hint": f"单独重跑 generate_audience_portrait(audience_record_id='{rid}')",
+            })
+        elif not r.get("ok"):
+            items.append({"ok": False, "audience_record_id": rid,
+                          "error": r.get("error"), "hint": r.get("hint")})
+        else:
+            items.append({"ok": True, **(r.get("result") or {})})
+
+    succeeded = [it for it in items if it.get("ok")]
+    model_cfg = get_model_for_tool("generate_audience_portrait")
+    result = {
+        "ok": bool(succeeded),
+        "result": {
+            "batch": True,
+            "total": len(ids),
+            "succeeded": len(succeeded),
+            "failed": len(ids) - len(succeeded),
+            "dropped_over_cap": dropped,
+            "items": items,
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "gemini"),
+            model=model_cfg.get("model", "gemini-3.1-pro-preview"),
+            prompt="（批量模式：各项完整 final_prompt 已随画像落库 pipeline.audience_portraits，"
+                   "单项 trace 走前端画像详情或查表）",
+            params={"batch_size": len(ids), "concurrency": _BATCH_CONCURRENCY,
+                    "audience_record_ids": ids, "dropped_over_cap": dropped},
+            cost_estimate=f"{len(ids)} quota calls (~30-50k input + 6-10k output tokens each)",
+        ),
+    }
+    ok_pids = [it.get("portrait_id") for it in succeeded if it.get("portrait_id")]
+    return attach_next_step(
+        result,
+        suggested_tool="generate_director_brief",
+        suggested_args={"portrait_ids": ok_pids},
+        human_text=f"批量画像 {len(succeeded)}/{len(ids)} 成功——老板逐个审完后可批量出 brief："
+                   "generate_director_brief(portrait_ids=[...])（批量时每画像强制 1 个方案）",
+    )
+
 
 @tool_with_audit(mcp, require_approval=False)
-async def generate_director_brief(
+async def generate_audience_portrait(
+    audience_record_id: str | None = None,
+    extra_context: str | None = None,
+    kb_recall_override: str | None = None,
+    audience_record_ids: list[str] | None = None,
+) -> dict:
+    """生成人群生活状态画像（sku-pipeline step 3.5），支持单个 / 批量。
+
+    输入老板从 step 3 选中的 audience_record，对该人群做四路定向 KB 二次召回
+    （本圈层深挖 / 生活维度扫描 / 八大情绪交叉 / 卖点反打），输出 5 部分画像：
+
+    - 第 0 部分：人群速写
+    - 第 1 部分：生活状态画像（时间轴/场景库/触媒+算法信号原料/消费决策/情绪底色）
+    - 第 2 部分：该人群专属卖点重构（三层拆解 + 对这群人说的那句话）
+    - 第 3 部分：情绪触点矩阵（正向/负向阻断+化解/触达时间窗）
+    - 第 4 部分：信息缺口
+
+    防臆想铁律：每句标 [KB:文档名] / 🧠推演 / ⚠️推测；配额闸超标会在
+    validation_warnings 里提示补 KB 重跑。
+
+    返回后自动落库 pipeline.audience_portraits（draft，多版本不覆盖）。
+
+    Args:
+        audience_record_id: 单跑——step 3 落库的人群 record id（老板选中的那个）
+        extra_context: 一次性临时要求（如"重点写她周末的状态"；批量时作用于每个）
+        kb_recall_override: 显式覆盖 KB 召回（老板手贴 chunks 时用；仅单跑生效）
+        audience_record_ids: 批量——一次给多个人群出画像（与 audience_record_id 二选一）。
+            去重后上限 6，并发 3，单个失败不连坐。⚠️对话路一次建议 ≤3（6 个 ≈ 4-5min
+            逼近 MCP 360s 超时，且 N 份画像全文一次性进上下文）；批 6 走前端 step 3.5。
+
+    Returns:
+        单跑 {ok, result: {portrait_md, portrait_id, sku_id, audience_record_id,
+         recall_meta, validation_warnings}, trace, next_step_hint(generate_director_brief)}；
+        批量 {ok, result: {batch: True, total, succeeded, failed, items: [单跑 result 子集
+         | {ok: False, audience_record_id, error, hint}]}, trace, next_step_hint}
+    """
+    if audience_record_ids:
+        if audience_record_id:
+            return {"ok": False,
+                    "error": "audience_record_id 与 audience_record_ids 只能传一个",
+                    "hint": "单跑传前者，批量传后者"}
+        return await _portrait_batch(audience_record_ids, extra_context)
+    if not audience_record_id:
+        return {"ok": False, "error": "缺参数：audience_record_id（单跑）或 audience_record_ids（批量）"}
+    return await _portrait_one(audience_record_id, extra_context, kb_recall_override)
+
+
+# ============ step 3.6 tool ============
+
+async def _brief_one(
     portrait_id: str,
     idea_seed: str | None = None,
     include_ai_mapping: bool = True,
@@ -371,28 +479,7 @@ async def generate_director_brief(
     extra_context: str | None = None,
     num_variants: int = 1,
 ) -> dict:
-    """生成编导备忘录（sku-pipeline step 3.6）。
-
-    输入 step 3.5 的人群画像，输出 V7.2 风格「今天拍什么」备忘录（真人编导直接能拍）：
-    第 0 人群描述 / 第 1 今天拍什么（一件事+两次偏+卖点藏哪）/ 第 2 分段拍摄备忘 /
-    第 3 算法信号三向量（画面/文案/音乐，让抖音算法把内容映射对人群）/ 第 4 发的时候 /
-    第 5 AI 出片提示词（一大段故事描述，可关；ai_prompt_count 控制拆几大块，按模型实测调）/ 尾部 12 项自检。
-
-    落库 pipeline.scripts（kind='director_brief'，挂 portrait_id 全血缘，多版本不覆盖）。
-
-    Args:
-        portrait_id: step 3.5 落库的画像 id
-        idea_seed: 可选"想拍的事"（如"闺女给妈寄酱油"）；不给则 LLM 从画像场景库自选一件事
-        include_ai_mapping: 默认 True 带第 5 部分 AI 出片提示词；False 省 token
-        ai_prompt_count: 第 5 部分拆几大块提示词（None=按目标模型档案的单次生成时长自行定块数并说明；显式传值强制）
-        target_model: 目标出片模型（默认 seedance=字节 Seedance 2.0 中文一整段；可选 veo/jimeng/generic，对应 config/prompts/video_model_profiles/<model>.md 档案；未知名回退 generic）
-        extra_context: 一次性临时要求
-        num_variants: 1-3 个创意方案并行（temperature 递增 +0.1）
-
-    Returns:
-        {ok, result: {variants:[{script_id, brief_md, variant_label, validation_warnings}],
-         sku_id, portrait_id}, trace, usage_note}
-    """
+    """单画像编导备忘录实现（generate_director_brief 单跑路径，逻辑即原函数体不动）。"""
     portrait = await pipeline_lineage.get_audience_portrait(portrait_id)
     if not portrait:
         return {
@@ -548,3 +635,125 @@ async def generate_director_brief(
             "config/prompts/video_model_profiles/ 热加载可改）"
         )
     return result
+
+
+async def _brief_batch(
+    portrait_ids: list[str],
+    idea_seed: str | None,
+    include_ai_mapping: bool,
+    ai_prompt_count: int | None,
+    target_model: str,
+    extra_context: str | None,
+) -> dict:
+    """批量编导 brief：每画像强制 num_variants=1（N 画像 × 3 变体会压垮 hub）。"""
+    ids = [i for i in dict.fromkeys(portrait_ids) if i]
+    dropped = max(0, len(ids) - _MAX_BATCH)
+    ids = ids[:_MAX_BATCH]
+    if not ids:
+        return {"ok": False, "error": "portrait_ids 为空",
+                "hint": "传 step 3.5 落库的画像 id 列表"}
+
+    sem = asyncio.Semaphore(_BATCH_CONCURRENCY)
+
+    async def _guarded(pid: str) -> dict:
+        async with sem:
+            return await _brief_one(
+                pid, idea_seed=idea_seed, include_ai_mapping=include_ai_mapping,
+                ai_prompt_count=ai_prompt_count, target_model=target_model,
+                extra_context=extra_context, num_variants=1,
+            )
+
+    raw = await asyncio.gather(*[_guarded(p) for p in ids], return_exceptions=True)
+    items: list[dict] = []
+    for pid, r in zip(ids, raw):
+        if isinstance(r, BaseException):
+            items.append({
+                "ok": False, "portrait_id": pid,
+                "error": f"{type(r).__name__}: {r}",
+                "hint": f"单独重跑 generate_director_brief(portrait_id='{pid}')",
+            })
+        elif not r.get("ok"):
+            items.append({"ok": False, "portrait_id": pid,
+                          "error": r.get("error"), "hint": r.get("hint")})
+        else:
+            items.append({"ok": True, **(r.get("result") or {})})
+
+    succeeded = [it for it in items if it.get("ok")]
+    model_cfg = get_model_for_tool("generate_director_brief")
+    return {
+        "ok": bool(succeeded),
+        "result": {
+            "batch": True,
+            "total": len(ids),
+            "succeeded": len(succeeded),
+            "failed": len(ids) - len(succeeded),
+            "dropped_over_cap": dropped,
+            "items": items,
+        },
+        "trace": build_trace(
+            provider=model_cfg.get("provider", "gemini"),
+            model=model_cfg.get("model", "gemini-3.1-pro-preview"),
+            prompt="（批量模式：各项完整 final_prompt 已随 brief 落库 pipeline.scripts，"
+                   "单项 trace 走前端 step 3.6 或查表）",
+            params={"batch_size": len(ids), "concurrency": _BATCH_CONCURRENCY,
+                    "portrait_ids": ids, "num_variants_forced": 1,
+                    "target_model": target_model, "dropped_over_cap": dropped},
+            cost_estimate=f"{len(ids)} quota calls (~10-20k input + 6-12k output tokens each)",
+        ),
+    }
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_director_brief(
+    portrait_id: str | None = None,
+    idea_seed: str | None = None,
+    include_ai_mapping: bool = True,
+    ai_prompt_count: int | None = None,
+    target_model: str = "seedance",
+    extra_context: str | None = None,
+    num_variants: int = 1,
+    portrait_ids: list[str] | None = None,
+) -> dict:
+    """生成编导备忘录（sku-pipeline step 3.6），支持单个 / 批量。
+
+    输入 step 3.5 的人群画像，输出 V7.2 风格「今天拍什么」备忘录（真人编导直接能拍）：
+    第 0 人群描述 / 第 1 今天拍什么（一件事+两次偏+卖点藏哪）/ 第 2 分段拍摄备忘 /
+    第 3 算法信号三向量（画面/文案/音乐，让抖音算法把内容映射对人群）/ 第 4 发的时候 /
+    第 5 AI 出片提示词（一大段故事描述，可关；ai_prompt_count 控制拆几大块，按模型实测调）/ 尾部 12 项自检。
+
+    落库 pipeline.scripts（kind='director_brief'，挂 portrait_id 全血缘，多版本不覆盖）。
+
+    Args:
+        portrait_id: 单跑——step 3.5 落库的画像 id
+        idea_seed: 可选"想拍的事"（如"闺女给妈寄酱油"）；不给则 LLM 从画像场景库自选一件事
+        include_ai_mapping: 默认 True 带第 5 部分 AI 出片提示词；False 省 token
+        ai_prompt_count: 第 5 部分拆几大块提示词（None=按目标模型档案的单次生成时长自行定块数并说明；显式传值强制）
+        target_model: 目标出片模型（默认 seedance=字节 Seedance 2.0 中文一整段；可选 veo/jimeng/generic，对应 config/prompts/video_model_profiles/<model>.md 档案；未知名回退 generic）
+        extra_context: 一次性临时要求
+        num_variants: 1-3 个创意方案并行（temperature 递增 +0.1；批量时强制 1）
+        portrait_ids: 批量——一次给多个画像出 brief（与 portrait_id 二选一）。
+            去重后上限 6，并发 3，单个失败不连坐，每画像强制 1 个方案。
+            ⚠️对话路一次建议 ≤3；批 6 走前端 step 3.6。
+
+    Returns:
+        单跑 {ok, result: {variants:[{script_id, brief_md, variant_label, validation_warnings}],
+         sku_id, portrait_id}, trace, usage_note}；
+        批量 {ok, result: {batch: True, total, succeeded, failed, items: [单跑 result 子集
+         | {ok: False, portrait_id, error, hint}]}, trace}
+    """
+    if portrait_ids:
+        if portrait_id:
+            return {"ok": False,
+                    "error": "portrait_id 与 portrait_ids 只能传一个",
+                    "hint": "单跑传前者，批量传后者"}
+        return await _brief_batch(
+            portrait_ids, idea_seed, include_ai_mapping,
+            ai_prompt_count, target_model, extra_context,
+        )
+    if not portrait_id:
+        return {"ok": False, "error": "缺参数：portrait_id（单跑）或 portrait_ids（批量）"}
+    return await _brief_one(
+        portrait_id, idea_seed=idea_seed, include_ai_mapping=include_ai_mapping,
+        ai_prompt_count=ai_prompt_count, target_model=target_model,
+        extra_context=extra_context, num_variants=num_variants,
+    )

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,52 @@ from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
 from app.services import pipeline_lineage, rag_chain
 from app.services.ai_hub_client import AIHubClient, HubError
+
+
+# === 烧钱护栏：出图/出视频单日闸（按 mcp.tool_calls 当日 completed 次数硬闸） ===
+# env 可调（设 0 = 关闭）；上限只为拦失控循环，正常使用远碰不到。
+_DAILY_MEDIA_CAPS = {
+    "image": ("OMNI_DAILY_IMAGE_CAP", 60,
+              ("generate_image", "generate_storyboard_images", "generate_character_sheets")),
+    "video": ("OMNI_DAILY_VIDEO_CAP", 30,
+              ("generate_video", "generate_video_segments")),
+}
+
+
+async def _check_daily_media_cap(kind: str) -> dict | None:
+    """超闸返回错误 dict（调用方直接 return），未超返回 None。查询失败 fail-open 放行。"""
+    env_name, default, tools = _DAILY_MEDIA_CAPS[kind]
+    try:
+        cap = int(os.getenv(env_name, "") or default)
+    except ValueError:
+        cap = default
+    if cap <= 0:
+        return None
+    try:
+        pool = get_pool()
+        n = await pool.fetchval(
+            "SELECT count(*) FROM mcp.tool_calls "
+            "WHERE tool_name = ANY($1::text[]) AND status = 'completed' "
+            "AND created_at >= (date_trunc('day', now() AT TIME ZONE 'Asia/Shanghai') "
+            "AT TIME ZONE 'Asia/Shanghai')",
+            list(tools),
+        )
+    except Exception as exc:  # 闸坏了不挡业务
+        logger.warning("daily media cap check failed (fail-open): %s", exc)
+        return None
+    if n >= cap:
+        verb = "出图" if kind == "image" else "出视频"
+        return {
+            "ok": False,
+            "error": "daily_media_cap_reached",
+            "today_count": int(n),
+            "cap": cap,
+            "hint": (
+                f"今日{verb}相关调用已 {n} 次 ≥ 单日上限 {cap}（烧钱护栏，防失控循环）。"
+                f"确认要继续：把 KE env {env_name} 调大后重试，或明天再跑。"
+            ),
+        }
+    return None
 
 
 def _channel_profile(channel: str) -> str:
@@ -186,6 +233,9 @@ async def generate_image(
         {ok, result: {images: [{prompt, url} | {prompt, error}, ...]},
          trace, next_step_hint(generate_video)}
     """
+    cap_hit = await _check_daily_media_cap("image")
+    if cap_hit:
+        return cap_hit
     model_cfg = get_model_for_tool("generate_image")
     client = AIHubClient()
 
@@ -292,6 +342,9 @@ async def generate_character_sheets(
                       results: [{role_id, name, asset_id, file_url, prompt} | {role_id, error, prompt}]},
          trace, next_step_hint(generate_storyboard_images)}
     """
+    cap_hit = await _check_daily_media_cap("image")
+    if cap_hit:
+        return cap_hit
     from app.services.pipeline_lineage import get_creative_pack, save_storyboard_asset
 
     script = await get_creative_pack(script_id)
@@ -468,6 +521,9 @@ async def generate_storyboard_images(
       （老板传的 face_refs 跟自动找的合并，不重复）
     - scene.product_appearance=False 时强制不传 product_refs（哪怕老板传了，也不传）
     """
+    cap_hit = await _check_daily_media_cap("image")
+    if cap_hit:
+        return cap_hit
     from app.services.pipeline_lineage import (
         get_creative_pack, save_storyboard_asset, list_character_sheets_for_script,
     )
@@ -481,6 +537,14 @@ async def generate_storyboard_images(
     if not scenes:
         return {"ok": False, "error": "no_scenes", "script_id": script_id,
                 "hint": "脚本 scenes 为空。改 script_md 加「第 4 部分：分镜脚本」段，或调 backfill_scenes_for_existing_scripts 重解析"}
+
+    if all(s.get("whole_prompt") for s in scenes):
+        return {"ok": False, "error": "whole_prompt_script_no_storyboard",
+                "script_id": script_id, "kind": script.get("kind"),
+                "hint": ("该脚本是新形态「一大段提示词块」，没有分镜三件套，step 6 无图可出。"
+                         "直接跑 step 7 generate_video_segments（r2v 直出："
+                         "face_refs 自动挂 step 6.5 角色定妆 + product_refs 传产品白底图）。"
+                         "要分镜图请用旧形态重跑 step 5。")}
 
     if scene_nums:
         scenes = [s for s in scenes if s.get("scene_no") in scene_nums]
@@ -832,6 +896,9 @@ async def generate_video(
         {ok, result: {segments: [{prompt, video_url, duration} | {prompt, error}, ...]},
          trace, next_step_hint(None — 链路终点)}
     """
+    cap_hit = await _check_daily_media_cap("video")
+    if cap_hit:
+        return cap_hit
     model_cfg = get_model_for_tool("generate_video")
     provider = model_cfg.get("provider", "seedance")
     model = model_cfg.get("model", "seedance-2-0")
@@ -955,6 +1022,10 @@ async def generate_video_segments(
     - script_id 的 image asset 非空（先跑 step 6 generate_storyboard_images）；
       不够会返 missing_storyboard_images + 缺哪几段
     """
+    if not dry_run:  # dry_run 零费用，不占闸
+        cap_hit = await _check_daily_media_cap("video")
+        if cap_hit:
+            return cap_hit
     from app.services.pipeline_lineage import (
         get_creative_pack, save_storyboard_asset, list_character_sheets_for_script,
         list_assets,
@@ -980,6 +1051,9 @@ async def generate_video_segments(
     if not scenes:
         return {"ok": False, "error": "no_matching_scenes", "scene_nums": scene_nums,
                 "hint": f"指定 scene_nums={scene_nums} 在脚本里没匹配；脚本含 scene_no={[s.get('scene_no') for s in (script.get('scenes') or [])]}"}
+
+    # 新形态（一大段提示词块）：块全文直出 r2v，不依赖分镜图（parse 保证全有或全无）
+    _whole_mode = all(s.get("whole_prompt") for s in scenes)
 
     # 拉首帧：优先 image_first（新架构），fallback image（旧脚本兼容）
     from collections import defaultdict
@@ -1011,7 +1085,7 @@ async def generate_video_segments(
     # dry_run / force_t2v 跳过（不依赖分镜图）
     missing_images = [s.get("scene_no") for s in scenes
                       if int(s.get("scene_no") or -1) not in scene_to_first_frame]
-    if missing_images and not dry_run and not force_t2v:
+    if missing_images and not dry_run and not force_t2v and not _whole_mode:
         return {"ok": False, "error": "missing_storyboard_images",
                 "scene_nums_missing_image": missing_images,
                 "hint": (
@@ -1132,6 +1206,13 @@ async def generate_video_segments(
 
         dialog 字段三类：speech（嘴动）/ voiceover（嘴静）/ subtitle（嘴静不渲染字幕）
         """
+        # ── 新形态：一大段提示词块 → 原样直出（铁律：脚本=单一创意源，禁二次加工）──
+        if scene.get("whole_prompt"):
+            p = (scene.get("video_prompt") or "").strip()
+            if extra_prompt_suffix:  # 老板显式一次性通道，允许追加
+                p = f"{p}\n{extra_prompt_suffix}".strip()
+            return p
+
         tr = (scene.get("time_range") or f"0-{duration_s}s").strip()
         visual = (scene.get("visual") or "").strip()
         change = (scene.get("change_point") or "").strip()
@@ -1309,6 +1390,12 @@ async def generate_video_segments(
 
     def _resolve_face_refs(scene: dict) -> list[str]:
         urls: list[str] = list(face_refs or [])
+        if scene.get("whole_prompt"):
+            # 新形态块不带 characters_in_scene：全部角色定妆图都挂上（Seedance 2.0 r2v 多参考锁脸）
+            for url in role_to_url.values():
+                if url not in urls:
+                    urls.append(url)
+            return urls
         chars = scene.get("characters_in_scene") or []
         for role in chars:
             url = role_to_url.get(role)
@@ -1330,6 +1417,9 @@ async def generate_video_segments(
     _TIME_RANGE_RE_LOCAL = re.compile(r'^\s*(\d+)\s*-\s*(\d+)\s*s?\s*$', re.I)
 
     def _compute_scene_duration(scene: dict, fallback: int) -> int:
+        d = scene.get("duration_s")
+        if isinstance(d, (int, float)) and d > 0:
+            return max(4, min(15, int(d)))
         tr = (scene.get("time_range") or "").strip()
         m = _TIME_RANGE_RE_LOCAL.match(tr)
         if m:
@@ -1355,8 +1445,11 @@ async def generate_video_segments(
         scene_no = int(scene.get("scene_no") or 0)
 
         first_frame = scene_to_first_frame.get(scene_no)
+        # 新形态（一大段提示词块）：无分镜图概念，块全文直出 + refs 走 r2v
+        if scene.get("whole_prompt"):
+            first_frame = None
         # force_t2v：全段跳过 first_frame，纯文生视频
-        if force_t2v:
+        elif force_t2v:
             first_frame = None
         # skip_first_frame_scene_nums：指定 scene 强制 t2v（content_sensitive 重跑时用）
         elif skip_first_frame_scene_nums and scene_no in skip_first_frame_scene_nums:
@@ -1366,9 +1459,9 @@ async def generate_video_segments(
             return {"scene_no": scene_no, "error": "no_first_frame_image_asset",
                     "hint": f"scene {scene_no} 缺 step 6 分镜图 — 先跑 generate_storyboard_images，或开启 force_t2v=True"}
 
-        # force_t2v 时 last_frame 也无意义（没有分镜图序列）
+        # force_t2v / whole 模式时 last_frame 无意义（没有分镜图序列）
         last_frame: str | None = None
-        if use_last_frame and not force_t2v:
+        if use_last_frame and not force_t2v and not scene.get("whole_prompt"):
             # 优先用专属尾帧（step 6 双图模式产出）；无则 fallback 下一段首帧
             last_frame = scene_to_last_frame.get(scene_no)
             if not last_frame:
@@ -1385,18 +1478,19 @@ async def generate_video_segments(
         if character_anchor:
             prompt = character_anchor.strip() + ". " + prompt
 
-        # Lineage enrichment for video
-        _v_scene_no = scene.get("scene_no") or 1
-        _sp_hint = build_selling_point_motion_hint(_lineage_ctx_v, _v_scene_no)
-        _v_lineage = []
-        if _product_anchor_v and scene.get("product_appearance"):
-            _v_lineage.append(f"product: {_product_anchor_v}")
-        if _audience_style_v:
-            _v_lineage.append(_audience_style_v)
-        if _sp_hint:
-            _v_lineage.append(_sp_hint)
-        if _v_lineage:
-            prompt = prompt.rstrip() + " — " + "; ".join(_v_lineage)
+        # Lineage enrichment for video（whole 模式禁：块全文=单一创意源，任何追加都是二次加工）
+        if not scene.get("whole_prompt"):
+            _v_scene_no = scene.get("scene_no") or 1
+            _sp_hint = build_selling_point_motion_hint(_lineage_ctx_v, _v_scene_no)
+            _v_lineage = []
+            if _product_anchor_v and scene.get("product_appearance"):
+                _v_lineage.append(f"product: {_product_anchor_v}")
+            if _audience_style_v:
+                _v_lineage.append(_audience_style_v)
+            if _sp_hint:
+                _v_lineage.append(_sp_hint)
+            if _v_lineage:
+                prompt = prompt.rstrip() + " — " + "; ".join(_v_lineage)
 
         # 每段从 scene.time_range 解析实际时长（无则 fallback duration_s 参数）
         # seedance clamp [4, 15]
@@ -1415,6 +1509,8 @@ async def generate_video_segments(
                 "product_appearance": scene.get("product_appearance"),
                 "dry_run": True,
                 "t2v_mode": first_frame is None,
+                "whole_prompt": bool(scene.get("whole_prompt")),
+                "duration_clamped": bool(scene.get("duration_s")) and scene_duration != scene.get("duration_s"),
             }
 
         scene_face_refs = _resolve_face_refs(scene)
@@ -1515,6 +1611,8 @@ async def generate_video_segments(
                 "duration_s": scene_duration,
                 "scene_time_range": (scene.get("time_range") or "").strip() or None,
                 "task_id": task_id_out,
+                "whole_prompt": bool(scene.get("whole_prompt")),
+                "duration_clamped": bool(scene.get("duration_s")) and scene_duration != scene.get("duration_s"),
             }
         except HubError as he:
             # 火山方舟原始错误透传 + 分类（余额 / 内容审查 / 模型未激活 / 频率限制 / 其他）
@@ -1748,8 +1846,43 @@ async def generate_selling_points_matrix(
 # W4-B 切片 14.2：sku-pipeline step 3 — 人群匹配（多 query 召回）
 # ============================================================
 
-# 人群分析报告 KB（kb_role=private_doc，46 docs / 3291 chunks）
-AUDIENCE_KB_ID = "b7a08c06-50a4-491e-9a1d-a6568dea5695"
+# 人群分析报告 KB（kb_role=private_doc）。
+# 运行时按名字动态解析（KB 删重建换 id 不断链）；解析失败才回退这个历史 uuid。
+_AUDIENCE_KB_NAME = "人群分析报告"
+AUDIENCE_KB_ID = "b7a08c06-50a4-491e-9a1d-a6568dea5695"  # fallback
+
+
+async def _resolve_kb_ids(
+    names: tuple[str, ...], fallback_ids: tuple[str, ...]
+) -> list[str]:
+    """按 KB 名解析 kb_id（精确匹配优先，其次唯一包含）；解析不到回退硬编码 id。
+
+    硬编码 uuid 的坑：KB 删了重建换 id 后，陈旧 uuid 查 chunks 匹配 0 行**不报错**，
+    全链静默空召回、LLM 拿空料照样烧 token——按名解析 + fallback 双保险。
+    """
+    try:
+        from app.services import ingestion as _ingestion
+        kbs = await _ingestion.list_kbs()
+        by_name = {(k.get("name") or "").strip(): k["id"] for k in kbs}
+        out: list[str] = []
+        for i, n in enumerate(names):
+            kb_id = by_name.get(n)
+            if not kb_id:
+                contains = [v for k_, v in by_name.items() if n in k_]
+                kb_id = contains[0] if len(contains) == 1 else None
+            if not kb_id:
+                kb_id = fallback_ids[i]
+                logger.warning("KB「%s」按名解析失败，回退硬编码 id %s", n, kb_id)
+            out.append(kb_id)
+        return out
+    except Exception:
+        logger.warning("list_kbs 失败，KB 按名解析回退硬编码 id", exc_info=True)
+        return list(fallback_ids)
+
+
+async def _audience_kb_id() -> str:
+    """人群分析报告 KB 的当前 kb_id（按名解析 + fallback）。"""
+    return (await _resolve_kb_ids((_AUDIENCE_KB_NAME,), (AUDIENCE_KB_ID,)))[0]
 
 # 品类中性锚（**不预设人群圈层**，只锚 SKU 品类）
 # 多 query 用意 = 用多角度查同一件事避开「单 query 偏移」（KB 管线发现 #1），
@@ -1935,7 +2068,7 @@ async def _multi_query_recall(
     except Exception:
         pass
 
-    # 并发跑（asyncio.gather；失败不挂全跑）
+    # 并发跑（asyncio.gather；失败不挂全跑，但留 warning 不静默吞）
     async def _one_query(q: str) -> tuple[str, list[dict]]:
         try:
             hits = await rag_chain.retrieve_multi_kb(
@@ -1946,6 +2079,7 @@ async def _multi_query_recall(
             )
             return q, hits
         except Exception:
+            logger.warning("multi-query 召回单 query 失败: %s", q, exc_info=True)
             return q, []
 
     results = await asyncio.gather(*[_one_query(q) for q in queries])
@@ -2096,6 +2230,7 @@ async def generate_audience_match(
 
     # === 多 query 召回（kb_recall_override 显式覆盖时跳过）===
     if kb_recall_override and kb_recall_override.strip():
+        audience_kb_id = None  # override 模式不走 KB
         kb_recall_md = kb_recall_override.strip()
         recall_meta = {
             "mode": "override",
@@ -2103,20 +2238,38 @@ async def generate_audience_match(
             "chunk_count": 0,
         }
     else:
+        audience_kb_id = await _audience_kb_id()
         queries = await _build_audience_queries(
             matrix_md,
             sku["name"] or "",
             sku_category=sku["category"],
-            kb_id=AUDIENCE_KB_ID,
+            kb_id=audience_kb_id,
         )
         # 全 KB doc 扩散后 query 数 ~50-65，每 query top_k=3 节省 chunks 名额
         # max_chunks=80 让 LLM 看到更多 doc 代表 chunks（之前 40 太少）
         chunks = await _multi_query_recall(
             queries=queries,
-            kb_id=AUDIENCE_KB_ID,
+            kb_id=audience_kb_id,
             top_k_per_query=3,
             max_chunks=80,
         )
+        if not chunks:
+            # 硬闸：召回 0 chunks = KB 空/断链/检索故障，拿空料烧 pro 模型纯属浪费，
+            # 且 LLM 会凭空编人群（违反反幻觉铁律）——直接拦下让老板看见。
+            return {
+                "ok": False,
+                "error": "kb_recall_empty: 人群分析报告 KB 多 query 召回 0 chunks，已拦截（不烧 LLM）",
+                "hint": (
+                    "排查：list_kbs 看「人群分析报告」KB 是否存在且有 chunks；"
+                    "KB 重建过的话确认名字没改；临时绕过可传 kb_recall_override 手贴 chunks"
+                ),
+                "recall_meta": {
+                    "mode": "multi_query",
+                    "audience_kb_id": audience_kb_id,
+                    "queries": queries,
+                    "chunk_count": 0,
+                },
+            }
         kb_recall_md = _format_kb_recall(chunks)
         recall_meta = {
             "mode": "multi_query",
@@ -2224,7 +2377,7 @@ async def generate_audience_match(
             params={
                 "temperature": model_cfg.get("temperature", 0.3),
                 "max_tokens": model_cfg.get("max_tokens", 8000),
-                "audience_kb_id": AUDIENCE_KB_ID,
+                "audience_kb_id": audience_kb_id,
                 "queries_used": len(recall_meta["queries"]),
                 "chunks_recalled": recall_meta["chunk_count"],
                 "audience_run_id": audience_run_id,
@@ -2250,10 +2403,12 @@ async def generate_audience_match(
 # W4-B 切片 14.3 phase B：sku-pipeline step 4 — 圈包 SOP
 # ============================================================
 
-# 巨量云图 + 巨量千川 authoritative KB（圈包标签必须从这两个 KB 找出处）
+# 巨量云图 + 巨量千川 authoritative KB（圈包标签必须从这两个 KB 找出处）。
+# 运行时按名解析（见 _resolve_kb_ids），下面 uuid 仅 fallback。
+_PLATFORM_KB_NAMES = ("巨量云图", "巨量千川")
 _PLATFORM_KB_IDS = (
-    "608807ec-29ff-4fc0-b15b-73d0609c93a8",  # 巨量云图
-    "1d6c0d68-5b4a-4ceb-ade8-10f887e895c6",  # 巨量千川
+    "608807ec-29ff-4fc0-b15b-73d0609c93a8",  # 巨量云图 fallback
+    "1d6c0d68-5b4a-4ceb-ade8-10f887e895c6",  # 巨量千川 fallback
 )
 
 
@@ -2305,6 +2460,7 @@ async def _recall_platform_kb_chunks(
     max_chunks: int = 30,
 ) -> list[dict]:
     """从巨量云图 + 巨量千川 authoritative KB 多 query 召回 chunks，doc round-robin 去重。"""
+    platform_kb_ids = await _resolve_kb_ids(_PLATFORM_KB_NAMES, _PLATFORM_KB_IDS)
     name_map: dict[str, str] = {}
     try:
         from app.services import ingestion as _ingestion
@@ -2317,12 +2473,13 @@ async def _recall_platform_kb_chunks(
         try:
             hits = await rag_chain.retrieve_multi_kb(
                 q,
-                list(_PLATFORM_KB_IDS),
+                platform_kb_ids,
                 top_k_per_kb=top_k_per_query,
                 kb_name_map=name_map,
             )
             return q, hits
         except Exception:
+            logger.warning("平台 KB 召回单 query 失败: %s", q, exc_info=True)
             return q, []
 
     results = await asyncio.gather(*[_one(q) for q in queries])
@@ -2505,6 +2662,18 @@ async def generate_audience_pack(
         top_k_per_query=3,
         max_chunks=30,
     )
+    if not platform_chunks:
+        # 硬闸：云图/千川 KB 召回 0 chunks 时 LLM 只能凭空想象标签（严禁虚构 KB 不存在
+        # 的标签是 step 4 铁律）——拦下不烧 LLM。
+        return {
+            "ok": False,
+            "error": "kb_recall_empty: 巨量云图/千川 KB 召回 0 chunks，已拦截（不烧 LLM）",
+            "hint": (
+                "排查：list_kbs 看「巨量云图」「巨量千川」KB 是否存在且有 chunks；"
+                "KB 重建过的话确认名字没改"
+            ),
+            "platform_kb_queries": platform_queries,
+        }
     platform_kb_context = _format_kb_recall(platform_chunks)
 
     # 6. system + user prompt
@@ -2587,7 +2756,7 @@ async def generate_audience_pack(
                 "include_ecommerce_data": include_ecommerce_data,
                 "platform_kb_queries": len(platform_queries),
                 "platform_kb_chunks": len(platform_chunks),
-                "platform_kb_ids": list(_PLATFORM_KB_IDS),
+                "platform_kb_names": list(_PLATFORM_KB_NAMES),
             },
             cost_estimate="1 quota call (~3-5k tokens) + 巨量云图/千川 KB 召回",
         ),
@@ -2894,6 +3063,45 @@ def _compute_actual_scene_gaps(scenes: list[dict]) -> tuple[int | None, int, lis
     return (max(durations), len(durations), durations)
 
 
+def _validate_whole_prompt_scenes(scenes: list[dict], metrics: dict | None,
+                                  per_block_max_s: int = 15, chars_per_sec: int = 25) -> list[str]:
+    """新形态（一大段提示词块）后端反算（不信 LLM 自报）：从 scenes 实算块时长/字数/时间戳覆盖。"""
+    warnings: list[str] = []
+    prev_end, covered = 0, 0
+    pat = re.compile(r"^(\d+)-(\d+)s$")
+    for s in sorted(scenes, key=lambda x: x.get("scene_no") or 0):
+        m = pat.match((s.get("time_range") or "").strip())
+        if not m:
+            warnings.append(f"块 {s.get('scene_no')} 时间范围解析失败——标题须「### 提示词块 X（A-Bs）」")
+            continue
+        a, b = int(m.group(1)), int(m.group(2))
+        if a != prev_end:
+            warnings.append(f"块 {s['scene_no']} 起点 {a}s ≠ 上块终点 {prev_end}s——时间戳不连续")
+        prev_end = b
+        dur = b - a
+        covered += dur
+        if dur > per_block_max_s:
+            warnings.append(f"块 {s['scene_no']} 时长 {dur}s 超单段上限 {per_block_max_s}s——step 7 会 clamp，重拆块")
+        n_chars = len(re.sub(r"\s", "", s.get("video_prompt") or ""))
+        if n_chars < dur * chars_per_sec:
+            warnings.append(
+                f"块 {s['scene_no']} 字数 {n_chars} < 下限 {dur * chars_per_sec}（{dur}s×{chars_per_sec}）——细节密度不够"
+            )
+    total = (metrics or {}).get("duration_seconds")
+    if total:
+        try:
+            t = int(float(total))
+            if prev_end and prev_end != t:
+                warnings.append(f"块时间戳覆盖到 {prev_end}s ≠ metrics duration_seconds={t}")
+            import math
+            expect = math.ceil(t / per_block_max_s)
+            if len(scenes) < expect:
+                warnings.append(f"块数 {len(scenes)} < ⌈{t}/{per_block_max_s}⌉={expect}——有块必超单段上限")
+        except (TypeError, ValueError):
+            pass
+    return warnings
+
+
 def _validate_creative_metrics(metrics: dict, kind: str, scenes: list[dict] | None = None) -> list[str]:
     """按 kind 路由到对应 validator，返回 warnings list（空 = 全过）。
 
@@ -2903,12 +3111,19 @@ def _validate_creative_metrics(metrics: dict, kind: str, scenes: list[dict] | No
     路由：
     - video_soft_ad：8 模块体系（O→A1 让人知道）— v8.5
     - video_planting：9 模块双层体系（A1/A2→A3 让人相信）— v2
+    - 新形态（whole_prompt 块）：旧 validator 传 scenes=None（防 15s 块被误报
+      "单段超 8s 断完播"）+ 追加 _validate_whole_prompt_scenes 反算
     - 其他 kind：暂未实现校验，返空列表
     """
+    whole = bool(scenes) and all(s.get("whole_prompt") for s in scenes)
     if kind == "video_soft_ad":
-        return _validate_video_soft_ad_metrics(metrics, scenes=scenes)
+        w = _validate_video_soft_ad_metrics(metrics, scenes=None if whole else scenes)
+        return w + (_validate_whole_prompt_scenes(scenes, metrics) if whole else [])
     if kind == "video_planting":
-        return _validate_video_planting_metrics(metrics, scenes=scenes)
+        w = _validate_video_planting_metrics(metrics, scenes=None if whole else scenes)
+        return w + (_validate_whole_prompt_scenes(scenes, metrics) if whole else [])
+    if kind == "video_harvest" and whole:
+        return _validate_whole_prompt_scenes(scenes, metrics)
     return []
 
 
@@ -3671,42 +3886,16 @@ def _validate_video_planting_metrics(metrics: dict, *, scenes: list[dict] | None
     return warnings
 
 
-@tool_with_audit(mcp, require_approval=False)
-async def generate_creative_pack(
+async def _creative_pack_one(
     kind: str,
     sku_id: str | None = None,
     audience_record_id: str | None = None,
     audience_pack_id: str | None = None,
     extra_context: str | None = None,
     num_variants: int = 1,
+    target_model: str = "seedance",
 ) -> dict:
-    """生成 6 类素材之一：视频软广/种草/收割 + 图文收割 + 主图 + 详情页（sku-pipeline step 5）。
-
-    弹性挂：
-    - 给 audience_pack_id：拉 pack + 关联的 record + matrix + sku（最完整链路）
-    - 给 audience_record_id：拉 record + matrix + sku（绕过 step 4）
-    - 都不给但给 sku_id：单 SKU 模式，prompt 里 audience/pack 段写"通用画像"
-
-    kind 6 选 1：
-    - `video_soft_ad`：A2 触动层视频，内容娱乐化软植入，30s 内
-    - `video_planting`：A3 共鸣层视频，痛点共鸣 + 卖点植入，30-45s
-    - `video_harvest`：A4 行动层视频，强卖点 + 强 CTA，15-25s
-    - `graphic_harvest`：抖店/小红书收割图文，标题 + 5 段正文 + 配图 brief
-    - `product_main_image`：电商主图设计 brief，5-9 张
-    - `product_detail_page`：电商详情页设计 brief，8-12 段叙事长图
-
-    Args:
-        kind: 素材类型 6 选 1（必填）
-        sku_id: 单 SKU 模式时必填；其他模式从 record/pack 反查
-        audience_record_id: 推荐 — 从 SKU 人群池选 1 条
-        audience_pack_id: 最完整 — 已跑过 step 4 圈包时挂上
-        extra_context: 临时要求（"主推送礼场景""避开同行已饱和卖点"等）
-        num_variants: 并行生成几个方案（1-3，默认 1）；方案间 temperature 递增 +0.1
-
-    Returns:
-        {ok, result: {script_md, script_id, variants: [{script_id, script_md, variant_label,
-                      metrics, validation_warnings}], kind, sku_id, ...}, trace, next_step_hint}
-    """
+    """单素材实现（generate_creative_pack 单跑路径，逻辑即原函数体不动）。"""
     if kind not in pipeline_lineage.CREATIVE_KINDS:
         return {
             "ok": False,
@@ -3803,6 +3992,19 @@ async def generate_creative_pack(
     else:
         audience_pack_summary = "（无 — 未跑 step 4 圈包；本素材直接用 audience 画像 + matrix 卖点出稿）"
 
+    # === 目标出片模型写法档案（video_* kind 的「AI 出片提示词」段用；同 3.6 机制）===
+    if kind.startswith("video_"):
+        _tm = (target_model or "seedance").strip().lower()
+        try:
+            target_model_profile = prompts.load(f"video_model_profiles/{_tm}")
+        except FileNotFoundError:
+            logger.warning("video_model_profile 未找到: %s，回退 generic", _tm)
+            _tm = "generic"
+            target_model_profile = prompts.load("video_model_profiles/generic")
+    else:
+        _tm = None
+        target_model_profile = "（不适用——本 kind 无 AI 出片提示词段）"
+
     # === render prompt ===
     sys_template = f"creative_pack.{kind}.system"
     sys_msg = prompts.load(sys_template)
@@ -3815,6 +4017,7 @@ async def generate_creative_pack(
         audience_md=audience_md.strip(),
         audience_pack_summary=audience_pack_summary.strip(),
         extra_context=(extra_context or "").strip() or "（无）",
+        target_model_profile=target_model_profile,
     )
     final_prompt = sys_msg + "\n\n" + user_msg
 
@@ -3936,6 +4139,166 @@ async def generate_creative_pack(
         suggested_tool="generate_image",
         suggested_args={"sku_id": sku_id, "script_id": script_id},
         human_text=next_hint,
+    )
+
+
+# 批量出稿预算：semaphore 3 护 hub；组合上限 6（单次 LLM ~1-2min，2 波 ≈ 3-4min，
+# 对话路建议一次 ≤3 组合，批 6 走前端 REST 路）
+_CP_MAX_BATCH = 6
+_CP_BATCH_CONCURRENCY = 3
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def generate_creative_pack(
+    kind: str | None = None,
+    sku_id: str | None = None,
+    audience_record_id: str | None = None,
+    audience_pack_id: str | None = None,
+    extra_context: str | None = None,
+    num_variants: int = 1,
+    target_model: str = "seedance",
+    audience_record_ids: list[str] | None = None,
+    kinds: list[str] | None = None,
+) -> dict:
+    """生成 6 类素材：视频软广/种草/收割 + 图文收割 + 主图 + 详情页（sku-pipeline step 5），支持单个 / 批量。
+
+    弹性挂：
+    - 给 audience_pack_id：拉 pack + 关联的 record + matrix + sku（最完整链路）
+    - 给 audience_record_id：拉 record + matrix + sku（绕过 step 4）
+    - 都不给但给 sku_id：单 SKU 模式，prompt 里 audience/pack 段写"通用画像"
+
+    kind 6 选 1：
+    - `video_soft_ad`：A2 触动层视频，内容娱乐化软植入，30s 内
+    - `video_planting`：A3 共鸣层视频，痛点共鸣 + 卖点植入，30-45s
+    - `video_harvest`：A4 行动层视频，强卖点 + 强 CTA，15-25s
+    - `graphic_harvest`：抖店/小红书收割图文，标题 + 5 段正文 + 配图 brief
+    - `product_main_image`：电商主图设计 brief，5-9 张
+    - `product_detail_page`：电商详情页设计 brief，8-12 段叙事长图
+
+    **批量模式（一个 SKU 绑多人群 → 内容批量产出）**：
+    - `audience_record_ids=[...]`：多个人群（与 audience_record_id 二选一；不可与 audience_pack_id 同传）
+    - `kinds=[...]`：多个素材类型（与 kind 二选一）
+    - 两者可同时给 → 人群 × 类型 交叉组合，去重后上限 6 个组合、并发 3、
+      单个失败不连坐、每组合强制 num_variants=1。
+    - 批量项只返 300 字摘录防上下文爆炸（全文已落库 pipeline.scripts，
+      前端 step 5 看全文）。⚠️对话路一次建议 ≤3 组合；批 6 走前端 REST 路。
+
+    Args:
+        kind: 素材类型 6 选 1（单跑必填；批量用 kinds）
+        sku_id: 单 SKU 模式时必填；其他模式从 record/pack 反查
+        audience_record_id: 推荐 — 从 SKU 人群池选 1 条
+        audience_pack_id: 最完整 — 已跑过 step 4 圈包时挂上（仅单人群模式）
+        extra_context: 临时要求（"主推送礼场景""避开同行已饱和卖点"等；批量时作用于每个）
+        num_variants: 并行生成几个方案（1-3，默认 1）；批量时强制 1
+        target_model: video_* kind 的「AI 出片提示词」写法档案（默认 seedance；
+            可选 veo/jimeng/generic，热加载；未知名回退 generic）。非视频 kind 忽略。
+        audience_record_ids: 批量人群列表
+        kinds: 批量类型列表
+
+    Returns:
+        单跑 {ok, result: {script_md, script_id, variants, kind, sku_id, ...}, trace, next_step_hint}；
+        批量 {ok, result: {batch: True, total, succeeded, failed, items: [{ok, kind,
+         audience_record_id, script_id, validation_warnings, excerpt} | {ok: False, ..., error}]},
+         trace, next_step_hint}
+    """
+    if audience_record_ids or kinds:
+        if audience_record_ids and audience_record_id:
+            return {"ok": False, "error": "audience_record_id 与 audience_record_ids 只能传一个",
+                    "hint": "单人群传前者，批量传后者"}
+        if kinds and kind:
+            return {"ok": False, "error": "kind 与 kinds 只能传一个",
+                    "hint": "单类型传前者，批量传后者"}
+        if audience_record_ids and audience_pack_id:
+            return {"ok": False, "error": "audience_pack_id 只绑一个人群，不能与 audience_record_ids 同传",
+                    "hint": "批量人群时去掉 pack_id（各组合按 record 挂链路）"}
+        kind_list = list(dict.fromkeys(
+            k.strip() for k in (kinds or ([kind] if kind else [])) if k and k.strip()
+        ))
+        if not kind_list:
+            return {"ok": False, "error": "批量模式缺 kinds（或单 kind）",
+                    "hint": f"kind 6 选 1：{list(pipeline_lineage.CREATIVE_KINDS)}"}
+        bad = [k for k in kind_list if k not in pipeline_lineage.CREATIVE_KINDS]
+        if bad:
+            return {"ok": False, "error": f"非法 kind：{bad}",
+                    "hint": f"必须 6 选 1：{list(pipeline_lineage.CREATIVE_KINDS)}"}
+        rec_list = [r for r in dict.fromkeys(audience_record_ids or []) if r] or [audience_record_id]
+        combos = [(r, k) for r in rec_list for k in kind_list]
+        dropped = max(0, len(combos) - _CP_MAX_BATCH)
+        combos = combos[:_CP_MAX_BATCH]
+
+        sem = asyncio.Semaphore(_CP_BATCH_CONCURRENCY)
+
+        async def _guarded(rid: str | None, k: str) -> dict:
+            async with sem:
+                return await _creative_pack_one(
+                    kind=k, sku_id=sku_id, audience_record_id=rid,
+                    audience_pack_id=audience_pack_id, extra_context=extra_context,
+                    num_variants=1, target_model=target_model,
+                )
+
+        raw = await asyncio.gather(*[_guarded(r, k) for r, k in combos], return_exceptions=True)
+        items: list[dict] = []
+        for (rid, k), r in zip(combos, raw):
+            if isinstance(r, BaseException):
+                items.append({"ok": False, "audience_record_id": rid, "kind": k,
+                              "error": f"{type(r).__name__}: {r}",
+                              "hint": f"单独重跑 generate_creative_pack(kind='{k}', audience_record_id={rid!r})"})
+            elif not r.get("ok"):
+                items.append({"ok": False, "audience_record_id": rid, "kind": k,
+                              "error": r.get("error"), "hint": r.get("hint")})
+            else:
+                res = r.get("result") or {}
+                md = res.get("script_md") or ""
+                items.append({
+                    "ok": True, "kind": k,
+                    "kind_label": res.get("kind_label"),
+                    "audience_record_id": rid,
+                    "script_id": res.get("script_id"),
+                    "sku_id": res.get("sku_id"),
+                    "validation_warnings": res.get("validation_warnings") or [],
+                    "excerpt": md[:300] + ("…" if len(md) > 300 else ""),
+                })
+        succeeded = [i for i in items if i["ok"]]
+        model_cfg = get_model_for_tool("generate_creative_pack")
+        result = {
+            "ok": bool(succeeded),
+            "result": {
+                "batch": True,
+                "total": len(combos),
+                "succeeded": len(succeeded),
+                "failed": len(combos) - len(succeeded),
+                "dropped_over_cap": dropped,
+                "items": items,
+                "note": "批量项只返 300 字摘录；全文已落库 pipeline.scripts（前端 step 5 看全文逐个审稿）",
+            },
+            "trace": build_trace(
+                provider=model_cfg.get("provider", "gemini"),
+                model=model_cfg.get("model", "gemini-3-flash-preview"),
+                prompt="（批量模式：各项完整 final_prompt 已随脚本落库 pipeline.scripts）",
+                params={"batch_size": len(combos), "concurrency": _CP_BATCH_CONCURRENCY,
+                        "combos": [{"audience_record_id": r, "kind": k} for r, k in combos],
+                        "target_model": target_model, "dropped_over_cap": dropped},
+                cost_estimate=f"{len(combos)} quota calls (~3-6k tokens each)",
+            ),
+        }
+        ok_video_sids = [i["script_id"] for i in succeeded
+                         if (i.get("kind") or "").startswith("video_") and i.get("script_id")]
+        return attach_next_step(
+            result,
+            suggested_tool="generate_character_sheets",
+            suggested_args={"script_id": ok_video_sids[0] if ok_video_sids else None},
+            human_text=(f"批量出稿 {len(succeeded)}/{len(combos)} 成功——老板逐个审完后：video_* 走 "
+                        "6.5 定妆 → step 7 直出（新形态跳过 step 6）。多个脚本都要出视频时说一声，"
+                        "我逐个调 step 7（烧钱步逐个确认，不自动连跑）。"),
+        )
+
+    if not kind:
+        return {"ok": False, "error": "缺 kind（单跑）或 kinds（批量）",
+                "hint": f"kind 6 选 1：{list(pipeline_lineage.CREATIVE_KINDS)}"}
+    return await _creative_pack_one(
+        kind=kind, sku_id=sku_id, audience_record_id=audience_record_id,
+        audience_pack_id=audience_pack_id, extra_context=extra_context,
+        num_variants=num_variants, target_model=target_model,
     )
 
 

@@ -63,22 +63,9 @@
 
 ### 第 4 部分：分镜清单（4-6 段）
 
-**依次输出：① 节奏线 ② 全局视觉锚（写一次）③ 每段分镜 ④ 序列连贯性自检表**。
+**依次输出：① 节奏线 ② 每段分镜**。
 
 > **节奏线**：{段1动作词} → {段2} → ... → {最后段}（用 4-6 个动作/情绪词一行概括收割节奏，如"亮卖点 → 算账对比 → 用法演示 → 强 CTA"）
-
-```
-#### 全局视觉锚（写一次，全部分镜的 image_prompt 复用此锚）
-- **G1 视觉风格锚**：xxx（商品感写实 / 电商质感，如 product commercial still / clean studio light）
-- **G2 场景一致性锚**：xxx（主拍摄场景固定描述 — 背景/桌面/道具风格，跨段原文完全复用相同词组）
-- **G3 调色锚**：xxx（主色调 + 饱和度风格，如：明亮高饱和、白底商业感、暖家居调）
-- **G4 光线锚**：xxx（主光性质 + 方向，如：正面柔光补光、自然侧窗光、环形补光）
-- **G5 产品一致性锚**：xxx（瓶型/包装朝向/标签颜色/比例固定描述）
-- **G7 真实感锚**：natural texture, no plastic surface, authentic food styling, no AI over-smooth
-- **G8 画幅**：9:16 vertical aspect
-- **G9 画质**：photo-realistic, commercial-quality, 4K, sharp focus
-- **G10 全局负向词**：AI face, plastic skin, oversaturated, distorted hands, extra fingers, blurry text, watermark, brand logo text, cartoon rendering, 3D render
-```
 
 每段：
 
@@ -87,168 +74,56 @@
 - **画面**：xxx（导演视角 · 20-50 字 · 主体动作/产品/字幕内容）
 - **台词或字幕**：xxx（≤ 15 字）
 - **接下段**：xxx（这段结束时的状态/动作如何自然承接下一段开头；最后一段写「收尾」）
-- **image_prompt**（首帧 first frame · 80-150 字 · 英文为主）：本段**第 0 秒静止入帧**——主体在动作开始前的预备态。作为 Veo i2v 起始帧，不描述运动过程。
-  xxx
-- **last_frame_prompt**（尾帧 last frame · 英文为主 · 60-120字）：本段动作完成的**静止出帧**，作为 Veo i2v 结束帧。最后一段出帧为产品 hold 帧。
-  xxx
-- **motion_prompt**（运动描述 · 英文 · 50-120字 · 按 D 框架内部组织）：首帧→尾帧之间的**运动过程**，喂给 Veo 视频模型。step 7 已用通用 D 指令头托底，这里写**这一段特有的具体值**。**只写可见视觉运动**。按下列 D 框架（写连贯英文段落，不分行不写 D 标签）：
-  - D1 变化主体：列 2-3 个变化元素 + 起始→终止
-  - D3 时间锚点：段时长切 3 个时间点 + 各点画面
-  - D7 运动模糊提示：注明哪些元素带 subtle motion blur
-  例（4s 收割段 · 倒酱油强 CTA）：`0-1s bottle vertical above lettuce, label fully visible; 1-2.5s bottle tilts and first stream emerges, dark liquid mid-air at 2s; 2.5-4s sauce pools onto leaves with vivid glossy ripple, bottle returns vertical. Motion blur on the liquid stream only; bottle stays sharp. Static medium close-up.`
-  xxx
 ```
 
-**短视频真人感锚（最高优先级 · 强制覆盖 71 维度的默认电影取值）**
+### 第 5 部分：AI 出片提示词（一大段连续故事描述）
 
-本任务输出**抖音/Reels 风格真人短视频**，**不是电影广告片**。Veo 拿到 "Cinematic / 50mm / Rule of thirds / 4K sharp / studio softbox / front diffused" 等词会输出影院级广告片 + 假人感。下列规则**覆盖** 71 维度框架的默认电影取值：
+**不出分镜三件套**（没有 image_prompt / last_frame_prompt / motion_prompt）。出**一大段连续的故事描述提示词**——实测结论：拆开的分镜提示词出不了满意素材，一整段最详细的叙事描述才行。人物、场景变换、每一次镜头变化全部织进叙事，时间戳贯穿。
 
-**image_prompt 风格定锚替换清单**
+本段是第 4 部分分镜脚本的**忠实翻译，不是二次创作**：事件、台词、节点顺序、产品出场位置必须与第 4 部分一一对应，不新增第 4 部分没有的情节、卖点或台词。
 
-用这些（短视频真人锚 · 每段 image_prompt 顶部复用）：
-- `Vertical 9:16 iPhone handheld video frame, casual home vlog style, unposed documentary feel`
-- `natural indoor light from window / overcast soft daylight / ambient apartment lighting`
-- `subtle handheld micro-shake, slight ambient grain, natural skin texture, no color grading, no filter`
-- `slightly off-center framing, subject in left-third or right-third, cluttered ambient background visible`
-- 产品收割段：产品在画面里仍然是"真人随手摆的"，不是产品摄影棚的"商品大片"
+- **语言、音频支持、真人感锚、负向词：按 ⑦ 的模型档案执行**（中文模型全中文写，镜头术语也用中文：推/拉/摇/移/特写/中景/全景）
+- **拆块铁律（与 3.6 手动出片不同，本部分必须拆块）**：本提示词经 step 7 API 出片，单段生成上限 15 秒——按 ⌈总时长 ÷ 15s⌉ 拆块，每块 ≤15s、时间连续覆盖全片；每块标题固定 `### 提示词块 X（A-Bs）`（如 `### 提示词块 1（0-15s）`），**哪怕只有 1 块也必须带这个标题**（后端按它解析）。每块开头重述人物外观锚+场景锚+风格锚（原词复用，不换近义词），块尾写清结束帧状态（下一块从此状态继续）
+- **开头三件套（每块第一段必须依次包含）**：
+  1. 参考图声明：「本提示词配合产品白底图参考图使用」（有第 3.5 部分角色清单时追加「及角色定妆照参考图」）
+  2. 人物外观锚：本片每个出场角色一句可见描述——年龄段/性别/体型/衣着/最显眼的 1 个专属瑕疵，**与第 3.5 部分角色清单完全一致**，全段不漂移
+  3. 场景与风格锚：主场景一句话（空间布局/光线/真实杂物细节）+ ⑦ 档案里的真人感锚原文内嵌；**禁**电影感/影棚光/广告片质感
+- **细节密度拉满（每块字数 ≥ 块时长秒数 × 25，宁多勿少）**：按时间顺序写，每个节拍写全 6 要素——画面内容 / 人物动作与表情微变化 / 镜头（机位+景别+运动）/ 光线 / 产品状态（在画时：位置、朝向、被怎么用）/ 声音（环境音+对白）。台词照抄第 4 部分「台词/字幕」字段（档案支持音频时写明谁说、什么语气）；**不写情绪意图词**（"温馨""治愈""有食欲"），只写可见可听的
+- **时间锚贯穿**：用 (0:00-0:05) 风格时间戳标注每个节拍；节拍边界与第 4 部分各节点时间区间一致，总时长 = metrics_json 的 duration_seconds
+- **动作密度（防 AI 假人）**：每个节拍至少 1 个动机性可见动作（伸手取物/转头/倒酱油/夹菜入口/明显笑/放下物品），禁整节拍只有 subtle/缓慢微动，禁物理量化微表情（"眉毛放松 2mm"），禁强制静止，禁把眨眼/呼吸写成动作
+- **产品白底图融合（实战必配，写细）**：产品每次入画处精确描述外观——瓶型/瓶盖颜色/标签主色与文字位置/液体颜色/规格大小（从 ② SKU 信息推；SKU 没给的外观细节写"以参考图为准"，不许编）；同时写清产品在画面里的位置、朝向、与人物动作的关系
+- **禁文字入画**：字幕/价格/利益点/品牌 logo 文字全部后期叠加，提示词不要求模型渲染任何文字
+- **每块段尾独立一行负向词**（按 ⑦ 档案的负向词行）
+- **收割专属**：产品全程在画——每个节拍的 6 要素里"产品状态"必填；强 CTA 靠后期字幕和口播，提示词只写画面动作（举瓶/倒酱油/夹菜入口/望向镜头），不写"购买""下单"等待渲染文字
 
-禁这些（默认电影锚 / 商品大片锚 · 出现即重写本段）：
-- ❌ `Cinematic` / `35/50/85mm cinema` / `f/2.8 shallow DOF` / `photo-realistic 4K sharp focus`
-- ❌ `Rule of thirds` / `centered composition` / `commercial palette` / `studio softbox lighting`
-- ❌ `vivid saturation / bright clean commercial palette`（商品大片调色术语）
-- ❌ `front soft-box diffused light 5500K neutral white`（商业打光术语）
-- ❌ `confident urgency, conversion beat`（叙事意图词 — Veo 看不懂）
+### 第 6 部分：metrics_json（**结构化指标，后端代码会校验**）
 
-**71 维度短视频取值映射（覆盖原表格示例）**
+输出末尾以 ```json 代码块给出（**这个 JSON 老板看不见**——后端 parse 后跑硬约束校验，违反字段会作为 warning 返回 UI）：
 
-| 维度 | 默认电影锚 → 替换为 |
-|---|---|
-| S1/S4/S5 镜头景深 | medium shot or close-up iPhone vertical, phone-camera native FOV |
-| S19-S23 光线 | natural indoor light from window / overcast daylight（删"softbox 5500K"）|
-| S24-S27 色彩 | unprocessed natural colors（删"vivid commercial palette"）|
-| S28-S32 构图 | slightly off-center casual framing（禁 rule of thirds / centered）|
-| S43-S46 情绪叙事 | **整行删除** — 不给 Veo 灌"conversion beat"等意图词 |
-| S47-S48 画质 | phone-camera quality, slight indoor grain（禁"photo-realistic 4K sharp"）|
+```json
+{
+  "duration_seconds": 20,
+  "scenes_total_count": 5,
+  "ai_prompt_present": true,
+  "ai_prompt_block_count": 2,
+  "ai_prompt_char_count": 1620,
+  "ai_prompt_timestamp_count": 7,
+  "ai_prompt_negative_line_present": true,
+  "ai_prompt_product_ref_declared": true
+}
+```
 
-**motion_prompt 动作密度硬规则（收割段也适用）**
+**字段含义 + 校验**：
+- `duration_seconds`：总时长秒数（15-25，越短越好）
+- `scenes_total_count`：第 4 部分分镜段数（4-6）
+- `ai_prompt_present` = true（第 5 部分必须存在）
+- `ai_prompt_block_count`：提示词块数 = ⌈duration_seconds ÷ 15⌉
+- `ai_prompt_char_count`：全部提示词块总字数（每块须 ≥ 块时长秒数 × 25）
+- `ai_prompt_timestamp_count`：(0:00-0:05) 风格时间戳总个数
+- `ai_prompt_negative_line_present` = true（每块段尾独立一行负向词）
+- `ai_prompt_product_ref_declared` = true（每块开头声明产品白底图参考图）
 
-收割段 4s 短 + 强 CTA，**也必须 1 个动机性可见动作**（倒酱油、夹菜入口、瓶身倾倒、举瓶展示），禁全段 subtle / slowly / fractional。
-
-**禁这些写法**：
-- ❌ `bottle hovers vertically for 1s without any motion before pour begins` — 1 秒静止后才动 = AI 慢节奏感
-- ❌ `liquid stream emerges slowly` — 倒酱油慢动作 = 假
-- ❌ `hand stays perfectly still while pouring` — 强制不动 = 死板
-
-**正确写法**：
-- ✅ `bottle tilts from vertical to 30° within 0-0.8s, dark soy stream emerges and lands on lettuce at 1.2s, glossy ripple spreads 1.2-2.5s, bottle returns vertical by 3s, hand subtly readjusts grip 3-4s`
-- ✅ 自然伴生：natural skin micro-movement on hand, subtle handheld camera sway throughout
-- ✅ 短促情绪点（如有真人入镜）：a brief look-down at the pour at 1.5s
-
-**4s 收割段动作密度公式**：1 个完整的产品动作（倒/夹/举 · 占 2-3s）+ 1 个收势状态（0.5-1s）+ 自然伴生背景持续。
-
-**F10 首尾帧可见差异自检（在原 F1-F9 之外追加）**
-
-| # | 检查项 | 结论 |
-|---|---|---|
-| F10 | 首尾帧的差异肉眼能在并排两图中明显看出？（产品位置/液体状态/手势位置都要可见差异）| 是/否 |
-
-F10 否 → 必须重写 last_frame_prompt 把变化幅度拉大（在 FV1-FV4 范围内），或拆段。
-
----
-
-**双帧硬约束（image_prompt 与 last_frame_prompt 的关系 · 每段写完必过）**
-
-首尾帧 = 同一个连续镜头内 t=0 与 t=T，AI 视频模型在中间做补帧。两条铁律：
-
-- **铁律 A**：一个真实摄影机能在 3-5 秒内不中断、不剪辑地从首帧拍到尾帧。做不到 = 必须拆段。
-- **铁律 B**：last_frame_prompt 跟 image_prompt 的英文文字共享 ≥85%，只在"运动变量"上有差异。
-
-**5 个不变量（FI · 严禁在首尾帧之间变化）**
-
-| 编号 | 不变量 | 违反示例（必拆段或重写）|
-|---|---|---|
-| FI1 | 机位（位置+角度+高度）| 首帧正面 / 尾帧侧面 |
-| FI2 | 景别（特写/中景/全景）| 首帧手部特写 / 尾帧全身中景 |
-| FI3 | 焦段与景深 | 首帧 85mm f/1.8 / 尾帧 35mm f/8 |
-| FI4 | 主体身份与数量 | 首帧 1 人 / 尾帧 2 人，或不同长相 |
-| FI5 | 物体种类与数量 | 首帧桌上 1 瓶 / 尾帧桌上 3 瓶，或不同品牌瓶 |
-
-"另一个角度看同一场景"也不允许——那是两个镜头，必须拆成相邻两段（前段尾帧 = 后段首帧）。
-
-**4 个允许变量（FV · 首尾帧之间只能在这 4 类上变化）**
-
-| 编号 | 变量 | 合理范围 |
-|---|---|---|
-| FV1 | 主体表情 | 微笑→大笑、平静→皱眉、闭眼→睁眼 |
-| FV2 | 主体动作/姿态 | 手伸出→手握紧、身体前倾 5°→前倾 15°、未拥抱→已拥抱（连续可推导）|
-| FV3 | 物体连续位移 | 杯子从桌左移到桌右、酱油从瓶中倒入碗内（不允许"瓶子在桌→瓶子在地摔碎"这种状态突变）|
-| FV4 | 光线/烟雾/蒸汽等环境元素细微变化 | 蒸汽从无到有、阳光角度微调 5°、烛火摇曳 |
-
-**双帧撰写规范（每段 image_prompt 与 last_frame_prompt 按此结构写）**
-
-- 共享描述（≥85% 文本）：机位/景别/焦段/景深/主体身份/场景/道具/光线/构图/质感/风格 —— image_prompt 里写完整，last_frame_prompt **原文复用**这些关键词组（不换近义词、不改顺序）
-- image_prompt 段末追加 `At t=0:` 一句，描述运动起点状态（表情/姿态/位移起始）
-- last_frame_prompt 主体是 `At t=T:` 一句，描述运动终点状态 —— **其余 ≥85% 文本与 image_prompt 文字雷同**
-
-**典型错误（必避免）**
-
-- ❌ 首帧"手拧瓶盖特写" / 尾帧"老人侧身全身" → 违反 FI1+FI2，拆成两段
-- ❌ 首帧"白塑料瓶" / 尾帧"棕玻璃瓶" → 违反 FI5（不同物体），拆段（前段拍白瓶、后段拍棕瓶，剪辑硬切对比）
-- ❌ 首帧"桌上无瓶" / 尾帧"桌上多出 2 瓶" → 违反 FI5（物体凭空出现），统一桌面摆设、变量改为人物表情/动作
-- ❌ 首帧"瓶子立在桌上" / 尾帧"瓶子摔碎在地" → 违反 FV3（状态突变 + 大位移），拆段
-- ❌ 收割段首帧"产品 logo 正面" / 尾帧"产品被使用一半" → 违反 FI5（物体状态差太多），拆段
-
-**首尾帧 9 项自检（每段写完输出此表，任一否 → 重写本段 last_frame_prompt 或拆段）**
-
-| # | 检查项 | 结论 |
-|---|---|---|
-| F1 | 首尾帧 FI1 机位完全一致？| 是/否 |
-| F2 | 首尾帧 FI2 景别完全一致？| 是/否 |
-| F3 | 首尾帧 FI3 焦段与景深完全一致？| 是/否 |
-| F4 | 首尾帧 FI4 人物数量与身份完全一致？| 是/否 |
-| F5 | 首尾帧 FI5 物体种类与数量完全一致？| 是/否 |
-| F6 | 首尾帧变化只涉及 FV1-FV4 中的允许项？| 是/否 |
-| F7 | image_prompt 与 last_frame_prompt 文字共享 ≥85%？| 是/否 |
-| F8 | 一个真实摄影师能在 3-5 秒内不剪辑地拍出这段过程？| 是/否 |
-| F9 | 若把首尾两帧并排给陌生人看，他会认为是"同一镜头的两个瞬间"，不是"两张独立的图"？| 是/否 |
-
-任何 F1-F9 否 → 优先**重写 last_frame_prompt**（让它在 FV 范围内变化，跟 image_prompt 共享 ≥85% 文本）；重写不通则**拆段**：当前 image_prompt 作为段 N 的 last_frame_prompt + 段 N+1 的 image_prompt。
-
-**image_prompt 71 维度框架（收割版 — 产品优先，节奏紧凑）**
-
-按**认知流顺序**连成 150-350 字段落（英文为主）：
-
-| 层 | 维度 | 收割场景常用值 |
-|---|---|---|
-| **A 镜头** | S1 景别 · S4 焦段 · S5 景深 | extreme close-up / medium shot, 50-85mm, f/2.8 |
-| **B 主体** | S8 动作 · S11 手部（食品必填）| pouring sauce over dish, fingers steady holding bottle |
-| **G 决定性瞬间** | S33 精确瞬间 | the instant sauce hits food surface, glossy stream mid-air |
-| **C 场景道具** | S13 场景 · S15 关键道具 · S17 空气感 | clean white marble counter, two sauce bottles side by side, thin steam |
-| **D 光线** | S19 主光 · S21 色温 | front soft-box diffused light, 5500K neutral white |
-| **E 色彩** | S24 主色调 · S25 饱和度 | bright clean commercial palette, vivid saturation |
-| **F 构图** | S28 构图 · S29 产品位置 | centered composition, product occupying center-left third |
-| **H 质感** | S38 液体特性（食品必填）· S39 蒸汽 | viscous glossy soy flow, rich dark amber, thin wispng steam |
-| **J 情绪叙事** | S43 情绪基调 · S45 叙事功能 | confident urgency, conversion beat |
-| **K 技术** | S47 画幅 · S48 画质 · S49 本镜负向 | 9:16 vertical, 4K sharp · no price text overlay |
-| **L 参考图** | S51 产品（每段必填）| soy sauce bottle as product reference |
-
-**4 条硬约束**
-
-1. **产品每段必填**：收割视频产品始终在场，S51 产品参考每段都写
-2. **禁文字入画**：价格/利益点/CTA 是后期字幕叠加，image_prompt 不写任何文字
-3. **全局锚词组原文复用**：G2/G3/G4 关键词每段完全相同，只在景别/动作/构图上变化
-4. **禁 SD 风**：❌ `masterpiece, best quality, (weight:1.2), octane render`
-
-**序列连贯性自检（全部分镜写完后输出此表，任一否 → 修对应 image_prompt）**
-
-| # | 检查项 | 结论 |
-|---|---|---|
-| C1 | 产品一致性：每段 image_prompt 含 G5 产品锚 + S51 产品参考调用？ | 是/否 |
-| C2 | 场景一致性：G2 场景锚的关键词组每段完全相同，无背景漂移？ | 是/否 |
-| C3 | 光线连贯性：G4 光线锚的方向/色温全段一致？ | 是/否 |
-| C4 | 节奏递进：景别从中景→特写→CTA 大景，符合收割节奏线？ | 是/否 |
-| C5 | 剪辑衔接：相邻分镜存在动作匹配/产品连续性视觉连接？ | 是/否 |
-| C6 | 钩子帧：第 1 分镜 image_prompt 独立看就能传递卖点冲击力？ | 是/否 |
+**这些自报值后端会确定性反算校验**（块数 = ⌈duration_seconds ÷ 15⌉、每块字数 ≥ 块时长秒数 × 25、时间戳连续覆盖全片），自报与实算偏差大会标「自报数据自欺」。不要造假数字让自己过关。
 
 ## 四、自检（输出前必过）
 
@@ -259,7 +134,6 @@ F10 否 → 必须重写 last_frame_prompt 把变化幅度拉大（在 FV1-FV4 �
 - 没 AI 化套话？
 - 卖点引 matrix 节号？
 - **叙事连贯**：每段结尾状态能自然接下一段开头，没跳跃感？
-- **image_prompt**：全部分镜有 image_prompt，C1-C6 序列自检全过？
-- [ ] last_frame_prompt 不为空，长度 [60,200] 字符
+- **AI 出片提示词**：符合第 5 部分全部要求（拆块标题 `### 提示词块 X（A-Bs）`/开头三件套/每块字数 ≥ 秒×25/时间戳连续覆盖/段尾负向词行）？
 
 任一项不过 → 改。

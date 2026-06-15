@@ -1083,6 +1083,74 @@ _GRAPHIC_SCENE_HEADER_RE = re.compile(
     re.M,
 )
 
+# ── 新形态（2026-06-12 一大段提示词）：### 提示词块 X（0-15s / 0:00-0:15）──
+_WHOLE_PROMPT_BLOCK_RE = re.compile(
+    r"^#{2,4}\s*提示词块\s*(?P<no>\d+)\s*"
+    r"(?:[（(]\s*(?P<time>[^）)\n]*?)\s*[）)])?\s*$",
+    re.M,
+)
+_TIME_POINT_RE = re.compile(r"(?:(\d+)[:：])?(\d+(?:\.\d+)?)")
+
+
+def _time_range_to_seconds(raw: str) -> tuple[int | None, int | None]:
+    """'0-22s'/'0:00-0:22'/'5-18秒'/'0~22' → (start, end)；失败 (None, None)。"""
+    if not raw:
+        return (None, None)
+    txt = raw.strip()
+    for ch in ("～", "~", "—", "–", "至", "到"):
+        txt = txt.replace(ch, "-")
+    halves = [h.strip().rstrip("s秒S") for h in txt.split("-") if h.strip()]
+    if len(halves) != 2:
+        return (None, None)
+
+    def _pt(p: str) -> int | None:
+        m = _TIME_POINT_RE.fullmatch(p)
+        if not m:
+            return None
+        return int((int(m.group(1)) if m.group(1) else 0) * 60 + float(m.group(2)))
+
+    a, b = _pt(halves[0]), _pt(halves[1])
+    return (a, b) if a is not None and b is not None and b > a else (None, None)
+
+
+def _parse_whole_prompt_blocks(text: str) -> list[dict[str, Any]]:
+    """新形态：每块 = 连续叙事全文（脚本=单一创意源，原样存，不抽字段）。"""
+    headers = list(_WHOLE_PROMPT_BLOCK_RE.finditer(text))
+    if not headers:
+        return []
+    scenes: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for i, h in enumerate(headers):
+        no = int(h.group("no"))
+        if no in seen:
+            continue
+        seen.add(no)
+        body = text[h.end(): headers[i + 1].start() if i + 1 < len(headers) else len(text)].strip()
+        # 截掉块后误入的下一节标题（## 自检 / # 第 X 部分）与 metrics_json 代码栅栏
+        nxt = re.search(r"^#{1,3}\s", body, re.M)
+        if nxt:
+            body = body[:nxt.start()].strip()
+        fence = body.find("\n```")
+        if fence != -1:
+            body = body[:fence].strip()
+        if not body:
+            continue
+        t_raw = (h.group("time") or "").strip() or None
+        t0, t1 = _time_range_to_seconds(t_raw or "")
+        scene: dict[str, Any] = {
+            "scene_no": no,
+            "name": None,
+            # 归一化成 "A-Bs" 喂旧 duration 解析器；解析失败保留原文
+            "time_range": f"{t0}-{t1}s" if t0 is not None else t_raw,
+            "video_prompt": body,
+            "whole_prompt": True,
+        }
+        if t0 is not None and t1 is not None:
+            scene["duration_s"] = t1 - t0
+        scenes.append(scene)
+    scenes.sort(key=lambda s: s["scene_no"])
+    return scenes
+
 
 def _video_scene_block_kinds() -> set[str]:
     return {"video_soft_ad", "video_planting", "video_harvest"}
@@ -1110,6 +1178,10 @@ def parse_scenes_from_script_md(script_md: str, kind: str) -> list[dict[str, Any
     text = script_md
 
     if kind in _video_scene_block_kinds():
+        # 新形态优先：「### 提示词块 X」= 单一创意源，压过任何残留"节点 N"段
+        whole = _parse_whole_prompt_blocks(text)
+        if whole:
+            return whole
         return _parse_video_scenes(text)
     if kind in _graphic_scene_block_kinds():
         return _parse_graphic_scenes(text, kind)
