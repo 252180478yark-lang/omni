@@ -16,7 +16,7 @@ from app.database import get_pool
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-PLATFORMS = {"douyin_compass", "douyin_shop_admin", "yuntu", "taobao"}
+PLATFORMS = {"douyin_compass", "douyin_shop_admin", "yuntu", "taobao", "jd"}
 
 
 @router.get("/sessions/{platform}")
@@ -49,6 +49,8 @@ async def relogin(platform: str):
         # 竞品调研：淘宝/天猫。落 www.taobao.com 首页；未登录会出登录浮层，
         # 老板扫码/账密登录后回首页，_run_relogin 监测到 unb/tracknick 即落库。
         "taobao": "https://www.taobao.com/",
+        # 京东商智（切片2）：sz.jd.com 商智后台；登录后 _run_relogin 监测 pt_pin/thor 即落库。
+        "jd": "https://sz.jd.com/",
     }
 
     asyncio.create_task(_run_relogin(platform, urls[platform]))
@@ -91,6 +93,9 @@ async def _run_relogin(platform: str, url: str) -> None:
         # （cookie2/_tb_token_/sgcookie/cna/isg/tfstk/t 是游客态 cookie，page.goto 即落，
         #   不能当登录标记——否则刚打开 taobao.com 就被误判成已登录。）
         "taobao": {"unb", "tracknick", "lgc", "_nk_"},
+        # 京东登录后才写的强标记：pt_pin=登录 pin、pt_key=登录态 token、thor=登录态。
+        # （pt_pin/pt_key/thor 是 JD 标准登录 cookie；切片0 实测确认为准。）
+        "jd": {"pt_pin", "pt_key", "thor"},
     }
     auth_cookie_names = AUTH_COOKIE_NAMES_BY_PLATFORM.get(
         platform, AUTH_COOKIE_NAMES_BY_PLATFORM["_default"]

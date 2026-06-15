@@ -17,7 +17,7 @@ _RUNNER_JS = (Path(__file__).parent / "runner.js").read_text(encoding="utf-8")
 # 平台 → cookies session 目录名（sessions/<name>/storage_state.json）
 # 2026-06-03 修阻断 bug：原映射到不存在的 'jinritemai'，对齐 sessions.py relogin 实际写的目录名
 # （douyin_compass / douyin_shop_admin），否则 compass/doudian 的 has_cookies 恒 False → 永远 FAIL_AUTH。
-_PLATFORM_SESSION = {"yuntu": "yuntu", "compass": "douyin_compass", "doudian": "douyin_shop_admin"}
+_PLATFORM_SESSION = {"yuntu": "yuntu", "compass": "douyin_compass", "doudian": "douyin_shop_admin", "jd": "jd"}
 
 
 class LiveFetchExecutor:
@@ -69,6 +69,8 @@ class LiveFetchExecutor:
             return "yuntu"
         if "compass" in host:
             return "compass"
+        if "jd.com" in host:  # 京东商智 sz.jd.com / 京麦——切片2 接入（切片0 勘测后填 catalog/jd.json）
+            return "jd"
         return "doudian"
 
     # ---- 核心 ----

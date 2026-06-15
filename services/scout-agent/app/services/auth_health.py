@@ -26,8 +26,9 @@ _PROBE = {
     "doudian": "doudian.homepage",
 }
 # fetch 平台名 → mvp_session.platform（与 live_fetch._PLATFORM_SESSION 对齐，禁漂移）
-_SESSION_NAME = {"yuntu": "yuntu", "compass": "douyin_compass", "doudian": "douyin_shop_admin"}
-_PLATFORM_CN = {"yuntu": "巨量云图", "compass": "抖音罗盘", "doudian": "抖店后台"}
+# jd 已注册会话/中文名，但 _PROBE 暂不含 jd——切片0 勘测出 verified 端点后再加，否则探针无端点可打。
+_SESSION_NAME = {"yuntu": "yuntu", "compass": "douyin_compass", "doudian": "douyin_shop_admin", "jd": "jd"}
+_PLATFORM_CN = {"yuntu": "巨量云图", "compass": "抖音罗盘", "doudian": "抖店后台", "jd": "京东商智"}
 
 _ALIVE = ("PASS", "PASS_NODATA")
 

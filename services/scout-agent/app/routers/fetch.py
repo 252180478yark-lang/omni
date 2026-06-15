@@ -7,7 +7,7 @@ from app.schemas.fetch import BatchFetchRequest, FetchRequest
 
 router = APIRouter()
 _EXECUTOR = None
-_PLATFORMS = ("yuntu", "compass", "doudian")
+_PLATFORMS = ("yuntu", "compass", "doudian", "jd")
 
 
 def set_executor(executor) -> None:

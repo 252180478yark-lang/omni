@@ -36,8 +36,8 @@ async def lifespan(app: FastAPI):
         from app.routers.fetch import set_executor
 
         cat_dir = Path(__file__).resolve().parent.parent / "catalog"
-        files = {p: cat_dir / f"{p}.json" for p in ("yuntu", "compass", "doudian")
-                 if (cat_dir / f"{p}.json").exists()}
+        files = {p: cat_dir / f"{p}.json" for p in ("yuntu", "compass", "doudian", "jd")
+                 if (cat_dir / f"{p}.json").exists()}  # jd 切片2 接入；jd.json 现为空骨架（切片0 填端点）
         context = json.loads((cat_dir / "context.json").read_text("utf-8")) if (cat_dir / "context.json").exists() else {}
         sessions_root = Path(getattr(settings, "sessions_dir", "./sessions"))
         set_executor(LiveFetchExecutor(CatalogLoader.from_files(files, context), sessions_root))
