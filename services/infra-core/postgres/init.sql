@@ -55,6 +55,11 @@ CREATE TABLE IF NOT EXISTS knowledge.tasks (
     status VARCHAR(20) NOT NULL DEFAULT 'queued',
     error TEXT,
     document_id UUID,
+    -- 恢复保真（migration 049）：重启 recover_stuck_tasks 回放时不丢切块参数
+    chunk_size INTEGER,
+    chunk_overlap INTEGER,
+    skip_chunking BOOLEAN NOT NULL DEFAULT FALSE,
+    metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -243,6 +248,7 @@ CREATE TABLE IF NOT EXISTS knowledge.hype_embeddings (
     chunk_id UUID NOT NULL REFERENCES knowledge.knowledge_chunks(id) ON DELETE CASCADE,
     kb_id UUID NOT NULL,
     question_index INTEGER NOT NULL DEFAULT 0,
+    question_text TEXT,  -- 假设问题原文（migration 049：可审计 + rebuild 免重烧 LLM）
     embedding vector(1536),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -252,6 +258,14 @@ CREATE INDEX IF NOT EXISTS idx_hype_embedding_hnsw
     ON knowledge.hype_embeddings
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
+
+-- HyPE 假设问题缓存（migration 049）：按 chunk 内容 hash 复用已生成问题，
+-- 同内容重灌/重复上传不再重烧 LLM（embedding 另有 Redis 缓存）
+CREATE TABLE IF NOT EXISTS knowledge.hype_question_cache (
+    content_hash TEXT PRIMARY KEY,
+    questions    JSONB NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- ═══ Ad Review (SP8) ═══
 CREATE SCHEMA IF NOT EXISTS ad_review;

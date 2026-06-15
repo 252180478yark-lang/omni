@@ -39,6 +39,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped  # 宿主机重启自动拉起（Power BI 直连 + cron 落库都依赖它常驻）
     networks:
       - omni-network
 
@@ -221,6 +222,8 @@ services:
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
       VOLCENGINE_ACCESS_KEY: "${VOLCENGINE_ACCESS_KEY:-}"
       VOLCENGINE_SECRET_KEY: "${VOLCENGINE_SECRET_KEY:-}"
+      # 老板真实成本视图口令（值在根 .env，不入 git）
+      COST_REAL_VIEW_PASSPHRASE: "${COST_REAL_VIEW_PASSPHRASE:-}"
       # 竞品调研：KE 的 competitor_* tool 经 HTTP 调 scout-agent 抓淘宝
       SCOUT_AGENT_URL: "http://scout-agent:8009"
       # R-22 文档体检：容器内挂仓库根 CLAUDE.md 后指过去，doctor 能真比对工具数（否则 WARN-skip）

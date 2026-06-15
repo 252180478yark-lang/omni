@@ -5,13 +5,13 @@
 
 ## omni MCP server
 
-omni 暴露 **78 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 78 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
+omni 暴露 **81 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 81 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
 
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
 - 编排辅助：`gather_brief_context`
 - 生成（旧链，无血缘）：`generate_brief`, `generate_image`, `generate_video`, `generate_image_compare`
-- sku-pipeline LLM：`generate_selling_points_matrix`（step 2）, `generate_audience_match`（step 3）, `generate_audience_pack`（step 4，phase B）, `generate_keyword_pack`（500 词扩展，phase B+）, `generate_creative_pack`（step 5 创意素材 6 类，phase C）
+- sku-pipeline LLM：`generate_selling_points_matrix`（step 2）, `generate_audience_match`（step 3）, `generate_audience_pack`（step 4，phase B）, `generate_keyword_pack`（500 词扩展，phase B+）, `generate_creative_pack`（step 5 创意素材 6 类，phase C）, `generate_audience_portrait`（step 3.5 人群生活状态画像：四路定向召回+可信度分级标注 [KB:]/🧠/⚠️+卖点重构+情绪触点，落 pipeline.audience_portraits）, `generate_director_brief`（step 3.6 编导备忘录：V7.2 一件事/起伏≠反转/卖点种情绪+算法信号三向量+一大段 AI 出片提示词（target_model 档案定写法），落 pipeline.scripts kind='director_brief'）
 - sku-pipeline 出片（新链，挂血缘，见下"新旧两条出片链分流"）：`generate_storyboard_images`（step 6 分镜图，挂 pipeline.assets）, `generate_character_sheets`（step 6.5 角色定妆白底像锁脸）, `generate_video_segments`（step 7 视频段：分镜图当 first_frame + character_sheet 锁脸）
 - 真人视频（绕 Seedance content_sensitive）：`realman_create_avatar`, `realman_generate_portrait_video`, `generate_video_anchor`（t2v 模式角色锚点）
 - 反推故事板（直调 Gemini Files API）：`reverse_storyboard_video`（视频→可喂回 AI 的 image/video i2v/video t2v 三类 prompt 包）
@@ -22,6 +22,7 @@ omni 暴露 **78 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - 反馈飞轮（migration 031）：`rate_message`（消息级 👍👎 入 mcp.message_feedback）
 - Bug 记忆库 + 客户端日志（migration 032）：`log_client_event`（批量记客户端运行事件）, `report_bug`（一键报 bug，自动 dedupe）, `list_bugs`（拉 bug 列表）, `update_bug`（标修复/补根因）
 - 竞品调研（淘宝）：`competitor_search`（搜词抓前 50 榜单 + 相关性过滤）, `competitor_decompose`（主图/详情页拆卖点/构图/配色/设计/内容 5 维度）
+- 竞品人群逆向分析：`reverse_audience_analysis`（竞品视频→8 项人群信号〔演员人设/场景档次/话术/BGM/字幕/钩子/价格信号/CTA〕+ 竞品人群假设〔每句 🧠/⚠️ 标注，数字必带 ⚠️，禁伪 [KB:] 锚〕；可选对照自家 step 3.5 画像出对照表/人群空白四区〔红海/抢夺/蓝海/必争〕/可借鉴打法 3-5 条，段二 fail-open；v1 不落库只出 md）——老板话术"看这竞品视频在打什么人 / 反推这视频的人群 / 对比我们的画像" → `reverse_audience_analysis(share_url=..., portrait_id=...)`（无画像可只传视频；sku_id 自动拉最新 adopted 画像）。**反推"打什么人"走它；反推"怎么拍"（故事板 prompt 包）走 `reverse_storyboard_video`**
 - 阶段0 L0-2 成本闸：`query_monthly_spend`（omni 自身月度运行成本 + 软上限超额检测）
 - 诊断官（§6.2）：`diagnose`（content 聚类两路反馈 / analysis 聚类趋势异动出《改进提议》，R-14 分层/R-15 样本量/R-20 生命周期，只提议不碰开关）, `list_proposals`（看待办提议+消化率）, `resolve_proposal`（三态 accept/ignore=不再提醒同类/snooze）, `explain_anomaly`（解释某条趋势异动：分层归因+近28天序列）, `query_metric_trend`（某指标近N天序列+基线mean/std）
 - W4 加分：`save_decision`, `schedule_observation`, `send_wecom_message`, `dy_publish_creative`
@@ -29,15 +30,15 @@ omni 暴露 **78 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
 - 投后回传闭环：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
 - 三平台实时取数底座（经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
-- 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 抽取器落 95 指标 + 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
-- 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，覆盖已落库 95 指标）
+- 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 抽取器落库（metric_registry 注册 95 指标；库内实有 159 个 distinct metric_name，含维表后超注册数）+ 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
+- 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，覆盖 metric_registry 注册的 95 指标）
 - 人群包投前诊断 + 提纯（方法论沉淀）：`diagnose_audience_pack`（候选包画像 vs 行业 A4 真需求标尺 → 逐维度看方向不算总相似分 → 投前诊断卡：价值维正向偏离/购买行为软硬/需求重叠真需求指纹/身份维差异不计 → 漏斗定位 + 内容策略定调 + **提纯优先级阶梯施工单**（不限刀数、按漏斗定位排序、每刀标 ✅非电商/⚠电商 资格 + 预计收窄力度 强/中/弱（粗估自画像占比·非云图真值，想快掉一个量级先挑「强」刀）——⚠电商刀只能上品牌广告不能上非品牌广告；老板一刀一刀切看云图真实覆盖人数、不满意重导出做二次提纯）；确定性为主、polish=True 巨量云图 KB grounding LLM 叙事过 R-14；详见下「人群包投前诊断」节）
 - 巨量云图标签体系确定性查询：`query_yuntu_taxonomy`（圈包/提纯/答疑的标签 ground truth——总览两大入口+各维度 / dimension=某维度全量树 / search=某标签的真实层级路径+勾选菜单 / section=字段全集·行业特色·固定清单·提纯三刀法；**回答标签体系问题优先调它，别去硬读 30k 大文件 v2 字典、别靠 lossy RAG**。数据源 config/audience 画像 CSV + dump v1 常量，确定性不截断不虚构）
 - 写入（require_approval=True）：`record_cost`, `disable_cost_item`
 
 ## 工具路由总则（撞车消歧 · 选 skill/tool 前必读）
 
-老板自用环境里 12 个业务 skill 跟 50+ 通用英文 skill 同池竞争，**最常见的错是把中文业务话术路由给通用英文 skill（copywriting / competitive-landscape / pricing-strategy / market-sizing / apify-* 等）→ 它们不调 omni 真实数据，凭空编卖点/价格（违反反幻觉）或调 omni 没接的后端空跑**。铁律：
+老板自用环境里 11 个业务 skill 跟 50+ 通用英文 skill 同池竞争，**最常见的错是把中文业务话术路由给通用英文 skill（copywriting / competitive-landscape / pricing-strategy / market-sizing / apify-* 等）→ 它们不调 omni 真实数据，凭空编卖点/价格（违反反幻觉）或调 omni 没接的后端空跑**。铁律：
 
 - **元规则**：凡有对应业务 skill 的话术，**优先走业务 skill**，不走通用英文 marketing/strategy/finance skill，也别裸调底层 tool。业务话术 = 和田宽 / SKU / 酱油醋 / 调味品 / 店铺 / 人群包 / 竞品 / 经营。
 - **写文案/脚本/直播话术/带货内容** → `script-writer`（**不走** copywriting/content-creator/social-content/copy-editing）
@@ -104,7 +105,9 @@ mcp tool：`list_product_prices(query='', vendor='', barcode='', limit=30)`
 ## 渠道扣点（W4-B 切片 9）
 
 `accounting.channel_fees` 存各渠道当前生效的扣点率（按 GMV % 或固定每单）。
-当前已录：抖音 2%（抖店技术服务费）。
+当前已录：抖音 2%（抖店技术服务费）、天猫 2.5%（服务费 2%+交易返点 0.5%）、
+京东POP 3.56%（运营支持 3.5%+交易服务 0.06%）。京东自营是供货制（毛保+推广费）
+**故意不录**——不是 GMV 扣点模型，录进来会把 compute_margin 算错。
 
 `compute_margin` 不显式传 `channel_fee_rate` 时**自动 fallback** 查这表
 （按 channel 找 active percentage 行）；找不到再兜底 5%。breakdown 返
@@ -118,6 +121,14 @@ INSERT INTO accounting.channel_fees (channel, fee_type, fee_rate, description)
   VALUES ('tmall', 'percentage', 0.05, '天猫扣点');
 -- 或改：旧行 valid_to=今天 + 新行 valid_from=明天
 ```
+
+## 渠道产品经济账字典（migration 045，2026-06-11）
+
+`accounting.channel_product_costs`（204 行：tmall 117 / jd_self 46 / jd_pop 41）——产品利润表.xlsx 三 sheet 整表结构化导入。每行 = 某渠道某产品某数量档的完整成本测算：标量列（barcode/spec/qty/出厂价/保本价/标价/实际售价）+ `components` jsonb 装其余全部列（快递包材/运费/人工分拣/发货成本/税点税额/服务费率/返点/京东毛保/推广费/入仓费/利润/赠品…按表头原名做 key，零丢失）。**无专属 MCP tool，SQL 直查**。用途：新 SKU 上天猫/京东要核算时，`WHERE barcode=X AND channel=Y` 一查拿全套组件再桥进 cost_items——"先录全、用时再核算"。
+
+## 物流运价 + 单瓶重量字典（migration 044，2026-06-11）
+
+`accounting.logistics_price_list`（始发仓×目的省×重量段，140 行：0-1/1-2/2-3KG 元/票 + >3KG 续重元/KG；内蒙拆三组城市群、川西等例外区单列）+ `accounting.product_weight_list`（41 行：条码口径 24 行优先，名称口径 17 行补充 barcode=NULL）。**无专属 MCP tool，SQL 直查**。用途：把 cost_items 的「默认运费 5/包材 3」兜底精化成按省×重量真值——重量字典查克重 → 运价字典落重量档（如 367991-0002 组合装 2382g → 江苏 2.01-3KG 档 4.5 元/票）。续重档口径以快递合同为准。数据来源 `Desktop\和田宽\`（物流价格单 / 京东自营价格计算表 / 单瓶重量表 20240328）。
 
 ## sku 出片链路血缘（W4-B 切片 14.3 phase A）
 
@@ -215,8 +226,29 @@ audience_pack_id?, extra_context?)` —— 输入种子词，输出 N 个**纯�
 - "给 X 出收割图文" → `generate_creative_pack(kind='graphic_harvest', sku_id='X')`
 - "给 X 设计 5 张主图" → `generate_creative_pack(kind='product_main_image', sku_id='X')`
 - "给 X 写详情页文案" → `generate_creative_pack(kind='product_detail_page', audience_record_id=...)`
+- "给这几个人群各出条种草和收割 / 批量出稿" → `generate_creative_pack(audience_record_ids=[...], kinds=['video_planting','video_harvest'])`（人群 × 类型交叉，上限 6 组合/并发 3/强制每组合 1 方案/失败不连坐；批量项只返 300 字摘录，全文落库前端看；**对话路一次 ≤3 组合**，批 6 走前端）
 
 **前端 /sku-pipeline step 5 tab**：左侧选模式（record / sku）+ 6 个 kind chip + extra_context；右侧输出 markdown + 复制 + 下载 .md + trace 折叠。pack 模式 v1 暂未开放。
+
+## sku-pipeline step 3.5/3.6 内容 brief 链（2026-06-12）
+
+step 3 选中人群后**分流**：投放圈包走 step 4；**内容 brief 走 3.5→3.6**（每步停等老板反馈）：
+
+| 老板说 | Claude 应做 |
+|---|---|
+| "给这个人群出画像 / 选第 N 个出生活状态 / 深挖这个人群" | `generate_audience_portrait(audience_record_id)` |
+| "给 X 出编导 brief / 拍摄 brief / 给编导下个 brief" | 链路缺啥跑啥：没画像先 3.5，有了直接 `generate_director_brief(portrait_id)` |
+| "想拍 X 那种（具体的事）" | `generate_director_brief(..., idea_seed='X')` |
+| "不要 AI 那段" | `include_ai_mapping=False` |
+| "喂 Veo/即梦 出片"（默认已是 Seedance） | `target_model` 默认 `'seedance'`（字节 Seedance 2.0：**中文一整段不分块**、字数下限 秒×25、原生音频可写对白、**配产品白底图参考图**、整条 ≤60s）；可选 `'veo'/'jimeng'/'generic'`（写法档案 `config/prompts/video_model_profiles/<model>.md` 热加载，实测后直接改档案） |
+| "拆 N 块提示词 / 块数不对" | `ai_prompt_count=N`（默认 None=按模型档案单次生成时长自动定块数） |
+| "再来一版 / 换个创意" | 重跑 3.6（新版本落库）或 `num_variants=2-3` |
+| "把这版画像采纳" | `pipeline_adopt(table='audience_portraits', run_id=...)` |
+| "给这几个人群都出画像 / 批量出 brief" | `generate_audience_portrait(audience_record_ids=[...])` / `generate_director_brief(portrait_ids=[...])`（上限 6/并发 3/失败不连坐/brief 批量强制 1 方案；**对话路一次 ≤3**，批 6 走前端） |
+
+**防臆想**：画像每句标 [KB:文档名] / 🧠推演（写明从哪个 KB 锚点推）/ ⚠️推测（≤5 处），`validation_warnings` 报配额超标 = KB 料薄 → 提示老板补圈层 KB 重跑，不硬编。brief 自检 12 项 + 禁用词确定性扫描（"治愈系"白名单豁免）。
+
+**AI 出片提示词形态铁律（老板实测定的）**：一大段连续故事描述（人物/场景变换/每次镜头变化全织进叙事，时间戳贯穿），**不是分镜三件套**；写法/块数按 target_model 档案定。图文同理。**creative_pack video_* 与 step 7 已切新形态（2026-06-12）**：step 5 出「### 提示词块 X（A-Bs）」（强制拆块 ≤15s/块——step 7 经 API 单段上限，与 3.6 手动喂 Seedance 整段 ≤60s 不同源；`target_model` 参数同 3.6）→ step 7 块全文 **r2v 直出**（自动挂全部 6.5 定妆照 + product_refs 白底图多参考，禁任何二次加工/lineage 追加），**跳过 step 6**（新形态脚本进 step 6 返 `whole_prompt_script_no_storyboard`）；旧形态脚本（节点 N 分镜）走原路不变；后端反算 `_validate_whole_prompt_scenes`（块时长/字数≥秒×25/时间戳连续/块数=⌈时长÷15⌉）。
 
 ## sku 出片标准链路（老板说"sku-X 全链路"时按此走）
 
@@ -341,7 +373,7 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 
 ## 调试常用命令
 
-- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 78 ok` 的 tool 列表
+- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 81 ok` 的 tool 列表
 - **审计表**：`docker exec omni-postgres psql -U omni_user -d omni_vibe_db -c "SELECT tool_name, status, duration_ms FROM mcp.tool_calls ORDER BY created_at DESC LIMIT 20"`
 - **ai-provider-hub 状态**：`curl http://localhost:8001/api/v1/ai/providers`
 - **Human Gate 批/驳**（W3a）：
@@ -380,6 +412,8 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 
 **数据通路**：消息级 👍👎（desktop MessageBubble → IPC `rate-message` → `rate_message` tool → `mcp.message_feedback`）；工具级 👍👎（desktop ToolCallChip → `POST /api/v1/mcp/tool-calls/rate-recent` 按 tool_name 取最近一条 → `mcp.tool_calls.user_rating+rating_category`）。每周 `feedback_digest` cron 聚类 + 诊断官结构化入库（只聚类不自动改，决定权留老板）。
 
+**产物级点评（2026-06-12，铁律 D 扩展）**：web /sku-pipeline 每个 step 输出区底部挂 `OutputFeedback` 组件（`frontend/src/components/OutputFeedback.tsx`）——👍 直记；👎 展开 7 分类 + **自由文本**"为什么不合格、怎么不合格"（≤500 字，落 `mcp.tool_calls.rating_note`）。digest 周报和诊断官会把 rating_note 原文样本捞进改进提议（反推迭代：老板点评 → 提议 → 改 prompt/工具）。**以后任何新 tool/skill 的前端输出区必挂这个组件**（toolName 传对应工具名即可）。
+
 | 老板说 | Claude 应做 |
 |---|---|
 | "这条回复不行" / "答错了" | 提醒老板点桌面 app 消息右下角 👎 选分类（飞轮要的就是这数据）|
@@ -409,7 +443,10 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 ## 检索增强 + KB 旋钮（W1 切片 · 2026-05-29）
 
 - **检索增强**：agent 路（`search_kb`/`gather_brief_context`/`query_template_chunks`）走简配 `retrieve_multi_kb`，加了**交叉编码重排 + HyDE + 上下文窗口扩展**可选开关。`search_kb` 默认开 `rerank`；`gather_brief_context` 默认开 `rerank + context_window`（`use_hyde` opt-in）。HyDE/重排整链只跑一次复用到每 KB。（豪华 `rag_query` LangGraph 仅 web `/chat` 问答用。）
-- **KB chunk_size 旋钮**：`kb_upload_doc(chunk_size=, chunk_overlap=)`（人群/5A KB 想"1 chunk=1 完整人群画像"传更大值重灌）。默认 settings 768。ingestion 已加非空过滤。
+- **KB chunk_size 旋钮**：`kb_upload_doc(chunk_size=, chunk_overlap=)`（人群/5A KB 想"1 chunk=1 完整人群画像"传更大值重灌）。默认 settings 768。ingestion 已加非空过滤。整库重灌走 `POST /api/v1/knowledge/bases/{kb_id}/rebuild?chunk_size=2000&chunk_overlap=200`（rebuild_kb 透传 chunk 参数 + 自动清旧 document 空壳行；人群分析报告 KB 2026-06-12 已按 2000/200 重灌：46 docs / 693 chunks / 平均 2032 字符，从旧 483 切法提到"1 chunk≈1 完整画像"）。
+- **KB 调用链 4 修复（2026-06-12）**：① `gather_brief_context` 检索 query 改品名+品类（不再拼无语义 sku_id，result 透出 `query_used`）② step 3/3.5/4 的人群/云图/千川 KB 改**按名动态解析**（`media._resolve_kb_ids`：KB 删重建换 id 不断链，解析失败回退硬编码 uuid + warning）+ **召回 0 chunks 硬闸**（返 `kb_recall_empty` 拦下不烧 LLM；`kb_recall_override` 可绕）③ 多 query 召回单 query 失败 logger.warning 不再静默吞 ④ rag_evaluator 修 RAG_SYSTEM_PROMPT 新签名（`/rag/evaluate` 恢复可用）。
+- **HyPE 存原文 + 跨重建缓存（migration 049，2026-06-12）**：`hype_embeddings` 加 `question_text` 列（hype_search 透出 `hype_question`，可 debug 哪个假设问题召回了 chunk）；新表 `hype_question_cache` 按 chunk 内容 hash 缓存已生成问题——**同内容重灌不再重烧 LLM**（巨量云图 4 万 chunk 库以后 rebuild 省大头）。连带修：`tasks` 表加 `chunk_size/chunk_overlap/skip_chunking/metadata` 列，`recover_stuck_tasks` 重启恢复时不再把自定义切块参数丢回默认 768。
+- **入库幂等（防文档重复，2026-06-12）**：`_run_pipeline` INSERT document 前删同 `(kb_id,title,source_url)` 旧行（CASCADE 清 chunks/hype）——防 rebuild/recover 重跑产生重复文档（重复 chunk 会在 RRF 互抢 top_k 污染召回）；重复上传同名文档=覆盖（人群/运营 KB 期望行为）。审计 issue「文档级无去重」的轻量解。
 - **KB-prompt 写法对照**：写新"结合 KB 输出/检索"的 prompt 前先看 `docs/kb-prompt-guide.md`（复用 gather_brief_context 管线 + 范例）。
 
 ## 竞品调研：淘宝抓取 + 视觉拆解（2026-06-01）
@@ -447,7 +484,7 @@ REST（桌面经 IPC→http 调，与 tool 共用同一 service 禁漂移）：`
 ## 落库桥 + 综合经营分析（§6 分析半，2026-06-03）
 
 ### 落库桥
-`ingest_platform_metrics()`（KE，require_approval=False）→ httpx 调 scout REST，实时取 10 端点 → 跑抽取器落 95 指标 + 同行标杆 → upsert 两表。全程纯加法、fail-open。触发三路：① MCP tool（老板"落库一次 / 把今天数据入库 / 刷新指标库"，需 cookies 有效先 `platform_auth_status` 查）② scout REST `POST /api/v1/scout/metrics/ingest` + `GET /metrics/series?metric=&days=` ③ scout scheduler 每天 09:00 自动跑（失败容忍）。一次全量约 metric 428 行 + benchmark 377 行。
+`ingest_platform_metrics()`（KE，require_approval=False）→ httpx 调 scout REST，实时取 10 端点 → 跑抽取器落库（registry 注册 95 指标；库内实有 159 个 distinct）+ 同行标杆 → upsert 两表。全程纯加法、fail-open。触发三路：① MCP tool（老板"落库一次 / 把今天数据入库 / 刷新指标库"，需 cookies 有效先 `platform_auth_status` 查）② scout REST `POST /api/v1/scout/metrics/ingest` + `GET /metrics/series?metric=&days=` ③ scout scheduler 每天 09:00 自动跑（失败容忍）。一次全量约 metric 428 行 + benchmark 377 行。
 
 ### 共享契约（落库目标 + 哨兵 + 口径，**所有分析读取严格对齐**）
 - `mvp_daily_metric(sku_id, date, metric_name, value, platform)`：全店行哨兵 `sku_id='_SHOP_'`、`platform='douyin'`（云图/罗盘/抖店同属抖音生态）；`UNIQUE(sku_id,date,metric_name)` upsert。series 端点落整段历史每天一行，snap 端点落今日一行（趋势靠 cron 日累积）。
