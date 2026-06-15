@@ -4,6 +4,11 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Loader2, ThumbsUp, ThumbsDown } from 'lucide-react'
+import VoiceInputButton from '@/components/VoiceInputButton'
+
+// 把转写文字追加到已有文本后（不覆盖手打内容），并夹到 500 字上限
+const appendNote = (prev: string, add: string) =>
+  ((prev ? prev + ' ' : '') + add).slice(0, 500)
 
 /**
  * 产物点评组件 — 挂在每个 LLM 生成结果下方（反馈飞轮铁律 D 的页面级出口）。
@@ -91,13 +96,17 @@ export default function OutputFeedback({ toolName, label, className }: OutputFee
         <div className="flex items-center gap-2">
           <input
             className="flex-1 border rounded px-2 py-1 text-xs bg-background"
-            placeholder="想补一句？（可选，回车或点发送）"
+            placeholder="想补一句？（可选，回车或点发送，也可点麦克风口述）"
             value={goodNote}
             maxLength={500}
             onChange={e => setGoodNote(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && goodNote.trim()) submit('good', undefined, goodNote.trim())
             }}
+          />
+          <VoiceInputButton
+            onTranscript={t => setGoodNote(prev => appendNote(prev, t))}
+            title="语音补一句（本地转写）"
           />
           <Button
             size="sm"
@@ -167,14 +176,24 @@ export default function OutputFeedback({ toolName, label, className }: OutputFee
               })}
             </div>
           </div>
-          <Textarea
-            placeholder="为什么不合格、怎么不合格——写得越具体，改得越准"
-            value={note}
-            maxLength={500}
-            onChange={e => setNote(e.target.value)}
-            rows={3}
-            className="text-sm"
-          />
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-xs font-medium">具体说明</span>
+              <VoiceInputButton
+                onTranscript={t => setNote(prev => appendNote(prev, t))}
+                title="语音说为什么不合格（本地转写，离线不走云）"
+              />
+              <span className="text-[10px] text-muted-foreground">不想打字就点麦克风口述</span>
+            </div>
+            <Textarea
+              placeholder="为什么不合格、怎么不合格——写得越具体，改得越准（可点上方麦克风口述）"
+              value={note}
+              maxLength={500}
+              onChange={e => setNote(e.target.value)}
+              rows={3}
+              className="text-sm"
+            />
+          </div>
           <div className="flex items-center gap-2">
             <Button
               size="sm"
