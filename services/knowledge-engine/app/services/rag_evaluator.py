@@ -306,10 +306,19 @@ async def _run_instrumented_pipeline(
         context_parts.append(f"[{i}] {chunk['content']}\n    (来源: {source})")
     context_str = "\n\n".join(context_parts)
 
-    from app.services.rag_chain import RAG_SYSTEM_PROMPT, _CRAG_AUGMENT_PROMPT
+    from app.services.rag_chain import (
+        RAG_SYSTEM_PROMPT,
+        _CRAG_AUGMENT_PROMPT,
+        _build_graph_section,
+        _build_role_rules_section,
+        _roles_in_chunks,
+    )
+    # 与 rag_chain 正主调用同签名（{context}{graph_section}{role_rules}）——
+    # 旧 graph_context kwarg 在 prompt 改占位符后会 KeyError: 'graph_section'
     system_prompt = RAG_SYSTEM_PROMPT.format(
         context=context_str,
-        graph_context=graph_ctx or "（无图谱数据）",
+        graph_section=_build_graph_section(graph_ctx or ""),
+        role_rules=_build_role_rules_section(_roles_in_chunks(compressed)),
     )
     if crag_verdict in ("AMBIGUOUS", "INCORRECT"):
         system_prompt += _CRAG_AUGMENT_PROMPT.format(reason="检索质量评估为" + crag_verdict)

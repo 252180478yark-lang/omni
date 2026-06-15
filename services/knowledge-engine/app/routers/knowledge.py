@@ -637,13 +637,20 @@ async def remove_document(document_id: str) -> dict:
 # ═══ KB Rebuild ═══
 
 @router.post("/bases/{kb_id}/rebuild", status_code=status.HTTP_202_ACCEPTED)
-async def rebuild_base(kb_id: str) -> dict:
-    """Re-ingest all documents with the optimized pipeline (contextual headers + semantic chunking + HyPE + GraphRAG)."""
+async def rebuild_base(
+    kb_id: str,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+) -> dict:
+    """Re-ingest all documents with the optimized pipeline (contextual headers + semantic chunking + HyPE + GraphRAG).
+
+    chunk_size/chunk_overlap 走 query 参数可覆盖默认 768/128（人群/5A KB 传 1800-2400 重灌）。
+    """
     kb = await get_kb(kb_id)
     if not kb:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
     try:
-        result = await rebuild_kb(kb_id)
+        result = await rebuild_kb(kb_id, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return {"code": 202, "message": "accepted", "data": result}

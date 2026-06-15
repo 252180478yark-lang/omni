@@ -62,6 +62,7 @@ async def hype_search(
         """
         SELECT h.chunk_id,
                1 - (h.embedding <=> $1::vector) AS hype_score,
+               h.question_text AS hype_question,
                c.id, c.document_id, c.kb_id, c.chunk_index, c.title, c.source_url,
                c.content, c.metadata, c.source_type, c.created_at
         FROM hype_embeddings h
@@ -84,6 +85,9 @@ async def hype_search(
         seen.add(cid)
         d = _row_to_dict(row, "hype")
         d["score"] = float(row["hype_score"])
+        if row["hype_question"]:
+            # 命中的假设问题原文（migration 049 起才有值）——debug "为什么召回了这个 chunk"
+            d["hype_question"] = row["hype_question"]
         result.append(d)
     return result
 

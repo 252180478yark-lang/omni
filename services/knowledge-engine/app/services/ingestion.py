@@ -229,12 +229,17 @@ async def submit_ingestion_task(
 ) -> str:
     pool = get_pool()
     task_id = str(uuid4())
+    # 切块参数/metadata 一并落 tasks（migration 049）：重启 recover_stuck_tasks
+    # 回放时不丢——否则 chunk_size=2000 的重灌任务恢复后会被切回默认 768
     await pool.execute(
         """
-        INSERT INTO tasks (id, kb_id, title, source_url, raw_text, source_type, status)
-        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'queued')
+        INSERT INTO tasks (id, kb_id, title, source_url, raw_text, source_type, status,
+                           chunk_size, chunk_overlap, skip_chunking, metadata)
+        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'queued', $7, $8, $9, $10::jsonb)
         """,
         task_id, kb_id, title, source_url, text, source_type,
+        chunk_size, chunk_overlap, skip_chunking,
+        json.dumps(metadata, ensure_ascii=False) if metadata else None,
     )
     asyncio.create_task(
         _guarded_pipeline(
@@ -337,7 +342,8 @@ async def recover_stuck_tasks() -> dict:
     """Recover tasks stuck in 'queued' or 'running' after a service restart."""
     pool = get_pool()
     rows = await pool.fetch(
-        "SELECT id, kb_id, title, source_url, raw_text, source_type "
+        "SELECT id, kb_id, title, source_url, raw_text, source_type, "
+        "chunk_size, chunk_overlap, skip_chunking, metadata "
         "FROM tasks WHERE status IN ('queued', 'running') ORDER BY updated_at ASC"
     )
     if not rows:
@@ -355,10 +361,18 @@ async def recover_stuck_tasks() -> dict:
             "UPDATE tasks SET status = 'queued', error = 'recovering after restart', updated_at = NOW() WHERE id = $1::uuid",
             str(row["id"]),
         )
+        try:
+            task_metadata = json.loads(row["metadata"]) if row["metadata"] else None
+        except Exception:
+            task_metadata = None
         asyncio.create_task(
             _guarded_pipeline(
                 str(row["id"]), str(row["kb_id"]), row["title"],
                 raw_text, row["source_url"], row["source_type"] or "manual", "",
+                metadata=task_metadata,
+                skip_chunking=bool(row["skip_chunking"]),
+                chunk_size=row["chunk_size"],
+                chunk_overlap=row["chunk_overlap"],
             )
         )
         recovered += 1
@@ -647,10 +661,10 @@ async def _run_pipeline(
                 provider=emb_provider,
             )
 
-        hype_embeddings: list[list[list[float]]] = []
+        hype_data: list[tuple[list[str], list[list[float]]]] = []
         if settings.hype_enabled:
             try:
-                hype_embeddings = await _generate_hype_embeddings(
+                hype_data = await _generate_hype_embeddings(
                     chunk_data, emb_model, emb_provider,
                 )
             except Exception:
@@ -658,6 +672,18 @@ async def _run_pipeline(
 
         document_id = str(uuid4())
         pool = get_pool()
+
+        # 幂等保护（文档级去重轻量解）：INSERT 前删同 (kb_id, title, source_url) 的旧
+        # document（CASCADE 清 chunks/hype）。防 rebuild/recover 重跑同一任务产生重复
+        # 文档——重复 chunk 会在 RRF 里互抢 top_k 名额污染召回。正常单次上传无旧行、无影响；
+        # 重复上传同名文档=覆盖（对人群/运营 KB 是期望行为，title 即文档名）。
+        dup = await pool.execute(
+            "DELETE FROM documents WHERE kb_id=$1::uuid AND title=$2 "
+            "AND coalesce(source_url,'')=coalesce($3,'')",
+            kb_id, title, source_url,
+        )
+        if dup and dup != "DELETE 0":
+            logger.info("入库幂等：删除同名旧文档 [%s]（%s）", title, dup)
 
         await pool.execute(
             """
@@ -715,8 +741,8 @@ async def _run_pipeline(
                 if (idx + 1) % _CHUNK_INSERT_BATCH == 0:
                     await asyncio.sleep(0)
 
-        if hype_embeddings and not skip_chunking:
-            await _store_hype_embeddings(pool, kb_id, chunk_ids, hype_embeddings)
+        if hype_data and not skip_chunking:
+            await _store_hype_embeddings(pool, kb_id, chunk_ids, hype_data)
 
         # GraphRAG: LLM entity/relation extraction per chunk
         # model/provider intentionally omitted — graph_rag.py uses its own
@@ -863,12 +889,21 @@ def _task_row(row) -> dict:
     }
 
 
-async def rebuild_kb(kb_id: str) -> dict:
+async def rebuild_kb(
+    kb_id: str,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+) -> dict:
     """Re-ingest all documents in a KB using the current (optimized) pipeline.
 
     Deletes old chunks/entities/relations/hype for each document, then re-runs
     the full ingestion pipeline (contextual headers, semantic chunking, HyPE,
     GraphRAG) on the existing raw_text.
+
+    chunk_size/chunk_overlap 可覆盖（None=settings 默认 768/128）——人群/5A 类
+    "1 chunk=1 完整画像" KB 传 1800-2400 重灌。旧 document 行会被删掉再由管线
+    重建（管线总是 INSERT 新行，不删会留下 chunk_count 失真的空壳行）；raw_text
+    已在 tasks 表留底，失败可重试。
     """
     pool = get_pool()
     kb = await get_kb(kb_id)
@@ -908,7 +943,12 @@ async def rebuild_kb(kb_id: str) -> dict:
             text=raw_text,
             source_url=row["source_url"],
             source_type=row["source_type"] or "manual",
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
         )
+        # 任务已带 raw_text 入 tasks 表留底，旧 document 行可以安全删
+        # （管线会 INSERT 新 document 行；不删 = 每次 rebuild 翻倍空壳）
+        await pool.execute("DELETE FROM documents WHERE id = $1::uuid", doc_id)
         task_ids.append(task_id)
         succeeded += 1
 
@@ -940,65 +980,104 @@ async def _generate_hype_embeddings(
     chunks: list,
     emb_model: str,
     emb_provider: str,
-) -> list[list[list[float]]]:
-    """For each chunk, generate hypothetical questions and embed them."""
+) -> list[tuple[list[str], list[list[float]]]]:
+    """For each chunk, generate hypothetical questions and embed them.
+
+    返回 list[(questions, vectors)]，与 chunks 顺序对齐。
+
+    问题文本走 hype_question_cache 复用（migration 049）：key=sha256("{n_q}:{前1500字}")。
+    同内容重灌/重复上传命中缓存直接复用问题（rebuild 不重烧 LLM）；embedding 另有
+    Redis 7 天缓存，同问题文本→向量也基本零 API。
+    """
+    import hashlib
+
     import httpx
     n_q = settings.hype_questions_per_chunk
-    all_embeddings: list[list[list[float]]] = []
+    pool = get_pool()
+    out: list[tuple[list[str], list[list[float]]]] = []
+    cache_hits = 0
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         for chunk in chunks:
             text_preview = chunk.content[:1500]
-            prompt = _HYPE_PROMPT.format(n=n_q, text=text_preview)
+            content_hash = hashlib.sha256(f"{n_q}:{text_preview}".encode()).hexdigest()
+
+            questions: list[str] | None = None
             try:
-                resp = await client.post(
-                    f"{settings.ai_provider_hub_url}/api/v1/ai/chat",
-                    json={
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.7,
-                        "max_tokens": 500,
-                    },
+                row = await pool.fetchrow(
+                    "SELECT questions FROM hype_question_cache WHERE content_hash = $1",
+                    content_hash,
                 )
-                resp.raise_for_status()
-                questions_raw = resp.json().get("content", "")
-                questions = [
-                    q.strip().lstrip("0123456789.、-) ")
-                    for q in questions_raw.strip().split("\n")
-                    if q.strip() and len(q.strip()) > 5
-                ][:n_q]
+                if row and row["questions"]:
+                    cached = row["questions"]
+                    questions = json.loads(cached) if isinstance(cached, str) else list(cached)
+                    cache_hits += 1
             except Exception:
-                logger.debug("HyPE question generation failed for chunk %d", chunk.chunk_index)
-                questions = []
+                logger.debug("HyPE question cache lookup failed", exc_info=True)
+
+            if questions is None:
+                prompt = _HYPE_PROMPT.format(n=n_q, text=text_preview)
+                try:
+                    resp = await client.post(
+                        f"{settings.ai_provider_hub_url}/api/v1/ai/chat",
+                        json={
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.7,
+                            "max_tokens": 500,
+                        },
+                    )
+                    resp.raise_for_status()
+                    questions_raw = resp.json().get("content", "")
+                    questions = [
+                        q.strip().lstrip("0123456789.、-) ")
+                        for q in questions_raw.strip().split("\n")
+                        if q.strip() and len(q.strip()) > 5
+                    ][:n_q]
+                except Exception:
+                    logger.debug("HyPE question generation failed for chunk %d", chunk.chunk_index)
+                    questions = []
+                if questions:
+                    try:
+                        await pool.execute(
+                            "INSERT INTO hype_question_cache (content_hash, questions) "
+                            "VALUES ($1, $2::jsonb) ON CONFLICT (content_hash) DO NOTHING",
+                            content_hash, json.dumps(questions, ensure_ascii=False),
+                        )
+                    except Exception:
+                        logger.debug("HyPE question cache write failed", exc_info=True)
 
             if questions:
                 vecs = await embed_texts(questions, model=emb_model, provider=emb_provider)
-                all_embeddings.append(vecs)
+                out.append((questions, vecs))
             else:
-                all_embeddings.append([])
+                out.append(([], []))
 
             await asyncio.sleep(0)
 
-    return all_embeddings
+    if cache_hits:
+        logger.info("HyPE question cache: %d/%d chunks 复用（省 LLM 调用）", cache_hits, len(chunks))
+    return out
 
 
 async def _store_hype_embeddings(
     pool,
     kb_id: str,
     chunk_ids: list[str],
-    hype_embeddings: list[list[list[float]]],
+    hype_data: list[tuple[list[str], list[list[float]]]],
 ) -> None:
-    """Store hypothetical question embeddings linked to their parent chunks."""
+    """Store hypothetical question embeddings (+原文) linked to their parent chunks."""
     total = 0
-    for chunk_id, q_vecs in zip(chunk_ids, hype_embeddings):
+    for chunk_id, (questions, q_vecs) in zip(chunk_ids, hype_data):
         for q_idx, vec in enumerate(q_vecs):
             np_vec = np.array(vec, dtype=np.float32)
+            q_text = questions[q_idx] if q_idx < len(questions) else None
             await pool.execute(
                 """
-                INSERT INTO hype_embeddings (id, chunk_id, kb_id, question_index, embedding)
-                VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::vector)
+                INSERT INTO hype_embeddings (id, chunk_id, kb_id, question_index, question_text, embedding)
+                VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6::vector)
                 ON CONFLICT DO NOTHING
                 """,
-                str(uuid4()), chunk_id, kb_id, q_idx, np_vec,
+                str(uuid4()), chunk_id, kb_id, q_idx, q_text, np_vec,
             )
             total += 1
     logger.info("HyPE stored %d question embeddings for %d chunks", total, len(chunk_ids))
