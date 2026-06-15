@@ -1,6 +1,6 @@
 ---
 name: video-reverse
-description: 反推视频→可喂回 AI 图像/视频生成模型的故事板提示词。老板说"反推这视频 X"/"拆解这个视频"/"看这视频咋拍的"/"反推故事板 X"等,触发标准 5 步 SOP,调 reverse_storyboard_video tool 出三类即用 prompt 包(image / video i2v / video t2v) + 三类全局产物。产出是可**喂回 AI 生成模型**的故事板 prompt 包（非内容方法论）；凡拆视频/反推故事板都走本 skill，**不走** content-creator/social-content（拆竞品图文走 competitor-product-research）。
+description: 反推视频→可喂回 AI 图像/视频生成模型的故事板提示词。老板说"反推这视频 X"/"拆解这个视频"/"看这视频咋拍的"/"反推故事板 X"等,触发标准 5 步 SOP,调 reverse_storyboard_video tool 出三类即用 prompt 包(image / video i2v / video t2v) + 三类全局产物。产出是可**喂回 AI 生成模型**的故事板 prompt 包（非内容方法论）；凡拆视频/反推故事板都走本 skill，**不走** content-creator/social-content（拆竞品图文走 competitor-product-research）。⚠️消歧：反推**人群/打什么人/对比我们的画像** → `reverse_audience_analysis`（竞品人群逆向分析），不是 reverse_storyboard_video——本 skill 只管"怎么拍"，"打什么人"走那边。
 ---
 
 # video-reverse:视频反推故事板 SOP

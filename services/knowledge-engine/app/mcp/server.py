@@ -48,6 +48,7 @@ from app.mcp.tools import analytics as _analytics  # noqa: E402, F401  # 2026-06
 from app.mcp.tools import audience_diagnose as _audience_diagnose  # noqa: E402, F401  # 2026-06-08 人群包投前诊断 + 提纯（方法论沉淀）
 from app.mcp.tools import yuntu_taxonomy as _yuntu_taxonomy  # noqa: E402, F401  # 2026-06-08 巨量云图标签体系确定性查询（修 agent 答不全）
 from app.mcp.tools import portrait_brief as _portrait_brief  # noqa: E402, F401  # 2026-06-12 step 3.5/3.6 人群画像 + 编导 brief
+from app.mcp.tools import reverse_audience as _reverse_audience  # noqa: E402, F401  # 2026-06-12 竞品人群逆向分析（视频→竞品人群假设 + 自家画像对照）
 from app.mcp.tools import custom_sops as _custom_sops  # noqa: E402, F401  # 2026-06-12 自建 SOP 存储（桌面拟稿→确认→入库→菜单复用）
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
