@@ -1,7 +1,7 @@
 """W3a T10：sku 全链路 SOP 编排辅助 tool。
 
 `gather_brief_context(sku_id, channel)`：
-- 用 sku_id + channel 拼检索 query
+- 查 mvp_sku 用品名+品类+channel 拼检索 query（sku_id 无语义不进 query）
 - 按 kb_role 检索 3 类 KB：
   - authoritative（渠道运营手册类）
   - template（爆款拆解 / 钩子结构）
@@ -13,6 +13,9 @@
 """
 from __future__ import annotations
 
+import re
+
+from app.database import get_pool
 from app.mcp.audit import tool_with_audit
 from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step
@@ -71,7 +74,22 @@ async def gather_brief_context(
         by_role.setdefault(k.get("kb_role") or "general", []).append(k["id"])
         name_map[k["id"]] = k.get("name", k["id"])
 
-    query = f"{sku_id} {channel} 渠道 brief 钩子 卖点 分镜"
+    # 检索 query 用品名+品类，不用 sku_id——"SKU-367991-0002" 对 embedding 零语义、
+    # KB 正文也不含它（BM25 同样难命中），拼它等于所有 SKU 召回同一批通用 chunk。
+    # 品名剥规格取前 20 字（长 SEO 标题会带偏召回，同 media._build_audience_queries 做法）。
+    sku = await get_pool().fetchrow(
+        "SELECT name, category FROM mvp_sku WHERE id = $1", sku_id
+    )
+    if sku and (sku["name"] or "").strip():
+        short_name = re.sub(
+            r"\d+ml|\d+g|\*\d+|\(.*?\)|（.*?）", "", sku["name"]
+        ).strip()[:20]
+        parts = [short_name, (sku["category"] or "").strip(), channel,
+                 "渠道 brief 钩子 卖点 分镜"]
+        query = " ".join(p for p in parts if p)
+    else:
+        # 查无此 SKU 时回退旧拼法（至少 channel/主题词还有效）
+        query = f"{sku_id} {channel} 渠道 brief 钩子 卖点 分镜"
 
     sections: list[str] = []
     sources: list[dict] = []
@@ -116,7 +134,7 @@ async def gather_brief_context(
 
     result = {
         "ok": True,
-        "result": {"kb_context": kb_context, "sources": sources},
+        "result": {"kb_context": kb_context, "sources": sources, "query_used": query},
     }
     return attach_next_step(
         result,
