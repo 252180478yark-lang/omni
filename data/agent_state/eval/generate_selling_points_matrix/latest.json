@@ -1,0 +1,15 @@
+{
+  "tool": "generate_selling_points_matrix",
+  "ts": "20260611-212923",
+  "no_judge": true,
+  "cases": {
+    "matrix-adopted-88ab19d8": {
+      "rep": 1,
+      "ok": true,
+      "fatal": false,
+      "warnings_count": 1,
+      "judge_avg": null,
+      "vs_golden": null
+    }
+  }
+}

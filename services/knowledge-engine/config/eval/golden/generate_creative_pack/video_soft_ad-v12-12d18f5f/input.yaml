@@ -1,0 +1,11 @@
+tool: generate_creative_pack
+case: video_soft_ad-v12-12d18f5f
+source: pipeline.scripts id=12d18f5f-061a-4acb-9806-ed7e05729a5f status=adopted kind=video_soft_ad version=12 created_at=2026-05-10
+  16:39:59.084813+00:00
+seeded_at: '2026-06-11T21:26:32Z'
+args:
+  kind: video_soft_ad
+  sku_id: SKU-367991-0002
+  audience_record_id: 0e3c64a8-4219-4379-9c18-3bb9c7db84b6
+  audience_pack_id: 775a97df-e0c8-4741-ba38-4ae74b99db37
+  extra_context: 母亲节

@@ -1,0 +1,10 @@
+tool: generate_brief
+case: brief-6ec6c9bc
+source: content_studio.briefs id=6ec6c9bc-0991-42ad-8a44-bad5f5de1370 created_at=2026-05-05 12:50:57.979568+00:00 title='expert
+  prompt v1'（golden 由结构化字段渲染——briefs 表不存 brief_md 原文）
+seeded_at: '2026-06-11T21:26:24Z'
+args:
+  sku_id: SKU-367991-0002
+  channel: douyin
+  kb_context: ''
+  extra_context: null

@@ -1,0 +1,15 @@
+{
+  "tool": "generate_brief",
+  "ts": "20260611-213236",
+  "no_judge": false,
+  "cases": {
+    "brief-c48cfb60": {
+      "rep": 1,
+      "ok": true,
+      "fatal": false,
+      "warnings_count": 0,
+      "judge_avg": 3.6,
+      "vs_golden": "worse"
+    }
+  }
+}

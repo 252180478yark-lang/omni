@@ -1,0 +1,10 @@
+tool: generate_brief
+case: brief-8488955b
+source: content_studio.briefs id=8488955b-ff7e-4f21-846d-4e4f392a9aa3 created_at=2026-05-05 10:55:30.746937+00:00 title='W3a
+  SOP retest'（golden 由结构化字段渲染——briefs 表不存 brief_md 原文）
+seeded_at: '2026-06-11T21:26:23Z'
+args:
+  sku_id: SKU-367991-0002
+  channel: douyin
+  kb_context: ''
+  extra_context: null

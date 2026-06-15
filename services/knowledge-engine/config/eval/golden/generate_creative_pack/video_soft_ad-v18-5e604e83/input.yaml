@@ -1,0 +1,11 @@
+tool: generate_creative_pack
+case: video_soft_ad-v18-5e604e83
+source: pipeline.scripts id=5e604e83-7cc9-418c-a17b-a336e5b2ad40 status=adopted kind=video_soft_ad version=18 created_at=2026-05-13
+  17:50:10.672400+00:00
+seeded_at: '2026-06-11T21:26:32Z'
+args:
+  kind: video_soft_ad
+  sku_id: SKU-367991-0002
+  audience_record_id: 0e3c64a8-4219-4379-9c18-3bb9c7db84b6
+  audience_pack_id: 969d26f8-89e2-4f87-9840-c31a7ad7ed6f
+  extra_context: 母亲节讲述母亲到大的变化  讲述我心疼母亲

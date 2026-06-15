@@ -1,0 +1,11 @@
+tool: generate_creative_pack
+case: video_soft_ad-v19-9a29361f
+source: pipeline.scripts id=9a29361f-d7b2-42e0-9cc8-0f55feea6a34 status=adopted kind=video_soft_ad version=19 created_at=2026-05-14
+  15:18:33.883554+00:00
+seeded_at: '2026-06-11T21:26:32Z'
+args:
+  kind: video_soft_ad
+  sku_id: SKU-367991-0002
+  audience_record_id: 0e3c64a8-4219-4379-9c18-3bb9c7db84b6
+  audience_pack_id: 969d26f8-89e2-4f87-9840-c31a7ad7ed6f
+  extra_context: null
