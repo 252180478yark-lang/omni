@@ -306,3 +306,27 @@ mcp.client_logs(批量 20 条 / 5s 推 KE,丢弃容忍)
 
 ## 后台 cron 实现
 `services/knowledge-engine/app/mcp/cron.py`
+
+---
+
+## 编导 brief A/B 单变量迭代闭环（migration 052，2026-06-15）
+设计稿 `docs/design-director-brief-ab-loop.md`（设计 workflow 5 组件规格 + 2 对抗 review 综合）。心智见 CLAUDE.md「编导 brief A/B 单变量迭代闭环」专节。
+
+实现文件：
+- `migrations/052_experiment_lab.sql`——3 表（experiments/experiment_rounds/experiment_arms）+ assets.experiment_id/arm_id + scripts.intent + knowledge.prompt_rules.source_experiment_id/source_round_var + 视图 `v_experiment_round_results`（北极星 avg 排名，n<5 标 preliminary）+ `v_asset_full_lineage` 纯加法重建。**坑**：CREATE OR REPLACE VIEW 不让中间插列（"cannot change name of view column"）→ 改 DROP VIEW + CREATE，新列追加末尾。
+- `services/knowledge-engine/app/services/experiment_lab.py`——确定性状态机 service。常量 `INTENT_NORTH_STAR`（intent→北极星，收割用 cvr 非 roi：roi 是 ad_metrics_validation `computed` 型手填被 R-4 标 suspect 不进聚合）+ `SWEEP_VARIABLE_POOL`（10 变量 内容核/表达/呈现三层，加变量改这里零 migration）。函数 create_experiment/register_round/experiment_status（R-14 observation/hypothesis 分层 + R-15 待验证 + 建议下变量确定性差集）/lock_winner（n<5 拦+force 留痕+baseline 推进）/list/get/collect_distill_skeleton/write_winning_framework。
+- `services/knowledge-engine/app/mcp/tools/experiment.py`——7 个 @tool_with_audit tool（6 状态机 + experiment_distill 沉淀桥）。distill 默认纯模板（事实 100% 来自 baseline），polish=True 才 LLM 润色 + 护栏（`_POLISH_BLACKLIST` 禁因果/比较级词 + 禁新增数值 + 必保留获胜取值，越界回退模板）。n<3 不出规则只入观察，n∈[3,5) 标 [待验证]。
+- `config/prompts/brief_intent_profiles/{planting,harvest,soft_ad,hard_ad}.md`——4 个 intent 方法论档案（热加载，蒸馏自 creative_pack，**不进 doctor _check_prompts** 同 video_model_profiles）。
+- `config/prompts/experiment_distill.{system,user}.md`——distill polish prompt（进 doctor）。
+
+改存量：
+- `app/mcp/tools/portrait_brief.py`——generate_director_brief/_brief_one/_brief_batch 加 `intent`+`experiment_context`；热加载 intent profile；`_build_experiment_constraint` 把 baseline+sweep 写成"固定 baseline 只动本轮变量"块；**render scope 加 intent**（否则 distill 规则 `@>` 永不命中 = 白沉淀，对抗 review 抓的 P0）；save_creative_pack 传 intent。
+- `config/prompts/director_brief.user.md`——顶部加 `{intent_profile}` + `{experiment_constraint}` 占位。
+- `app/services/pipeline_lineage.py`——save_creative_pack 加 intent 列；record_ad_metrics 加 experiment_arm_id（事务内挂 asset→arm + denorm experiment_id）。
+- `app/services/prompt_rules.py`——create_rule 加 source_experiment_id/source_round_var。
+- `app/mcp/tools/pipeline.py`——record_ad_metrics tool 透传 experiment_arm_id。
+- `app/mcp/server.py`——import experiment 模块；`app/mcp/doctor.py`——wanted 90→97 + _check_prompts 加 experiment_distill；CLAUDE.md 头 90→97 + 专节。
+
+验证：`docker exec ... python -m app.mcp.doctor` → all 97 ok / doc consistency 97==97 / 全绿。端到端冒烟（临时脚本跑完即删）：create→拒 roi(R-4)→register 2 臂→投后 A5条/B3条→status 排名 A>B+can_lock+建议 idea_seed→lock 进 baseline→distill 出 formal 候选带混杂因子免责句→CLEANED。
+
+前端 step37「📊编导Brief A/B实验」看板 + 7 API route：另起 agent 建（见 git）。**待办**：omni-desktop tool-meta.ts 跨仓补 7 中文名+「🧪实验台账」域。

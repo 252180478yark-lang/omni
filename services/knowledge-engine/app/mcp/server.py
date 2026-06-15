@@ -50,6 +50,8 @@ from app.mcp.tools import yuntu_taxonomy as _yuntu_taxonomy  # noqa: E402, F401 
 from app.mcp.tools import portrait_brief as _portrait_brief  # noqa: E402, F401  # 2026-06-12 step 3.5/3.6 人群画像 + 编导 brief
 from app.mcp.tools import reverse_audience as _reverse_audience  # noqa: E402, F401  # 2026-06-12 竞品人群逆向分析（视频→竞品人群假设 + 自家画像对照）
 from app.mcp.tools import custom_sops as _custom_sops  # noqa: E402, F401  # 2026-06-12 自建 SOP 存储（桌面拟稿→确认→入库→菜单复用）
+from app.mcp.tools import prompt_rules_tools as _prompt_rules_tools  # noqa: E402, F401  # 2026-06-15 prompt 飞轮搭桥（sku-pipeline 差评→规则→注入）
+from app.mcp.tools import experiment as _experiment  # noqa: E402, F401  # 2026-06-15 编导 brief A/B 单变量迭代闭环（migration 052）
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
 # path="/" 使子应用内路由为 "/"，挂载到 /mcp 后完整路径即 /mcp

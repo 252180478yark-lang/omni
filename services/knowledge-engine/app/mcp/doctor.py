@@ -193,6 +193,15 @@ def _wanted_tools() -> set[str]:
             "reverse_audience_analysis",
             # 2026-06-12 自建 SOP 存储（migration 050）：桌面拟稿→确认→入库→菜单「我的 SOP」复用
             "sop_save_custom", "sop_list_custom", "sop_archive_custom",
+            # 2026-06-15 prompt 反馈飞轮搭桥（migration 051）：sku-pipeline 差评→提炼→规则→注入
+            # 新世界 mcp.tool_calls 差评 → 旧世界 knowledge.prompt_rules 规则的单向桥 + 逐条点亮
+            "list_unprocessed_complaints", "prompt_rule_save",
+            "prompt_rule_list", "prompt_rule_set_enabled",
+            # 2026-06-15 编导 brief A/B 单变量迭代闭环（migration 052）：实验台账 + 确定性状态机
+            # + 市场数据→prompt_rule 沉淀桥（experiment_distill）
+            "experiment_create", "experiment_register_round", "experiment_status",
+            "experiment_lock_winner", "experiment_list", "experiment_get",
+            "experiment_distill",
     }
 
 
@@ -264,6 +273,8 @@ def _check_prompts(report: DoctorReport) -> None:
             # 2026-06-12 竞品人群逆向分析（段一视频信号提取 + 段二画像对照）
             "reverse_audience.system", "reverse_audience.user",
             "reverse_audience_compare.system", "reverse_audience_compare.user",
+            # 2026-06-15 编导 brief A/B 沉淀桥 polish prompt（intent profiles 走热加载不入此集，同 video_model_profiles）
+            "experiment_distill.system", "experiment_distill.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

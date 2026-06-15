@@ -160,6 +160,7 @@ async def record_ad_metrics(
     external_video_id: str | None = None,
     external_creative_id: str | None = None,
     mark_published: bool = True,
+    experiment_arm_id: str | None = None,
 ) -> dict:
     """投后回传：把这条素材测试投放后的真实数据写回它的血缘。
 
@@ -175,16 +176,20 @@ async def record_ad_metrics(
         external_creative_id: 千川计划/创意 ID
         （asset_id / external_video_id / external_creative_id 三选一，优先级递减）
         mark_published: True（默认）把非 discarded 资产状态推到 'published'
+        experiment_arm_id: 可选——这条视频属于哪个 A/B 实验臂（pipeline.experiment_arms.id）。
+            填了就把 asset 挂到该臂（+ denorm experiment_id），供 experiment_status 汇总北极星
+            （编导 brief A/B 闭环：5 条测试视频回传时各带自己臂的 id）
 
     Returns:
         成功 {"ok": True, "asset": {asset_id, sku_id, status, ad_metrics, last_metrics_at}}
         定位不到 {"ok": False, "error": "asset_not_found"}
     """
-    if not (asset_id or external_video_id or external_creative_id):
+    if not (asset_id or external_video_id or external_creative_id or experiment_arm_id):
         return {
             "ok": False,
             "error": "missing_anchor",
-            "hint": "asset_id / external_video_id / external_creative_id 至少给一个来定位资产",
+            "hint": "asset_id / external_video_id / external_creative_id / experiment_arm_id 至少给一个；"
+                    "真人拍片无 asset 时给 experiment_arm_id（+ 可选 external_video_id），会在该臂下自动建资产挂数据",
         }
     asset = await pipeline_lineage.record_ad_metrics(
         asset_id=asset_id,
@@ -192,6 +197,7 @@ async def record_ad_metrics(
         external_creative_id=external_creative_id,
         metrics=metrics or {},
         mark_published=mark_published,
+        experiment_arm_id=experiment_arm_id,
     )
     if not asset:
         return {

@@ -5,7 +5,7 @@
 
 ## omni MCP server
 
-omni 暴露 **81 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 81 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
+omni 暴露 **97 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 97 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
 
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
@@ -20,6 +20,7 @@ omni 暴露 **81 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - 通用：`summarize_text`, `parse_long_doc_with_gemini`, `query_template_chunks`
 - Agent 进化：`rate_tool_call`, `agent_self_review`, `codify_pattern_to_skill`, `refresh_project_context`
 - 反馈飞轮（migration 031）：`rate_message`（消息级 👍👎 入 mcp.message_feedback）
+- prompt 飞轮搭桥（migration 051，2026-06-15）：`list_unprocessed_complaints`（拉 sku-pipeline 未提炼差评）, `prompt_rule_save`（提炼好的规则草稿落库，默认 enabled=False）, `prompt_rule_list`（看节点规则+enabled+hit_count）, `prompt_rule_set_enabled`（点亮/熄灭）——把【mcp.tool_calls 差评】提炼成【knowledge.prompt_rules 规则】下次同工具生成自动注入（详见下「prompt 反馈飞轮搭桥」节）
 - Bug 记忆库 + 客户端日志（migration 032）：`log_client_event`（批量记客户端运行事件）, `report_bug`（一键报 bug，自动 dedupe）, `list_bugs`（拉 bug 列表）, `update_bug`（标修复/补根因）
 - 竞品调研（淘宝）：`competitor_search`（搜词抓前 50 榜单 + 相关性过滤）, `competitor_decompose`（主图/详情页拆卖点/构图/配色/设计/内容 5 维度）
 - 竞品人群逆向分析：`reverse_audience_analysis`（竞品视频→8 项人群信号〔演员人设/场景档次/话术/BGM/字幕/钩子/价格信号/CTA〕+ 竞品人群假设〔每句 🧠/⚠️ 标注，数字必带 ⚠️，禁伪 [KB:] 锚〕；可选对照自家 step 3.5 画像出对照表/人群空白四区〔红海/抢夺/蓝海/必争〕/可借鉴打法 3-5 条，段二 fail-open；v1 不落库只出 md）——老板话术"看这竞品视频在打什么人 / 反推这视频的人群 / 对比我们的画像" → `reverse_audience_analysis(share_url=..., portrait_id=...)`（无画像可只传视频；sku_id 自动拉最新 adopted 画像）。**反推"打什么人"走它；反推"怎么拍"（故事板 prompt 包）走 `reverse_storyboard_video`**
@@ -28,7 +29,8 @@ omni 暴露 **81 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - W4 加分：`save_decision`, `schedule_observation`, `send_wecom_message`, `dy_publish_creative`
 - 字典查询：`list_product_prices`（工厂出厂价）, `list_channel_fees`（渠道扣点）
 - 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
-- 投后回传闭环：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
+- 投后回传闭环：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘；可带 `experiment_arm_id` 把 asset 挂 A/B 实验臂）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
+- 编导 brief A/B 单变量迭代闭环（migration 052，见下专节）：`experiment_create`, `experiment_register_round`, `experiment_status`, `experiment_lock_winner`, `experiment_list`, `experiment_get`（确定性状态机）, `experiment_distill`（市场数据→prompt_rule 沉淀桥）
 - 三平台实时取数底座（经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
 - 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 抽取器落库（metric_registry 注册 95 指标；库内实有 159 个 distinct metric_name，含维表后超注册数）+ 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
 - 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，覆盖 metric_registry 注册的 95 指标）
@@ -250,6 +252,32 @@ step 3 选中人群后**分流**：投放圈包走 step 4；**内容 brief 走 3
 
 **AI 出片提示词形态铁律（老板实测定的）**：一大段连续故事描述（人物/场景变换/每次镜头变化全织进叙事，时间戳贯穿），**不是分镜三件套**；写法/块数按 target_model 档案定。图文同理。**creative_pack video_* 与 step 7 已切新形态（2026-06-12）**：step 5 出「### 提示词块 X（A-Bs）」（强制拆块 ≤15s/块——step 7 经 API 单段上限，与 3.6 手动喂 Seedance 整段 ≤60s 不同源；`target_model` 参数同 3.6）→ step 7 块全文 **r2v 直出**（自动挂全部 6.5 定妆照 + product_refs 白底图多参考，禁任何二次加工/lineage 追加），**跳过 step 6**（新形态脚本进 step 6 返 `whole_prompt_script_no_storyboard`）；旧形态脚本（节点 N 分镜）走原路不变；后端反算 `_validate_whole_prompt_scenes`（块时长/字数≥秒×25/时间戳连续/块数=⌈时长÷15⌉）。
 
+## 编导 brief A/B 单变量迭代闭环（migration 052，2026-06-15）
+
+step 3.5/3.6 内容 brief 链的"闭环层"：把【编导 brief → N 条视频投放 → 真实数据回传 → 单变量 A/B → 迭代 → 沉淀获胜框架】串成持久化台账 + 确定性状态机。**节拍是真实投放天/周，不跑 agent loop**；LLM 只在生成各臂 brief 和 distill polish 两点，排名/判 winner/汇总/建议下变量全是确定性 SQL（R-14 不编因果、R-15 n<5 标待验证）。设计稿 `docs/design-director-brief-ab-loop.md`。
+
+**核心心智**：每个变量都是"视频↔人群匹配度"的杠杆，北极星指标就是匹配度的定量刻度。一个实验 = SKU×人群×intent×北极星；每一轮 flight **只扫一个变量**（baseline 固定其余）；锁 winner 进 baseline；收敛后 distill 成 prompt_rule 回注 director_brief（"越用越聪明"）。**loop 传递的是"获胜取值"不是"AI 解读数据"**。
+
+**intent 维度**：`generate_director_brief` 加了 `intent`(planting/harvest/soft_ad/hard_ad/generic) + `experiment_context`({baseline,sweep})。intent 热加载 `config/prompts/brief_intent_profiles/<intent>.md` 方法论锚（蒸馏自 creative_pack，缺了回退 generic）；experiment_context 让 brief 硬性"固定 baseline、只动本轮变量"（单变量纪律写进结构）。**intent 是实验级属性、不可当变量扫**（换 intent 北极星就变没法比）。render scope 已带 intent，distill 出的规则 scope={sku,intent} 才命中。
+
+**北极星按 intent 分**（`app/services/experiment_lab.INTENT_NORTH_STAR`）：种草/软广=`completion_rate`，收割/硬广=`cvr`（**不用 roi**——computed 型手填被 R-4 标存疑不进聚合 + 被预算量级干扰；roi/gmv 作辅助展示）。自定义 north_star 必须是 ad_metrics 白名单里的 rate/money/count。
+
+**可扫变量池**（`SWEEP_VARIABLE_POOL`，加变量改这里+提示词，零 migration）：内容核 idea_seed/opening_hook_3s/selling_point_set/scene → 表达 emotion/story_pace → 呈现 edit_pace/visual_vector/bgm/target_model。"建议下个变量"=池顺序 − 已测 − baseline 已锁（确定性差集）。
+
+| 老板说 | Claude 应做 |
+|---|---|
+| "给 SKU-X 这人群建个种草/收割 A/B 实验" | `experiment_create(sku_id, intent, portrait_id?)`（北极星按 intent 自动选） |
+| "这轮测开头钩子，给 N 种取值" | 各调 `generate_director_brief(portrait_id, intent, experiment_context={baseline, sweep:{variable, value}})` 出臂 → `experiment_register_round(experiment_id, swept_variable, arms=[{variable_value, script_id}])` |
+| "投后 N 条数据回传" | `record_ad_metrics(asset_id, experiment_arm_id=该臂id, metrics={completion_rate/cvr...})`（每条视频带自己臂的 id） |
+| "哪个臂赢了 / 下一步测啥" | `experiment_status(experiment_id)`（排名+can_lock+observations/hypotheses 分层+建议下变量+口径提醒） |
+| "锁定 B 臂 / 这个钩子定了" | `experiment_lock_winner(experiment_id, round_no, winning_arm_id, force?)`（n<5 拦，force=True 旁路+留痕） |
+| "把获胜框架沉淀下来" | `experiment_distill(experiment_id, dry_run=True)` 看候选+框架 → `dry_run=False` 落 prompt_rule 草稿(enabled=FALSE) → `prompt_rule_set_enabled(rule_id, True)` 逐条点亮 |
+| "看实验列表 / 某实验详情" | `experiment_list(sku_id?)` / `experiment_get(experiment_id)` |
+
+**落库**：`pipeline.experiments`/`experiment_rounds`/`experiment_arms` + assets.experiment_id/arm_id + scripts.intent + prompt_rules.source_experiment_id/source_round_var（migration 052，纯加法）。视图 `v_experiment_round_results`（北极星 **avg** 排名——非 sum，避免"投得多"误判；n<5 标 preliminary）。前端 /sku-pipeline step37「📊 编导Brief A/B实验」看板。
+
+**铁律**（每份状态/沉淀都带）：画像/投放数据只是冷启动代理；**n≥5 是 R-15 工程门槛、不是统计显著**（抖音冷启动波动可能让 winner 也是噪声）——winner=**当前领先 ≠ 证明更好**，靠逐条点亮+待验证标注+混杂因子免责软兜底，不做 t-test/置信区间（个人自用不过度工程）。单变量纯度对软创意靠 experiment_context 写进 brief 结构 + 老板等量投放自律（系统强制不了等量投放）。沉淀规则只表达"获胜设定"不表达"为什么"（distill 默认纯模板，polish=True 才 LLM 润色且过禁因果/禁新增数值护栏）。
+
 ## sku 出片标准链路（老板说"sku-X 全链路"时按此走）
 
 > W3a 起：第 3 步从"裸 LLM"升级为"先 KB grounding 再 LLM"。
@@ -373,7 +401,7 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 
 ## 调试常用命令
 
-- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 81 ok` 的 tool 列表
+- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 90 ok` 的 tool 列表
 - **审计表**：`docker exec omni-postgres psql -U omni_user -d omni_vibe_db -c "SELECT tool_name, status, duration_ms FROM mcp.tool_calls ORDER BY created_at DESC LIMIT 20"`
 - **ai-provider-hub 状态**：`curl http://localhost:8001/api/v1/ai/providers`
 - **Human Gate 批/驳**（W3a）：
@@ -419,6 +447,27 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 | "这条回复不行" / "答错了" | 提醒老板点桌面 app 消息右下角 👎 选分类（飞轮要的就是这数据）|
 | "看一下最近的负反馈" | SQL `SELECT category, count(*), array_agg(distinct substr(message_text_snapshot,1,80)) FROM mcp.message_feedback WHERE rating='bad' AND created_at > now()-interval '7 days' GROUP BY category` |
 | "为啥老答不好 X" | 按 category 聚类 SQL + 看 message_text_snapshot 找模式 |
+
+## prompt 反馈飞轮搭桥（loop engineering · migration 051，2026-06-15）
+
+老板"骂一次，下次记住"的闭环。omni 原有两套**互不相通**的反馈世界：**新世界 `mcp.*`**（OutputFeedback 👎/分类/rating_note 落 `mcp.tool_calls`、消息反馈落 `mcp.message_feedback`、诊断官提议落 `mcp.improvement_proposals`，到 `resolve_proposal` 只改状态）；**旧世界 `knowledge.*`**（`prompt_feedbacks`→`distill_feedback` 提炼→`create_rule`→`prompt_rules`→`render_rules_suffix` 注入 19 个老节点，环已闭）。**断点**：老飞轮提炼链只读 `prompt_feedbacks`，从不碰 `mcp.tool_calls`，sku-pipeline 的点评永远变不成规则；**盲区**：sku-pipeline 5 个核心生成工具压根没接 `render_rules_suffix`。migration 051 + 4 个 tool 把这座桥焊上。
+
+- **注入已补**：`generate_selling_points_matrix`/`generate_audience_match`/`generate_audience_portrait`/`generate_director_brief`/`generate_creative_pack` 现在生成前都拼 `render_rules_suffix('pipeline.<x>', scope)`（scope 带 sku_id/kind/target_model，规则 suffix 进 user_msg 末尾 + 算进 trace.final_prompt）。规则挂 5 个 `pipeline.*` node_id（migration 051 建）。
+- **提炼按需触发**（老板拍板节奏，不是定期 cron）：老板说"**提炼一下最近的差评 / 把这周点评变成规则**" → 主大脑：
+  1. `list_unprocessed_complaints()` 拉 sku-pipeline 里 `user_rating='bad'`+有 `rating_note`+尚未提炼（无 `prompt_rules.source_tool_call_id` 指向）的差评
+  2. 在对话里按提炼标准拟草稿（**可复用通用约束 / 祈使句"必须../禁止../优先.." / 15-50 字 / 一次性吐槽或老板输入错误 → 跳过**），给老板挑
+  3. 老板挑中 → `prompt_rule_save(node_id=该条 node_id, rule_text=草稿, source_tool_call_id=该 tool_call_id, enabled=False)`（**默认 enabled=False 不生效**）
+  4. 老板审完说"**点亮第 N 条**" → `prompt_rule_set_enabled(rule_id, enabled=True)` → 下次该工具生成自动带上
+- **可证伪 / 防 LLM 自嗨**：草稿先 `enabled=False`、老板逐条点亮（不走 Human Gate，这一步本身就是闸）；`prompt_rule_list` 看 hit_count——已点亮但 hit_count=0 = scope 写窄了或没命中，值得查。
+- **scope 默认全局**（`scope=None` 对该节点所有场景生效）；只在老板说"这条只管种草 / 只对 SKU-X"时才传 `{"kind":...}`/`{"sku_id":...}`。
+- **砍掉的（反过度工程）**：A/B 分流、效果量化表、note 做 NLP。验证回流（规则前后 bad 率对照 SQL）推迟到积累 ≥2 周差评后再做。
+
+| 老板说 | Claude 应做 |
+|---|---|
+| "提炼一下最近的差评 / 把这周对 X 的点评变成规则" | `list_unprocessed_complaints(tool_name?)` → 拟草稿给老板挑 → `prompt_rule_save(enabled=False)` |
+| "点亮第 N 条 / 这条规则生效 / 用起来" | `prompt_rule_set_enabled(rule_id, True)` |
+| "看看 X 工具现在有哪些规则 / 哪条没生效" | `prompt_rule_list(node_id='pipeline.<x>')`（hit_count=0 的已点亮规则=没命中要查） |
+| "这条规则停掉 / 删了" | `prompt_rule_set_enabled(rule_id, False)`（或老飞轮 REST DELETE /api/v1/prompt/rules/{id}） |
 
 ## Bug 记忆库 + 客户端日志（migration 032）
 

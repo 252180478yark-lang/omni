@@ -279,13 +279,25 @@ async def create_rule(
     scope: dict | None = None,
     created_from: str | None = None,
     enabled: bool = True,
+    source_tool_call_id: str | None = None,
+    source_experiment_id: str | None = None,
+    source_round_var: str | None = None,
 ) -> dict:
+    """新建一条修正规则。
+
+    source_tool_call_id：若规则源自 mcp.tool_calls 的某条差评（新世界反馈→规则的桥），
+    记该 tool_call_id（migration 051）；老飞轮 prompt_feedbacks 来源走 created_from。
+    source_experiment_id + source_round_var：若规则源自某实验沉淀（experiment_distill，
+    migration 052），记 experiment_id + 变量名（同实验同变量判重）。三类来源互不冲突、
+    可都为 None（手动建）。
+    """
     pool = get_pool()
     row = await pool.fetchrow(
         """
         INSERT INTO knowledge.prompt_rules
-            (node_id, rule_text, scope, created_from, enabled)
-        VALUES ($1, $2, $3::jsonb, $4, $5)
+            (node_id, rule_text, scope, created_from, enabled, source_tool_call_id,
+             source_experiment_id, source_round_var)
+        VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)
         RETURNING *
         """,
         node_id,
@@ -293,6 +305,9 @@ async def create_rule(
         json.dumps(scope, ensure_ascii=False) if scope else None,
         uuid.UUID(created_from) if created_from else None,
         enabled,
+        uuid.UUID(source_tool_call_id) if source_tool_call_id else None,
+        uuid.UUID(source_experiment_id) if source_experiment_id else None,
+        source_round_var,
     )
     # 若 rule 来自某条 feedback，把它标记为 applied_as
     if created_from:
@@ -365,6 +380,21 @@ async def update_rule(rule_id: str, payload: dict) -> dict | None:
 
 async def disable_rule(rule_id: str) -> dict | None:
     return await update_rule(rule_id, {"enabled": False})
+
+
+async def set_rule_enabled(rule_id: str, enabled: bool) -> dict | None:
+    """只切 enabled 标志，不触碰 scope。
+
+    专为"草稿先 enabled=FALSE、老板逐条点亮"流程做：走 update_rule 会把 cur.scope
+    （asyncpg 未注册 jsonb codec 时是 str）再 json.dumps 一次造成双重编码，故这里
+    单独 UPDATE enabled 一列绕开。
+    """
+    pool = get_pool()
+    row = await pool.fetchrow(
+        "UPDATE knowledge.prompt_rules SET enabled = $1 WHERE id = $2 RETURNING *",
+        bool(enabled), uuid.UUID(rule_id),
+    )
+    return dict(row) if row else None
 
 
 async def delete_rule(rule_id: str) -> bool:

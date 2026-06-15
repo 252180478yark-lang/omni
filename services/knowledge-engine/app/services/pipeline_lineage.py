@@ -1361,6 +1361,7 @@ async def save_creative_pack(
     final_prompt: str | None = None,
     cost_estimate: str | None = None,
     portrait_id: str | None = None,
+    intent: str | None = None,
     parent_script_id: str | None = None,
 ) -> str | None:
     """落 1 行 pipeline.scripts，返回 id。失败返 None 不抛。
@@ -1420,13 +1421,13 @@ async def save_creative_pack(
                 script_md, hooks, scenes, character_sheets, target_purpose, kind,
                 extra_context,
                 model_provider, model, prompt_hash, cost_estimate,
-                status, version, parent_script_id, portrait_id
+                status, version, parent_script_id, portrait_id, intent
             ) VALUES (
                 $1::uuid, $2::uuid, $3::uuid, $4,
                 $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10,
                 $11,
                 $12, $13, $14, $15,
-                'draft', $16, $17::uuid, $18::uuid
+                'draft', $16, $17::uuid, $18::uuid, $19
             ) RETURNING id::text AS id
             """,
             audience_pack_id,
@@ -1447,6 +1448,7 @@ async def save_creative_pack(
             next_version,
             parent_script_id,
             portrait_id,
+            intent,
         )
         return rec["id"] if rec else None
     except Exception as exc:
@@ -1622,6 +1624,7 @@ async def record_ad_metrics(
     external_creative_id: str | None = None,
     metrics: dict[str, Any] | None = None,
     mark_published: bool = True,
+    experiment_arm_id: str | None = None,
 ) -> dict[str, Any] | None:
     """投后回传：把广告数据合并进 pipeline.assets.ad_metrics。
 
@@ -1639,15 +1642,16 @@ async def record_ad_metrics(
     metrics = metrics or {}
     pool = get_pool()
 
+    where, val = None, None
     if asset_id:
         where, val = "id = $1::uuid", asset_id
     elif external_video_id:
         where, val = "external_video_id = $1", external_video_id
     elif external_creative_id:
         where, val = "external_creative_id = $1", external_creative_id
-    else:
+    elif not experiment_arm_id:
         logger.warning(
-            "record_ad_metrics: 缺定位锚（asset_id / external_video_id / external_creative_id 三选一）"
+            "record_ad_metrics: 缺定位锚（asset_id / external_video_id / external_creative_id / experiment_arm_id 之一）"
         )
         return None
 
@@ -1656,10 +1660,30 @@ async def record_ad_metrics(
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
-                existing = await conn.fetchrow(
-                    f"SELECT id, ad_metrics FROM pipeline.assets WHERE {where} FOR UPDATE",
-                    val,
-                )
+                existing = None
+                if where:
+                    existing = await conn.fetchrow(
+                        f"SELECT id, ad_metrics FROM pipeline.assets WHERE {where} FOR UPDATE",
+                        val,
+                    )
+                # 真人编导拍的视频没有 asset 行：给了 experiment_arm_id 又没定位到 →
+                # 在该臂下自动建一条 video 资产（asset_type CHECK 只允许 image/video），
+                # 让人工链的投后数据也能挂进实验臂、进 v_experiment_round_results 聚合。
+                if not existing and experiment_arm_id:
+                    arm = await conn.fetchrow(
+                        "SELECT sku_id, script_id::text AS script_id, experiment_id::text AS eid "
+                        "FROM pipeline.experiment_arms WHERE id = $1::uuid",
+                        experiment_arm_id,
+                    )
+                    if arm:
+                        existing = await conn.fetchrow(
+                            "INSERT INTO pipeline.assets "
+                            "(sku_id, asset_type, status, external_video_id, script_id, "
+                            " experiment_id, experiment_arm_id, ad_metrics) "
+                            "VALUES ($1,'video','published',$2,$3::uuid,$4::uuid,$5::uuid,'{}'::jsonb) "
+                            "RETURNING id, ad_metrics",
+                            arm["sku_id"], external_video_id, arm["script_id"], arm["eid"], experiment_arm_id,
+                        )
                 if not existing:
                     return None
                 current = _coerce_jsonb_dict(existing["ad_metrics"]) or {}
@@ -1682,6 +1706,18 @@ async def record_ad_metrics(
                     """,
                     existing["id"], json.dumps(merged), mark_published,
                 )
+                # 编导 brief A/B 闭环：把这条 asset 挂到实验臂（denorm experiment_id）
+                if experiment_arm_id and rec:
+                    armrow = await conn.fetchrow(
+                        "SELECT experiment_id::text AS eid FROM pipeline.experiment_arms WHERE id = $1::uuid",
+                        experiment_arm_id,
+                    )
+                    if armrow:
+                        await conn.execute(
+                            "UPDATE pipeline.assets SET experiment_arm_id = $2::uuid, "
+                            "experiment_id = $3::uuid WHERE id = $1",
+                            existing["id"], experiment_arm_id, armrow["eid"],
+                        )
     except Exception as exc:
         logger.exception("record_ad_metrics failed: %s", exc)
         return None

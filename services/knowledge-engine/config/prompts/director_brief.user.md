@@ -1,3 +1,7 @@
+{intent_profile}
+
+{experiment_constraint}
+
 ## ① 产品基本信息
 
 {sku_md}

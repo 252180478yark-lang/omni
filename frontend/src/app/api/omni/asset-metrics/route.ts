@@ -35,6 +35,7 @@ export async function POST(request: Request) {
           asset_id: body.asset_id || null,
           external_video_id: body.external_video_id || null,
           external_creative_id: body.external_creative_id || null,
+          experiment_arm_id: body.experiment_arm_id || null,
           mark_published: body.mark_published !== false,
         }),
       },

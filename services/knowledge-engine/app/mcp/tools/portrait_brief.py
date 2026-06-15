@@ -26,7 +26,7 @@ from app.mcp.tools.media import (
     _format_kb_recall,
     _multi_query_recall,
 )
-from app.services import pipeline_lineage, rag_chain
+from app.services import experiment_lab, pipeline_lineage, prompt_rules, rag_chain
 from app.services.ai_hub_client import AIHubClient
 
 # ============ step 3.5 检索 ============
@@ -274,6 +274,10 @@ async def _portrait_one(
         kb_recall=kb_recall_md,
         extra_context=extra_context.strip() if extra_context else "（无）",
     )
+    # prompt 反馈飞轮：注入老板累积的修正规则（migration 051；拼进 user_msg 末尾）
+    user_msg += await prompt_rules.render_rules_suffix(
+        "pipeline.audience_portrait", {"sku_id": sku_id},
+    )
     final_prompt = sys_msg + "\n\n" + user_msg
 
     model_cfg = get_model_for_tool("generate_audience_portrait")
@@ -470,6 +474,25 @@ async def generate_audience_portrait(
 
 # ============ step 3.6 tool ============
 
+def _build_experiment_constraint(ec: dict | None) -> str:
+    """A/B 实验约束块：固定 baseline、只动本轮变量（单变量纪律写进 brief，不靠自律）。"""
+    if not ec:
+        return ""
+    baseline = ec.get("baseline") or {}
+    sweep = ec.get("sweep") or {}
+    lines = ["## ⓪⓪ A/B 实验约束（单变量纪律 · 必须严格遵守）", ""]
+    if baseline:
+        lines.append("**以下已验证设定保持不变**（前几轮跑赢锁定的，本条 brief 一个都不许改）：")
+        for k, v in baseline.items():
+            lines.append(f"- {experiment_lab.var_label(k)}：{v}")
+        lines.append("")
+    var, val = sweep.get("variable"), sweep.get("value")
+    if var and val:
+        lines.append(f"**本条专门测试【{experiment_lab.var_label(var)}】，在这一点上严格用：「{val}」。**")
+        lines.append("其余创意自由发挥，但绝不能动上面 baseline 里的任何设定（动了就不是单变量测试了）。")
+    return "\n".join(lines) + "\n"
+
+
 async def _brief_one(
     portrait_id: str,
     idea_seed: str | None = None,
@@ -478,8 +501,15 @@ async def _brief_one(
     target_model: str = "seedance",
     extra_context: str | None = None,
     num_variants: int = 1,
+    intent: str = "generic",
+    experiment_context: dict | None = None,
 ) -> dict:
-    """单画像编导备忘录实现（generate_director_brief 单跑路径，逻辑即原函数体不动）。"""
+    """单画像编导备忘录实现（generate_director_brief 单跑路径）。
+
+    intent：投放意图（planting/harvest/soft_ad/hard_ad/generic），热加载对应方法论档案注入。
+    experiment_context：A/B 实验上下文 {"baseline":{var:val}, "sweep":{"variable","value"}}，
+    让 brief 硬性"固定 baseline、只动本轮变量"。
+    """
     portrait = await pipeline_lineage.get_audience_portrait(portrait_id)
     if not portrait:
         return {
@@ -533,9 +563,23 @@ async def _brief_one(
         _tm = "generic"
         target_model_profile = prompts.load("video_model_profiles/generic")
 
+    # 投放意图 intent：热加载方法论档案（generic / 未知 → 空注入，行为同今天）
+    _intent = (intent or "generic").strip().lower()
+    intent_profile = ""
+    if _intent not in ("", "generic"):
+        try:
+            intent_profile = prompts.load(f"brief_intent_profiles/{_intent}")
+        except FileNotFoundError:
+            logger.warning("brief_intent_profile 未找到: %s，回退 generic", _intent)
+            _intent = "generic"
+    # A/B 实验约束（单变量纪律）
+    experiment_constraint = _build_experiment_constraint(experiment_context)
+
     sys_msg = prompts.load("director_brief.system")
     user_msg = prompts.render(
         "director_brief.user",
+        intent_profile=intent_profile,
+        experiment_constraint=experiment_constraint,
         sku_md=sku_md,
         audience_name=audience_name,
         portrait_md=(portrait.get("portrait_md") or "").strip(),
@@ -543,6 +587,10 @@ async def _brief_one(
         ai_mapping_directive=ai_directive,
         target_model_profile=target_model_profile,
         extra_context=extra_context.strip() if extra_context else "（无）",
+    )
+    # prompt 反馈飞轮：注入老板累积的修正规则（migration 051/052；scope 带 sku_id/intent/target_model）
+    user_msg += await prompt_rules.render_rules_suffix(
+        "pipeline.director_brief", {"sku_id": sku_id, "intent": _intent, "target_model": _tm},
     )
     final_prompt = sys_msg + "\n\n" + user_msg
 
@@ -583,6 +631,7 @@ async def _brief_one(
             audience_run_id=portrait.get("audience_run_id"),
             matrix_run_id=portrait.get("matrix_run_id"),
             portrait_id=portrait_id,
+            intent=_intent,
             extra_context=extra_context,
             model_provider=_provider,
             model=_model,
@@ -610,6 +659,8 @@ async def _brief_one(
             "portrait_id": portrait_id,
             "audience_name": audience_name,
             "include_ai_mapping": include_ai_mapping,
+            "intent": _intent,
+            "experiment_context": experiment_context,
         },
         "trace": build_trace(
             provider=_provider,
@@ -622,6 +673,7 @@ async def _brief_one(
                 "include_ai_mapping": include_ai_mapping,
                 "ai_prompt_count": _pc,
                 "target_model": _tm,
+                "intent": _intent,
                 "idea_seed": idea_seed,
             },
             cost_estimate=f"{_n} quota call(s) (~10-20k input + 6-12k output tokens each)",
@@ -644,6 +696,7 @@ async def _brief_batch(
     ai_prompt_count: int | None,
     target_model: str,
     extra_context: str | None,
+    intent: str = "generic",
 ) -> dict:
     """批量编导 brief：每画像强制 num_variants=1（N 画像 × 3 变体会压垮 hub）。"""
     ids = [i for i in dict.fromkeys(portrait_ids) if i]
@@ -660,7 +713,7 @@ async def _brief_batch(
             return await _brief_one(
                 pid, idea_seed=idea_seed, include_ai_mapping=include_ai_mapping,
                 ai_prompt_count=ai_prompt_count, target_model=target_model,
-                extra_context=extra_context, num_variants=1,
+                extra_context=extra_context, num_variants=1, intent=intent,
             )
 
     raw = await asyncio.gather(*[_guarded(p) for p in ids], return_exceptions=True)
@@ -713,6 +766,8 @@ async def generate_director_brief(
     extra_context: str | None = None,
     num_variants: int = 1,
     portrait_ids: list[str] | None = None,
+    intent: str = "generic",
+    experiment_context: dict | None = None,
 ) -> dict:
     """生成编导备忘录（sku-pipeline step 3.6），支持单个 / 批量。
 
@@ -734,6 +789,10 @@ async def generate_director_brief(
         portrait_ids: 批量——一次给多个画像出 brief（与 portrait_id 二选一）。
             去重后上限 6，并发 3，单个失败不连坐，每画像强制 1 个方案。
             ⚠️对话路一次建议 ≤3；批 6 走前端 step 3.6。
+        intent: 投放意图 planting/harvest/soft_ad/hard_ad（默认 generic=不分型，行为同今天）；
+            热加载 config/prompts/brief_intent_profiles/<intent>.md 把方法论锚注入 brief
+        experiment_context: A/B 实验上下文 {"baseline":{变量:取值}, "sweep":{"variable","value"}}；
+            让 brief 硬性"固定 baseline、只动本轮变量"（单变量纪律），由 experiment_register_round 链路传
 
     Returns:
         单跑 {ok, result: {variants:[{script_id, brief_md, variant_label, validation_warnings}],
@@ -748,7 +807,7 @@ async def generate_director_brief(
                     "hint": "单跑传前者，批量传后者"}
         return await _brief_batch(
             portrait_ids, idea_seed, include_ai_mapping,
-            ai_prompt_count, target_model, extra_context,
+            ai_prompt_count, target_model, extra_context, intent,
         )
     if not portrait_id:
         return {"ok": False, "error": "缺参数：portrait_id（单跑）或 portrait_ids（批量）"}
@@ -756,4 +815,5 @@ async def generate_director_brief(
         portrait_id, idea_seed=idea_seed, include_ai_mapping=include_ai_mapping,
         ai_prompt_count=ai_prompt_count, target_model=target_model,
         extra_context=extra_context, num_variants=num_variants,
+        intent=intent, experiment_context=experiment_context,
     )

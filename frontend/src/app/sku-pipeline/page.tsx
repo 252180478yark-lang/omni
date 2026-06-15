@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Target, Film, Network, Image as ImageIcon, ScanFace, Clapperboard } from 'lucide-react'
+import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Target, Film, Network, Image as ImageIcon, ScanFace, Clapperboard, FlaskConical, Trophy } from 'lucide-react'
+import Link from 'next/link'
 import OutputFeedback from '@/components/OutputFeedback'
 import LineageTree, { type PickableNode } from './LineageTree'
 
@@ -238,6 +239,237 @@ const TARGET_MODEL_LIST: { value: string; label: string }[] = [
   { value: 'jimeng', label: '即梦' },
   { value: 'generic', label: '通用' },
 ]
+
+// ── Step 3.7 编导 Brief A/B 实验（experiment_* 7 tool） ─────────────────
+type ExperimentIntent = 'planting' | 'harvest' | 'soft_ad' | 'hard_ad'
+
+const INTENT_LIST: { value: ExperimentIntent; label: string }[] = [
+  { value: 'planting', label: '种草（planting）' },
+  { value: 'harvest', label: '收割（harvest）' },
+  { value: 'soft_ad', label: '软广（soft_ad）' },
+  { value: 'hard_ad', label: '硬广（hard_ad）' },
+]
+
+// 可扫变量池（跟后端一致，下拉用）
+const SWEEP_VARIABLE_LIST: { value: string; label: string; group: string }[] = [
+  { value: 'idea_seed', label: '拍什么事（idea_seed）', group: '内容核' },
+  { value: 'opening_hook_3s', label: '开头钩子（opening_hook_3s）', group: '内容核' },
+  { value: 'selling_point_set', label: '卖点组合（selling_point_set）', group: '内容核' },
+  { value: 'scene', label: '匹配场景（scene）', group: '内容核' },
+  { value: 'emotion', label: '情绪基调（emotion）', group: '表达层' },
+  { value: 'story_pace', label: '叙事节奏（story_pace）', group: '表达层' },
+  { value: 'edit_pace', label: '剪辑节奏（edit_pace）', group: '呈现层' },
+  { value: 'visual_vector', label: '画面向量（visual_vector）', group: '呈现层' },
+  { value: 'bgm', label: '音乐（bgm）', group: '呈现层' },
+  { value: 'target_model', label: 'AI 出片模型（target_model）', group: '呈现层' },
+]
+
+const sweepLabel = (v: string): string =>
+  SWEEP_VARIABLE_LIST.find(s => s.value === v)?.label || v
+
+interface ExperimentNorthStar {
+  metric: string
+  direction?: string
+  auxiliary?: string[]
+  label?: string
+}
+
+interface ExperimentSummary {
+  id: string
+  sku_id: string
+  intent: ExperimentIntent
+  intent_label: string
+  north_star_metric: string
+  status: string
+  title: string | null
+  baseline: Record<string, string> | null
+  rounds: number
+  created_at: string
+}
+
+interface ExperimentListResp {
+  ok: boolean
+  count?: number
+  experiments?: ExperimentSummary[]
+  error?: string
+  hint?: string
+}
+
+interface ExperimentCreateResp {
+  ok: boolean
+  experiment?: {
+    id: string
+    sku_id: string
+    intent: ExperimentIntent
+    north_star_metric: string
+    status: string
+  }
+  north_star?: ExperimentNorthStar
+  next_step_hint?: unknown
+  error?: string
+  hint?: string
+}
+
+// experiment_get 的轮次/臂
+interface ExpGetArm {
+  arm_id: string
+  arm_label: string
+  variable_value: string
+  n_videos: number
+  north_star_avg: number | null
+  sample_status: 'preliminary' | 'sufficient'
+  is_winner: boolean
+  script_id: string | null
+}
+
+interface ExpGetRound {
+  round_no: number
+  swept_variable: string
+  swept_variable_label: string
+  status: string
+  winning_arm_id: string | null
+  arms: ExpGetArm[]
+}
+
+interface ExperimentGetResp {
+  ok: boolean
+  experiment?: {
+    id: string
+    sku_id: string
+    intent: ExperimentIntent
+    intent_label?: string
+    north_star_metric: string
+    status: string
+    title?: string | null
+    baseline: Record<string, string> | null
+    winning_framework_md?: string | null
+  }
+  rounds?: ExpGetRound[]
+  error?: string
+  hint?: string
+}
+
+// experiment_status 的臂（投后真值 + 待验证徽章）
+interface ExpStatusArm {
+  arm_id: string
+  arm_label: string
+  variable_value: string
+  swept_variable: string
+  n_videos: number
+  north_star_avg: number | null
+  north_star_sum: number | null
+  sample_status: 'preliminary' | 'sufficient'
+  is_winner: boolean
+  is_baseline_locked: boolean
+  script_id: string | null
+}
+
+interface ExperimentStatusResp {
+  ok: boolean
+  sku_id?: string
+  intent?: ExperimentIntent
+  intent_label?: string
+  north_star_metric?: string
+  status?: string
+  round_no?: number
+  baseline?: Record<string, string> | null
+  arms?: ExpStatusArm[]
+  ranking?: string[]
+  leader_arm_id?: string | null
+  can_lock?: boolean
+  observations?: string[]
+  hypotheses?: string[]
+  next_variable_suggestion?: { variable: string; label: string } | null
+  metric_scale_warning?: string | null
+  next_step_hint?: unknown
+  error?: string
+  hint?: string
+}
+
+interface ExpRegisterArm {
+  id: string
+  arm_label: string
+  variable_value: string
+  script_id: string | null
+}
+
+interface ExperimentRegisterResp {
+  ok: boolean
+  round?: {
+    round_id: string
+    round_no: number
+    swept_variable: string
+    swept_variable_label: string
+    arms: ExpRegisterArm[]
+  }
+  warnings?: string[]
+  next_step_hint?: unknown
+  error?: string
+  hint?: string
+}
+
+interface ExperimentLockResp {
+  ok: boolean
+  locked?: {
+    swept_variable: string
+    label: string
+    value: string
+    arm_label: string
+    forced: boolean
+    reason?: string
+  }
+  baseline?: Record<string, string> | null
+  overwrite_warning?: string | null
+  next_variable_suggestion?: { variable: string; label: string } | null
+  next_step_hint?: unknown
+  // n<5 未 force 时
+  error?: string
+  n_videos?: number
+  hint?: string
+}
+
+interface ExpDistillCandidate {
+  swept_variable: string
+  label: string
+  value: string
+  rule_text: string
+  tier: 'formal' | 'preliminary'
+  n: number
+  already_distilled: boolean
+  value_changed: boolean
+}
+
+interface ExpDistillBlocked {
+  label: string
+  value: string
+  n: number
+  reason: string
+}
+
+interface ExperimentDistillResp {
+  ok: boolean
+  dry_run?: boolean
+  experiment?: unknown
+  scope?: unknown
+  candidates?: ExpDistillCandidate[]
+  blocked?: ExpDistillBlocked[]
+  winning_framework_preview?: string | null
+  // dry_run=false
+  created?: Array<{ rule_id: string; swept_variable: string; rule_text: string; enabled: boolean }>
+  skipped?: unknown
+  winning_framework_md?: string | null
+  next_step_hint?: unknown
+  error?: string
+  hint?: string
+}
+
+// 看板里"开新一轮"时每个臂的草稿行（前端临时态，生成 brief 拿 script_id）
+interface RoundArmDraft {
+  variable_value: string
+  script_id: string | null
+  generating: boolean
+  brief_error: string | null
+}
 
 // ── 故事板提示词导出 util（W4-B 14.4 phase D step 6 增强 2026-05-11） ─────────
 // 把 step 5 写的 image_prompt 里的 character_sheet[role_id] 占位符
@@ -562,6 +794,93 @@ export default function SkuPipelinePage() {
   const [running36, setRunning36] = useState(false)
   const [resp36, setResp36] = useState<BriefResp | null>(null)
   const [showPrompt36, setShowPrompt36] = useState(true)
+
+  // ── Step 3.7 编导 Brief A/B 实验 ──────────────────────────────────
+  // 实验列表 / 新建
+  const [expList, setExpList] = useState<ExperimentSummary[] | null>(null)
+  const [expListLoading, setExpListLoading] = useState(false)
+  const [newExpIntent, setNewExpIntent] = useState<ExperimentIntent>('planting')
+  const [newExpTitle, setNewExpTitle] = useState('')
+  const [newExpPortraitId, setNewExpPortraitId] = useState('')
+  const [creatingExp, setCreatingExp] = useState(false)
+  // 选中实验
+  const [activeExpId, setActiveExpId] = useState<string>('')
+  const [expGet, setExpGet] = useState<ExperimentGetResp | null>(null)
+  const [expStatus, setExpStatus] = useState<ExperimentStatusResp | null>(null)
+  const [expDetailLoading, setExpDetailLoading] = useState(false)
+  // 开新一轮
+  const [roundVariable, setRoundVariable] = useState<string>('idea_seed')
+  const [roundArms, setRoundArms] = useState<RoundArmDraft[]>([
+    { variable_value: '', script_id: null, generating: false, brief_error: null },
+    { variable_value: '', script_id: null, generating: false, brief_error: null },
+  ])
+  const [registeringRound, setRegisteringRound] = useState(false)
+  const [roundError, setRoundError] = useState<string | null>(null)
+  // 锁定 winner
+  const [lockArmId, setLockArmId] = useState<string>('')
+  const [lockForce, setLockForce] = useState(false)
+  const [locking, setLocking] = useState(false)
+  const [lockResp, setLockResp] = useState<ExperimentLockResp | null>(null)
+  // 沉淀为规则
+  const [distillResp, setDistillResp] = useState<ExperimentDistillResp | null>(null)
+  const [distilling, setDistilling] = useState(false)
+  const [distillCommitted, setDistillCommitted] = useState(false)
+  // 臂内 inline 录投后数据（key=arm_id）
+  const [metricFormOpen, setMetricFormOpen] = useState<string | null>(null)
+  const [metricValue, setMetricValue] = useState('')
+  const [metricVideoId, setMetricVideoId] = useState('')
+  const [metricSubmitting, setMetricSubmitting] = useState(false)
+  const [metricError, setMetricError] = useState<string | null>(null)
+
+  // 录投后数据：在臂卡片内直接 POST experiment_arm_id + 北极星指标，
+  // 后端 record_ad_metrics 定位不到 asset 时会自动在该臂下建一条 video 资产挂数据。
+  const openMetricForm = (armId: string) => {
+    setMetricFormOpen(prev => (prev === armId ? null : armId))
+    setMetricValue('')
+    setMetricVideoId('')
+    setMetricError(null)
+  }
+
+  const submitArmMetric = async (armId: string) => {
+    if (metricSubmitting) return
+    const metricName = expStatus?.north_star_metric
+    if (!metricName) {
+      setMetricError('缺北极星指标名（实验详情未加载）')
+      return
+    }
+    const num = Number(metricValue)
+    if (metricValue.trim() === '' || Number.isNaN(num)) {
+      setMetricError('请填一个数值')
+      return
+    }
+    setMetricSubmitting(true)
+    setMetricError(null)
+    try {
+      const res = await fetch('/api/omni/asset-metrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          experiment_arm_id: armId,
+          external_video_id: metricVideoId.trim() || null,
+          metrics: { [metricName]: num },
+        }),
+      })
+      const json = await res.json()
+      if (json.success && json.data?.ok !== false) {
+        setMetricFormOpen(null)
+        setMetricValue('')
+        setMetricVideoId('')
+        if (activeExpId) await refreshExperimentDetail(activeExpId)
+      } else {
+        const d = json.data || {}
+        setMetricError(d.hint || d.error || json.error || '录入未成功')
+      }
+    } catch (e) {
+      setMetricError(`录入异常：${String(e)}`)
+    } finally {
+      setMetricSubmitting(false)
+    }
+  }
 
   useEffect(() => {
     fetch('/api/omni/scout/skus?status=active')
@@ -1576,6 +1895,290 @@ export default function SkuPipelinePage() {
     setResp36(null)
   }, [skuId])
 
+  // ── Step 3.7 A/B 实验：handlers ──────────────────────────────────
+  // SKU 切换时清空实验态
+  useEffect(() => {
+    setExpList(null)
+    setNewExpTitle('')
+    setNewExpPortraitId('')
+    setActiveExpId('')
+    setExpGet(null)
+    setExpStatus(null)
+    setLockArmId('')
+    setLockForce(false)
+    setLockResp(null)
+    setDistillResp(null)
+    setDistillCommitted(false)
+    setRoundArms([
+      { variable_value: '', script_id: null, generating: false, brief_error: null },
+      { variable_value: '', script_id: null, generating: false, brief_error: null },
+    ])
+  }, [skuId])
+
+  const loadExperiments = async () => {
+    if (!skuId) return
+    setExpListLoading(true)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/experiment-list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sku_id: skuId, limit: 50 }),
+      })
+      const json = await res.json()
+      const data = json.data as ExperimentListResp | undefined
+      if (json.success && data?.ok) {
+        setExpList(data.experiments || [])
+      } else {
+        setExpList([])
+        setError(`加载实验列表失败：${data?.error || json.error || '未知'}`)
+      }
+    } catch (e) {
+      setExpList([])
+      setError(`加载实验列表异常：${String(e)}`)
+    } finally {
+      setExpListLoading(false)
+    }
+  }
+
+  const createExperiment = async () => {
+    if (!skuId || creatingExp) return
+    setCreatingExp(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/experiment-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sku_id: skuId,
+          intent: newExpIntent,
+          portrait_id: newExpPortraitId.trim() || null,
+          title: newExpTitle.trim() || null,
+        }),
+      })
+      const json = await res.json()
+      const data = json.data as ExperimentCreateResp | undefined
+      if (json.success && data?.ok && data.experiment) {
+        setNewExpTitle('')
+        await loadExperiments()
+        await selectExperiment(data.experiment.id)
+      } else if (data?.error === 'missing_audience') {
+        setError(`新建实验失败：${data.hint || '实验必须绑人群——填 step3.5 画像 id 或 step3 人群记录 id'}`)
+      } else {
+        setError(`新建实验失败：${data?.hint || data?.error || json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`新建实验异常：${String(e)}`)
+    } finally {
+      setCreatingExp(false)
+    }
+  }
+
+  // 选中实验 → 同时拉 get（轮次结构）+ status（投后真值/排名/观察/假设）
+  const selectExperiment = async (expId: string) => {
+    setActiveExpId(expId)
+    setExpGet(null)
+    setExpStatus(null)
+    setLockArmId('')
+    setLockResp(null)
+    setDistillResp(null)
+    setDistillCommitted(false)
+    if (!expId) return
+    await refreshExperimentDetail(expId)
+  }
+
+  const refreshExperimentDetail = async (expId: string) => {
+    if (!expId) return
+    setExpDetailLoading(true)
+    try {
+      const [getRes, statusRes] = await Promise.all([
+        fetch('/api/omni/sku-pipeline/experiment-get', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ experiment_id: expId }),
+        }),
+        fetch('/api/omni/sku-pipeline/experiment-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ experiment_id: expId }),
+        }),
+      ])
+      const getJson = await getRes.json()
+      const statusJson = await statusRes.json()
+      if (getJson.success) setExpGet(getJson.data as ExperimentGetResp)
+      if (statusJson.success) setExpStatus(statusJson.data as ExperimentStatusResp)
+    } catch (e) {
+      setError(`加载实验详情异常：${String(e)}`)
+    } finally {
+      setExpDetailLoading(false)
+    }
+  }
+
+  // 开新一轮：先对每个臂调 director-brief 拿 script_id（单变量纪律），全拿到再 register_round
+  const generateArmBriefs = async () => {
+    setRoundError(null)
+    const portraitId = newExpPortraitId.trim()
+    if (!portraitId) {
+      setRoundError('缺人群画像 portrait_id —— 在「新建实验」处填一个画像 id（生成各臂 brief 需要它）')
+      return
+    }
+    const filled = roundArms.filter(a => a.variable_value.trim())
+    if (filled.length < 2) {
+      setRoundError('至少要 2 个臂、且每个臂都要填取值')
+      return
+    }
+    const values = filled.map(a => a.variable_value.trim())
+    if (new Set(values).size !== values.length) {
+      setRoundError('臂取值不能重复')
+      return
+    }
+    const intent = expStatus?.intent || expGet?.experiment?.intent
+    const baseline = expStatus?.baseline || expGet?.experiment?.baseline || {}
+    // 逐臂生成（串行，避免并发把 KE 打满；每个臂只动 swept_variable 这一个变量）
+    const next = roundArms.map(a => ({ ...a }))
+    for (let i = 0; i < next.length; i++) {
+      const armVal = next[i].variable_value.trim()
+      if (!armVal) continue
+      next[i] = { ...next[i], generating: true, brief_error: null, script_id: null }
+      setRoundArms([...next])
+      try {
+        const res = await fetch('/api/omni/sku-pipeline/director-brief', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            portrait_id: portraitId,
+            intent: intent || null,
+            experiment_context: {
+              baseline,
+              sweep: { variable: roundVariable, value: armVal },
+            },
+          }),
+        })
+        const json = await res.json()
+        const brief = json.data as BriefResp | undefined
+        const sid = brief?.result?.variants?.[0]?.script_id || null
+        if (json.success && brief?.ok && sid) {
+          next[i] = { ...next[i], generating: false, script_id: sid, brief_error: null }
+        } else {
+          next[i] = { ...next[i], generating: false, script_id: null, brief_error: brief?.error || json.error || '生成失败（无 script_id）' }
+        }
+      } catch (e) {
+        next[i] = { ...next[i], generating: false, script_id: null, brief_error: String(e) }
+      }
+      setRoundArms([...next])
+    }
+    // 全部臂都拿到 script_id → 自动 register_round
+    const ready = next.filter(a => a.variable_value.trim() && a.script_id)
+    if (ready.length >= 2 && ready.length === filled.length) {
+      await registerRound(next)
+    } else {
+      setRoundError('部分臂 brief 生成失败，未自动注册本轮——修好失败臂或减臂后重试')
+    }
+  }
+
+  const registerRound = async (arms: RoundArmDraft[]) => {
+    if (!activeExpId || registeringRound) return
+    setRegisteringRound(true)
+    setRoundError(null)
+    try {
+      const payloadArms = arms
+        .filter(a => a.variable_value.trim() && a.script_id)
+        .map(a => ({ variable_value: a.variable_value.trim(), script_id: a.script_id }))
+      const res = await fetch('/api/omni/sku-pipeline/experiment-register-round', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          experiment_id: activeExpId,
+          swept_variable: roundVariable,
+          arms: payloadArms,
+        }),
+      })
+      const json = await res.json()
+      const data = json.data as ExperimentRegisterResp | undefined
+      if (json.success && data?.ok) {
+        // 注册成功 → 清空草稿臂、刷新详情
+        setRoundArms([
+          { variable_value: '', script_id: null, generating: false, brief_error: null },
+          { variable_value: '', script_id: null, generating: false, brief_error: null },
+        ])
+        await refreshExperimentDetail(activeExpId)
+      } else {
+        setRoundError(`注册本轮失败：${data?.error || json.error || '未知'}`)
+      }
+    } catch (e) {
+      setRoundError(`注册本轮异常：${String(e)}`)
+    } finally {
+      setRegisteringRound(false)
+    }
+  }
+
+  const lockWinner = async () => {
+    if (!activeExpId || !lockArmId || locking) return
+    const roundNo = expStatus?.round_no
+    if (typeof roundNo !== 'number') {
+      setError('当前无可锁定的轮次')
+      return
+    }
+    setLocking(true)
+    setLockResp(null)
+    setError(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/experiment-lock-winner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          experiment_id: activeExpId,
+          round_no: roundNo,
+          winning_arm_id: lockArmId,
+          force: lockForce,
+        }),
+      })
+      const json = await res.json()
+      const data = json.data as ExperimentLockResp | undefined
+      setLockResp(data || null)
+      if (json.success && data?.ok) {
+        await refreshExperimentDetail(activeExpId)
+      } else if (!data?.ok) {
+        // preliminary_winner_blocked 等：把 error/hint 显示在 lockResp 卡里，不弹全局 error
+      } else {
+        setError(`锁定失败：${json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`锁定异常：${String(e)}`)
+    } finally {
+      setLocking(false)
+    }
+  }
+
+  // 沉淀为规则：dry_run=true 预览 → 老板确认 → dry_run=false 落草稿
+  const runDistill = async (commit: boolean) => {
+    if (!activeExpId || distilling) return
+    setDistilling(true)
+    if (!commit) { setDistillResp(null); setDistillCommitted(false) }
+    setError(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/experiment-distill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          experiment_id: activeExpId,
+          dry_run: !commit,
+        }),
+      })
+      const json = await res.json()
+      const data = json.data as ExperimentDistillResp | undefined
+      if (json.success && data?.ok) {
+        setDistillResp(data)
+        if (commit) setDistillCommitted(true)
+      } else {
+        setError(`沉淀规则失败：${data?.error || json.error || '未知'}`)
+      }
+    } catch (e) {
+      setError(`沉淀规则异常：${String(e)}`)
+    } finally {
+      setDistilling(false)
+    }
+  }
+
   // SKU 切换时清空 step 4 状态
   useEffect(() => {
     setRecord4Id('')
@@ -1769,6 +2372,9 @@ export default function SkuPipelinePage() {
           </TabsTrigger>
           <TabsTrigger value="step36" className="text-sm font-medium w-full justify-start py-2">
             <Clapperboard className="w-4 h-4 mr-1.5" /> 3.6 编导 Brief
+          </TabsTrigger>
+          <TabsTrigger value="step37" className="text-sm font-medium w-full justify-start py-2">
+            <FlaskConical className="w-4 h-4 mr-1.5" /> 3.7 A/B 实验
           </TabsTrigger>
           <TabsTrigger value="step4" className="text-sm font-medium w-full justify-start py-2">
             <Target className="w-4 h-4 mr-1.5" /> Step 4 · 圈包
@@ -2922,6 +3528,633 @@ export default function SkuPipelinePage() {
                     )}
 
                     <OutputFeedback toolName="generate_director_brief" />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ============== STEP 3.7: 编导 Brief A/B 实验 ============== */}
+        <TabsContent value="step37" className="mt-0 flex-1 min-w-0">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            {/* 左：选 SKU → 实验列表 / 新建实验 */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FlaskConical className="w-4 h-4" /> 实验
+                </CardTitle>
+                <CardDescription>
+                  单变量纪律 A/B：每轮只动一个变量（固定 baseline），各臂各出一条编导 brief，投后真值定 winner，赢家沉淀成规则。
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {SkuPicker}
+
+                {/* 实验列表 */}
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="text-sm font-medium">该 SKU 的实验</label>
+                    <Button size="sm" variant="outline" onClick={loadExperiments} disabled={!skuId || expListLoading}>
+                      {expListLoading
+                        ? <Loader2 className="w-3 h-3 animate-spin" />
+                        : (expList !== null ? '刷新' : '加载实验')}
+                    </Button>
+                  </div>
+                  {expList === null && (
+                    <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                      点「加载实验」拉这个 SKU 已有的 A/B 实验，或下面新建一个。
+                    </div>
+                  )}
+                  {expList !== null && expList.length === 0 && (
+                    <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                      这个 SKU 还没有实验。下面新建一个开跑。
+                    </div>
+                  )}
+                  {expList !== null && expList.length > 0 && (
+                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                      {expList.map(e => {
+                        const selected = activeExpId === e.id
+                        return (
+                          <button
+                            key={e.id}
+                            type="button"
+                            className={`w-full text-left text-xs p-2 rounded border-2 transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted'}`}
+                            onClick={() => selectExperiment(e.id)}
+                          >
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {selected && <span className="text-primary">✓</span>}
+                              <Badge variant="secondary" className="text-[10px]">{e.intent_label || e.intent}</Badge>
+                              <Badge variant={e.status === 'active' ? 'default' : 'outline'} className="text-[10px]">
+                                {e.status}
+                              </Badge>
+                              <span className="text-[10px] text-muted-foreground">{e.rounds} 轮</span>
+                              <span className="text-muted-foreground ml-auto">
+                                {(e.created_at || '').slice(0, 16).replace('T', ' ')}
+                              </span>
+                            </div>
+                            <div className="mt-1 font-medium">{e.title || '（未命名）'}</div>
+                            <div className="text-muted-foreground mt-0.5">
+                              北极星：<code className="text-[10px]">{e.north_star_metric}</code>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 新建实验 */}
+                <div className="border-t pt-3 space-y-3">
+                  <div className="text-sm font-medium">新建实验</div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">目的（intent）</label>
+                    <select
+                      className="w-full border rounded px-2 py-2 text-sm bg-background"
+                      value={newExpIntent}
+                      onChange={e => setNewExpIntent(e.target.value as ExperimentIntent)}
+                    >
+                      {INTENT_LIST.map(i => (
+                        <option key={i.value} value={i.value}>{i.label}</option>
+                      ))}
+                    </select>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      北极星指标按 intent 自动选，不用填。
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">人群画像 portrait_id（必填）</label>
+                    <Input
+                      placeholder="step 3.5 的 portrait_id（或 step 3 人群记录 id）"
+                      value={newExpPortraitId}
+                      onChange={e => setNewExpPortraitId(e.target.value)}
+                      className="text-sm"
+                    />
+                    {!newExpPortraitId.trim() && (
+                      <div className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">
+                        实验必须绑人群（出发点 SKU→卖点→人群→内容）：填 step3.5 画像 id 或 step3 人群记录 id。
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">标题（可选）</label>
+                    <Input
+                      placeholder="如：种草片开头钩子横扫"
+                      value={newExpTitle}
+                      onChange={e => setNewExpTitle(e.target.value)}
+                      className="text-sm"
+                    />
+                  </div>
+                  <Button onClick={createExperiment} disabled={creatingExp || !skuId || !newExpPortraitId.trim()} className="w-full">
+                    {creatingExp
+                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 新建中...</>
+                      : '新建实验'}
+                  </Button>
+                </div>
+
+                {error && (
+                  <div className="text-sm text-red-500 p-2 border border-red-200 rounded bg-red-50">
+                    {error}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 右：选中实验后的看板 */}
+            <Card className="lg:col-span-3">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Trophy className="w-4 h-4" /> 实验看板
+                  {activeExpId && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="ml-auto"
+                      onClick={() => refreshExperimentDetail(activeExpId)}
+                      disabled={expDetailLoading}
+                    >
+                      {expDetailLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : '刷新数据'}
+                    </Button>
+                  )}
+                </CardTitle>
+                {expStatus?.ok && (
+                  <CardDescription className="text-xs">
+                    {expStatus.intent_label || expStatus.intent} · 北极星{' '}
+                    <code>{expStatus.north_star_metric}</code> · 状态 {expStatus.status}
+                    {typeof expStatus.round_no === 'number' && ` · 第 ${expStatus.round_no} 轮`}
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {!activeExpId && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    左边选一个实验（或新建），看板会显示在这里。
+                  </div>
+                )}
+                {activeExpId && expDetailLoading && !expStatus && (
+                  <div className="text-sm text-muted-foreground py-12 text-center">
+                    <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" />
+                    加载实验详情...
+                  </div>
+                )}
+
+                {activeExpId && expStatus?.ok && (
+                  <>
+                    {/* baseline */}
+                    {expStatus.baseline && Object.keys(expStatus.baseline).length > 0 && (
+                      <div className="border rounded p-3 bg-muted/30">
+                        <div className="text-xs font-semibold mb-1.5">当前 baseline（已锁定的变量）</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {Object.entries(expStatus.baseline).map(([k, v]) => (
+                            <Badge key={k} variant="secondary" className="text-[10px]">
+                              {sweepLabel(k)}：{v}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* metric scale warning */}
+                    {expStatus.metric_scale_warning && (
+                      <div className="border border-amber-300 dark:border-amber-800 rounded p-2.5 bg-amber-50 dark:bg-amber-950/30 text-xs text-amber-900 dark:text-amber-200">
+                        ⚠ {expStatus.metric_scale_warning}
+                      </div>
+                    )}
+
+                    {/* 本轮各臂并排卡片 */}
+                    <div>
+                      <div className="text-sm font-semibold mb-2">
+                        本轮各臂
+                        {(expStatus.arms?.length ?? 0) > 0 && expStatus.arms![0].swept_variable && (
+                          <span className="text-xs font-normal text-muted-foreground ml-2">
+                            扫的变量：{sweepLabel(expStatus.arms![0].swept_variable)}
+                          </span>
+                        )}
+                      </div>
+                      {(expStatus.arms?.length ?? 0) === 0 && (
+                        <div className="text-xs text-muted-foreground p-3 border border-dashed rounded">
+                          本实验还没注册过轮次。下面「开新一轮」开跑。
+                        </div>
+                      )}
+                      {(expStatus.arms?.length ?? 0) > 0 && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {expStatus.arms!.map(arm => {
+                            const isLeader = expStatus.leader_arm_id === arm.arm_id
+                            const isWinner = arm.is_winner
+                            const preliminary = arm.sample_status === 'preliminary'
+                            return (
+                              <div
+                                key={arm.arm_id}
+                                className={`border-2 rounded-lg p-3 space-y-2 ${isWinner ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20' : isLeader ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}
+                              >
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-semibold text-sm">{arm.arm_label}</span>
+                                  {isWinner && <Badge className="text-[10px] bg-emerald-600">🏆 winner</Badge>}
+                                  {!isWinner && isLeader && <Badge variant="default" className="text-[10px]">领先</Badge>}
+                                  {arm.is_baseline_locked && <Badge variant="outline" className="text-[10px]">baseline</Badge>}
+                                </div>
+                                <div className="text-xs text-muted-foreground break-words">
+                                  取值：<span className="text-foreground">{arm.variable_value}</span>
+                                </div>
+                                <div className="flex items-end gap-3">
+                                  <div>
+                                    <div className="text-[10px] text-muted-foreground">{expStatus.north_star_metric} 均值</div>
+                                    <div className="text-lg font-bold">
+                                      {arm.north_star_avg !== null ? arm.north_star_avg : <span className="text-muted-foreground text-sm">—</span>}
+                                    </div>
+                                  </div>
+                                  <div className="ml-auto text-right">
+                                    <div className="text-[10px] text-muted-foreground">视频数</div>
+                                    <div className="text-sm font-medium">{arm.n_videos}</div>
+                                  </div>
+                                </div>
+                                {preliminary && (
+                                  <div className="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/40 rounded px-1.5 py-0.5 inline-block">
+                                    ⚠ 待验证 n&lt;5
+                                  </div>
+                                )}
+                                <div className="pt-1 space-y-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs h-7 w-full"
+                                    onClick={() => openMetricForm(arm.arm_id)}
+                                  >
+                                    {metricFormOpen === arm.arm_id ? '收起录入' : '录投后数据'}
+                                  </Button>
+                                  {metricFormOpen === arm.arm_id && (
+                                    <div className="border rounded p-2 space-y-2 bg-muted/30">
+                                      <div>
+                                        <label className="text-[10px] font-medium block mb-0.5">
+                                          {expStatus.north_star_metric}
+                                          <span className="text-muted-foreground font-normal ml-1">
+                                            （率类填 0~1 同口径）
+                                          </span>
+                                        </label>
+                                        <Input
+                                          type="number"
+                                          step="any"
+                                          placeholder={`这条视频的 ${expStatus.north_star_metric}`}
+                                          value={metricValue}
+                                          onChange={e => setMetricValue(e.target.value)}
+                                          className="text-xs h-8"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[10px] font-medium block mb-0.5">
+                                          抖音/千川 video_id
+                                          <span className="text-muted-foreground font-normal ml-1">（可选）</span>
+                                        </label>
+                                        <Input
+                                          placeholder="可选，留空也能录"
+                                          value={metricVideoId}
+                                          onChange={e => setMetricVideoId(e.target.value)}
+                                          className="text-xs h-8"
+                                        />
+                                      </div>
+                                      <Button
+                                        size="sm"
+                                        className="text-xs h-7 w-full"
+                                        onClick={() => submitArmMetric(arm.arm_id)}
+                                        disabled={metricSubmitting}
+                                      >
+                                        {metricSubmitting
+                                          ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> 提交中...</>
+                                          : '提交'}
+                                      </Button>
+                                      {metricError && (
+                                        <div className="text-[10px] text-red-600 dark:text-red-400 break-words">
+                                          {metricError}
+                                        </div>
+                                      )}
+                                      <div className="text-[10px] text-muted-foreground">
+                                        也可以去{' '}
+                                        <Link href="/ad-metrics" className="underline hover:text-foreground">
+                                          /ad-metrics
+                                        </Link>{' '}
+                                        录。多次提交 = 多条视频累积，视频数会涨。
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      {(expStatus.ranking?.length ?? 0) > 0 && (
+                        <div className="text-xs text-muted-foreground mt-2">
+                          排名（后端定，前端只展示）：{expStatus.ranking!.join(' › ')}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 观察 / 假设 */}
+                    {((expStatus.observations?.length ?? 0) > 0 || (expStatus.hypotheses?.length ?? 0) > 0) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {(expStatus.observations?.length ?? 0) > 0 && (
+                          <div className="border rounded p-3 bg-muted/20">
+                            <div className="text-xs font-semibold mb-1">观察到的</div>
+                            <ul className="text-xs space-y-1 list-disc pl-4 text-muted-foreground">
+                              {expStatus.observations!.map((o, i) => <li key={i}>{o}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {(expStatus.hypotheses?.length ?? 0) > 0 && (
+                          <div className="border rounded p-3 bg-muted/20">
+                            <div className="text-xs font-semibold mb-1">可能的假设</div>
+                            <ul className="text-xs space-y-1 list-disc pl-4 text-muted-foreground">
+                              {expStatus.hypotheses!.map((h, i) => <li key={i}>{h}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* next variable suggestion */}
+                    {expStatus.next_variable_suggestion && (
+                      <div className="text-xs p-2 border border-dashed rounded bg-muted/30 text-muted-foreground">
+                        💡 下一个建议扫的变量：<span className="text-foreground font-medium">{expStatus.next_variable_suggestion.label}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-2 h-6 text-xs"
+                          onClick={() => setRoundVariable(expStatus.next_variable_suggestion!.variable)}
+                        >
+                          用它开下一轮
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* 锁定 winner */}
+                    {(expStatus.arms?.length ?? 0) > 0 && (
+                      <div className="border rounded-lg p-3 space-y-2.5">
+                        <div className="text-sm font-semibold flex items-center gap-2">
+                          <Trophy className="w-4 h-4" /> 锁定 winner（把本轮赢家固定进 baseline）
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1 block">选赢家臂</label>
+                          <select
+                            className="w-full border rounded px-2 py-1.5 text-sm bg-background"
+                            value={lockArmId}
+                            onChange={e => setLockArmId(e.target.value)}
+                          >
+                            <option value="">
+                              {expStatus.leader_arm_id ? '默认领先臂（或手选）' : '— 选一个臂 —'}
+                            </option>
+                            {expStatus.arms!.map(a => (
+                              <option key={a.arm_id} value={a.arm_id}>
+                                {a.arm_label} · {a.variable_value} · {expStatus.north_star_metric}={a.north_star_avg ?? '—'} · n={a.n_videos}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={lockForce}
+                            onChange={e => setLockForce(e.target.checked)}
+                            className="h-4 w-4 accent-primary"
+                          />
+                          强制锁定（样本不足 n&lt;5 也锁，force=true）
+                        </label>
+                        <Button
+                          onClick={lockWinner}
+                          disabled={locking || (!lockArmId && !expStatus.leader_arm_id) || (expStatus.can_lock === false && !lockForce)}
+                          className="w-full"
+                          size="sm"
+                        >
+                          {locking
+                            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 锁定中...</>
+                            : '锁定 winner'}
+                        </Button>
+                        {expStatus.can_lock === false && !lockForce && (
+                          <div className="text-[11px] text-amber-700 dark:text-amber-400">
+                            样本不足，每臂需 n≥5（或勾选上面的强制锁定）。
+                          </div>
+                        )}
+                        {lockResp && !lockResp.ok && (
+                          <div className="text-xs text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded p-2 bg-amber-50 dark:bg-amber-950/30">
+                            {lockResp.error === 'preliminary_winner_blocked'
+                              ? `样本不足被拦下（n=${lockResp.n_videos ?? '?'}）：${lockResp.hint || '勾选强制锁定可绕过'}`
+                              : (lockResp.hint || lockResp.error || '锁定未成功')}
+                          </div>
+                        )}
+                        {lockResp?.ok && lockResp.locked && (
+                          <div className="text-xs text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800 rounded p-2 bg-emerald-50 dark:bg-emerald-950/30 space-y-1">
+                            <div>
+                              ✓ 已锁定：{lockResp.locked.label} = <span className="font-medium">{lockResp.locked.value}</span>（{lockResp.locked.arm_label}）
+                              {lockResp.locked.forced && <span className="text-amber-600 dark:text-amber-400 ml-1">[强制]</span>}
+                            </div>
+                            {lockResp.overwrite_warning && <div className="text-amber-600 dark:text-amber-400">⚠ {lockResp.overwrite_warning}</div>}
+                            {lockResp.next_variable_suggestion && (
+                              <div className="text-muted-foreground">下一个建议扫：{lockResp.next_variable_suggestion.label}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <OutputFeedback toolName="experiment_status" label="这份实验看板怎么样？" />
+                  </>
+                )}
+
+                {/* 开新一轮 —— 选中实验后总是可用 */}
+                {activeExpId && expStatus?.ok && (
+                  <div className="border-t pt-4 space-y-3">
+                    <div className="text-sm font-semibold">开新一轮（单变量纪律）</div>
+                    <div className="text-xs text-muted-foreground">
+                      固定 baseline，只动这一个变量；各臂各调一次编导 brief 拿 script_id 后自动注册本轮。
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">这轮扫的变量（swept_variable）</label>
+                      <select
+                        className="w-full border rounded px-2 py-2 text-sm bg-background"
+                        value={roundVariable}
+                        onChange={e => setRoundVariable(e.target.value)}
+                      >
+                        {['内容核', '表达层', '呈现层'].map(grp => (
+                          <optgroup key={grp} label={grp}>
+                            {SWEEP_VARIABLE_LIST.filter(s => s.group === grp).map(s => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">各臂取值（≥2，不重复）</label>
+                      <div className="space-y-2">
+                        {roundArms.map((arm, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground w-5 shrink-0">{String.fromCharCode(65 + i)}</span>
+                            <Input
+                              placeholder={`臂 ${String.fromCharCode(65 + i)} 的 ${sweepLabel(roundVariable)} 取值`}
+                              value={arm.variable_value}
+                              onChange={e => {
+                                const next = [...roundArms]
+                                next[i] = { ...next[i], variable_value: e.target.value, script_id: null, brief_error: null }
+                                setRoundArms(next)
+                              }}
+                              className="text-sm"
+                            />
+                            {arm.generating && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
+                            {arm.script_id && <span className="text-emerald-600 text-xs shrink-0" title={arm.script_id}>✓ brief</span>}
+                            {arm.brief_error && <span className="text-red-500 text-xs shrink-0" title={arm.brief_error}>✗</span>}
+                            {roundArms.length > 2 && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs shrink-0"
+                                onClick={() => setRoundArms(roundArms.filter((_, j) => j !== i))}
+                              >
+                                删
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 text-xs"
+                        onClick={() => setRoundArms([...roundArms, { variable_value: '', script_id: null, generating: false, brief_error: null }])}
+                      >
+                        + 加一个臂
+                      </Button>
+                    </div>
+                    {roundArms.some(a => a.brief_error) && (
+                      <div className="text-xs text-red-600 dark:text-red-400 space-y-0.5">
+                        {roundArms.map((a, i) => a.brief_error && (
+                          <div key={i}>臂 {String.fromCharCode(65 + i)}：{a.brief_error}</div>
+                        ))}
+                      </div>
+                    )}
+                    <Button
+                      onClick={generateArmBriefs}
+                      disabled={registeringRound || roundArms.some(a => a.generating) || roundArms.filter(a => a.variable_value.trim()).length < 2}
+                      className="w-full"
+                    >
+                      {roundArms.some(a => a.generating)
+                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 逐臂生成 brief...</>
+                        : registeringRound
+                          ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 注册本轮...</>
+                          : '生成各臂 brief → 自动注册本轮'}
+                    </Button>
+                    {roundError && (
+                      <div className="text-xs text-red-600 dark:text-red-400 p-2 border border-red-200 dark:border-red-900 rounded bg-red-50 dark:bg-red-950/30">
+                        {roundError}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 沉淀为规则 */}
+                {activeExpId && expStatus?.ok && (
+                  <div className="border-t pt-4 space-y-3">
+                    <div className="text-sm font-semibold">沉淀为规则</div>
+                    <div className="text-xs text-muted-foreground">
+                      把已锁定的赢家变量沉淀成 prompt 规则草稿（enabled=FALSE，需去技能中心点亮）。先预览再确认落库。
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => runDistill(false)}
+                        disabled={distilling}
+                      >
+                        {distilling && !distillCommitted
+                          ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> 预览中</>
+                          : '预览沉淀（dry run）'}
+                      </Button>
+                      {distillResp?.dry_run && (distillResp.candidates?.length ?? 0) > 0 && (
+                        <Button
+                          size="sm"
+                          onClick={() => runDistill(true)}
+                          disabled={distilling}
+                        >
+                          {distilling
+                            ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> 落库中</>
+                            : '确认沉淀为规则草稿'}
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* dry_run 预览 */}
+                    {distillResp?.dry_run && (
+                      <div className="space-y-3">
+                        {(distillResp.candidates?.length ?? 0) === 0 && (distillResp.blocked?.length ?? 0) === 0 && (
+                          <div className="text-xs text-muted-foreground p-2 border border-dashed rounded">
+                            没有可沉淀的候选（可能还没锁定任何赢家）。
+                          </div>
+                        )}
+                        {(distillResp.candidates?.length ?? 0) > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-xs font-medium">候选规则</div>
+                            {distillResp.candidates!.map((c, i) => {
+                              const tierStyle = c.tier === 'formal'
+                                ? 'border-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20'
+                                : 'border-amber-400 bg-amber-50/50 dark:bg-amber-950/20'
+                              return (
+                                <div key={i} className={`border rounded p-2.5 text-xs space-y-1 ${tierStyle}`}>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge variant={c.tier === 'formal' ? 'default' : 'secondary'} className="text-[10px]">
+                                      {c.tier === 'formal' ? '✅ 正式' : '⚠ 待验证'}
+                                    </Badge>
+                                    <span className="font-medium">{c.label} = {c.value}</span>
+                                    <span className="text-muted-foreground">n={c.n}</span>
+                                    {c.already_distilled && <Badge variant="outline" className="text-[10px]">已沉淀过</Badge>}
+                                    {c.value_changed && <Badge variant="outline" className="text-[10px]">值有变</Badge>}
+                                  </div>
+                                  <div className="text-muted-foreground">{c.rule_text}</div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                        {(distillResp.blocked?.length ?? 0) > 0 && (
+                          <div className="space-y-2">
+                            <div className="text-xs font-medium">被拦下的（灰）</div>
+                            {distillResp.blocked!.map((b, i) => (
+                              <div key={i} className="border border-border rounded p-2 text-xs bg-muted/40 text-muted-foreground">
+                                <span className="font-medium">{b.label} = {b.value}</span>（n={b.n}）— {b.reason}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {distillResp.winning_framework_preview && (
+                          <div>
+                            <div className="text-xs font-medium mb-1">winning framework 预览</div>
+                            <div className="prose prose-sm max-w-none dark:prose-invert border rounded p-3 bg-muted/30 text-xs">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{distillResp.winning_framework_preview}</ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* dry_run=false 落库结果 */}
+                    {distillResp && distillResp.dry_run === false && (
+                      <div className="border border-emerald-300 dark:border-emerald-800 rounded p-3 bg-emerald-50 dark:bg-emerald-950/30 text-xs space-y-1.5">
+                        <div className="text-emerald-800 dark:text-emerald-300 font-medium">
+                          ✓ 已存 {distillResp.created?.length ?? 0} 条规则草稿（enabled=FALSE）
+                        </div>
+                        {(distillResp.created?.length ?? 0) > 0 && (
+                          <ul className="list-disc pl-4 space-y-0.5 text-muted-foreground">
+                            {distillResp.created!.map(r => (
+                              <li key={r.rule_id}>
+                                {sweepLabel(r.swept_variable)}：{r.rule_text}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="text-amber-700 dark:text-amber-400">
+                          规则已存草稿 enabled=FALSE，去技能中心 prompt_rule_list 点亮。
+                        </div>
+                      </div>
+                    )}
+
+                    <OutputFeedback toolName="experiment_distill" label="这份规则沉淀怎么样？" />
                   </div>
                 )}
               </CardContent>

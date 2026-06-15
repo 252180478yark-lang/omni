@@ -24,7 +24,7 @@ from app.mcp.audit import tool_with_audit
 from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
-from app.services import pipeline_lineage, rag_chain
+from app.services import pipeline_lineage, prompt_rules, rag_chain
 from app.services.ai_hub_client import AIHubClient, HubError
 
 
@@ -1778,6 +1778,10 @@ async def generate_selling_points_matrix(
         kb_context=kb_context.strip() if kb_context else "（未提供 KB 上下文：建议先 search_kb 拿同品类爆款 / 品牌资产 / 竞品对比）",
         extra_context=extra_context.strip() if extra_context else "（无）",
     )
+    # prompt 反馈飞轮：注入老板累积的修正规则（migration 051；最高优先级，拼进 user_msg 末尾）
+    user_msg += await prompt_rules.render_rules_suffix(
+        "pipeline.selling_points_matrix", {"sku_id": sku["id"]},
+    )
     final_prompt = sys_msg + "\n\n" + user_msg
 
     model_cfg = get_model_for_tool("generate_selling_points_matrix")
@@ -2285,6 +2289,10 @@ async def generate_audience_match(
         matrix_md=matrix_md.strip(),
         kb_recall=kb_recall_md,
         extra_context=extra_context.strip() if extra_context else "（无）",
+    )
+    # prompt 反馈飞轮：注入老板累积的修正规则（migration 051；拼进 user_msg 末尾）
+    user_msg += await prompt_rules.render_rules_suffix(
+        "pipeline.audience_match", {"sku_id": sku_id},
     )
     final_prompt = sys_msg + "\n\n" + user_msg
 
@@ -4019,6 +4027,11 @@ async def _creative_pack_one(
         extra_context=(extra_context or "").strip() or "（无）",
         target_model_profile=target_model_profile,
     )
+    # prompt 反馈飞轮：注入老板累积的修正规则（migration 051；scope 带 kind/sku_id 便于按类细分）
+    _cp_scope = {"kind": kind}
+    if sku_id:
+        _cp_scope["sku_id"] = sku_id
+    user_msg += await prompt_rules.render_rules_suffix("pipeline.creative_pack", _cp_scope)
     final_prompt = sys_msg + "\n\n" + user_msg
 
     # === 调 LLM（支持并行多方案）===
