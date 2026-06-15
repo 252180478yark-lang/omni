@@ -250,6 +250,32 @@ const INTENT_LIST: { value: ExperimentIntent; label: string }[] = [
   { value: 'hard_ad', label: '硬广（hard_ad）' },
 ]
 
+// 生产链（Y 形融合）：真人编导 brief（拍）/ AI 提示词（出片）/ 同实验真人 vs AI 对比
+type ExperimentTrack = 'human_brief' | 'ai_video' | 'mixed'
+
+const TRACK_LIST: { value: ExperimentTrack; label: string; hint: string }[] = [
+  { value: 'human_brief', label: '真人编导 brief（拍）', hint: '各臂出真人编导备忘录，编导照拍' },
+  { value: 'ai_video', label: 'AI 出片（提示词）', hint: '各臂出 AI 视频提示词（creative_pack），直出片' },
+  { value: 'mixed', label: '真人 vs AI 对比', hint: '同实验 A/B：一臂真人 brief、一臂 AI 提示词，比哪种生产模式更吃这人群' },
+]
+
+// 生产模式（臂级；mixed 实验下逐臂可不同）
+type ProductionMode = 'human_brief' | 'ai_video'
+
+const productionModeLabel = (m?: string | null): string =>
+  m === 'ai_video' ? 'AI 出片' : m === 'human_brief' ? '真人 brief' : (m || '—')
+
+// intent → creative_pack 视频 kind（AI 臂走 creative_pack 时用）
+const intentToCreativeKind = (intent?: ExperimentIntent | string | null): CreativeKind => {
+  switch (intent) {
+    case 'planting': return 'video_planting'
+    case 'harvest': return 'video_harvest'
+    case 'soft_ad': return 'video_soft_ad'
+    case 'hard_ad': return 'video_harvest'
+    default: return 'video_planting'
+  }
+}
+
 // 可扫变量池（跟后端一致，下拉用）
 const SWEEP_VARIABLE_LIST: { value: string; label: string; group: string }[] = [
   { value: 'idea_seed', label: '拍什么事（idea_seed）', group: '内容核' },
@@ -262,6 +288,8 @@ const SWEEP_VARIABLE_LIST: { value: string; label: string; group: string }[] = [
   { value: 'visual_vector', label: '画面向量（visual_vector）', group: '呈现层' },
   { value: 'bgm', label: '音乐（bgm）', group: '呈现层' },
   { value: 'target_model', label: 'AI 出片模型（target_model）', group: '呈现层' },
+  // mixed track 专用：扫"生产模式"本身（真人 vs AI），臂取值 = human_brief / ai_video
+  { value: 'production_mode', label: '生产模式（真人 vs AI）', group: '生产模式' },
 ]
 
 const sweepLabel = (v: string): string =>
@@ -285,6 +313,7 @@ interface ExperimentSummary {
   baseline: Record<string, string> | null
   rounds: number
   created_at: string
+  track?: ExperimentTrack
 }
 
 interface ExperimentListResp {
@@ -343,6 +372,9 @@ interface ExperimentGetResp {
     title?: string | null
     baseline: Record<string, string> | null
     winning_framework_md?: string | null
+    track?: ExperimentTrack
+    portrait_id?: string | null
+    audience_record_id?: string | null
   }
   rounds?: ExpGetRound[]
   error?: string
@@ -362,6 +394,7 @@ interface ExpStatusArm {
   is_winner: boolean
   is_baseline_locked: boolean
   script_id: string | null
+  production_mode?: ProductionMode | null
 }
 
 interface ExperimentStatusResp {
@@ -384,6 +417,7 @@ interface ExperimentStatusResp {
   next_step_hint?: unknown
   error?: string
   hint?: string
+  track?: ExperimentTrack
 }
 
 interface ExpRegisterArm {
@@ -463,12 +497,53 @@ interface ExperimentDistillResp {
   hint?: string
 }
 
+// 投前视觉快环（experiment_prescreen_round）：每条 AI 视频的 5 维分 + gate
+interface PrescreenScores {
+  fidelity?: number | null
+  realism?: number | null
+  face_consistency?: number | null
+  brand?: number | null
+  usable?: number | null
+  summary?: string | null
+  gate?: 'pass' | 'fail' | string | null
+}
+
+interface PrescreenJudged {
+  asset_id: string
+  arm_label: string
+  variable_value?: string | null
+  scores?: PrescreenScores | null
+  gate?: 'pass' | 'fail' | string | null
+  error?: string | null
+}
+
+interface PrescreenPerArm {
+  arm_label: string
+  n: number
+  pass_n: number
+  avg_usable: number | null
+}
+
+interface ExperimentPrescreenResp {
+  ok: boolean
+  round_no?: number
+  judged?: PrescreenJudged[]
+  per_arm?: PrescreenPerArm[]
+  next_step_hint?: unknown
+  trace?: TraceShape
+  error?: string
+  hint?: string
+}
+
 // 看板里"开新一轮"时每个臂的草稿行（前端临时态，生成 brief 拿 script_id）
 interface RoundArmDraft {
   variable_value: string
   script_id: string | null
   generating: boolean
   brief_error: string | null
+  // mixed 实验下逐臂的生产模式（swept_variable==='production_mode' 时由 variable_value 推；
+  // 其余 track 全臂同 = 实验 track 推出的模式）
+  production_mode?: ProductionMode
 }
 
 // ── 故事板提示词导出 util（W4-B 14.4 phase D step 6 增强 2026-05-11） ─────────
@@ -800,6 +875,7 @@ export default function SkuPipelinePage() {
   const [expList, setExpList] = useState<ExperimentSummary[] | null>(null)
   const [expListLoading, setExpListLoading] = useState(false)
   const [newExpIntent, setNewExpIntent] = useState<ExperimentIntent>('planting')
+  const [newExpTrack, setNewExpTrack] = useState<ExperimentTrack>('human_brief')
   const [newExpTitle, setNewExpTitle] = useState('')
   const [newExpPortraitId, setNewExpPortraitId] = useState('')
   const [creatingExp, setCreatingExp] = useState(false)
@@ -825,6 +901,12 @@ export default function SkuPipelinePage() {
   const [distillResp, setDistillResp] = useState<ExperimentDistillResp | null>(null)
   const [distilling, setDistilling] = useState(false)
   const [distillCommitted, setDistillCommitted] = useState(false)
+  // 投前视觉快环（仅 ai_video/mixed track）
+  const [prescreenResp, setPrescreenResp] = useState<ExperimentPrescreenResp | null>(null)
+  const [prescreening, setPrescreening] = useState(false)
+  const [prescreenError, setPrescreenError] = useState<string | null>(null)
+  // judged 结果按 arm_label 归并（在臂卡显示该臂视频的 gate + usable + summary）
+  const [prescreenByArm, setPrescreenByArm] = useState<Record<string, PrescreenJudged[]>>({})
   // 臂内 inline 录投后数据（key=arm_id）
   const [metricFormOpen, setMetricFormOpen] = useState<string | null>(null)
   const [metricValue, setMetricValue] = useState('')
@@ -1909,6 +1991,9 @@ export default function SkuPipelinePage() {
     setLockResp(null)
     setDistillResp(null)
     setDistillCommitted(false)
+    setPrescreenResp(null)
+    setPrescreenError(null)
+    setPrescreenByArm({})
     setRoundArms([
       { variable_value: '', script_id: null, generating: false, brief_error: null },
       { variable_value: '', script_id: null, generating: false, brief_error: null },
@@ -1951,6 +2036,7 @@ export default function SkuPipelinePage() {
         body: JSON.stringify({
           sku_id: skuId,
           intent: newExpIntent,
+          track: newExpTrack,
           portrait_id: newExpPortraitId.trim() || null,
           title: newExpTitle.trim() || null,
         }),
@@ -1982,6 +2068,9 @@ export default function SkuPipelinePage() {
     setLockResp(null)
     setDistillResp(null)
     setDistillCommitted(false)
+    setPrescreenResp(null)
+    setPrescreenError(null)
+    setPrescreenByArm({})
     if (!expId) return
     await refreshExperimentDetail(expId)
   }
@@ -2013,12 +2102,94 @@ export default function SkuPipelinePage() {
     }
   }
 
-  // 开新一轮：先对每个臂调 director-brief 拿 script_id（单变量纪律），全拿到再 register_round
+  // 当前实验的生产链（experiment_get / status 透出；缺省 human_brief）
+  const activeTrack: ExperimentTrack =
+    expGet?.experiment?.track || expStatus?.track || 'human_brief'
+
+  // 解析 AI 臂 creative_pack 需要的 audience_record_id：
+  // ① 实验详情直接带（denorm）② 用 portrait_id 经 portraits 端点反查 ③ 都没有则 null（creative_pack 退回 sku 通用画像）
+  const resolveAudienceRecordId = async (portraitId: string): Promise<string | null> => {
+    const fromGet = expGet?.experiment?.audience_record_id
+    if (fromGet) return fromGet
+    if (!portraitId) return null
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/portraits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ portrait_id: portraitId }),
+      })
+      const json = await res.json()
+      const rid = json?.data?.portrait?.audience_record_id
+      return rid ? String(rid) : null
+    } catch {
+      return null
+    }
+  }
+
+  // 单臂出 AI 视频提示词（creative_pack）→ 取 script_id；human_brief 走 director-brief
+  // 返回 { script_id } 或 { error }
+  const generateOneArm = async (params: {
+    mode: ProductionMode
+    armVal: string
+    portraitId: string
+    audienceRecordId: string | null
+    intent?: ExperimentIntent | string | null
+    baseline: Record<string, string>
+  }): Promise<{ script_id: string | null; error: string | null }> => {
+    const { mode, armVal, portraitId, audienceRecordId, intent, baseline } = params
+    const experiment_context = { baseline, sweep: { variable: roundVariable, value: armVal } }
+    try {
+      if (mode === 'ai_video') {
+        const body: Record<string, unknown> = {
+          kind: intentToCreativeKind(intent),
+          sku_id: skuId,
+          audience_record_id: audienceRecordId,
+          intent: intent || 'planting',
+          experiment_context,
+          num_variants: 1,
+        }
+        const res = await fetch('/api/omni/sku-pipeline/creative-pack', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const json = await res.json()
+        const pack = json.data as CreativePackResp | undefined
+        const sid = pack?.result?.variants?.[0]?.script_id || pack?.result?.script_id || null
+        if (json.success && pack?.ok && sid) return { script_id: sid, error: null }
+        return { script_id: null, error: pack?.error || json.error || '生成失败（无 script_id）' }
+      }
+      // human_brief
+      const res = await fetch('/api/omni/sku-pipeline/director-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          portrait_id: portraitId,
+          intent: intent || null,
+          experiment_context,
+        }),
+      })
+      const json = await res.json()
+      const brief = json.data as BriefResp | undefined
+      const sid = brief?.result?.variants?.[0]?.script_id || null
+      if (json.success && brief?.ok && sid) return { script_id: sid, error: null }
+      return { script_id: null, error: brief?.error || json.error || '生成失败（无 script_id）' }
+    } catch (e) {
+      return { script_id: null, error: String(e) }
+    }
+  }
+
+  // 开新一轮：按 track 分流逐臂生成 → 拿全 script_id 再 register_round（单变量纪律）
+  // - human_brief：各臂 director-brief
+  // - ai_video：各臂 creative_pack（kind 由 intent 推）
+  // - mixed + swept_variable==='production_mode'：臂 A/B 各按 variable_value（human_brief/ai_video）分别走
   const generateArmBriefs = async () => {
     setRoundError(null)
     const portraitId = newExpPortraitId.trim()
-    if (!portraitId) {
-      setRoundError('缺人群画像 portrait_id —— 在「新建实验」处填一个画像 id（生成各臂 brief 需要它）')
+    const isModeSweep = activeTrack === 'mixed' && roundVariable === 'production_mode'
+    // human_brief 臂必须有 portrait_id；ai_video 臂可只靠 sku（portrait_id 用来反查 record 提升人群锚定）
+    if (!portraitId && (activeTrack === 'human_brief' || isModeSweep)) {
+      setRoundError('缺人群画像 portrait_id —— 在「新建实验」处填一个画像 id（真人 brief 臂需要它）')
       return
     }
     const filled = roundArms.filter(a => a.variable_value.trim())
@@ -2031,38 +2202,35 @@ export default function SkuPipelinePage() {
       setRoundError('臂取值不能重复')
       return
     }
+    if (isModeSweep) {
+      const okModes = values.every(v => v === 'human_brief' || v === 'ai_video')
+      if (!okModes) {
+        setRoundError('真人 vs AI 对比轮：每臂取值必须是 human_brief 或 ai_video')
+        return
+      }
+    }
     const intent = expStatus?.intent || expGet?.experiment?.intent
     const baseline = expStatus?.baseline || expGet?.experiment?.baseline || {}
+    // AI 臂用得到 audience_record_id：先解析一次复用
+    const needAudience = activeTrack === 'ai_video' || (isModeSweep && values.includes('ai_video'))
+    const audienceRecordId = needAudience ? await resolveAudienceRecordId(portraitId) : null
     // 逐臂生成（串行，避免并发把 KE 打满；每个臂只动 swept_variable 这一个变量）
     const next = roundArms.map(a => ({ ...a }))
     for (let i = 0; i < next.length; i++) {
       const armVal = next[i].variable_value.trim()
       if (!armVal) continue
-      next[i] = { ...next[i], generating: true, brief_error: null, script_id: null }
+      // 臂级生产模式：mode-sweep 轮 = 该臂取值本身；否则 = 实验 track（human_brief/ai_video）
+      const mode: ProductionMode = isModeSweep
+        ? (armVal as ProductionMode)
+        : (activeTrack === 'ai_video' ? 'ai_video' : 'human_brief')
+      next[i] = { ...next[i], generating: true, brief_error: null, script_id: null, production_mode: mode }
       setRoundArms([...next])
-      try {
-        const res = await fetch('/api/omni/sku-pipeline/director-brief', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            portrait_id: portraitId,
-            intent: intent || null,
-            experiment_context: {
-              baseline,
-              sweep: { variable: roundVariable, value: armVal },
-            },
-          }),
-        })
-        const json = await res.json()
-        const brief = json.data as BriefResp | undefined
-        const sid = brief?.result?.variants?.[0]?.script_id || null
-        if (json.success && brief?.ok && sid) {
-          next[i] = { ...next[i], generating: false, script_id: sid, brief_error: null }
-        } else {
-          next[i] = { ...next[i], generating: false, script_id: null, brief_error: brief?.error || json.error || '生成失败（无 script_id）' }
-        }
-      } catch (e) {
-        next[i] = { ...next[i], generating: false, script_id: null, brief_error: String(e) }
+      const out = await generateOneArm({
+        mode, armVal, portraitId, audienceRecordId, intent, baseline,
+      })
+      next[i] = {
+        ...next[i], generating: false, production_mode: mode,
+        script_id: out.script_id, brief_error: out.error,
       }
       setRoundArms([...next])
     }
@@ -2071,7 +2239,42 @@ export default function SkuPipelinePage() {
     if (ready.length >= 2 && ready.length === filled.length) {
       await registerRound(next)
     } else {
-      setRoundError('部分臂 brief 生成失败，未自动注册本轮——修好失败臂或减臂后重试')
+      setRoundError('部分臂提示词/brief 生成失败，未自动注册本轮——修好失败臂或减臂后重试')
+    }
+  }
+
+  // 投前视觉快环：调 experiment_prescreen_round 给本轮 AI 视频打 5 维分 + gate
+  const runPrescreen = async () => {
+    if (!activeExpId || prescreening) return
+    setPrescreening(true)
+    setPrescreenError(null)
+    setPrescreenResp(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/experiment-prescreen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          experiment_id: activeExpId,
+          round_no: typeof expStatus?.round_no === 'number' ? expStatus.round_no : undefined,
+        }),
+      })
+      const json = await res.json()
+      const data = json.data as ExperimentPrescreenResp | undefined
+      if (json.success && data?.ok) {
+        setPrescreenResp(data)
+        // 按 arm_label 归并 judged（臂卡显示）
+        const byArm: Record<string, PrescreenJudged[]> = {}
+        for (const j of data.judged || []) {
+          (byArm[j.arm_label] ||= []).push(j)
+        }
+        setPrescreenByArm(byArm)
+      } else {
+        setPrescreenError(data?.hint || data?.error || json.error || '投前视觉预检未成功')
+      }
+    } catch (e) {
+      setPrescreenError(`投前视觉预检异常：${String(e)}`)
+    } finally {
+      setPrescreening(false)
     }
   }
 
@@ -3545,7 +3748,7 @@ export default function SkuPipelinePage() {
                   <FlaskConical className="w-4 h-4" /> 实验
                 </CardTitle>
                 <CardDescription>
-                  单变量纪律 A/B：每轮只动一个变量（固定 baseline），各臂各出一条编导 brief，投后真值定 winner，赢家沉淀成规则。
+                  单变量纪律 A/B：每轮只动一个变量（固定 baseline），各臂各出一条产物（真人编导 brief / AI 出片提示词），投后真值定 winner，赢家沉淀成规则。
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -3585,6 +3788,11 @@ export default function SkuPipelinePage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               {selected && <span className="text-primary">✓</span>}
                               <Badge variant="secondary" className="text-[10px]">{e.intent_label || e.intent}</Badge>
+                              {e.track && (
+                                <Badge variant="outline" className="text-[10px]">
+                                  {e.track === 'ai_video' ? 'AI 出片' : e.track === 'mixed' ? '真人 vs AI' : '真人 brief'}
+                                </Badge>
+                              )}
                               <Badge variant={e.status === 'active' ? 'default' : 'outline'} className="text-[10px]">
                                 {e.status}
                               </Badge>
@@ -3620,6 +3828,21 @@ export default function SkuPipelinePage() {
                     </select>
                     <div className="text-[10px] text-muted-foreground mt-1">
                       北极星指标按 intent 自动选，不用填。
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">生产链（track）</label>
+                    <select
+                      className="w-full border rounded px-2 py-2 text-sm bg-background"
+                      value={newExpTrack}
+                      onChange={e => setNewExpTrack(e.target.value as ExperimentTrack)}
+                    >
+                      {TRACK_LIST.map(t => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      {TRACK_LIST.find(t => t.value === newExpTrack)?.hint}
                     </div>
                   </div>
                   <div>
@@ -3679,8 +3902,11 @@ export default function SkuPipelinePage() {
                 </CardTitle>
                 {expStatus?.ok && (
                   <CardDescription className="text-xs">
-                    {expStatus.intent_label || expStatus.intent} · 北极星{' '}
-                    <code>{expStatus.north_star_metric}</code> · 状态 {expStatus.status}
+                    {expStatus.intent_label || expStatus.intent} · 生产链{' '}
+                    <span className="font-medium text-foreground">
+                      {activeTrack === 'ai_video' ? 'AI 出片' : activeTrack === 'mixed' ? '真人 vs AI' : '真人 brief'}
+                    </span>{' '}
+                    · 北极星 <code>{expStatus.north_star_metric}</code> · 状态 {expStatus.status}
                     {typeof expStatus.round_no === 'number' && ` · 第 ${expStatus.round_no} 轮`}
                   </CardDescription>
                 )}
@@ -3742,6 +3968,15 @@ export default function SkuPipelinePage() {
                             const isLeader = expStatus.leader_arm_id === arm.arm_id
                             const isWinner = arm.is_winner
                             const preliminary = arm.sample_status === 'preliminary'
+                            // 臂级生产模式：后端 arm.production_mode 优先；
+                            // mode-sweep 轮（swept=production_mode）取值本身就是模式；否则跟实验 track
+                            const armMode: ProductionMode | null =
+                              (arm.production_mode as ProductionMode | undefined)
+                              || (arm.swept_variable === 'production_mode'
+                                    ? (arm.variable_value as ProductionMode)
+                                    : (activeTrack === 'ai_video' ? 'ai_video'
+                                        : activeTrack === 'human_brief' ? 'human_brief' : null))
+                            const armJudged = prescreenByArm[arm.arm_label] || []
                             return (
                               <div
                                 key={arm.arm_id}
@@ -3749,6 +3984,11 @@ export default function SkuPipelinePage() {
                               >
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-semibold text-sm">{arm.arm_label}</span>
+                                  {armMode && (
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {productionModeLabel(armMode)}
+                                    </Badge>
+                                  )}
                                   {isWinner && <Badge className="text-[10px] bg-emerald-600">🏆 winner</Badge>}
                                   {!isWinner && isLeader && <Badge variant="default" className="text-[10px]">领先</Badge>}
                                   {arm.is_baseline_locked && <Badge variant="outline" className="text-[10px]">baseline</Badge>}
@@ -3773,6 +4013,45 @@ export default function SkuPipelinePage() {
                                     ⚠ 待验证 n&lt;5
                                   </div>
                                 )}
+
+                                {/* 投前视觉预检结果（仅 AI 视频臂；跑过 runPrescreen 后归并到此臂） */}
+                                {armJudged.length > 0 && (
+                                  <div className="border-t pt-2 space-y-1">
+                                    <div className="text-[10px] font-medium text-muted-foreground">投前视觉预检（代理分·非带货）</div>
+                                    {armJudged.map((j, ji) => {
+                                      const g = (j.gate || j.scores?.gate || '').toLowerCase()
+                                      const pass = g === 'pass'
+                                      const usable = j.scores?.usable
+                                      return (
+                                        <div key={j.asset_id || ji} className="text-[10px] space-y-0.5">
+                                          {j.error ? (
+                                            <div className="text-red-600 dark:text-red-400">⚠ 预检失败：{j.error}</div>
+                                          ) : (
+                                            <>
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                <Badge
+                                                  className={`text-[10px] ${pass ? 'bg-emerald-600' : 'bg-red-600'}`}
+                                                >
+                                                  {pass ? '✓ 过关' : '✗ 别投'}
+                                                </Badge>
+                                                {usable != null && (
+                                                  <span className="text-muted-foreground">可用分 {usable}</span>
+                                                )}
+                                              </div>
+                                              {j.scores?.summary && (
+                                                <div className="text-muted-foreground break-words">{j.scores.summary}</div>
+                                              )}
+                                              {!pass && (
+                                                <div className="text-red-600 dark:text-red-400">别投，调提示词重出。</div>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+
                                 <div className="pt-1 space-y-2">
                                   <Button
                                     size="sm"
@@ -3848,6 +4127,117 @@ export default function SkuPipelinePage() {
                         </div>
                       )}
                     </div>
+
+                    {/* 投前视觉预检（仅 AI 出片 / 真人vsAI 实验有意义） */}
+                    {activeTrack !== 'human_brief' && (expStatus.arms?.length ?? 0) > 0 && (
+                      <div className="border rounded-lg p-3 space-y-2.5">
+                        <div className="text-sm font-semibold flex items-center gap-2">
+                          🔬 投前视觉预检
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          给本轮 AI 视频跑多模态 judge（保真/真人感/锁脸/品牌/可用 5 维 + gate），
+                          投放前过滤崩片/假片/不锁脸。<span className="text-amber-700 dark:text-amber-400">视觉分只是投前代理，过关 ≠ 带货</span>——
+                          带货只有真实投放的完播/转化说了算。前置：该轮各臂要先用 step 7 出片并挂到臂。
+                        </div>
+                        <Button
+                          onClick={runPrescreen}
+                          disabled={prescreening}
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                        >
+                          {prescreening
+                            ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 预检中（多模态打分）...</>
+                            : '跑投前视觉预检'}
+                        </Button>
+                        {prescreenError && (
+                          <div className="text-xs text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded p-2 bg-amber-50 dark:bg-amber-950/30">
+                            {prescreenError}
+                          </div>
+                        )}
+                        {prescreenResp?.ok && (
+                          <div className="space-y-2.5">
+                            {/* per_arm 汇总 */}
+                            {(prescreenResp.per_arm?.length ?? 0) > 0 && (
+                              <div className="space-y-1">
+                                <div className="text-xs font-medium">各臂汇总（第 {prescreenResp.round_no} 轮）</div>
+                                {prescreenResp.per_arm!.map((pa, i) => {
+                                  const allPass = pa.n > 0 && pa.pass_n === pa.n
+                                  const nonePass = pa.pass_n === 0
+                                  return (
+                                    <div
+                                      key={i}
+                                      className={`flex items-center gap-2 flex-wrap text-xs border rounded p-2 ${allPass ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20' : nonePass ? 'border-red-300 dark:border-red-900 bg-red-50/50 dark:bg-red-950/20' : 'border-border bg-muted/20'}`}
+                                    >
+                                      <span className="font-medium">臂 {pa.arm_label}</span>
+                                      <Badge
+                                        className={`text-[10px] ${allPass ? 'bg-emerald-600' : nonePass ? 'bg-red-600' : 'bg-amber-600'}`}
+                                      >
+                                        {pa.pass_n}/{pa.n} 过关
+                                      </Badge>
+                                      {pa.avg_usable != null && (
+                                        <span className="text-muted-foreground">平均可用分 {pa.avg_usable}</span>
+                                      )}
+                                      {nonePass && pa.n > 0 && (
+                                        <span className="text-red-600 dark:text-red-400 ml-auto">别投，调提示词重出</span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                            {/* 逐条视频 5 维分 */}
+                            {(prescreenResp.judged?.length ?? 0) > 0 && (
+                              <div className="space-y-1.5">
+                                <div className="text-xs font-medium">逐条视频 5 维分</div>
+                                {prescreenResp.judged!.map((j, i) => {
+                                  const g = (j.gate || j.scores?.gate || '').toLowerCase()
+                                  const pass = g === 'pass'
+                                  const s = j.scores || {}
+                                  return (
+                                    <div
+                                      key={j.asset_id || i}
+                                      className={`text-xs border rounded p-2 space-y-1 ${j.error ? 'border-red-300 dark:border-red-900 bg-red-50/40 dark:bg-red-950/20' : pass ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-950/10' : 'border-red-300 dark:border-red-900 bg-red-50/40 dark:bg-red-950/20'}`}
+                                    >
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-medium">臂 {j.arm_label}</span>
+                                        {j.variable_value && (
+                                          <span className="text-muted-foreground break-words">「{j.variable_value}」</span>
+                                        )}
+                                        {!j.error && (
+                                          <Badge className={`text-[10px] ${pass ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                                            {pass ? '✓ 过关' : '✗ 别投'}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      {j.error ? (
+                                        <div className="text-red-600 dark:text-red-400">⚠ 预检失败：{j.error}</div>
+                                      ) : (
+                                        <>
+                                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                                            {s.fidelity != null && <span>保真 {s.fidelity}</span>}
+                                            {s.realism != null && <span>真人感 {s.realism}</span>}
+                                            {s.face_consistency != null && <span>锁脸 {s.face_consistency}</span>}
+                                            {s.brand != null && <span>品牌 {s.brand}</span>}
+                                            {s.usable != null && <span className="text-foreground font-medium">可用 {s.usable}</span>}
+                                          </div>
+                                          {s.summary && <div className="text-muted-foreground break-words">{s.summary}</div>}
+                                        </>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                            <div className="text-[10px] text-muted-foreground">
+                              ⚠ 视觉分只是投前代理（过滤崩片/假片/不锁脸），<span className="text-foreground">过关 ≠ 带货</span>——
+                              真实价值以投后完播/转化/ROI 为准。
+                            </div>
+                            <OutputFeedback toolName="experiment_prescreen_round" label="这份投前视觉预检怎么样？" />
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* 观察 / 假设 */}
                     {((expStatus.observations?.length ?? 0) > 0 || (expStatus.hypotheses?.length ?? 0) > 0) && (
@@ -3960,11 +4350,20 @@ export default function SkuPipelinePage() {
                 )}
 
                 {/* 开新一轮 —— 选中实验后总是可用 */}
-                {activeExpId && expStatus?.ok && (
+                {activeExpId && expStatus?.ok && (() => {
+                  const isModeSweep = activeTrack === 'mixed' && roundVariable === 'production_mode'
+                  const armNoun = activeTrack === 'ai_video' ? 'AI 视频提示词' : isModeSweep ? '产物' : '编导 brief'
+                  const armDoneTag = activeTrack === 'ai_video' ? '✓ 提示词' : '✓ brief'
+                  return (
                   <div className="border-t pt-4 space-y-3">
                     <div className="text-sm font-semibold">开新一轮（单变量纪律）</div>
                     <div className="text-xs text-muted-foreground">
-                      固定 baseline，只动这一个变量；各臂各调一次编导 brief 拿 script_id 后自动注册本轮。
+                      固定 baseline，只动这一个变量；
+                      {activeTrack === 'ai_video'
+                        ? '各臂各调一次 creative_pack 出 AI 视频提示词拿 script_id 后自动注册本轮。'
+                        : isModeSweep
+                          ? '各臂按生产模式（真人 brief / AI 提示词）分别出产物拿 script_id 后自动注册本轮。'
+                          : '各臂各调一次编导 brief 拿 script_id 后自动注册本轮。'}
                     </div>
                     <div>
                       <label className="text-sm font-medium mb-1 block">这轮扫的变量（swept_variable）</label>
@@ -3973,7 +4372,7 @@ export default function SkuPipelinePage() {
                         value={roundVariable}
                         onChange={e => setRoundVariable(e.target.value)}
                       >
-                        {['内容核', '表达层', '呈现层'].map(grp => (
+                        {(activeTrack === 'mixed' ? ['生产模式', '内容核', '表达层', '呈现层'] : ['内容核', '表达层', '呈现层']).map(grp => (
                           <optgroup key={grp} label={grp}>
                             {SWEEP_VARIABLE_LIST.filter(s => s.group === grp).map(s => (
                               <option key={s.value} value={s.value}>{s.label}</option>
@@ -3981,6 +4380,11 @@ export default function SkuPipelinePage() {
                           </optgroup>
                         ))}
                       </select>
+                      {isModeSweep && (
+                        <div className="text-[10px] text-muted-foreground mt-1">
+                          真人 vs AI 对比轮：每臂取值选 human_brief（真人 brief）或 ai_video（AI 提示词）。
+                        </div>
+                      )}
                     </div>
                     <div>
                       <label className="text-sm font-medium mb-1 block">各臂取值（≥2，不重复）</label>
@@ -3988,18 +4392,34 @@ export default function SkuPipelinePage() {
                         {roundArms.map((arm, i) => (
                           <div key={i} className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground w-5 shrink-0">{String.fromCharCode(65 + i)}</span>
-                            <Input
-                              placeholder={`臂 ${String.fromCharCode(65 + i)} 的 ${sweepLabel(roundVariable)} 取值`}
-                              value={arm.variable_value}
-                              onChange={e => {
-                                const next = [...roundArms]
-                                next[i] = { ...next[i], variable_value: e.target.value, script_id: null, brief_error: null }
-                                setRoundArms(next)
-                              }}
-                              className="text-sm"
-                            />
+                            {isModeSweep ? (
+                              <select
+                                className="flex-1 border rounded px-2 py-1.5 text-sm bg-background"
+                                value={arm.variable_value}
+                                onChange={e => {
+                                  const next = [...roundArms]
+                                  next[i] = { ...next[i], variable_value: e.target.value, script_id: null, brief_error: null }
+                                  setRoundArms(next)
+                                }}
+                              >
+                                <option value="">— 选生产模式 —</option>
+                                <option value="human_brief">human_brief（真人 brief）</option>
+                                <option value="ai_video">ai_video（AI 提示词）</option>
+                              </select>
+                            ) : (
+                              <Input
+                                placeholder={`臂 ${String.fromCharCode(65 + i)} 的 ${sweepLabel(roundVariable)} 取值`}
+                                value={arm.variable_value}
+                                onChange={e => {
+                                  const next = [...roundArms]
+                                  next[i] = { ...next[i], variable_value: e.target.value, script_id: null, brief_error: null }
+                                  setRoundArms(next)
+                                }}
+                                className="text-sm"
+                              />
+                            )}
                             {arm.generating && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
-                            {arm.script_id && <span className="text-emerald-600 text-xs shrink-0" title={arm.script_id}>✓ brief</span>}
+                            {arm.script_id && <span className="text-emerald-600 text-xs shrink-0" title={arm.script_id}>{armDoneTag}</span>}
                             {arm.brief_error && <span className="text-red-500 text-xs shrink-0" title={arm.brief_error}>✗</span>}
                             {roundArms.length > 2 && (
                               <Button
@@ -4036,10 +4456,10 @@ export default function SkuPipelinePage() {
                       className="w-full"
                     >
                       {roundArms.some(a => a.generating)
-                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 逐臂生成 brief...</>
+                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 逐臂生成{armNoun}...</>
                         : registeringRound
                           ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 注册本轮...</>
-                          : '生成各臂 brief → 自动注册本轮'}
+                          : `生成各臂${armNoun} → 自动注册本轮`}
                     </Button>
                     {roundError && (
                       <div className="text-xs text-red-600 dark:text-red-400 p-2 border border-red-200 dark:border-red-900 rounded bg-red-50 dark:bg-red-950/30">
@@ -4047,7 +4467,8 @@ export default function SkuPipelinePage() {
                       </div>
                     )}
                   </div>
-                )}
+                  )
+                })()}
 
                 {/* 沉淀为规则 */}
                 {activeExpId && expStatus?.ok && (

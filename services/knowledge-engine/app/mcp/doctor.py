@@ -202,6 +202,8 @@ def _wanted_tools() -> set[str]:
             "experiment_create", "experiment_register_round", "experiment_status",
             "experiment_lock_winner", "experiment_list", "experiment_get",
             "experiment_distill",
+            # 2026-06-15 AI 链 Y-尾移植（migration 053）：投前视觉快环
+            "experiment_prescreen_round",
     }
 
 
@@ -275,6 +277,8 @@ def _check_prompts(report: DoctorReport) -> None:
             "reverse_audience_compare.system", "reverse_audience_compare.user",
             # 2026-06-15 编导 brief A/B 沉淀桥 polish prompt（intent profiles 走热加载不入此集，同 video_model_profiles）
             "experiment_distill.system", "experiment_distill.user",
+            # 2026-06-15 AI 链投前视觉快环 judge prompt
+            "prescreen_video.system", "prescreen_video.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

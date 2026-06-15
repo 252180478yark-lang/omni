@@ -474,25 +474,6 @@ async def generate_audience_portrait(
 
 # ============ step 3.6 tool ============
 
-def _build_experiment_constraint(ec: dict | None) -> str:
-    """A/B 实验约束块：固定 baseline、只动本轮变量（单变量纪律写进 brief，不靠自律）。"""
-    if not ec:
-        return ""
-    baseline = ec.get("baseline") or {}
-    sweep = ec.get("sweep") or {}
-    lines = ["## ⓪⓪ A/B 实验约束（单变量纪律 · 必须严格遵守）", ""]
-    if baseline:
-        lines.append("**以下已验证设定保持不变**（前几轮跑赢锁定的，本条 brief 一个都不许改）：")
-        for k, v in baseline.items():
-            lines.append(f"- {experiment_lab.var_label(k)}：{v}")
-        lines.append("")
-    var, val = sweep.get("variable"), sweep.get("value")
-    if var and val:
-        lines.append(f"**本条专门测试【{experiment_lab.var_label(var)}】，在这一点上严格用：「{val}」。**")
-        lines.append("其余创意自由发挥，但绝不能动上面 baseline 里的任何设定（动了就不是单变量测试了）。")
-    return "\n".join(lines) + "\n"
-
-
 async def _brief_one(
     portrait_id: str,
     idea_seed: str | None = None,
@@ -573,7 +554,7 @@ async def _brief_one(
             logger.warning("brief_intent_profile 未找到: %s，回退 generic", _intent)
             _intent = "generic"
     # A/B 实验约束（单变量纪律）
-    experiment_constraint = _build_experiment_constraint(experiment_context)
+    experiment_constraint = experiment_lab.build_experiment_constraint(experiment_context)
 
     sys_msg = prompts.load("director_brief.system")
     user_msg = prompts.render(

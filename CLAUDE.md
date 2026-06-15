@@ -5,7 +5,7 @@
 
 ## omni MCP server
 
-omni 暴露 **97 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 97 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
+omni 暴露 **98 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 98 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
 
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
@@ -30,7 +30,7 @@ omni 暴露 **97 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - 字典查询：`list_product_prices`（工厂出厂价）, `list_channel_fees`（渠道扣点）
 - 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
 - 投后回传闭环：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘；可带 `experiment_arm_id` 把 asset 挂 A/B 实验臂）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
-- 编导 brief A/B 单变量迭代闭环（migration 052，见下专节）：`experiment_create`, `experiment_register_round`, `experiment_status`, `experiment_lock_winner`, `experiment_list`, `experiment_get`（确定性状态机）, `experiment_distill`（市场数据→prompt_rule 沉淀桥）
+- 编导 brief A/B 单变量迭代闭环（migration 052/053，见下专节）：`experiment_create`, `experiment_register_round`, `experiment_status`, `experiment_lock_winner`, `experiment_list`, `experiment_get`（确定性状态机）, `experiment_distill`（市场数据→prompt_rule 沉淀桥）, `experiment_prescreen_round`（AI 链投前视觉快环 judge）
 - 三平台实时取数底座（经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
 - 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 抽取器落库（metric_registry 注册 95 指标；库内实有 159 个 distinct metric_name，含维表后超注册数）+ 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
 - 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，覆盖 metric_registry 注册的 95 指标）
@@ -274,7 +274,9 @@ step 3.5/3.6 内容 brief 链的"闭环层"：把【编导 brief → N 条视频
 | "把获胜框架沉淀下来" | `experiment_distill(experiment_id, dry_run=True)` 看候选+框架 → `dry_run=False` 落 prompt_rule 草稿(enabled=FALSE) → `prompt_rule_set_enabled(rule_id, True)` 逐条点亮 |
 | "看实验列表 / 某实验详情" | `experiment_list(sku_id?)` / `experiment_get(experiment_id)` |
 
-**落库**：`pipeline.experiments`/`experiment_rounds`/`experiment_arms` + assets.experiment_id/arm_id + scripts.intent + prompt_rules.source_experiment_id/source_round_var（migration 052，纯加法）。视图 `v_experiment_round_results`（北极星 **avg** 排名——非 sum，避免"投得多"误判；n<5 标 preliminary）。前端 /sku-pipeline step37「📊 编导Brief A/B实验」看板。
+**落库**：`pipeline.experiments`/`experiment_rounds`/`experiment_arms` + assets.experiment_id/arm_id/visual_prescreen + scripts.intent + prompt_rules.source_experiment_id/source_round_var（migration 052/053，纯加法）。视图 `v_experiment_round_results`（北极星 **avg** 排名——非 sum，避免"投得多"误判；n<5 标 preliminary）。前端 /sku-pipeline step37「📊 编导Brief A/B实验」看板。
+
+**Y 形融合·AI 链接入同一条尾巴（migration 053）**：两条出片链共享 SKU→卖点→人群→画像主干 + 实验/投后/沉淀尾巴，只在生产模式分叉（真人 brief / AI 提示词）——AI **不是新链**，是同一台账多一种"臂"。`experiments.track`：`human_brief`（真人，沉淀写 director_brief 节点）/ `ai_video`（AI，`generate_creative_pack` 加了 `intent`+`experiment_context` 出臂、沉淀写 creative_pack 节点）/ `mixed`（同实验 A/B 真人 vs AI，`swept_variable='production_mode'`，只出"哪种模式更吃这人群"的偏好、不写 prompt 规则）。`generate_video_segments(experiment_arm_id=)` 出的 AI 视频自动挂臂。**AI 专属投前视觉快环** `experiment_prescreen_round`：多模态 judge（gemini-2.5-flash 整段视频）给本轮 AI 视频打 5 维质量分（保真/真人感/锁脸/品牌/可用），gate(pass/fail) 后端按分确定性算——**算力速度过滤崩/假/不锁脸 + 收敛技术类提示词变量，投放前不烧广告费**；**但判不了带货**（带货只有投放数据说了算），过关≠带货。AI 链可扫变量除内容核外多 AI 技术变量（提示词结构/真人感锚/锁脸参考图/负向词/运镜，`SWEEP_VARIABLE_ORDER + AI_EXTRA_VARIABLES`）。
 
 **铁律**（每份状态/沉淀都带）：画像/投放数据只是冷启动代理；**n≥5 是 R-15 工程门槛、不是统计显著**（抖音冷启动波动可能让 winner 也是噪声）——winner=**当前领先 ≠ 证明更好**，靠逐条点亮+待验证标注+混杂因子免责软兜底，不做 t-test/置信区间（个人自用不过度工程）。单变量纯度对软创意靠 experiment_context 写进 brief 结构 + 老板等量投放自律（系统强制不了等量投放）。沉淀规则只表达"获胜设定"不表达"为什么"（distill 默认纯模板，polish=True 才 LLM 润色且过禁因果/禁新增数值护栏）。
 

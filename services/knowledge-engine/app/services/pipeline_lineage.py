@@ -1477,6 +1477,8 @@ async def save_storyboard_asset(
     external_video_id: str | None = None,
     notes: str | None = None,
     persist_to_disk: bool = True,
+    experiment_arm_id: str | None = None,
+    experiment_id: str | None = None,
 ) -> str | None:
     """落 1 行 pipeline.assets（status='draft'），返 id。失败返 None 不抛。
 
@@ -1507,6 +1509,14 @@ async def save_storyboard_asset(
             notes = (notes + " | " if notes else "") + f"thumb_persist_err={thumb_err}"
 
     pool = get_pool()
+    # 实验臂归属：只给了 arm 就反查 experiment_id denorm（AI 视频在 step7 自动挂臂，供视觉快环/北极星聚合）
+    if experiment_arm_id and not experiment_id:
+        _armrow = await pool.fetchrow(
+            "SELECT experiment_id::text AS eid FROM pipeline.experiment_arms WHERE id = $1::uuid",
+            experiment_arm_id,
+        )
+        if _armrow:
+            experiment_id = _armrow["eid"]
     try:
         rec = await pool.fetchrow(
             """
@@ -1515,13 +1525,13 @@ async def save_storyboard_asset(
                 asset_type, character_role,
                 file_url, thumbnail_url, prompt,
                 duration_seconds, scene_no, external_video_id,
-                status, notes
+                status, notes, experiment_id, experiment_arm_id
             ) VALUES (
                 $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5,
                 $6, $7,
                 $8, $9, $10,
                 $11, $12, $13,
-                'draft', $14
+                'draft', $14, $15::uuid, $16::uuid
             ) RETURNING id::text AS id
             """,
             script_id,
@@ -1538,6 +1548,8 @@ async def save_storyboard_asset(
             scene_no,
             external_video_id,
             notes,
+            experiment_id,
+            experiment_arm_id,
         )
         return rec["id"] if rec else None
     except Exception as exc:

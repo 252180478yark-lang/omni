@@ -15,11 +15,14 @@ R-15 n<5 标待验证。
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+from app.database import get_pool
 from app.mcp import prompts
 from app.mcp.audit import tool_with_audit
 from app.mcp.model_config import get_model_for_tool
@@ -56,8 +59,9 @@ async def experiment_create(
     audience_record_id: str | None = None,
     north_star_metric: str | None = None,
     title: str | None = None,
+    track: str = "human_brief",
 ) -> dict:
-    """建一个编导 brief A/B 实验（SKU×人群×投放意图×北极星）。确定性。
+    """建一个 A/B 实验（SKU×人群×投放意图×北极星×track）。确定性。
 
     一个实验 = 围绕"这个 SKU × 这个人群 × 这个 intent"长期跑的单变量迭代台账。intent 定死后
     北极星自动选（种草→完播率 completion_rate / 收割→转化率 cvr / 软广→完播率 / 硬广→cvr）。
@@ -72,13 +76,17 @@ async def experiment_create(
         north_star_metric: 一般不填（按 intent 自动选）；要自定义必须是 ad_metrics 白名单里的
             rate/money/count 指标（roi/roas 是后端算的不可手填，收割北极星用 cvr）
         title: 可选实验名
+        track: 生产链 human_brief（真人编导 brief→拍，默认）/ ai_video（AI 提示词→出片，
+            沉淀写 creative_pack 节点 + 可投前视觉快环）/ mixed（同实验 A/B 真人 vs AI，
+            swept_variable=production_mode，只出模式偏好不写 prompt 规则）
 
     Returns:
-        {ok, experiment:{id, intent, north_star_metric, ...}, north_star, next_step_hint}
+        {ok, experiment:{id, intent, track, north_star_metric, ...}, north_star, next_step_hint}
     """
     return await lab.create_experiment(
         sku_id=sku_id, intent=intent, portrait_id=portrait_id,
         audience_record_id=audience_record_id, north_star_metric=north_star_metric, title=title,
+        track=track,
     )
 
 
@@ -213,6 +221,7 @@ async def experiment_distill(
     blocked = skel["blocked"]
     exp = skel["experiment"]
     scope = skel["scope"]
+    node_id = exp.get("prompt_node")  # human_brief→director_brief / ai_video→creative_pack / mixed→None
 
     if not candidates and not blocked:
         return {"ok": False, "error": "nothing_to_distill",
@@ -290,7 +299,17 @@ async def experiment_distill(
             "next_step_hint": "确认无误后 experiment_distill(experiment_id, dry_run=False) 落规则草稿（默认 enabled=FALSE），再 prompt_rule_set_enabled 逐条点亮",
         }
 
-    # 落库：每个未沉淀过的候选 → create_rule（enabled=False）
+    # mixed 实验出的是"模式偏好"（真人 vs AI），不沉淀成单一节点 prompt 规则——只落人读框架
+    if not node_id:
+        await lab.write_winning_framework(experiment_id, framework_md)
+        return {
+            "ok": True, "dry_run": False, "experiment": exp, "scope": scope,
+            "created": [], "skipped": [{"reason": "mixed_track_no_prompt_node"}], "blocked": blocked,
+            "winning_framework_md": framework_md, "trace": trace,
+            "next_step_hint": "mixed（真人 vs AI 对比）实验只出人读获胜框架——结论是'这个人群更吃哪种生产模式'，按它选后续主力链，不写 prompt 规则",
+        }
+
+    # 落库：每个未沉淀过的候选 → create_rule（enabled=False；按 track 路由到 director_brief / creative_pack 节点）
     created, skipped = [], []
     for c in candidates:
         if c["already_distilled"] and not c["value_changed"]:
@@ -298,7 +317,7 @@ async def experiment_distill(
             continue
         try:
             rule = await pr.create_rule(
-                "pipeline.director_brief", c["rule_text"],
+                node_id, c["rule_text"],
                 scope=scope, enabled=False,
                 source_experiment_id=experiment_id, source_round_var=c["swept_variable"],
             )
@@ -323,7 +342,108 @@ async def experiment_distill(
         "winning_framework_md": framework_md,
         "trace": trace,
         "next_step_hint": (
-            "规则已落库但 enabled=FALSE 不生效。prompt_rule_list(node_id='pipeline.director_brief') 看草稿，"
-            "prompt_rule_set_enabled(rule_id, True) 逐条点亮 → 以后这个 SKU 这个 intent 的 brief 自动带上"
+            f"规则已落库但 enabled=FALSE 不生效。prompt_rule_list(node_id='{node_id}') 看草稿，"
+            "prompt_rule_set_enabled(rule_id, True) 逐条点亮 → 以后这个 SKU 这个 intent 的生成自动带上"
+        ),
+    }
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def experiment_prescreen_round(experiment_id: str, round_no: int | None = None) -> dict:
+    """投前视觉快环：多模态 judge 给本轮 AI 视频打 5 维质量分（保真/真人感/锁脸/品牌/可用）+ gate。
+
+    **代理指标、非投放真值**——只在投放前过滤崩片/假片/不锁脸，帮 AI 提示词的技术类变量在算力速度
+    快速收敛；**判不了带货**（带货只有真实投放的完播/转化说了算）。仅对 ai_video/mixed track 的
+    AI 视频有意义（真人拍的视频不走这关）。gate(pass/fail) 后端按分数确定性算，不靠模型自判。
+
+    前置：该轮各臂要先 generate_video_segments(script_id=该臂brief, experiment_arm_id=臂id) 出片，
+    视频会自动挂到臂。
+
+    Args:
+        experiment_id: 实验 id
+        round_no: 哪一轮（不填=最新轮）
+
+    Returns:
+        {ok, round_no, judged:[{asset_id, arm_label, variable_value, scores, gate, error?}],
+         per_arm:[{arm_label, n, pass_n, avg_usable}], trace, next_step_hint}
+    """
+    got = await lab.get_round_video_assets(experiment_id, round_no)
+    assets = got.get("assets") or []
+    if not assets:
+        return {"ok": False, "error": "no_video_assets",
+                "hint": "该轮还没挂 AI 视频——先 generate_video_segments(script_id=该臂brief, experiment_arm_id=臂id) 出片（视频自动挂臂）"}
+    rno = got["round_no"]
+
+    pool = get_pool()
+    sku_id = await pool.fetchval("SELECT sku_id FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)
+    skurow = await pool.fetchrow("SELECT name, category FROM mvp_sku WHERE id=$1", sku_id) if sku_id else None
+    sku_md = (f"- 品名：{skurow['name']}\n- 品类：{skurow['category'] or '调味品'}\n"
+              if skurow else f"- sku_id：{sku_id}\n")
+
+    try:
+        from app.services.asset_storage import get_disk_path_for_public_url
+        from app.services.gemini_video_client import GeminiVideoClient
+    except ImportError as exc:
+        return {"ok": False, "error": "gemini_sdk_missing", "hint": str(exc)}
+    mcfg = get_model_for_tool("experiment_prescreen_round")
+    used_model = (mcfg.get("model") or "gemini-2.5-flash").strip()
+    _temp = float(mcfg.get("temperature", 0.2))
+    _maxtok = int(mcfg.get("max_tokens", 2000))
+    try:
+        client = GeminiVideoClient(model=used_model)
+    except RuntimeError as exc:
+        return {"ok": False, "error": "gemini_not_configured", "hint": str(exc)}
+    sys_msg = prompts.load("prescreen_video.system")
+
+    sem = asyncio.Semaphore(3)
+
+    async def _judge(a: dict) -> dict:
+        base = {"asset_id": a["asset_id"], "arm_id": a["arm_id"], "arm_label": a["arm_label"],
+                "variable_value": a["variable_value"]}
+        disk = get_disk_path_for_public_url(a["file_url"]) if a["file_url"] else None
+        if not disk or not disk.exists():
+            return {**base, "error": "video_not_on_disk", "file_url": a["file_url"]}
+        user_msg = prompts.render("prescreen_video.user", sku_md=sku_md,
+                                  arm_label=a["arm_label"], variable_value=a["variable_value"])
+        async with sem:
+            try:
+                scores, _usage = await client.analyze_video(
+                    video_path=str(disk), system_prompt=sys_msg, user_prompt=user_msg,
+                    temperature=_temp, max_tokens=_maxtok,
+                )
+            except Exception as exc:
+                logger.warning("prescreen judge failed asset=%s: %s", a["asset_id"], exc)
+                return {**base, "error": f"{type(exc).__name__}: {exc}"}
+        gate = lab.prescreen_gate(scores)
+        scores = {**scores, "gate": gate}
+        await lab.save_visual_prescreen(a["asset_id"], scores)
+        return {**base, "scores": scores, "gate": gate}
+
+    judged = await asyncio.gather(*[_judge(a) for a in assets])
+
+    by_arm: dict[str, list] = defaultdict(list)
+    for j in judged:
+        by_arm[j["arm_label"]].append(j)
+    per_arm = []
+    for label, js in sorted(by_arm.items()):
+        ok_js = [j for j in js if j.get("scores")]
+        pass_n = sum(1 for j in ok_js if j.get("gate") == "pass")
+        avg_usable = (round(sum(float(j["scores"].get("usable", 0)) for j in ok_js) / len(ok_js), 1)
+                      if ok_js else None)
+        per_arm.append({"arm_label": label, "n": len(js), "judged_ok": len(ok_js),
+                        "pass_n": pass_n, "avg_usable": avg_usable})
+
+    return {
+        "ok": True, "experiment_id": experiment_id, "round_no": rno,
+        "judged": judged, "per_arm": per_arm,
+        "trace": build_trace(
+            provider="gemini", model=used_model, prompt=sys_msg,
+            params={"n_videos": len(assets), "round_no": rno},
+            cost_estimate=f"{len(assets)} gemini 视频判官调用",
+        ),
+        "next_step_hint": (
+            "gate=fail 的别投（崩/假/不锁脸）——调 creative_pack 提示词重出该臂再预检；"
+            "gate=pass 的才投放，投后 record_ad_metrics(experiment_arm_id) 回传真实完播/转化判匹配度。"
+            "⚠️ 视觉分只是投前代理，过关≠带货。"
         ),
     }

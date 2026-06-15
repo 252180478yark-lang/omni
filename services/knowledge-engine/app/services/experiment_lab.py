@@ -85,6 +85,61 @@ def default_north_star(intent: str) -> tuple[str, str, list[str]]:
     return INTENT_NORTH_STAR.get(intent, ("completion_rate", "higher_better", []))
 
 
+# ── AI 出片链专属可扫变量（技术/保真类，投前视觉快环判；human_brief 链没有）──────
+AI_EXTRA_VARIABLES: list[tuple[str, str, str]] = [
+    ("prompt_structure", "提示词结构/拆块",   "AI技术"),
+    ("realism_anchor",   "真人感锚措辞",      "AI技术"),
+    ("character_ref",    "锁脸参考图",        "AI技术"),
+    ("negative_words",   "负向词",           "AI技术"),
+    ("motion_style",     "运镜/动作描述",     "AI技术"),
+]
+SWEEP_VARIABLE_LABELS.update({k: lbl for k, lbl, _ in AI_EXTRA_VARIABLES})
+
+# ── intent → creative_pack kind（AI 链生成臂时用；硬广复用收割 kind）────────────
+_INTENT_TO_KIND = {
+    "planting": "video_planting", "harvest": "video_harvest",
+    "soft_ad": "video_soft_ad", "hard_ad": "video_harvest",
+}
+# ── track → 沉淀写哪个 prompt 节点（mixed 出的是模式偏好、不沉淀成单节点规则）──────
+TRACK_TO_PROMPT_NODE = {
+    "human_brief": "pipeline.director_brief",
+    "ai_video": "pipeline.creative_pack",
+    "mixed": None,
+}
+
+
+def intent_to_creative_kind(intent: str) -> str:
+    return _INTENT_TO_KIND.get(intent, "video_planting")
+
+
+def sweep_order_for_track(track: str | None) -> list[str]:
+    """该 track 的"建议下个变量"顺序：ai_video / mixed 多带 AI 技术变量。"""
+    if track in ("ai_video", "mixed"):
+        return SWEEP_VARIABLE_ORDER + [k for k, _, _ in AI_EXTRA_VARIABLES]
+    return SWEEP_VARIABLE_ORDER
+
+
+def build_experiment_constraint(ec: dict | None) -> str:
+    """A/B 实验约束块：固定 baseline、只动本轮变量（单变量纪律写进生成提示词，不靠自律）。
+    director_brief 与 creative_pack 共用（放这里避免 media ↔ portrait_brief 循环 import）。
+    """
+    if not ec:
+        return ""
+    baseline = ec.get("baseline") or {}
+    sweep = ec.get("sweep") or {}
+    lines = ["## ⓪⓪ A/B 实验约束（单变量纪律 · 必须严格遵守）", ""]
+    if baseline:
+        lines.append("**以下已验证设定保持不变**（前几轮跑赢锁定的，本条一个都不许改）：")
+        for k, v in baseline.items():
+            lines.append(f"- {var_label(k)}：{v}")
+        lines.append("")
+    var, val = sweep.get("variable"), sweep.get("value")
+    if var and val:
+        lines.append(f"**本条专门测试【{var_label(var)}】，在这一点上严格用：「{val}」。**")
+        lines.append("其余创意自由发挥，但绝不能动上面 baseline 里的任何设定（动了就不是单变量测试了）。")
+    return "\n".join(lines) + "\n"
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # create
 # ══════════════════════════════════════════════════════════════════════════════
@@ -98,8 +153,16 @@ async def create_experiment(
     matrix_run_id: str | None = None,
     north_star_metric: str | None = None,
     title: str | None = None,
+    track: str = "human_brief",
 ) -> dict:
-    """建一个实验（SKU×人群×intent×北极星）。确定性。"""
+    """建一个实验（SKU×人群×intent×北极星×track）。确定性。
+
+    track：human_brief（真人编导 brief→拍）/ ai_video（AI 提示词→出片）/
+    mixed（同实验 A/B 真人 vs AI，swept_variable=production_mode）。决定沉淀写哪个 prompt 节点。
+    """
+    if track not in TRACK_TO_PROMPT_NODE:
+        return {"ok": False, "error": "bad_track",
+                "hint": f"track 只能是 {list(TRACK_TO_PROMPT_NODE)}（human_brief 真人 / ai_video AI / mixed 对比）"}
     if intent not in INTENT_NORTH_STAR:
         return {"ok": False, "error": "bad_intent",
                 "hint": f"intent 只能是 {list(INTENT_NORTH_STAR)} 之一（intent 是实验级属性，不可当变量扫）"}
@@ -134,13 +197,13 @@ async def create_experiment(
             """
             INSERT INTO pipeline.experiments (
                 sku_id, portrait_id, audience_record_id, audience_run_id, matrix_run_id,
-                intent, north_star_metric, north_star_direction, title
-            ) VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9)
-            RETURNING id::text AS id, sku_id, intent, north_star_metric,
+                intent, north_star_metric, north_star_direction, title, track
+            ) VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10)
+            RETURNING id::text AS id, sku_id, intent, track, north_star_metric,
                       north_star_direction, status, created_at
             """,
             sku_id, portrait_id, audience_record_id, audience_run_id, matrix_run_id,
-            intent, ns, direction, title,
+            intent, ns, direction, title, track,
         )
     except Exception as exc:
         logger.exception("create_experiment failed: %s", exc)
@@ -174,7 +237,7 @@ async def register_round(
     """
     pool = get_pool()
     exp = await pool.fetchrow(
-        "SELECT id::text AS id, sku_id, intent, baseline, status FROM pipeline.experiments WHERE id = $1::uuid",
+        "SELECT id::text AS id, sku_id, intent, track, baseline, status FROM pipeline.experiments WHERE id = $1::uuid",
         experiment_id,
     )
     if not exp:
@@ -238,18 +301,24 @@ async def register_round(
                 )
                 round_id = rnd["id"]
                 out_arms = []
+                _track = exp["track"]
                 for i, a in enumerate(clean_arms):
                     label = chr(ord("A") + i)
+                    # 该臂产出链：扫 production_mode 时逐臂取值=模式；否则继承 experiment.track
+                    if swept_variable == "production_mode":
+                        pmode = a["variable_value"] if a["variable_value"] in ("human_brief", "ai_video") else None
+                    else:
+                        pmode = _track if _track in ("human_brief", "ai_video") else None
                     arm = await conn.fetchrow(
                         """
                         INSERT INTO pipeline.experiment_arms (
                             round_id, experiment_id, sku_id, round_no,
-                            swept_variable, variable_value, arm_label, script_id
-                        ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::uuid)
+                            swept_variable, variable_value, arm_label, script_id, production_mode
+                        ) VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::uuid, $9)
                         RETURNING id::text AS id, arm_label, variable_value, script_id::text AS script_id
                         """,
                         round_id, experiment_id, exp["sku_id"], round_no,
-                        swept_variable, a["variable_value"], label, a.get("script_id"),
+                        swept_variable, a["variable_value"], label, a.get("script_id"), pmode,
                     )
                     out_arms.append(dict(arm))
     except Exception as exc:
@@ -274,7 +343,7 @@ async def register_round(
 async def experiment_status(experiment_id: str, round_no: int | None = None) -> dict:
     pool = get_pool()
     exp = await pool.fetchrow(
-        """SELECT id::text AS id, sku_id, intent, north_star_metric, north_star_direction,
+        """SELECT id::text AS id, sku_id, intent, track, north_star_metric, north_star_direction,
                   baseline, status, title FROM pipeline.experiments WHERE id = $1::uuid""",
         experiment_id,
     )
@@ -299,7 +368,8 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
         rows = await pool.fetch(
             """SELECT arm_id::text AS arm_id, arm_label, variable_value, swept_variable,
                       n_videos, north_star_avg, north_star_sum, sample_status,
-                      is_winner, is_baseline_locked, forced, script_id::text AS script_id
+                      is_winner, is_baseline_locked, forced, production_mode,
+                      script_id::text AS script_id
                FROM pipeline.v_experiment_round_results
                WHERE experiment_id = $1::uuid AND round_no = $2
                ORDER BY arm_label""",
@@ -343,7 +413,7 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
         experiment_id,
     )
     tested |= {t["swept_variable"] for t in trows}
-    next_var = next((k for k in SWEEP_VARIABLE_ORDER if k not in tested), None)
+    next_var = next((k for k in sweep_order_for_track(exp["track"]) if k not in tested), None)
 
     # 口径提醒（老板选了"率类不强制 0..1"，跨回传保持同口径）
     metric_scale_warning = None
@@ -357,6 +427,7 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
         "sku_id": exp["sku_id"],
         "intent": exp["intent"],
         "intent_label": INTENT_LABELS.get(exp["intent"], exp["intent"]),
+        "track": exp["track"],
         "north_star_metric": ns_metric,
         "north_star_direction": direction,
         "status": exp["status"],
@@ -410,7 +481,7 @@ async def lock_winner(
 
     pool2 = get_pool()
     exp = await pool2.fetchrow(
-        "SELECT baseline FROM pipeline.experiments WHERE id = $1::uuid", experiment_id,
+        "SELECT baseline, track FROM pipeline.experiments WHERE id = $1::uuid", experiment_id,
     )
     baseline = _as_dict(exp["baseline"]) if exp else {}
     overwrite_warning = None
@@ -453,7 +524,7 @@ async def lock_winner(
         experiment_id,
     )
     tested |= {t["swept_variable"] for t in trows}
-    next_var = next((k for k in SWEEP_VARIABLE_ORDER if k not in tested), None)
+    next_var = next((k for k in sweep_order_for_track(exp["track"]) if k not in tested), None)
 
     return {
         "ok": True,
@@ -503,7 +574,8 @@ async def list_experiments(sku_id: str | None = None, status: str | None = None,
 async def get_experiment(experiment_id: str) -> dict:
     pool = get_pool()
     exp = await pool.fetchrow(
-        """SELECT id::text AS id, sku_id, portrait_id::text AS portrait_id, intent,
+        """SELECT id::text AS id, sku_id, portrait_id::text AS portrait_id,
+                  audience_record_id::text AS audience_record_id, intent, track,
                   north_star_metric, north_star_direction, status, title, baseline,
                   winning_framework_md, framework_distilled_at, created_at
            FROM pipeline.experiments WHERE id = $1::uuid""",
@@ -525,7 +597,8 @@ async def get_experiment(experiment_id: str) -> dict:
     )
     results = await pool.fetch(
         """SELECT round_no, arm_id::text AS arm_id, arm_label, variable_value, swept_variable,
-                  n_videos, north_star_avg, sample_status, is_winner, script_id::text AS script_id
+                  n_videos, north_star_avg, sample_status, is_winner, production_mode,
+                  script_id::text AS script_id
            FROM pipeline.v_experiment_round_results WHERE experiment_id=$1::uuid
            ORDER BY round_no, arm_label""",
         experiment_id,
@@ -602,7 +675,8 @@ async def collect_distill_skeleton(experiment_id: str) -> dict:
         "ok": True,
         "experiment": {"id": experiment_id, "sku_id": sku_id, "intent": intent,
                        "intent_label": intent_label, "north_star_metric": exp["north_star_metric"],
-                       "status": exp["status"]},
+                       "status": exp["status"], "track": exp.get("track"),
+                       "prompt_node": TRACK_TO_PROMPT_NODE.get(exp.get("track") or "human_brief")},
         "candidates": candidates,
         "blocked": blocked,
         "framework_lines": framework_lines,
@@ -631,4 +705,54 @@ async def write_winning_framework(experiment_id: str, framework_md: str) -> None
                status = CASE WHEN status='running' THEN 'converged' ELSE status END
            WHERE id = $1::uuid""",
         experiment_id, framework_md,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 投前视觉快环（AI 链：多模态 judge 打质量分，投放前过滤崩/假/不锁脸 + 收敛技术变量）
+# ══════════════════════════════════════════════════════════════════════════════
+def prescreen_gate(scores: dict) -> str:
+    """确定性 gate（不让 LLM 自判）：usable<6 或 fidelity<5 或 face_consistency<5 → fail。"""
+    try:
+        u = float(scores.get("usable", 0))
+        f = float(scores.get("fidelity", 0))
+        fc = float(scores.get("face_consistency", 0))
+    except (TypeError, ValueError):
+        return "fail"
+    return "pass" if (u >= 6 and f >= 5 and fc >= 5) else "fail"
+
+
+async def get_round_video_assets(experiment_id: str, round_no: int | None = None) -> dict:
+    """该轮各臂挂的 video 资产（file_url + 现有 visual_prescreen）。供投前视觉快环判。"""
+    pool = get_pool()
+    if round_no is None:
+        r = await pool.fetchval(
+            "SELECT MAX(round_no) FROM pipeline.experiment_rounds WHERE experiment_id=$1::uuid",
+            experiment_id,
+        )
+        round_no = int(r) if r else None
+    if round_no is None:
+        return {"ok": True, "round_no": None, "assets": []}
+    rows = await pool.fetch(
+        """SELECT a.id::text AS asset_id, a.file_url, a.visual_prescreen,
+                  arm.id::text AS arm_id, arm.arm_label, arm.variable_value, arm.swept_variable
+           FROM pipeline.experiment_arms arm
+           JOIN pipeline.assets a ON a.experiment_arm_id = arm.id AND a.asset_type = 'video'
+           WHERE arm.experiment_id = $1::uuid AND arm.round_no = $2
+           ORDER BY arm.arm_label, a.created_at""",
+        experiment_id, round_no,
+    )
+    assets = [{"asset_id": r["asset_id"], "file_url": r["file_url"],
+               "visual_prescreen": _as_dict(r["visual_prescreen"]),
+               "arm_id": r["arm_id"], "arm_label": r["arm_label"],
+               "variable_value": r["variable_value"], "swept_variable": r["swept_variable"]}
+              for r in rows]
+    return {"ok": True, "round_no": round_no, "assets": assets}
+
+
+async def save_visual_prescreen(asset_id: str, scores: dict) -> None:
+    pool = get_pool()
+    await pool.execute(
+        "UPDATE pipeline.assets SET visual_prescreen = $2::jsonb WHERE id = $1::uuid",
+        asset_id, json.dumps(scores, ensure_ascii=False),
     )

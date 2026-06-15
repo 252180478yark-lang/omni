@@ -151,6 +151,18 @@ reverse_audience_analysis:
     system: reverse_audience.system
     user: reverse_audience.user
 
+# 2026-06-15: experiment_prescreen_round 投前视觉快环（AI 链 A/B 闭环）
+# 直调 Gemini Files API 整段视频喂（同 reverse_storyboard_video），打 5 维质量分；
+# gate(pass/fail) 由后端按分数确定性算，不让模型自判。temp 0.2 要稳。
+experiment_prescreen_round:
+  provider: gemini
+  model: gemini-2.5-flash
+  temperature: 0.2
+  max_tokens: 2000
+  prompts:
+    system: prescreen_video.system
+    user: prescreen_video.user
+
 # 2026-06-01 竞品调研：淘宝抓取 + 视觉拆解
 # competitor_search 的相关性过滤：判定标题相关性，flash 够用，temp 低求稳
 competitor_search:

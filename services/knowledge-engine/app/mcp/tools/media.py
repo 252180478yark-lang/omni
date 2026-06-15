@@ -24,7 +24,7 @@ from app.mcp.audit import tool_with_audit
 from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
-from app.services import pipeline_lineage, prompt_rules, rag_chain
+from app.services import experiment_lab, pipeline_lineage, prompt_rules, rag_chain
 from app.services.ai_hub_client import AIHubClient, HubError
 
 
@@ -986,6 +986,7 @@ async def generate_video_segments(
     force_t2v: bool = False,
     character_anchor: str | None = None,
     model_override: str | None = None,
+    experiment_arm_id: str | None = None,
 ) -> dict:
     """W4-B 切片 14.4 phase D step 7：拉 script.scenes，用 step 6 出的分镜图当
     first_frame + character_sheet 锁脸 face_refs，并发调 seedance-2-0 出每段视频。
@@ -1595,6 +1596,7 @@ async def generate_video_segments(
                 duration_seconds=float(scene_duration),
                 external_video_id=task_id_out,
                 prompt=prompt,
+                experiment_arm_id=experiment_arm_id,
             )
             return {
                 "scene_no": scene_no,
@@ -3902,8 +3904,15 @@ async def _creative_pack_one(
     extra_context: str | None = None,
     num_variants: int = 1,
     target_model: str = "seedance",
+    intent: str = "generic",
+    experiment_context: dict | None = None,
 ) -> dict:
-    """单素材实现（generate_creative_pack 单跑路径，逻辑即原函数体不动）。"""
+    """单素材实现（generate_creative_pack 单跑路径）。
+
+    intent + experiment_context：AI 链当实验臂时用（A/B 单变量）。experiment_context=
+    {"baseline":{var:val},"sweep":{"variable","value"}} 让提示词硬性"固定 baseline、只动本轮变量"；
+    intent 进 render scope（让 distill 出的 creative_pack 规则 scope={sku,intent} 命中）。
+    """
     if kind not in pipeline_lineage.CREATIVE_KINDS:
         return {
             "ok": False,
@@ -4016,8 +4025,10 @@ async def _creative_pack_one(
     # === render prompt ===
     sys_template = f"creative_pack.{kind}.system"
     sys_msg = prompts.load(sys_template)
+    experiment_constraint = experiment_lab.build_experiment_constraint(experiment_context)
     user_msg = prompts.render(
         "creative_pack.user",
+        experiment_constraint=experiment_constraint,
         kind=kind,
         kind_label=_KIND_LABELS.get(kind, kind),
         sku_md=sku_md,
@@ -4027,10 +4038,12 @@ async def _creative_pack_one(
         extra_context=(extra_context or "").strip() or "（无）",
         target_model_profile=target_model_profile,
     )
-    # prompt 反馈飞轮：注入老板累积的修正规则（migration 051；scope 带 kind/sku_id 便于按类细分）
+    # prompt 反馈飞轮：注入累积修正规则（migration 051/052；scope 带 kind/sku_id/intent 便于按类/意图细分）
     _cp_scope = {"kind": kind}
     if sku_id:
         _cp_scope["sku_id"] = sku_id
+    if intent and intent != "generic":
+        _cp_scope["intent"] = intent
     user_msg += await prompt_rules.render_rules_suffix("pipeline.creative_pack", _cp_scope)
     final_prompt = sys_msg + "\n\n" + user_msg
 
@@ -4081,6 +4094,7 @@ async def _creative_pack_one(
             matrix_run_id=matrix_run_id,
             hooks=[],
             scenes=[],
+            intent=intent,
             extra_context=extra_context,
             model_provider=_provider,
             model=_model,
@@ -4172,6 +4186,8 @@ async def generate_creative_pack(
     target_model: str = "seedance",
     audience_record_ids: list[str] | None = None,
     kinds: list[str] | None = None,
+    intent: str = "generic",
+    experiment_context: dict | None = None,
 ) -> dict:
     """生成 6 类素材：视频软广/种草/收割 + 图文收割 + 主图 + 详情页（sku-pipeline step 5），支持单个 / 批量。
 
@@ -4207,6 +4223,10 @@ async def generate_creative_pack(
             可选 veo/jimeng/generic，热加载；未知名回退 generic）。非视频 kind 忽略。
         audience_record_ids: 批量人群列表
         kinds: 批量类型列表
+        intent: AI 链当实验臂时传（planting/harvest/soft_ad/hard_ad）；进 render scope 让 distill
+            出的 creative_pack 规则 scope={sku,intent} 命中。默认 generic。
+        experiment_context: A/B 实验上下文 {"baseline":{变量:取值},"sweep":{"variable","value"}}，
+            让提示词硬性"固定 baseline、只动本轮变量"（单变量纪律）。批量模式不支持（各组合独立）。
 
     Returns:
         单跑 {ok, result: {script_md, script_id, variants, kind, sku_id, ...}, trace, next_step_hint}；
@@ -4246,7 +4266,7 @@ async def generate_creative_pack(
                 return await _creative_pack_one(
                     kind=k, sku_id=sku_id, audience_record_id=rid,
                     audience_pack_id=audience_pack_id, extra_context=extra_context,
-                    num_variants=1, target_model=target_model,
+                    num_variants=1, target_model=target_model, intent=intent,
                 )
 
         raw = await asyncio.gather(*[_guarded(r, k) for r, k in combos], return_exceptions=True)
@@ -4312,6 +4332,7 @@ async def generate_creative_pack(
         kind=kind, sku_id=sku_id, audience_record_id=audience_record_id,
         audience_pack_id=audience_pack_id, extra_context=extra_context,
         num_variants=num_variants, target_model=target_model,
+        intent=intent, experiment_context=experiment_context,
     )
 
 

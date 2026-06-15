@@ -1,3 +1,5 @@
+{experiment_constraint}
+
 ## ① 当前任务
 
 **素材类型**：{kind_label}（kind = `{kind}`）

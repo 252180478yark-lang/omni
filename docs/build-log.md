@@ -330,3 +330,20 @@ mcp.client_logs(批量 20 条 / 5s 推 KE,丢弃容忍)
 验证：`docker exec ... python -m app.mcp.doctor` → all 97 ok / doc consistency 97==97 / 全绿。端到端冒烟（临时脚本跑完即删）：create→拒 roi(R-4)→register 2 臂→投后 A5条/B3条→status 排名 A>B+can_lock+建议 idea_seed→lock 进 baseline→distill 出 formal 候选带混杂因子免责句→CLEANED。
 
 前端 step37「📊编导Brief A/B实验」看板 + 7 API route：另起 agent 建（见 git）。**待办**：omni-desktop tool-meta.ts 跨仓补 7 中文名+「🧪实验台账」域。
+（收尾后续：真人无 asset 自动建臂资产 + 实验必带人群 + tool-meta 补齐，已并入 commit deca0f6。）
+
+---
+
+## AI 短视频链 Y-尾移植 + 投前视觉快环（migration 053，2026-06-15）
+老板拍板「Y 形融合」：两条出片链共享 SKU→卖点→人群→画像主干 + 实验/投后/沉淀尾巴，只在生产模式分叉（真人 brief / AI 提示词）。AI **不是新链**，是同一实验台账多收一种"臂"。CLAUDE.md 专节末段补了 Y 形说明。
+
+- `migrations/053_experiment_ai_track.sql`——experiments.track(human_brief/ai_video/mixed) + experiment_arms.production_mode + assets.visual_prescreen JSONB。纯加法。
+- `app/services/experiment_lab.py`——加 `build_experiment_constraint`（从 portrait_brief **上提**到这里，解 media↔portrait_brief 循环 import）+ `intent_to_creative_kind` + `TRACK_TO_PROMPT_NODE`（human→director_brief / ai_video→creative_pack / mixed→None 不写规则）+ `AI_EXTRA_VARIABLES`（提示词结构/真人感锚/锁脸参考图/负向词/运镜）+ `sweep_order_for_track` + 视觉快环数据层（`prescreen_gate` 确定性 gate / `get_round_video_assets` / `save_visual_prescreen`）。create_experiment 加 track；register_round 写 arm.production_mode（mixed 逐臂、单模式继承 track）；get_experiment/status/lock/distill 全带出 track 路由节点。
+- `app/mcp/tools/media.py`——`generate_creative_pack`/`_creative_pack_one` 加 `intent`+`experiment_context`（注入 experiment_constraint + scope 带 intent，镜像 director_brief）；`generate_video_segments` 加 `experiment_arm_id`（AI 视频生成即自动挂臂，供视觉快环/北极星）。import experiment_lab（无循环：experiment_lab 不 import media）。
+- `app/services/pipeline_lineage.py`——save_storyboard_asset 加 experiment_arm_id/experiment_id（+ 反查 experiment_id denorm）。
+- `app/mcp/tools/portrait_brief.py`——删本地 _build_experiment_constraint，改用 experiment_lab 上提版。
+- `app/mcp/tools/experiment.py`——experiment_create 加 track；experiment_distill 按 track 路由 create_rule 节点（mixed 只出人读框架不写规则）；**新 tool `experiment_prescreen_round`**（多模态 gemini-2.5-flash 整段视频判 5 维质量分，gate 后端确定性算、并发 3、写 assets.visual_prescreen）。
+- prompt `prescreen_video.{system,user}.md`（judge 只打分不自判 gate）；`config/prompts/brief_intent_profiles/*` 4 档（052 已建）；creative_pack.user.md 加 {experiment_constraint} 占位。
+- `tool_models.yaml` 加 experiment_prescreen_round（gemini-2.5-flash）；doctor wanted 97→98 + prescreen prompts；CLAUDE.md 97→98 + Y 形段。
+
+**坑/验证**：① media 不能 import portrait_brief（后者 import 前者 → 循环）→ build_experiment_constraint 上提 experiment_lab。② 直接 import media 跑脚本会触发 `from app.mcp.server import mcp` 反拉 portrait_brief 撞 media 半初始化（生产里 server 是入口顺序固定，无此问题）——冒烟须先 `import app.mcp.server` 立顺序。③ build_trace 截断 16384 字符，creative_pack system 长→trace 里看不到尾部约束块，但 user_msg 实含（渲染检查 `占位填入 user_msg: True` 确认，非 bug）。doctor `all 98 ok`；冒烟：ai_video 实验 track 落库 + 臂 production_mode 继承 + distill 路由 creative_pack + mixed 逐臂 mode + gate 确定性 + 真跑 creative_pack 带 experiment_context 落 scripts.intent。视觉快环 judge 的 live gemini 视频调用待老板真出 AI 臂视频时跑。
