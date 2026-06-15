@@ -77,6 +77,7 @@ async def get_shop_todos():
             WHERE sku_id = '_SHOP_'
               AND metric_name = ANY($1)
               AND date = CURRENT_DATE - 1
+              AND platform = 'douyin'
             """,
             metric_names,
         )

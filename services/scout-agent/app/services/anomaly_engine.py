@@ -456,8 +456,9 @@ async def _latest_metric_date(conn, sku_id: str, metric_name: str, target_day: d
         """
         SELECT MAX(date) FROM mvp_daily_metric
         WHERE sku_id = $1 AND metric_name = $2 AND value IS NOT NULL AND date <= $3
+          AND platform = $4
         """,
-        sku_id, metric_name, target_day,
+        sku_id, metric_name, target_day, DEFAULT_PLATFORM,
     )
     return row
 
@@ -518,8 +519,9 @@ async def _fetch_today_baseline(conn, sku_id: str, metric_name: str, today: date
         FROM mvp_daily_metric
         WHERE sku_id = $1 AND metric_name = $2
           AND date BETWEEN $3::date - INTERVAL '{BASELINE_DAYS} days' AND $3
+          AND platform = $4
         """,
-        sku_id, metric_name, today,
+        sku_id, metric_name, today, DEFAULT_PLATFORM,
     )
     if row is None:
         return None, 0.0
@@ -539,9 +541,10 @@ async def _fetch_today_and_baseline_series(
         SELECT date, value FROM mvp_daily_metric
         WHERE sku_id = $1 AND metric_name = $2
           AND date BETWEEN $3::date - INTERVAL '{BASELINE_DAYS} days' AND $3
+          AND platform = $4
         ORDER BY date ASC
         """,
-        sku_id, metric_name, today,
+        sku_id, metric_name, today, DEFAULT_PLATFORM,
     )
     today_val: float | None = None
     baseline_values: list[float] = []
@@ -562,8 +565,9 @@ async def _fetch_trend(conn, sku_id: str, metric_name: str, today: date, days: i
         SELECT date, value FROM mvp_daily_metric
         WHERE sku_id=$1 AND metric_name=$2
           AND date BETWEEN $3::date - INTERVAL '%s days' AND $3
+          AND platform = $4
         ORDER BY date ASC
         """ % days,
-        sku_id, metric_name, today,
+        sku_id, metric_name, today, DEFAULT_PLATFORM,
     )
     return [float(r["value"]) for r in rows if r["value"] is not None]

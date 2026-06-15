@@ -9,6 +9,7 @@
     python _login_platform.py douyin_compass     # 罗盘
     python _login_platform.py douyin_shop_admin   # 抖店后台
     python _login_platform.py yuntu               # 云图（一般还没过期，可不重登）
+    python _login_platform.py jd                  # 京东商智（POP 经营数据，cookie 约 1 天/短信登录约 31 天，实测为准）
 
 弹出的 Chromium 里登录（抖店/罗盘扫码后需点选具体店铺进入工作台），
 检测到真实登录态后自动存盘关窗（最多等 5 分钟）。
@@ -24,11 +25,21 @@ URLS = {
     "douyin_compass": "https://compass.jinritemai.com/",
     "douyin_shop_admin": "https://fxg.jinritemai.com/",
     "yuntu": "https://yuntu.oceanengine.com/",
+    "jd": "https://sz.jd.com/",  # 京东商智（商家数据后台；未登录跳 passport.jd.com）
 }
 
-# 抖音系登录后才写的强标记（跟 sessions.py _default 一致）；游客/CSRF token 不算
-AUTH = {"sessionid", "sessionid_ss", "sid_tt", "sid_guard", "uid_tt", "uid_tt_ss", "LOGIN_STATUS"}
-# 还没进真正工作台的 URL 片段：登录中 / 抖店"请选择店铺"页
+# 登录后才写的强标记（按平台分；游客/CSRF token 不算）
+# 抖音系跟 sessions.py _default 一致
+AUTH_DOUYIN = {"sessionid", "sessionid_ss", "sid_tt", "sid_guard", "uid_tt", "uid_tt_ss", "LOGIN_STATUS"}
+# 京东主域 .jd.com 登录态：pin=URL编码用户名 / thor=长效登录 token（实测为准，登不上看日志里的 cookie 名再调）
+AUTH_JD = {"pin", "thor", "pinId"}
+AUTH_BY_PLATFORM = {
+    "douyin_compass": AUTH_DOUYIN,
+    "douyin_shop_admin": AUTH_DOUYIN,
+    "yuntu": AUTH_DOUYIN,
+    "jd": AUTH_JD,
+}
+# 还没进真正工作台的 URL 片段：登录中 / 抖店"请选择店铺"页 / 京东登录页
 NOT_SETTLED = ("login", "passport", "sso", "select-shop", "store-select", "shop-list", "/select", "dispatch")
 
 
@@ -60,7 +71,8 @@ def main(platform: str) -> int:
         except Exception as exc:
             print("nav warn:", exc, flush=True)
 
-        print(f"=== 请在弹出的 Chromium 里登录 {platform}（扫码；抖店/罗盘登录后需点选店铺进工作台），最多等 5 分钟 ===", flush=True)
+        auth_names = AUTH_BY_PLATFORM.get(platform, AUTH_DOUYIN)
+        print(f"=== 请在弹出的 Chromium 里登录 {platform}（扫码/短信；抖店/罗盘登录后需点选店铺进工作台），最多等 5 分钟 ===", flush=True)
         ok = False
         for i in range(300):
             time.sleep(1)
@@ -75,7 +87,7 @@ def main(platform: str) -> int:
             except Exception:
                 continue
             names = {c.get("name", "") for c in cookies}
-            hit = names & AUTH
+            hit = names & auth_names
             if len(cookies) >= 8 and hit and settled(url):
                 ok = True
                 print(f"LOGIN_OK after {i}s cookies={len(cookies)} auth={sorted(hit)} url={url[:60]}", flush=True)

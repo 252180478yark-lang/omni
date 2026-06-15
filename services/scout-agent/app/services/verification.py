@@ -141,6 +141,7 @@ async def _aggregate_window(conn, sku_id: str, start: datetime, end: datetime) -
         FROM mvp_daily_metric
         WHERE sku_id=$1 AND metric_name=ANY($2)
           AND date >= $3::date AND date < $4::date
+          AND platform = 'douyin'
         GROUP BY metric_name
         """,
         sku_id, KPI_METRICS, start.date(), end.date(),

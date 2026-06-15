@@ -550,7 +550,7 @@ async def _resolve_or_create_sku(conn, product_id: str, name: str | None) -> str
     return str(product_id)
 
 
-async def _upsert_bi_scalar_rows(conn, rows: list[dict]) -> int:
+async def _upsert_bi_scalar_rows(conn, rows: list[dict], platform: str = PLATFORM) -> int:
     """BI 批次标量 upsert（sku_ref='_SHOP_' 全店 / 否则 resolve product_id）。落 mvp_daily_metric。"""
     n = 0
     cache: dict[str, str | None] = {}
@@ -571,17 +571,17 @@ async def _upsert_bi_scalar_rows(conn, rows: list[dict]) -> int:
             INSERT INTO mvp_daily_metric
                 (sku_id, date, metric_name, value, platform, source_runbook)
             VALUES ($1, $2, $3, $4, $5, 'metric_ingest')
-            ON CONFLICT (sku_id, date, metric_name)
-            DO UPDATE SET value = EXCLUDED.value, platform = EXCLUDED.platform,
+            ON CONFLICT (sku_id, date, metric_name, platform)
+            DO UPDATE SET value = EXCLUDED.value,
                           source_runbook = EXCLUDED.source_runbook, created_at = NOW()
             """,
-            sku_id, _as_date(r["date"]), r["metric"], _as_num(r["value"]), PLATFORM,
+            sku_id, _as_date(r["date"]), r["metric"], _as_num(r["value"]), platform,
         )
         n += 1
     return n
 
 
-async def _upsert_product_metrics(conn, rows: list[dict]) -> int:
+async def _upsert_product_metrics(conn, rows: list[dict], platform: str = PLATFORM) -> int:
     """per-SKU 商品指标 upsert（resolve product_id→内部SKU，sku_id≠_SHOP_）。返回写入行数。"""
     n = 0
     cache: dict[str, str | None] = {}
@@ -599,20 +599,19 @@ async def _upsert_product_metrics(conn, rows: list[dict]) -> int:
             INSERT INTO mvp_daily_metric
                 (sku_id, date, metric_name, value, platform, source_runbook)
             VALUES ($1, $2, $3, $4, $5, 'metric_ingest')
-            ON CONFLICT (sku_id, date, metric_name)
+            ON CONFLICT (sku_id, date, metric_name, platform)
             DO UPDATE SET value = EXCLUDED.value,
-                          platform = EXCLUDED.platform,
                           source_runbook = EXCLUDED.source_runbook,
                           created_at = NOW()
             """,
-            sku_id, _as_date(r["date"]), r["metric"], _as_num(r["value"]), PLATFORM,
+            sku_id, _as_date(r["date"]), r["metric"], _as_num(r["value"]), platform,
         )
         n += 1
     return n
 
 
-async def _upsert_metrics(conn, rows: list[dict]) -> int:
-    """upsert mvp_daily_metric（sku_id='_SHOP_', platform='douyin'）。返回写入行数。"""
+async def _upsert_metrics(conn, rows: list[dict], platform: str = PLATFORM) -> int:
+    """upsert mvp_daily_metric（sku_id='_SHOP_'，platform 默认抖音、京东侧传 'jd'）。返回写入行数。"""
     n = 0
     for r in rows:
         if r["value"] is None:
@@ -622,13 +621,12 @@ async def _upsert_metrics(conn, rows: list[dict]) -> int:
             INSERT INTO mvp_daily_metric
                 (sku_id, date, metric_name, value, platform, source_runbook)
             VALUES ($1, $2, $3, $4, $5, 'metric_ingest')
-            ON CONFLICT (sku_id, date, metric_name)
+            ON CONFLICT (sku_id, date, metric_name, platform)
             DO UPDATE SET value = EXCLUDED.value,
-                          platform = EXCLUDED.platform,
                           source_runbook = EXCLUDED.source_runbook,
                           created_at = NOW()
             """,
-            SHOP_SENTINEL, _as_date(r["date"]), r["metric"], _as_num(r["value"]), PLATFORM,
+            SHOP_SENTINEL, _as_date(r["date"]), r["metric"], _as_num(r["value"]), platform,
         )
         n += 1
     return n

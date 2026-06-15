@@ -393,9 +393,9 @@ class RunbookExecutor:
                 await conn.execute(
                     """
                     INSERT INTO mvp_daily_metric
-                        (sku_id, date, metric_name, value, source_runbook, source_run_id)
-                    VALUES ($1, CURRENT_DATE - 1, $2, $3, $4, $5)
-                    ON CONFLICT (sku_id, date, metric_name)
+                        (sku_id, date, metric_name, value, source_runbook, source_run_id, platform)
+                    VALUES ($1, CURRENT_DATE - 1, $2, $3, $4, $5, 'douyin')
+                    ON CONFLICT (sku_id, date, metric_name, platform)
                     DO UPDATE SET value=$3, source_runbook=$4, source_run_id=$5
                     """,
                     sku_id, metric, value, self.rb_id, self.run_id,
@@ -523,9 +523,9 @@ class RunbookExecutor:
                         await conn.execute(
                             """
                             INSERT INTO mvp_daily_metric
-                                (sku_id, date, metric_name, value, source_runbook, source_run_id)
-                            VALUES ($1, CURRENT_DATE - 1, $2, $3, $4, $5)
-                            ON CONFLICT (sku_id, date, metric_name)
+                                (sku_id, date, metric_name, value, source_runbook, source_run_id, platform)
+                            VALUES ($1, CURRENT_DATE - 1, $2, $3, $4, $5, 'douyin')
+                            ON CONFLICT (sku_id, date, metric_name, platform)
                             DO UPDATE SET value=$3, source_runbook=$4, source_run_id=$5
                             """,
                             sku_id, metric_name, value, self.rb_id, self.run_id,

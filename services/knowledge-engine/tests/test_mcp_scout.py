@@ -39,7 +39,7 @@ async def setup_pool():
     _SEED_SHOP_METRICS = ["gmv_paid", "visit_uv", "search_uv", "paid_clicks"]
     saved_real_rows = await pool.fetch(
         """
-        SELECT sku_id, date, metric_name, value, source_runbook, source_run_id, raw
+        SELECT sku_id, date, metric_name, value, source_runbook, source_run_id, raw, platform
         FROM mvp_daily_metric
         WHERE date = $1 AND sku_id = '_SHOP_' AND metric_name = ANY($2::text[])
         """,
@@ -52,44 +52,44 @@ async def setup_pool():
     # 先插全店日报数据（sku_id='_SHOP_'，scout-agent 约定的 sentinel）
     await pool.execute(
         """
-        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('_SHOP_', $1, 'gmv_paid', 12345.6, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb)
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw, platform)
+        VALUES ('_SHOP_', $1, 'gmv_paid', 12345.6, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb, 'douyin')
         """,
         YESTERDAY,
     )
     await pool.execute(
         """
-        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('_SHOP_', $1, 'visit_uv', 8765, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb)
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw, platform)
+        VALUES ('_SHOP_', $1, 'visit_uv', 8765, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb, 'douyin')
         """,
         YESTERDAY,
     )
     # SKU 级数据（sku_id='_smoke_W3b_sku_X', source_run_id 用 _smoke_W3b_run1）
     await pool.execute(
         """
-        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('_smoke_W3b_sku_X', $1, 'sku_gmv', 999.99, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb)
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw, platform)
+        VALUES ('_smoke_W3b_sku_X', $1, 'sku_gmv', 999.99, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb, 'douyin')
         """,
         YESTERDAY,
     )
     await pool.execute(
         """
-        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('_smoke_W3b_sku_X', $1, 'sku_visit', 88, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb)
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw, platform)
+        VALUES ('_smoke_W3b_sku_X', $1, 'sku_visit', 88, 'compass/sell-analysis', '_smoke_W3b_run1', '{}'::jsonb, 'douyin')
         """,
         YESTERDAY,
     )
     await pool.execute(
         """
-        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('_SHOP_', $1, 'search_uv', 1234, 'compass/search-drainage-terms', '_smoke_W3b_run1', '{}'::jsonb)
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw, platform)
+        VALUES ('_SHOP_', $1, 'search_uv', 1234, 'compass/search-drainage-terms', '_smoke_W3b_run1', '{}'::jsonb, 'douyin')
         """,
         YESTERDAY,
     )
     await pool.execute(
         """
-        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-        VALUES ('_SHOP_', $1, 'paid_clicks', 567, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb)
+        INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw, platform)
+        VALUES ('_SHOP_', $1, 'paid_clicks', 567, 'compass/business-part', '_smoke_W3b_run1', '{}'::jsonb, 'douyin')
         """,
         YESTERDAY,
     )
@@ -138,14 +138,14 @@ async def setup_pool():
     for r in saved_real_rows:
         await pool.execute(
             """
-            INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw)
-            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-            ON CONFLICT (sku_id, date, metric_name) DO UPDATE
+            INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, source_runbook, source_run_id, raw, platform)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+            ON CONFLICT (sku_id, date, metric_name, platform) DO UPDATE
               SET value = EXCLUDED.value, source_runbook = EXCLUDED.source_runbook,
                   source_run_id = EXCLUDED.source_run_id, raw = EXCLUDED.raw
             """,
             r["sku_id"], r["date"], r["metric_name"], r["value"],
-            r["source_runbook"], r["source_run_id"], r["raw"],
+            r["source_runbook"], r["source_run_id"], r["raw"], r["platform"] or "douyin",
         )
     await close_pool()
 

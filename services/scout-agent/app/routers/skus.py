@@ -104,6 +104,7 @@ async def get_sku_metrics(sku_id: str, days: int = 14, metric_names: Optional[st
             FROM mvp_daily_metric
             WHERE sku_id = $1
               AND date >= CURRENT_DATE - ($2::int * INTERVAL '1 day')
+              AND platform = 'douyin'
               {name_filter}
             ORDER BY date DESC, metric_name
             """,

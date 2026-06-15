@@ -228,9 +228,9 @@ async def parse_and_write(
                 await conn.execute(
                     """
                     INSERT INTO mvp_daily_metric
-                        (sku_id, date, metric_name, value, source_runbook, source_run_id)
-                    VALUES ($1, $2::date, $3, $4, $5, $6)
-                    ON CONFLICT (sku_id, date, metric_name)
+                        (sku_id, date, metric_name, value, source_runbook, source_run_id, platform)
+                    VALUES ($1, $2::date, $3, $4, $5, $6, 'douyin')
+                    ON CONFLICT (sku_id, date, metric_name, platform)
                     DO UPDATE SET value=$4, source_runbook=$5, source_run_id=$6
                     """,
                     sku_id, date_str, metric_name, value, schema_name, run_id,

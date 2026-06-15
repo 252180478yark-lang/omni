@@ -26,7 +26,7 @@ async def rebuild_focus_pool() -> None:
     thirty_days_ago = today - timedelta(days=30)
 
     async with pool.acquire() as conn:
-        # 1. GMV TOP 5
+        # 1. GMV TOP 5（焦点池只看抖音口径——mvp_sku 本身是抖音形状）
         top_gmv = await conn.fetch(
             """
             SELECT dm.sku_id, SUM(dm.value) AS total_gmv
@@ -34,6 +34,7 @@ async def rebuild_focus_pool() -> None:
             JOIN mvp_sku s ON s.id = dm.sku_id
             WHERE dm.metric_name = 'gmv_paid'
               AND dm.date >= $1
+              AND dm.platform = 'douyin'
               AND s.status = 'active'
             GROUP BY dm.sku_id
             ORDER BY total_gmv DESC
@@ -61,6 +62,7 @@ async def rebuild_focus_pool() -> None:
             FROM mvp_sku s
             LEFT JOIN mvp_daily_metric dm
                    ON dm.sku_id = s.id AND dm.metric_name = 'uv' AND dm.date = $1
+                  AND dm.platform = 'douyin'
             WHERE s.created_on_platform_at >= $2
               AND s.status = 'active'
             ORDER BY COALESCE(dm.value, 0) DESC
