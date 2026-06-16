@@ -302,6 +302,25 @@ METRIC_REGISTRY: dict[str, dict] = {
                           "aliases": ["今日实时点击人数"]},
     "experience_score_realtime": {"cn": "店铺体验分(抖店今日实时)", "unit": "分", "direction": "up_good",
                           "aliases": ["今日实时体验分"]},
+    # ── 京东商智（platform='jd'，切片2 passive 抓取落库；口径带「京东」限定，京东 gmv≠抖音 gmv_paid）──
+    # 解析侧：resolve_metric 检出问句含「京东/京麦/jd」→ 只认 jd_ 指标；query_metric_nl 见 jd_ → platform='jd'。
+    # is_jd 已隔离平台，故可复用「裸」别名（成交金额/转化率/订单…）；京东问句才会进这组。
+    "jd_gmv": {"cn": "京东成交金额", "unit": "元", "direction": "up_good",
+               "aliases": ["成交金额", "成交额", "成交", "gmv", "销售额", "卖了多少", "京东gmv"]},
+    "jd_order_cnt": {"cn": "京东成交订单数", "unit": "单", "direction": "up_good",
+                     "aliases": ["成交订单数", "订单数", "订单", "成交单数", "出单数", "出单"]},
+    "jd_buyer_cnt": {"cn": "京东成交用户数", "unit": "人", "direction": "up_good",
+                     "aliases": ["成交用户数", "买家数", "成交人数", "买家", "下单人数", "购买人数"]},
+    "jd_sku_qtty": {"cn": "京东成交件数", "unit": "件", "direction": "up_good",
+                    "aliases": ["成交件数", "件数", "销量"]},
+    "jd_item_pv": {"cn": "京东商品浏览量", "unit": "次", "direction": "up_good",
+                   "aliases": ["商品浏览量", "商品浏览", "浏览量"]},
+    "jd_shop_pv": {"cn": "京东店铺浏览量", "unit": "次", "direction": "up_good",
+                   "aliases": ["店铺浏览量", "店铺浏览", "店铺访问", "访问量"]},
+    "jd_exposure": {"cn": "京东曝光量", "unit": "次", "direction": "up_good",
+                    "aliases": ["曝光量", "曝光", "展现"]},
+    "jd_cvr": {"cn": "京东成交转化率", "unit": "比率", "direction": "up_good",
+               "aliases": ["成交转化率", "转化率", "转化", "cvr"]},
 }
 
 # 同行标杆表 mvp_industry_benchmark 实际存的 metric_name（落库桥 metric_ingest._extract_benchmarks）。
@@ -357,18 +376,27 @@ def resolve_metric(text: str) -> str | None:
     low = text.lower()
     # 空白不敏感：口语里常带空格（"5A 总资产""GMV 走势"），紧凑版用于子串匹配避免漏命中
     compact = re.sub(r"\s+", "", low)
+    # 平台消歧：京东问句只认 jd_ 指标，非京东问句排除 jd_——否则 "成交金额" 子串会命中
+    # "京东成交金额"(jd_gmv) 反之亦然（jd_ 与抖音指标中文名互为子串）。
+    is_jd = any(k in compact for k in ("京东", "京麦", "jdsz", "jingdong", "jd_")) or compact.strip() == "jd"
+    def _ok(name: str) -> bool:
+        return name.startswith("jd_") if is_jd else not name.startswith("jd_")
     # 1. 直接 metric_name
     for name in METRIC_REGISTRY:
-        if name in low or name in compact:
+        if _ok(name) and (name in low or name in compact):
             return name
     # 2. 完整中文名
     for name, meta in METRIC_REGISTRY.items():
+        if not _ok(name):
+            continue
         cn_l = (meta["cn"] or "").lower()
         if cn_l and (cn_l in low or re.sub(r"\s+", "", cn_l) in compact):
             return name
     # 3. alias 子串（长词优先）
     candidates: list[tuple[int, str]] = []
     for name, meta in METRIC_REGISTRY.items():
+        if not _ok(name):
+            continue
         for a in meta.get("aliases", []):
             if not a:
                 continue

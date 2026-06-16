@@ -663,9 +663,12 @@ async def query_metric_nl(
     if not metric_name:
         return {
             "ok": False, "error": "metric_not_resolved",
-            "hint": "没听出要查哪个指标。已支持的 95 指标（说中文名或 metric_name 都行）。",
+            "hint": "没听出要查哪个指标。已支持的指标（说中文名或 metric_name 都行）。",
             "supported": [{"metric": k, "cn": v["cn"]} for k, v in reg.METRIC_REGISTRY.items()],
         }
+    # jd_ 指标只在 platform='jd' 有数据——自动切平台（问句含京东标记才会解析到 jd_）
+    if metric_name.startswith("jd_"):
+        platform = "jd"
     days, window_note = _parse_window(question, default_days)
     sku_m = _SKU_RE.search(question)
     sku_id = sku_m.group(1).upper() if sku_m else SHOP_SENTINEL
