@@ -92,6 +92,20 @@ async def _run_metric_ingest() -> None:
         log.error("scheduler: metric_ingest failed: %s", exc)
 
 
+async def _run_jd_ingest() -> None:
+    """京东 passive 抓取日级落库：headed+session 加载商智 → SPA 自签发请求 → 抓响应抽指标 →
+    upsert mvp_daily_metric(platform='jd')。session 失效 fail-open 告警（老板重扫即恢复）。"""
+    from app.services.jd_ingest import run_jd_daily_ingest
+    try:
+        res = await run_jd_daily_ingest()
+        if res.get("ok"):
+            log.info("scheduler: jd_ingest wrote %s rows (%s days)", res.get("rows"), res.get("days"))
+        else:
+            log.warning("scheduler: jd_ingest 未落库 (%s)——京东 session 可能失效，需老板重扫登录", res.get("error"))
+    except Exception as exc:
+        log.error("scheduler: jd_ingest failed: %s", exc)
+
+
 def start_scheduler() -> None:
     if not settings.enable_scheduler:
         log.info("scheduler disabled (ENABLE_SCHEDULER=false)")
@@ -140,6 +154,13 @@ def start_scheduler() -> None:
         _run_metric_ingest,
         CronTrigger.from_crontab("0 9 * * *", timezone=tz),
         id="daily-metric-ingest",
+        replace_existing=True,
+    )
+    # 京东 passive 抓取落库：每天 09:10（抖音 ingest 后）。session 失效则告警，老板重扫即恢复
+    _scheduler.add_job(
+        _run_jd_ingest,
+        CronTrigger.from_crontab("10 9 * * *", timezone=tz),
+        id="daily-jd-ingest",
         replace_existing=True,
     )
 

@@ -26,6 +26,17 @@ async def metrics_ingest():
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
+@router.post("/jd/ingest")
+async def jd_ingest_endpoint():
+    """京东 passive 抓取落库一次（手动/按需；scheduler 09:10 调同一函数）。
+    session 失效返 {ok:false, error:'session_expired'/'no_session'}——老板重扫 _jd_login_capture_host.py 即恢复。"""
+    from app.services.jd_ingest import run_jd_daily_ingest
+    try:
+        return await run_jd_daily_ingest()
+    except Exception as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 @router.get("/metrics/series")
 async def metrics_series(
     metric: str = Query(..., description="metric_name，如 gmv_paid / asset_5a_total"),
