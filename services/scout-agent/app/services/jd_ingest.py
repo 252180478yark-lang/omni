@@ -26,16 +26,32 @@ SESSION = Path(os.environ.get("SCOUT_SESSIONS_DIR", "/app/sessions")) / "jd" / "
 PLATFORM, SHOP, SRC = "jd", "_SHOP_", "jd_passive_capture"
 NAV_KW = ("经营概况", "实时", "交易", "成交", "流量", "商品", "数据")
 
-# 指标码 → mvp_daily_metric.metric_name（实测响应值确认口径；jd_ 前缀=京东口径，gmv≠抖音 gmv_paid）
+# 指标码 → mvp_daily_metric.metric_name（口径=实测响应值 + 商智概况 DOM 中文名交叉确认；
+# jd_ 前缀=京东口径，gmv≠抖音 gmv_paid。访客/浏览口径：cnt=访客数(UV,小)，qtty=浏览量(PV,大)；
+# exposure dis_qtty=曝光人数(UV)，qtty=曝光次数(PV)——按访客<浏览 + DOM「商品访客数」确认）。
 INDICATOR_MAP = {
-    "jdr_sch_trade_deal_ord_ord_amt_sz_trade_deal_snapshot": "jd_gmv",
-    "jdr_sch_trade_deal_ord_ord_qtty_sz_trade_deal_snapshot": "jd_order_cnt",
-    "jdr_sch_trade_deal_ord_sku_qtty_sz_trade_deal_snapshot": "jd_sku_qtty",
-    "jdr_sch_user_deal_ord_user_cnt_sz_user_deal_snapshot": "jd_buyer_cnt",
-    "jdr_sch_traffic_brow_sku__page_cnt_traffic_plat_item_di_sz_bsg": "jd_item_pv",
-    "jdr_sch_traffic_enter_shop__browse_page_cnt_shop_last_src": "jd_shop_pv",
-    "jdr_sch_traffic_exposure_event_dis_qtty_sz_exposure_base": "jd_exposure",
-    "fo_jdr_sch_shop_deal_rate": "jd_cvr",
+    # 成交
+    "jdr_sch_trade_deal_ord_ord_amt_sz_trade_deal_snapshot": "jd_gmv",                 # 成交金额
+    "jdr_sch_trade_deal_ord_ord_qtty_sz_trade_deal_snapshot": "jd_order_cnt",          # 成交单量
+    "jdr_sch_user_deal_ord_user_cnt_sz_user_deal_snapshot": "jd_buyer_cnt",            # 成交客户数
+    "jdr_sch_trade_deal_ord_sku_qtty_sz_trade_deal_snapshot": "jd_sku_qtty",           # 成交商品件数
+    "fo_jdr_sch_trade_deal_ord_amt_user_sz_trade_deal_snapshot": "jd_per_customer_price",  # 客单价(=gmv/buyer 实测对上)
+    # 流量·访客数(UV，page_cnt/dis)
+    "jdr_sch_traffic_brow_sku__page_cnt_traffic_plat_item_di_sz_bsg": "jd_item_uv",    # 商品访客数
+    "jdr_sch_traffic_enter_shop__browse_page_cnt_shop_last_src": "jd_shop_uv",         # 店铺访客数
+    "jdr_sch_traffic_exposure_event_dis_qtty_sz_exposure_base": "jd_exposure_uv",      # 曝光人数
+    # 流量·浏览量(PV，page_qtty/qtty)
+    "jdr_sch_traffic_brow_sku__page_qtty_traffic_plat_item_di_sz_bsg": "jd_item_pv",   # 商品浏览量
+    "jdr_sch_traffic_enter_shop__browse_page_qtty_shop_last_src": "jd_shop_pv",        # 店铺浏览量
+    "jdr_sch_traffic_exposure_event_qtty_sz_exposure_base": "jd_exposure_pv",          # 曝光次数
+    # 互动/效率
+    "fo_jdr_sch_uv_value_sz": "jd_uv_value",                                           # UV价值
+    "jdr_sch_sku_add_cart_sku_user_qtty_product_user_cart_add_minus_sz_bsg_shoppingcart@increase": "jd_add_cart_user",  # 加购人数(净增)
+    "jdr_sch_sku_add_cart_sku_sku_amt_shopping_cart": "jd_add_cart_amt",               # 加购金额
+    "fo_jdr_sch_add_cart_user_uv_rate@increase": "jd_add_cart_rate",                   # 加购率
+    "fo_jdr_sch_fo_flow_item_detail_view_pv_per_uv": "jd_item_pv_per_uv",              # 商详人均浏览次数
+    "fo_jdr_sch_fo_fsd_flow_item_detail_view_avg_stay_duration_per": "jd_item_stay_sec",  # 商详平均停留(秒)
+    "fo_jdr_sch_traffic_enter_shop__browse_page_avg_duration_shop_last_src": "jd_shop_stay_sec",  # 店铺平均停留(秒)
 }
 
 
