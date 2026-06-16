@@ -73,11 +73,12 @@ def _rows_from_trend(body_json) -> list[tuple[str, str, float]]:
     return out
 
 
-async def _capture() -> tuple[list[dict], bool]:
-    """返回 (getCoreTrend 响应体 list, jdsz_loaded)。fail-open。"""
+async def _capture() -> tuple[list[dict], list[dict], bool]:
+    """返回 (getCoreTrend 响应体 list, getProductTop 响应体 list, jdsz_loaded)。fail-open。"""
     from playwright.async_api import async_playwright
 
     trend_bodies: list[dict] = []
+    product_bodies: list[dict] = []
     saw_neg402 = False
     jdsz_loaded = False
     async with async_playwright() as p:
@@ -100,6 +101,8 @@ async def _capture() -> tuple[list[dict], bool]:
                     saw_neg402 = True
                 if "getCoreTrend.ajax" in resp.url:
                     trend_bodies.append(j)
+                elif "productFlow/getProductTop.ajax" in resp.url:
+                    product_bodies.append(j)
 
             pg.on("response", lambda r: asyncio.create_task(on_resp(r)))
             try:
@@ -107,7 +110,7 @@ async def _capture() -> tuple[list[dict], bool]:
                 jdsz_loaded = "login" not in (pg.url or "")
             except Exception as exc:
                 log.warning("jd_ingest: jdsz 加载失败（疑 session 失效）: %s", str(exc)[:120])
-                return [], False
+                return [], [], False
             await pg.wait_for_timeout(8000)
             for kw in NAV_KW:
                 try:
@@ -122,7 +125,35 @@ async def _capture() -> tuple[list[dict], bool]:
             await browser.close()
     if saw_neg402 and not trend_bodies:
         log.warning("jd_ingest: szgateway 返 -402（session 失效或风控）——需重登")
-    return trend_bodies, jdsz_loaded
+    return trend_bodies, product_bodies, jdsz_loaded
+
+
+# 商品维度（切片4）：getProductTop 每商品 引入成交额 + 商品访客数 + rank + 名 + spu
+_PROD_SALES = "jdr_sch_traffic_intr_ord_ord_amt_jd_unified_attribution_trade_deal_snapshot_sz"
+_PROD_VISITOR = "jdr_sch_traffic_brow_sku_cnt_jd_unified_attribution_sz"
+
+
+def _products_from_top(body_json) -> list[dict]:
+    out = []
+    data = (body_json.get("body") or {}).get("data")
+    items = data.get("list") if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        return out
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        spu = it.get("spu_id") or it.get("spuId")
+        if not spu:
+            continue
+        out.append({
+            "spu_id": str(spu),
+            "product_name": it.get("name"),
+            "sales_amt": it.get(_PROD_SALES),
+            "visitor_cnt": it.get(_PROD_VISITOR),
+            "rank": it.get("rank"),
+            "pro_url": it.get("pro_url"),
+        })
+    return out
 
 
 async def run_jd_daily_ingest() -> dict:
@@ -135,7 +166,7 @@ async def run_jd_daily_ingest() -> dict:
         log.error("jd_ingest: 无 DATABASE_URL")
         return {"ok": False, "error": "no_db"}
     try:
-        trend_bodies, jdsz_loaded = await _capture()
+        trend_bodies, product_bodies, jdsz_loaded = await _capture()
     except Exception as exc:
         log.error("jd_ingest: capture 异常: %s", str(exc)[:200])
         return {"ok": False, "error": f"capture_error: {type(exc).__name__}"}
@@ -151,6 +182,15 @@ async def run_jd_daily_ingest() -> dict:
         log.warning("jd_ingest: 抓到页面但没抽到指标（疑 session 失效/页面结构变）")
         return {"ok": False, "error": "no_metrics", "trend_responses": len(trend_bodies)}
 
+    # 商品维度（切片4）：getProductTop → 当日商品榜，按 spu 去重
+    prod_map: dict[str, dict] = {}
+    for body in product_bodies:
+        for p in _products_from_top(body):
+            prod_map[p["spu_id"]] = p
+
+    def _num(v):
+        return float(v) if isinstance(v, (int, float)) else None
+
     conn = await asyncpg.connect(db)
     try:
         n = 0
@@ -162,9 +202,23 @@ async def run_jd_daily_ingest() -> dict:
                    DO UPDATE SET value=EXCLUDED.value, source_runbook=EXCLUDED.source_runbook, created_at=now()""",
                 SHOP, datetime.date.fromisoformat(dt), m, v, PLATFORM, SRC)
             n += 1
+        today = datetime.date.today()
+        pn = 0
+        for spu, p in prod_map.items():
+            await conn.execute(
+                """INSERT INTO mvp_jd_product_daily
+                       (date, spu_id, product_name, sales_amt, visitor_cnt, rank, pro_url, source_runbook)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                   ON CONFLICT (date, spu_id) DO UPDATE SET
+                       product_name=EXCLUDED.product_name, sales_amt=EXCLUDED.sales_amt,
+                       visitor_cnt=EXCLUDED.visitor_cnt, rank=EXCLUDED.rank,
+                       pro_url=EXCLUDED.pro_url, created_at=now()""",
+                today, spu, p["product_name"], _num(p["sales_amt"]), _num(p["visitor_cnt"]),
+                int(p["rank"]) if isinstance(p["rank"], (int, float)) else None, p["pro_url"], SRC)
+            pn += 1
     finally:
         await conn.close()
     days = sorted({dt for dt, _ in rows})
-    log.info("jd_ingest: upserted %d rows, %d days (%s~%s)", n, len(days), days[0], days[-1])
+    log.info("jd_ingest: upserted %d 店级 rows (%d days) + %d 商品 rows", n, len(days), pn)
     return {"ok": True, "rows": n, "days": len(days), "date_range": [days[0], days[-1]],
-            "metrics": sorted({m for _, m in rows})}
+            "metrics": sorted({m for _, m in rows}), "product_rows": pn}

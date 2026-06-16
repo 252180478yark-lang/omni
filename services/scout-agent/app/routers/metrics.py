@@ -39,8 +39,9 @@ async def jd_ingest_endpoint():
 
 @router.get("/metrics/series")
 async def metrics_series(
-    metric: str = Query(..., description="metric_name，如 gmv_paid / asset_5a_total"),
+    metric: str = Query(..., description="metric_name，如 gmv_paid / jd_gmv / asset_5a_total"),
     days: int = Query(30, ge=1, le=365),
+    platform: str | None = Query(None, description="平台；默认 douyin，jd_ 指标自动 jd"),
 ):
-    """读全店某 metric 近 N 天序列。"""
-    return await metric_ingest.fetch_series(metric, days)
+    """读全店某 metric 近 N 天序列。jd_ 指标自动读 platform='jd'。"""
+    return await metric_ingest.fetch_series(metric, days, platform)

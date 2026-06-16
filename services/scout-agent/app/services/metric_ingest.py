@@ -745,8 +745,10 @@ async def ingest_metrics(executor: LiveFetchExecutor,
     return result
 
 
-async def fetch_series(metric_name: str, days: int = 30) -> dict[str, Any]:
-    """读 mvp_daily_metric 某 metric 的近 N 天序列（给桌面/AI 取数）。"""
+async def fetch_series(metric_name: str, days: int = 30, platform: str | None = None) -> dict[str, Any]:
+    """读 mvp_daily_metric 某 metric 的近 N 天序列（给桌面/AI 取数）。
+    platform 省略时默认 douyin；jd_ 前缀指标自动切 platform='jd'（数据只在 jd 平台）。"""
+    plat = platform or ("jd" if metric_name.startswith("jd_") else PLATFORM)
     pool = await get_pool()
     async with pool.acquire() as conn:
         recs = await conn.fetch(
@@ -757,7 +759,7 @@ async def fetch_series(metric_name: str, days: int = 30) -> dict[str, Any]:
               AND date >= CURRENT_DATE - $4::int
             ORDER BY date ASC
             """,
-            SHOP_SENTINEL, metric_name, PLATFORM, days,
+            SHOP_SENTINEL, metric_name, plat, days,
         )
     points = [{"date": r["date"].isoformat(), "value": float(r["value"]) if r["value"] is not None else None}
               for r in recs]
