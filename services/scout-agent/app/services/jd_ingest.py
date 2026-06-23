@@ -16,6 +16,7 @@ import datetime
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 import asyncpg
@@ -24,7 +25,8 @@ log = logging.getLogger(__name__)
 
 SESSION = Path(os.environ.get("SCOUT_SESSIONS_DIR", "/app/sessions")) / "jd" / "storage_state.json"
 PLATFORM, SHOP, SRC = "jd", "_SHOP_", "jd_passive_capture"
-NAV_KW = ("经营概况", "实时", "交易", "成交", "流量", "商品", "数据")
+NAV_KW = ("经营概况", "实时", "交易", "成交", "流量", "流量来源", "商品", "数据", "推广")
+NAV_KW_JM = ("经营概况", "推广", "资金", "结算", "账单", "货款")  # 京麦工作台关键词
 
 # 指标码 → mvp_daily_metric.metric_name（口径=实测响应值 + 商智概况 DOM 中文名交叉确认；
 # jd_ 前缀=京东口径，gmv≠抖音 gmv_paid。访客/浏览口径：cnt=访客数(UV,小)，qtty=浏览量(PV,大)；
@@ -73,12 +75,195 @@ def _rows_from_trend(body_json) -> list[tuple[str, str, float]]:
     return out
 
 
-async def _capture() -> tuple[list[dict], list[dict], bool]:
-    """返回 (getCoreTrend 响应体 list, getProductTop 响应体 list, jdsz_loaded)。fail-open。"""
+# ────── 切片5 扩展：体验分/推广/货款/流量来源 解析（纯函数 fail-open，仿 _rows_from_trend）──────
+def _money(s):  # 剥 ¥ 逗号 → float；'-'/''/None → None
+    if s in (None, "-", ""):
+        return None
+    try:
+        return float(re.sub(r"[¥,\s]", "", str(s)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct(s):  # '0.00%' → 0-1；裸数字直接 float
+    if s in (None, "-", ""):
+        return None
+    s = str(s)
+    if "%" in s:
+        try:
+            return float(s.rstrip("%")) / 100
+        except ValueError:
+            return None
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _f(v):  # 容字符串/数字 → float
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+# A. 流量来源（getFlowSrcTop 当日快照 date×渠道）
+_FS_VISITOR = "jdr_sch_traffic_brow_sku_cnt_jd_unified_attribution_sz"
+_FS_GMV = "jdr_sch_traffic_intr_ord_ord_amt_jd_unified_attribution_trade_deal_snapshot_sz"
+_FS_FLOW_SHARE = _FS_VISITOR + "/jdr_sch_traffic_brow_sku__page_cnt_traffic_plat_item_di_sz_bsg##customProportion"
+_FS_GMV_SHARE = _FS_GMV + "/jdr_sch_trade_deal_ord_ord_amt_sz_trade_deal_snapshot##customProportion"
+
+
+def _flow_sources(body_json) -> list[dict]:
+    out = []
+    data = body_json.get("data")
+    if not isinstance(data, list):
+        data = (body_json.get("body") or {}).get("data")
+    if not isinstance(data, list):
+        return out
+    for it in data:
+        if not isinstance(it, dict):
+            continue
+        code = it.get("jdr_sch_traffic_cha_last_field_src_rmad_sz_2")
+        if not code:
+            continue
+        out.append({
+            "channel_code": str(code), "channel_name": it.get("name"),
+            "parent_name": it.get("parentName"), "rank": it.get("rank"),
+            "visitor_cnt": _f(it.get(_FS_VISITOR)),
+            "visitor_cnt_pre": _f(it.get(_FS_VISITOR + "##compareValue")),
+            "visitor_mom": _f(it.get(_FS_VISITOR + "##compare")),
+            "intro_gmv": _f(it.get(_FS_GMV)),
+            "intro_gmv_pre": _f(it.get(_FS_GMV + "##compareValue")),
+            "intro_gmv_mom": _f(it.get(_FS_GMV + "##compare")),
+            "flow_share": _f(it.get(_FS_FLOW_SHARE)),
+            "gmv_share": _f(it.get(_FS_GMV_SHARE)),
+        })
+    return out
+
+
+# B. 体验分（VaneStars data dict / getShopStars body.data[0]）
+_STARS_NUM = {
+    "customServiceConsultScore": "jd_exp_consult_score",
+    "afterServiceScore": "jd_exp_afterservice_score",
+    "logisticsLvyueScore": "jd_exp_logistics_score",
+    "userEvaluateScore": "jd_exp_evaluate_score",
+    "scoreRankRate": "jd_exp_score_rank_rate",
+    "customServiceConsultScoreRate": "jd_exp_consult_rank_rate",
+    "afterServiceScoreRate": "jd_exp_afterservice_rank_rate",
+    "logisticsLvyueScoreRate": "jd_exp_logistics_rank_rate",
+    "userEvaluateScoreRate": "jd_exp_evaluate_rank_rate",
+    "scoreRankRateGrade": "jd_exp_score_grade",
+    "validOrderNum": "jd_exp_valid_order_num",
+}
+
+
+def _shop_stars(body_json) -> list[tuple[str, float]]:
+    d = body_json.get("data")
+    if isinstance(d, dict):
+        rec = d
+    elif isinstance(d, list) and d:
+        rec = d[0]
+    else:
+        inner = (body_json.get("body") or {}).get("data")
+        rec = inner[0] if isinstance(inner, list) and inner else (inner if isinstance(inner, dict) else None)
+    if not isinstance(rec, dict):
+        return []
+    out = []
+    for k, m in _STARS_NUM.items():
+        v = _f(rec.get(k))
+        if v is not None:
+            out.append((m, v))
+    rg = _f(rec.get("isRedGreenPass"))
+    if rg is not None:
+        out.append(("jd_exp_redgreen_pass", rg))
+    return out
+
+
+# C. 推广（findPromoteData 今日快照 + getAdSummaryAndTrend 日序列）
+_PROMOTE_MAP = {
+    ("non_site_marketing", "cost"): ("jd_ad_cost", _money),
+    ("non_site_marketing", "totalOrderSum"): ("jd_ad_order_sum", _money),
+    ("non_site_marketing", "orderROI"): ("jd_ad_roi", _f),
+    ("non_site_marketing", "impressions"): ("jd_ad_impressions", _f),
+    ("non_site_marketing", "clicks"): ("jd_ad_clicks", _f),
+    ("non_site_marketing", "ctr"): ("jd_ad_ctr", _pct),
+    ("non_site_marketing", "cpm"): ("jd_ad_cpm", _money),
+    ("non_site_marketing", "cpc"): ("jd_ad_cpc", _money),
+}
+
+
+def _promote_data(body_json, today) -> list[tuple[str, str, float]]:
+    out = []
+    data = body_json.get("data") or {}
+    for mod in data.get("modules", []):
+        mc = mod.get("moduleCode")
+        for ind in mod.get("indicators", []):
+            key = (mc, ind.get("jmirCode"))
+            if key in _PROMOTE_MAP:
+                mname, parse = _PROMOTE_MAP[key]
+                v = parse(ind.get("value"))
+                if v is not None:
+                    out.append((today, mname, float(v)))
+    return out
+
+
+_AD_TREND_MAP = {"Cost": "jd_ad_cost", "TotalOrderSum": "jd_ad_order_sum", "OrderROI": "jd_ad_roi",
+                 "Impressions": "jd_ad_impressions", "Clicks": "jd_ad_clicks", "CTR": "jd_ad_ctr",
+                 "CPM": "jd_ad_cpm", "CPC": "jd_ad_cpc", "TotalOrderCnt": "jd_ad_order_cnt"}
+
+
+def _ad_trend(body_json) -> list[tuple[str, str, float]]:
+    out = []
+    b = body_json.get("body") or body_json
+    for row in ((b.get("data") or {}).get("wholeSiteTrend") or []):
+        dt = row.get("dt")
+        if not dt:
+            continue
+        for k, mname in _AD_TREND_MAP.items():
+            v = row.get(k)
+            if isinstance(v, (int, float)):
+                out.append((dt[:10], mname, float(v)))
+    return out
+
+
+# D. 货款结算（dailyBill content[]）
+def _daily_bill(body_json) -> list[dict]:
+    data = body_json.get("data") or {}
+    out = []
+
+    def _d(s):
+        return datetime.date(int(s[:4]), int(s[4:6]), int(s[6:8])) if s and len(s) == 8 else None
+
+    for c in (data.get("content") or []):
+        sd = c.get("setDate")
+        if not sd:
+            continue
+        out.append({"set_date": _d(sd), "acc_date": _d(c.get("accDate")),
+                    "debit": c.get("debitAmt"), "credit": c.get("creditAmt"), "settle": c.get("actualSettle"),
+                    "status": c.get("setStatus"), "bill_id": c.get("id"), "url": c.get("detailFilePath")})
+    return out
+
+
+def _empty_cap() -> dict:
+    return {"trend": [], "product": [], "flow_src": [], "stars": [], "promote": [],
+            "ad_trend": [], "bill": [], "summary": [], "jdsz_loaded": False}
+
+
+async def _capture() -> dict:
+    """返回 dict（trend/product/flow_src/stars/promote/ad_trend/bill/summary 各 list + jdsz_loaded）。fail-open。"""
     from playwright.async_api import async_playwright
 
     trend_bodies: list[dict] = []
     product_bodies: list[dict] = []
+    flow_src_bodies: list[dict] = []
+    stars_bodies: list[dict] = []
+    promote_bodies: list[dict] = []
+    ad_trend_bodies: list[dict] = []
+    bill_bodies: list[dict] = []
+    summary_bodies: list[dict] = []
     saw_neg402 = False
     jdsz_loaded = False
     async with async_playwright() as p:
@@ -90,19 +275,35 @@ async def _capture() -> tuple[list[dict], list[dict], bool]:
 
             async def on_resp(resp):
                 nonlocal saw_neg402
-                if "szgateway.jd.com/api/lowcode/" not in resp.url:
+                url = resp.url
+                if "szgateway.jd.com/api/lowcode/" not in url and "sff.jd.com/api" not in url:
                     return
                 try:
-                    body = await resp.text()
-                    j = json.loads(body)
+                    j = json.loads(await resp.text())
                 except Exception:
                     return
                 if (j.get("header") or {}).get("code") == -402:
                     saw_neg402 = True
-                if "getCoreTrend.ajax" in resp.url:
+                # 商智 szgateway lowcode
+                if "getCoreTrend.ajax" in url:
                     trend_bodies.append(j)
-                elif "productFlow/getProductTop.ajax" in resp.url:
+                elif "productFlow/getProductTop.ajax" in url:
                     product_bodies.append(j)
+                elif "productFlow/getFlowSrcTop.ajax" in url:
+                    flow_src_bodies.append(j)
+                elif "indexSummary/getShopStars.ajax" in url:
+                    stars_bodies.append(j)
+                elif "tradeSummary/summary/getSummary.ajax" in url or "flowSummary/getCoreSummary.ajax" in url:
+                    summary_bodies.append(j)
+                elif "flowSummary/ad/getAdSummaryAndTrend.ajax" in url:
+                    ad_trend_bodies.append(j)
+                # 京麦 sff dsm（推广/体验分/货款）
+                elif "VaneStarsFacade" in url:
+                    stars_bodies.append(j)
+                elif "operationData.findPromoteData" in url:
+                    promote_bodies.append(j)
+                elif "dailyBillDsmProvider.queryDailyBillByPage" in url:
+                    bill_bodies.append(j)
 
             pg.on("response", lambda r: asyncio.create_task(on_resp(r)))
             try:
@@ -110,7 +311,7 @@ async def _capture() -> tuple[list[dict], list[dict], bool]:
                 jdsz_loaded = "login" not in (pg.url or "")
             except Exception as exc:
                 log.warning("jd_ingest: jdsz 加载失败（疑 session 失效）: %s", str(exc)[:120])
-                return [], [], False
+                return _empty_cap()
             await pg.wait_for_timeout(8000)
             for kw in NAV_KW:
                 try:
@@ -121,11 +322,30 @@ async def _capture() -> tuple[list[dict], list[dict], bool]:
                 except Exception:
                     continue
             await pg.wait_for_timeout(3000)
+            # 京麦工作台 + 财务账单（推广/体验分/货款 走 sff 网关，商智抓不到）
+            try:
+                await pg.goto("https://shop.jd.com/jdm/home", wait_until="domcontentloaded", timeout=45000)
+                await pg.wait_for_timeout(7000)
+                for kw in NAV_KW_JM:
+                    try:
+                        loc = pg.get_by_text(kw, exact=False).first
+                        if await loc.count():
+                            await loc.click(timeout=3000)
+                            await pg.wait_for_timeout(3500)
+                    except Exception:
+                        continue
+                await pg.goto("https://shop.jd.com/jdm/fin/billManage/DailyBill",
+                              wait_until="domcontentloaded", timeout=45000)
+                await pg.wait_for_timeout(7000)
+            except Exception as exc:
+                log.warning("jd_ingest: 京麦页加载失败(推广/货款可能缺): %s", str(exc)[:120])
         finally:
             await browser.close()
     if saw_neg402 and not trend_bodies:
         log.warning("jd_ingest: szgateway 返 -402（session 失效或风控）——需重登")
-    return trend_bodies, product_bodies, jdsz_loaded
+    return {"trend": trend_bodies, "product": product_bodies, "flow_src": flow_src_bodies,
+            "stars": stars_bodies, "promote": promote_bodies, "ad_trend": ad_trend_bodies,
+            "bill": bill_bodies, "summary": summary_bodies, "jdsz_loaded": jdsz_loaded}
 
 
 # 商品维度（切片4）：getProductTop 每商品 引入成交额 + 商品访客数 + rank + 名 + spu
@@ -166,11 +386,14 @@ async def run_jd_daily_ingest() -> dict:
         log.error("jd_ingest: 无 DATABASE_URL")
         return {"ok": False, "error": "no_db"}
     try:
-        trend_bodies, product_bodies, jdsz_loaded = await _capture()
+        cap = await _capture()
     except Exception as exc:
         log.error("jd_ingest: capture 异常: %s", str(exc)[:200])
         return {"ok": False, "error": f"capture_error: {type(exc).__name__}"}
 
+    trend_bodies = cap["trend"]
+    product_bodies = cap["product"]
+    jdsz_loaded = cap["jdsz_loaded"]
     if not jdsz_loaded:
         return {"ok": False, "error": "session_expired", "hint": "重跑 _jd_login_capture_host.py 扫码"}
 
@@ -216,9 +439,103 @@ async def run_jd_daily_ingest() -> dict:
                 today, spu, p["product_name"], _num(p["sales_amt"]), _num(p["visitor_cnt"]),
                 int(p["rank"]) if isinstance(p["rank"], (int, float)) else None, p["pro_url"], SRC)
             pn += 1
+
+        # ── 切片5：流量来源（date×渠道，今日快照）──
+        fs_map = {}
+        for body in cap["flow_src"]:
+            for r in _flow_sources(body):
+                fs_map[r["channel_code"]] = r
+        fs_n = 0
+        for code, r in fs_map.items():
+            await conn.execute(
+                """INSERT INTO mvp_jd_flow_source (date,channel_code,channel_name,parent_name,rank,
+                     visitor_cnt,visitor_cnt_pre,visitor_mom,intro_gmv,intro_gmv_pre,intro_gmv_mom,
+                     flow_share,gmv_share,source_runbook)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+                   ON CONFLICT (date,channel_code) DO UPDATE SET
+                     channel_name=EXCLUDED.channel_name, parent_name=EXCLUDED.parent_name,
+                     rank=EXCLUDED.rank, visitor_cnt=EXCLUDED.visitor_cnt,
+                     visitor_cnt_pre=EXCLUDED.visitor_cnt_pre, visitor_mom=EXCLUDED.visitor_mom,
+                     intro_gmv=EXCLUDED.intro_gmv, intro_gmv_pre=EXCLUDED.intro_gmv_pre,
+                     intro_gmv_mom=EXCLUDED.intro_gmv_mom, flow_share=EXCLUDED.flow_share,
+                     gmv_share=EXCLUDED.gmv_share, created_at=now()""",
+                today, code, r["channel_name"], r["parent_name"],
+                int(r["rank"]) if isinstance(r["rank"], (int, float)) else None,
+                r["visitor_cnt"], r["visitor_cnt_pre"], r["visitor_mom"],
+                r["intro_gmv"], r["intro_gmv_pre"], r["intro_gmv_mom"],
+                r["flow_share"], r["gmv_share"], SRC)
+            fs_n += 1
+
+        # ── 体验分（_SHOP_ 当天，VaneStars/getShopStars，评分类 snap）──
+        exp_rows = []
+        for body in cap["stars"]:
+            rs = _shop_stars(body)
+            if rs:
+                exp_rows = rs
+        exp_n = 0
+        for m, v in exp_rows:
+            await conn.execute(
+                """INSERT INTO mvp_daily_metric (sku_id,date,metric_name,value,platform,source_runbook)
+                   VALUES ($1,$2,$3,$4,$5,$6)
+                   ON CONFLICT (sku_id,date,metric_name,platform)
+                   DO UPDATE SET value=EXCLUDED.value, source_runbook=EXCLUDED.source_runbook, created_at=now()""",
+                SHOP, today, m, v, PLATFORM, SRC)
+            exp_n += 1
+
+        # ── 推广（ad_trend 日序列优先，findPromoteData 快照补今日；停投显式写0=确认未投）──
+        ad_map = {}
+        for body in cap["ad_trend"]:
+            for dt, m, v in _ad_trend(body):
+                ad_map[(dt, m)] = v
+        for body in cap["promote"]:
+            for dt, m, v in _promote_data(body, today.isoformat()):
+                ad_map.setdefault((dt, m), v)
+        ad_n = 0
+        for (dt, m), v in ad_map.items():
+            await conn.execute(
+                """INSERT INTO mvp_daily_metric (sku_id,date,metric_name,value,platform,source_runbook)
+                   VALUES ($1,$2,$3,$4,$5,$6)
+                   ON CONFLICT (sku_id,date,metric_name,platform)
+                   DO UPDATE SET value=EXCLUDED.value, source_runbook=EXCLUDED.source_runbook, created_at=now()""",
+                SHOP, datetime.date.fromisoformat(dt), m, v, PLATFORM, SRC)
+            ad_n += 1
+
+        # ── 货款结算（宽表 by set_date + 镜像3指标进长表，源 jd_bill_capture）──
+        bill_seen = {}
+        for body in cap["bill"]:
+            for r in _daily_bill(body):
+                if r["set_date"]:
+                    bill_seen[r["set_date"]] = r
+        bill_n = 0
+        for sd, r in bill_seen.items():
+            await conn.execute(
+                """INSERT INTO mvp_jd_daily_bill (set_date,acc_date,debit_amt,credit_amt,actual_settle,
+                     set_status,bill_id,detail_file_url,source_runbook)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+                   ON CONFLICT (set_date) DO UPDATE SET
+                     acc_date=EXCLUDED.acc_date, debit_amt=EXCLUDED.debit_amt,
+                     credit_amt=EXCLUDED.credit_amt, actual_settle=EXCLUDED.actual_settle,
+                     set_status=EXCLUDED.set_status, bill_id=EXCLUDED.bill_id,
+                     detail_file_url=EXCLUDED.detail_file_url, created_at=now()""",
+                sd, r["acc_date"], _num(r["debit"]), _num(r["credit"]), _num(r["settle"]),
+                int(r["status"]) if isinstance(r["status"], (int, float)) else None,
+                int(r["bill_id"]) if isinstance(r["bill_id"], (int, float)) else None, r["url"], "jd_bill_capture")
+            for mn, val in (("jd_bill_debit", r["debit"]), ("jd_bill_credit", r["credit"]),
+                            ("jd_bill_settle", r["settle"])):
+                bv = _num(val)
+                if bv is None:
+                    continue
+                await conn.execute(
+                    """INSERT INTO mvp_daily_metric (sku_id,date,metric_name,value,platform,source_runbook)
+                       VALUES ($1,$2,$3,$4,$5,$6)
+                       ON CONFLICT (sku_id,date,metric_name,platform)
+                       DO UPDATE SET value=EXCLUDED.value, created_at=now()""",
+                    SHOP, sd, mn, bv, PLATFORM, "jd_bill_capture")
+            bill_n += 1
     finally:
         await conn.close()
     days = sorted({dt for dt, _ in rows})
     log.info("jd_ingest: upserted %d 店级 rows (%d days) + %d 商品 rows", n, len(days), pn)
     return {"ok": True, "rows": n, "days": len(days), "date_range": [days[0], days[-1]],
-            "metrics": sorted({m for _, m in rows}), "product_rows": pn}
+            "metrics": sorted({m for _, m in rows}), "product_rows": pn,
+            "flow_rows": fs_n, "exp_rows": exp_n, "ad_rows": ad_n, "bill_rows": bill_n}
