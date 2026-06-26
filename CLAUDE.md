@@ -5,7 +5,7 @@
 
 ## omni MCP server
 
-omni 暴露 **105 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 105 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
+omni 暴露 **106 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 106 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
 
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
@@ -30,7 +30,7 @@ omni 暴露 **105 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py`
 - 字典查询：`list_product_prices`（工厂出厂价）, `list_channel_fees`（渠道扣点）
 - 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
 - 投后回传闭环：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘；可带 `experiment_arm_id` 把 asset 挂 A/B 实验臂）, `record_ad_metrics_batch`（巨量素材报表 CSV 整轮回灌：按臂码 R{轮}{臂} 匹配到实验臂逐行写投后数据，dry_run 预览；把"手抄N次"压成"导出+拖文件"——内容版本迭代闭环命门）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
-- 编导 brief A/B 单变量迭代闭环（migration 052/053，见下专节）：`experiment_create`, `experiment_register_round`, `experiment_attach_arm`（采纳即挂臂：老板采纳一条 brief/AI 脚本→单条追加成某轮某臂+派生臂码+脚本 draft→adopted，配合采纳动作，区别于 register_round 一次登记整轮），`experiment_status`, `experiment_lock_winner`, `experiment_next_version_seed`（一键出下一版：组上版获胜 baseline+建议扫的下个变量预填 generate_director_brief/creative_pack，半自动不写库）, `experiment_changelog`（版本变更日志：逐轮"改了哪变量/取值 X→Y/赢面"演化树）, `experiment_list`, `experiment_get`（确定性状态机）, `experiment_distill`（市场数据→prompt_rule 沉淀桥）, `experiment_prescreen_round`（AI 链投前视觉快环 judge）
+- 编导 brief A/B 单变量迭代闭环（migration 052/053，见下专节）：`experiment_create`, `experiment_register_round`, `experiment_attach_arm`（采纳即挂臂：老板采纳一条 brief/AI 脚本→单条追加成某轮某臂+派生臂码+脚本 draft→adopted，配合采纳动作，区别于 register_round 一次登记整轮），`experiment_adopt_script`（**采纳即自动 A/B**：采纳一条脚本→从脚本血缘自动找/建 SKU×intent×track 实验+挂臂一步成，比 create+attach_arm 少一步——老板"采纳这条起个 A/B 测开头钩子"），`experiment_status`, `experiment_lock_winner`, `experiment_next_version_seed`（一键出下一版：组上版获胜 baseline+建议扫的下个变量预填 generate_director_brief/creative_pack，半自动不写库）, `experiment_changelog`（版本变更日志：逐轮"改了哪变量/取值 X→Y/赢面"演化树）, `experiment_list`, `experiment_get`（确定性状态机）, `experiment_distill`（市场数据→prompt_rule 沉淀桥）, `experiment_prescreen_round`（AI 链投前视觉快环 judge）
 - 内容↔人群向量匹配 + 北极星闭环（migration 066，见下专节）：`embed_content_and_audience`（内容三路文字/画面/音乐 + 人群算法信号 文本→1536维向量落库，复用 embed_texts）, `predict_audience_match`（投前各臂内容向量 vs 人群向量余弦相似度→预测匹配分写臂级，**排序少烧钱、不判 winner**）, `calibrate_match_predictor`（投后闭环：(预测分,北极星)配对→相关性+四象限偏差→建议三路权重，确定性记账不训练）
 - 三平台实时取数底座（经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
 - 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 抽取器落库（metric_registry 注册 95 指标；库内实有 159 个 distinct metric_name，含维表后超注册数）+ 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
@@ -271,6 +271,7 @@ step 3.5/3.6 内容 brief 链的"闭环层"：把【编导 brief → N 条视频
 | 老板说 | Claude 应做 |
 |---|---|
 | "给 SKU-X 这人群建个种草/收割 A/B 实验" | `experiment_create(sku_id, intent, portrait_id?)`（北极星按 intent 自动选） |
+| "**采纳这条脚本，起个 A/B 测开头钩子**" / "认可这条，挂成实验臂" | `experiment_adopt_script(script_id, swept_variable='opening_hook_3s', variable_value='这条的取值')`——**采纳即自动 A/B**：自动找/建实验+挂臂+脚本 draft→adopted 一步成；单臂不成对比，再采纳一条同轮换取值的凑成 A/B |
 | "这轮测开头钩子，给 N 种取值" | 各调 `generate_director_brief(portrait_id, intent, experiment_context={baseline, sweep:{variable, value}})` 出臂 → `experiment_register_round(experiment_id, swept_variable, arms=[{variable_value, script_id}])` |
 | "投后 N 条数据回传" | `record_ad_metrics(asset_id, experiment_arm_id=该臂id, metrics={completion_rate/cvr...})`（每条视频带自己臂的 id） |
 | "哪个臂赢了 / 下一步测啥" | `experiment_status(experiment_id)`（排名+can_lock+observations/hypotheses 分层+建议下变量+口径提醒） |
@@ -430,7 +431,7 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 
 ## 调试常用命令
 
-- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 105 ok` 的 tool 列表
+- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 106 ok` 的 tool 列表
 - **审计表**：`docker exec omni-postgres psql -U omni_user -d omni_vibe_db -c "SELECT tool_name, status, duration_ms FROM mcp.tool_calls ORDER BY created_at DESC LIMIT 20"`
 - **ai-provider-hub 状态**：`curl http://localhost:8001/api/v1/ai/providers`
 - **Human Gate 批/驳**（W3a）：

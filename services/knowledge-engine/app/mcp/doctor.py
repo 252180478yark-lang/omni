@@ -207,6 +207,8 @@ def _wanted_tools() -> set[str]:
             # 2026-06-26 内容版本迭代闭环 块0+块A（migration 064）：
             # 采纳即挂臂（单条追加）+ 巨量素材报表 CSV 整轮回灌（按臂码匹配 + 曝光量旁证）
             "experiment_attach_arm", "record_ad_metrics_batch",
+            # 2026-06-26 采纳即自动 A/B（块A 焊触发器）：采纳一条脚本→自动找/建实验+挂臂一步成
+            "experiment_adopt_script",
             # 2026-06-26 内容版本迭代闭环 块B+块C（migration 065）：
             # 一键出下一版（组获胜 baseline + 建议变量预填生成）+ 版本变更日志（逐轮 X→Y 演化树）
             "experiment_next_version_seed", "experiment_changelog",

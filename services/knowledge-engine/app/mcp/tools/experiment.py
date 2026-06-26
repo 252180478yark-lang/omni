@@ -158,6 +158,50 @@ async def experiment_attach_arm(
 
 
 @tool_with_audit(mcp, require_approval=False)
+async def experiment_adopt_script(
+    script_id: str,
+    variable_value: str,
+    swept_variable: str | None = None,
+    round_no: int | None = None,
+    experiment_id: str | None = None,
+    intent: str | None = None,
+    north_star_metric: str | None = None,
+    title: str | None = None,
+) -> dict:
+    """采纳即自动 A/B：采纳一条脚本(brief/AI) → 自动找到或新建它的实验 + 挂成某轮某臂(draft→adopted)。
+
+    一步打通老板"认可这条脚本 → 起一个有记录的 A/B 测试"：实验从脚本血缘自动推（sku_id/intent/
+    人群都在脚本行里），同 SKU×intent×生产链已有 running 实验就复用、没有就自动 experiment_create。
+    比手动 experiment_create + experiment_attach_arm 两步少一步——老板话术"采纳这条起个 A/B 测开头钩子"。
+
+    单变量纪律：采纳时声明本轮测【哪个变量】(swept_variable)+本条的【取值】(variable_value)，
+    这样 experiment_changelog 才一眼看出是单变量演化。**单臂不构成对比**——再采纳一条同轮、
+    换个取值的脚本才凑成真 A/B（status/changelog 会提示）。
+
+    Args:
+        script_id: 采纳的 pipeline.scripts.id（generate_creative_pack 或 generate_director_brief 出的）
+        variable_value: 本臂的变量取值（如"悬念式钩子"）
+        swept_variable: 新实验/新轮必填——本轮测的变量 key（opening_hook_3s/selling_point_set/
+            idea_seed/scene/emotion/...）；挂到已有 open 轮可不填
+        round_no: 不填=挂最新 open 轮或新建第1轮；显式给指定轮
+        experiment_id: 不填=自动找/建（同 SKU×intent×track 的 running 实验）；显式给挂到指定实验
+        intent: 脚本没带 intent 时必传（planting/harvest/soft_ad/hard_ad）——定北极星
+        north_star_metric: 自动建实验时可自定义北极星（一般不填，按 intent 自动选）
+        title: 自动建实验时的实验名（可选）
+
+    Returns:
+        {ok, experiment_id, created_experiment, arm:{arm_id, arm_label, round_no, swept_variable,
+         swept_variable_label, variable_value, arm_code}, script_adopted, intent, track,
+         adopt_hint, warnings}
+    """
+    return await lab.adopt_script_as_arm(
+        script_id=script_id, variable_value=variable_value, swept_variable=swept_variable,
+        round_no=round_no, experiment_id=experiment_id, intent=intent,
+        north_star_metric=north_star_metric, title=title,
+    )
+
+
+@tool_with_audit(mcp, require_approval=False)
 async def experiment_status(experiment_id: str, round_no: int | None = None) -> dict:
     """看某轮各臂的投后排名 + 当前基线 + 建议下个变量。确定性、R-14 分层、R-15 待验证。
 

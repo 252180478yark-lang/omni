@@ -16,6 +16,7 @@ from app.services import experiment_lab as lab
 from app.services import pipeline_lineage as pl
 
 SKU = "SKU-TEST-VILOOP"
+SKU_ADOPT = "SKU-TEST-ADOPT"
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -24,9 +25,10 @@ async def setup_pool():
     yield
     pool = get_pool()
     # assets.experiment_id/script_id 是 ON DELETE SET NULL，按 sku_id 直接清；experiment 级联 rounds/arms
-    await pool.execute("DELETE FROM pipeline.assets WHERE sku_id = $1", SKU)
-    await pool.execute("DELETE FROM pipeline.experiments WHERE sku_id = $1", SKU)
-    await pool.execute("DELETE FROM pipeline.scripts WHERE sku_id = $1", SKU)
+    for s in (SKU, SKU_ADOPT):
+        await pool.execute("DELETE FROM pipeline.assets WHERE sku_id = $1", s)
+        await pool.execute("DELETE FROM pipeline.experiments WHERE sku_id = $1", s)
+        await pool.execute("DELETE FROM pipeline.scripts WHERE sku_id = $1", s)
     await close_pool()
 
 
@@ -169,3 +171,65 @@ async def test_next_version_seed_and_changelog(exp_with_two_scripts):
     assert e1["forced"] is True
     assert "悬念式钩子" in cl["markdown"]
     assert cl["current_baseline"].get("opening_hook_3s") == "悬念式钩子"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 块A 焊触发器：experiment_adopt_script（采纳即自动 A/B：找/建实验 + 挂臂一步成）
+# ══════════════════════════════════════════════════════════════════════════════
+async def _mk_script(*, kind: str, intent: str | None, with_audience: bool = True) -> str:
+    """造一条 draft 脚本，返回 script_id。with_audience=True 挂个 audience_record_id。"""
+    pool = get_pool()
+    return await pool.fetchval(
+        "INSERT INTO pipeline.scripts (sku_id, script_md, status, kind, intent, audience_record_id) "
+        "VALUES ($1,'测试脚本','draft',$2,$3,$4::uuid) RETURNING id::text",
+        SKU_ADOPT, kind, intent, (str(uuid.uuid4()) if with_audience else None))
+
+
+@pytest.mark.asyncio
+async def test_adopt_script_autocreates_then_reuses():
+    # 第 1 条 creative_pack（kind=video_planting、脚本无 intent → 从 kind 反推 planting，track=ai_video）
+    s1 = await _mk_script(kind="video_planting", intent=None)
+    r1 = await lab.adopt_script_as_arm(
+        script_id=s1, variable_value="悬念式钩子", swept_variable="opening_hook_3s")
+    assert r1["ok"], r1
+    assert r1["created_experiment"] is True          # 没现成实验 → 自动建
+    assert r1["intent"] == "planting" and r1["track"] == "ai_video"
+    assert r1["arm"]["arm_code"] == "R1A" and r1["arm"]["round_no"] == 1
+    assert r1["script_adopted"] is True
+    exp_id = r1["experiment_id"]
+    pool = get_pool()
+    assert await pool.fetchval(
+        "SELECT north_star_metric FROM pipeline.experiments WHERE id=$1::uuid", exp_id) == "completion_rate"
+    assert await pool.fetchval(
+        "SELECT status FROM pipeline.scripts WHERE id=$1::uuid", s1) == "adopted"
+
+    # 第 2 条同 SKU×planting×ai_video → 复用同实验、追加到 open 的 round1 → 臂 B（不必再给 swept_variable）
+    s2 = await _mk_script(kind="video_planting", intent="planting")
+    r2 = await lab.adopt_script_as_arm(script_id=s2, variable_value="痛点式钩子")
+    assert r2["ok"], r2
+    assert r2["created_experiment"] is False
+    assert r2["experiment_id"] == exp_id
+    assert r2["arm"]["arm_code"] == "R1B"
+
+
+@pytest.mark.asyncio
+async def test_adopt_script_guards():
+    # missing_swept_variable：新 intent(soft_ad) 没现成实验、又不给 swept → 提前拦（不建空实验）
+    s = await _mk_script(kind="video_soft_ad", intent="soft_ad")
+    g1 = await lab.adopt_script_as_arm(script_id=s, variable_value="x")
+    assert not g1["ok"] and g1["error"] == "missing_swept_variable"
+    pool = get_pool()
+    assert await pool.fetchval(
+        "SELECT count(*) FROM pipeline.experiments WHERE sku_id=$1 AND intent='soft_ad'", SKU_ADOPT) == 0
+
+    # script_missing_audience：新 intent(harvest) 要自动建实验、但脚本没挂人群 → 拦
+    s2 = await _mk_script(kind="video_harvest", intent=None, with_audience=False)
+    g2 = await lab.adopt_script_as_arm(
+        script_id=s2, variable_value="限时", swept_variable="opening_hook_3s")
+    assert not g2["ok"] and g2["error"] == "script_missing_audience"
+
+    # missing_intent：kind 不在反推表(graphic_harvest) 且脚本无 intent、又不显式给 → 拦
+    s3 = await _mk_script(kind="graphic_harvest", intent=None)
+    g3 = await lab.adopt_script_as_arm(
+        script_id=s3, variable_value="y", swept_variable="opening_hook_3s")
+    assert not g3["ok"] and g3["error"] == "missing_intent"

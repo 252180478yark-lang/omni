@@ -505,6 +505,133 @@ async def attach_arm(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# adopt script as arm（采纳即自动 A/B：采纳一条脚本→找/建实验+挂臂，一步成）
+# ══════════════════════════════════════════════════════════════════════════════
+# kind → intent 反推（脚本没显式 intent 时兜底）；kind → 生产链 track
+_KIND_TO_INTENT = {
+    "video_planting": "planting", "video_harvest": "harvest", "video_soft_ad": "soft_ad",
+}
+
+
+def _track_for_kind(kind: str | None) -> str:
+    """脚本生产链：director_brief=真人编导(human_brief)；creative_pack/其它=AI 出片链(ai_video)。"""
+    return "human_brief" if kind == "director_brief" else "ai_video"
+
+
+async def adopt_script_as_arm(
+    *,
+    script_id: str,
+    variable_value: str,
+    swept_variable: str | None = None,
+    round_no: int | None = None,
+    experiment_id: str | None = None,
+    intent: str | None = None,
+    north_star_metric: str | None = None,
+    title: str | None = None,
+) -> dict:
+    """采纳即自动 A/B：采纳一条脚本时自动找到（或新建）它的 SKU×intent×track 实验，再把这条
+    脚本挂成某轮某臂（draft→adopted）。一步打通"认可脚本 → 起有记录的 A/B 测试"。
+
+    实验从脚本血缘自动推（sku_id/intent/portrait_id/audience_record_id 都在 scripts 行里）：
+    同 SKU×intent×track 已有 running 实验 → 复用；没有 → 自动 create_experiment。然后 attach_arm。
+    新实验/新轮要 swept_variable（本轮测哪个变量）。单臂不构成对比——采纳第 2 条同轮换取值的脚本
+    才凑成真 A/B（status/changelog 会提示）。
+    """
+    pool = get_pool()
+    srow = await pool.fetchrow(
+        "SELECT sku_id, kind, intent, status, "
+        "portrait_id::text AS portrait_id, audience_record_id::text AS audience_record_id "
+        "FROM pipeline.scripts WHERE id=$1::uuid", script_id,
+    )
+    if not srow:
+        return {"ok": False, "error": "script_not_found", "script_id": script_id}
+
+    value = (variable_value or "").strip()
+    if not value:
+        return {"ok": False, "error": "missing_variable_value",
+                "hint": "本臂的变量取值（如『悬念式钩子』）——采纳挂臂要标这条脚本在本轮变量上取了啥值"}
+
+    sku_id = srow["sku_id"]
+    kind = srow["kind"]
+    track = _track_for_kind(kind)
+    eff_intent = intent or srow["intent"] or _KIND_TO_INTENT.get(kind or "")
+    if not eff_intent:
+        return {"ok": False, "error": "missing_intent",
+                "hint": f"脚本没带 intent（kind={kind}）且没法从 kind 反推——传 intent"
+                        f"（planting/harvest/soft_ad/hard_ad）说明投放意图，北极星才能定"}
+    if eff_intent not in INTENT_NORTH_STAR:
+        return {"ok": False, "error": "bad_intent",
+                "hint": f"intent 只能是 {list(INTENT_NORTH_STAR)} 之一；给的/推的：{eff_intent}"}
+
+    # ── 定位实验：显式 experiment_id 优先；否则找同 SKU×intent×track 的 running 实验 ──
+    if experiment_id:
+        erow = await pool.fetchrow(
+            "SELECT id::text AS id, sku_id FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)
+        if not erow:
+            return {"ok": False, "error": "experiment_not_found", "experiment_id": experiment_id}
+        if erow["sku_id"] != sku_id:
+            return {"ok": False, "error": "experiment_sku_mismatch",
+                    "hint": f"实验属于 {erow['sku_id']}，脚本是 {sku_id}"}
+        eid = experiment_id
+    else:
+        erow = await pool.fetchrow(
+            "SELECT id::text AS id FROM pipeline.experiments "
+            "WHERE sku_id=$1 AND intent=$2 AND track=$3 AND status='running' "
+            "ORDER BY created_at DESC LIMIT 1", sku_id, eff_intent, track)
+        eid = erow["id"] if erow else None
+
+    # ── 提前拦：要新开一轮却没 swept_variable（建空实验前就拦，避免留垃圾实验）──
+    has_open_round = bool(await pool.fetchval(
+        "SELECT 1 FROM pipeline.experiment_rounds WHERE experiment_id=$1::uuid AND status='open' LIMIT 1",
+        eid)) if eid else False
+    will_open_new_round = (eid is None) or (round_no is None and not has_open_round)
+    if will_open_new_round and not (swept_variable or "").strip():
+        return {"ok": False, "error": "missing_swept_variable",
+                "hint": "这是该实验/该轮第一条臂，要新开一轮——传 swept_variable（本轮测哪个变量，"
+                        "如 opening_hook_3s/selling_point_set/idea_seed），这样 changelog 才一眼看出是单变量测试"}
+
+    # ── 没现成实验 → 从脚本血缘自动建 ──
+    created_experiment = False
+    north_star_meta = None
+    if eid is None:
+        if not (srow["portrait_id"] or srow["audience_record_id"]):
+            return {"ok": False, "error": "script_missing_audience",
+                    "hint": "脚本没挂人群（portrait_id/audience_record_id 都空），建不了实验——"
+                            "这条脚本不是从 SKU→人群链出来的？补人群再采纳"}
+        cr = await create_experiment(
+            sku_id=sku_id, intent=eff_intent, portrait_id=srow["portrait_id"],
+            audience_record_id=srow["audience_record_id"], north_star_metric=north_star_metric,
+            title=title or f"{sku_id} {INTENT_LABELS.get(eff_intent, eff_intent)}（采纳自动建）", track=track)
+        if not cr.get("ok"):
+            return cr
+        eid = cr["experiment"]["id"]
+        created_experiment = True
+        north_star_meta = cr.get("north_star")
+
+    # ── 挂臂（采纳：draft→adopted）──
+    res = await attach_arm(
+        experiment_id=eid, script_id=script_id, variable_value=value,
+        round_no=round_no, swept_variable=swept_variable, adopt_script=True)
+    res["experiment_id"] = eid
+    res["created_experiment"] = created_experiment
+    if not res.get("ok"):
+        return res  # 自动建的空实验无害，不回滚，带 experiment_id 回去方便排查
+
+    res["intent"] = eff_intent
+    res["track"] = track
+    if north_star_meta:
+        res["north_star"] = north_star_meta
+    arm = res["arm"]
+    res["adopt_hint"] = (
+        f"已采纳并挂成{'【新建实验】' if created_experiment else ''}第{arm['round_no']}轮·臂{arm['arm_label']}"
+        f"（测{arm['swept_variable_label']}=「{value}」）。单臂还不是对比——再采纳一条同轮、"
+        f"{arm['swept_variable_label']}换个取值的脚本凑成 A/B；投放把臂码「{arm['arm_code']}」写进巨量视频名，"
+        f"投后 record_ad_metrics_batch 整轮回灌。看演化：experiment_changelog。"
+    )
+    return res
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # status（确定性排名 + R-14 分层 + R-15 待验证 + 建议下变量）
 # ══════════════════════════════════════════════════════════════════════════════
 async def experiment_status(experiment_id: str, round_no: int | None = None) -> dict:
