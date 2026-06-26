@@ -381,6 +381,155 @@ async def save_audience_run(
 
 
 # ════════════════════════════════════════════════════════════════
+# step 3 分批落库（generate_audience_match batch 模式：建空 run → 逐批 append → 收尾 update）
+# ════════════════════════════════════════════════════════════════
+
+async def create_audience_run(
+    *,
+    matrix_run_id: str,
+    sku_id: str,
+    recall_meta: dict | None = None,
+    extra_context: str | None = None,
+    kb_recall_override: str | None = None,
+    model_provider: str | None = None,
+    model: str | None = None,
+    final_prompt: str | None = None,
+    cost_estimate: str | None = None,
+    parent_run_id: str | None = None,
+) -> str | None:
+    """建一行空 audience_run（record_count=0、audience_md=''），供分批模式逐批 append。
+
+    版本号逻辑同 save_audience_run。失败返 None（调用方退化为内存累积 + 末尾一次性 save）。
+    """
+    pool = get_pool()
+    next_version = 1
+    if parent_run_id:
+        row = await pool.fetchrow(
+            "SELECT version FROM pipeline.audience_runs WHERE id = $1::uuid", parent_run_id
+        )
+        if row and row["version"]:
+            next_version = int(row["version"]) + 1
+    else:
+        row = await pool.fetchrow(
+            "SELECT MAX(version) AS v FROM pipeline.audience_runs WHERE matrix_run_id = $1::uuid",
+            matrix_run_id,
+        )
+        if row and row["v"]:
+            next_version = int(row["v"]) + 1
+    try:
+        rec = await pool.fetchrow(
+            """
+            INSERT INTO pipeline.audience_runs (
+                matrix_run_id, sku_id, audience_md, recall_meta, record_count,
+                extra_context, kb_recall_override,
+                model_provider, model, prompt_hash, cost_estimate,
+                status, version, parent_run_id
+            ) VALUES (
+                $1::uuid, $2, '', $3::jsonb, 0,
+                $4, $5,
+                $6, $7, $8, $9,
+                'draft', $10, $11
+            ) RETURNING id::text AS id
+            """,
+            matrix_run_id,
+            sku_id,
+            json.dumps(recall_meta or {}, ensure_ascii=False),
+            extra_context,
+            kb_recall_override,
+            model_provider,
+            model,
+            _prompt_hash(final_prompt) if final_prompt else None,
+            cost_estimate,
+            next_version,
+            parent_run_id,
+        )
+        return rec["id"]
+    except Exception as exc:
+        logger.warning("create_audience_run failed: %s", exc)
+        return None
+
+
+async def append_audience_records(
+    *,
+    audience_run_id: str,
+    matrix_run_id: str,
+    sku_id: str,
+    records: list[dict[str, Any]],
+    start_ordinal: int = 1,
+) -> list[dict[str, Any]]:
+    """把一批已 parse 的 records 追加进现有 run；ordinal 从 start_ordinal 续号。
+
+    返回带 DB id + 续号 ordinal 的列表；失败返 []（调用方保留内存态）。
+    """
+    if not records:
+        return []
+    pool = get_pool()
+    out: list[dict[str, Any]] = []
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for offset, r in enumerate(records):
+                    ordinal = start_ordinal + offset
+                    rec = await conn.fetchrow(
+                        """
+                        INSERT INTO pipeline.audience_records (
+                            audience_run_id, matrix_run_id, sku_id,
+                            ordinal, name, kb_doc, kb_section,
+                            kb_chunk_text, match_reasons, layer_tags, raw_md_segment,
+                            status
+                        ) VALUES (
+                            $1::uuid, $2::uuid, $3,
+                            $4, $5, $6, $7,
+                            $8, $9::jsonb, $10::jsonb, $11,
+                            'draft'
+                        ) RETURNING id::text AS id
+                        """,
+                        audience_run_id,
+                        matrix_run_id,
+                        sku_id,
+                        ordinal,
+                        r["name"],
+                        r["kb_doc"],
+                        r["kb_section"],
+                        r["kb_chunk_text"],
+                        json.dumps(r["match_reasons"], ensure_ascii=False),
+                        json.dumps(r["layer_tags"], ensure_ascii=False),
+                        r["raw_md_segment"],
+                    )
+                    o = dict(r)
+                    o["id"] = rec["id"]
+                    o["ordinal"] = ordinal
+                    out.append(o)
+        return out
+    except Exception as exc:
+        logger.warning("append_audience_records failed: %s", exc)
+        return []
+
+
+async def update_audience_run_md(
+    *,
+    audience_run_id: str,
+    audience_md: str,
+    record_count: int,
+    notes: str | None = None,
+) -> None:
+    """分批收尾：把组装好的整段 audience_md + 最终人群数 + notes 写回 run。"""
+    pool = get_pool()
+    try:
+        await pool.execute(
+            "UPDATE pipeline.audience_runs "
+            "SET audience_md = $1, record_count = $2, notes = $3, updated_at = NOW() "
+            "WHERE id = $4::uuid",
+            audience_md,
+            record_count,
+            notes,
+            audience_run_id,
+        )
+    except Exception as exc:
+        logger.warning("update_audience_run_md failed: %s", exc)
+
+
+# ════════════════════════════════════════════════════════════════
 # 查询 helpers（A4 阶段 tool 用）
 # ════════════════════════════════════════════════════════════════
 
@@ -1742,6 +1891,183 @@ async def record_ad_metrics(
     # 把校验结论也回给调用方（agent/老板能立刻看到哪些 key 被标存疑、为什么）
     d["validation"] = _val_report
     return d
+
+
+# ── 巨量素材报表 CSV 整轮回灌（内容版本迭代闭环·块0a）─────────────────────────────
+# 常见表头 → ad_metrics key（默认映射，column_map 可覆盖/补充）。
+_BATCH_DEFAULT_METRIC_MAP: dict[str, str] = {
+    "完播率": "completion_rate", "5s完播率": "play_5s_rate", "3s完播率": "play_3s_rate",
+    "转化率": "cvr", "点击率": "ctr",
+    "展示数": "impressions", "展示量": "impressions", "曝光数": "impressions",
+    "曝光量": "impressions", "封面曝光数": "impressions", "封面展示数": "impressions", "封面展现量": "impressions",
+    "播放数": "plays", "播放量": "plays", "视频播放数": "plays",
+    "点击数": "clicks",
+    "转化数": "conversions", "成交订单数": "orders", "直接成交订单数": "direct_orders",
+    "消耗": "spend", "花费": "spend", "总花费": "spend",
+    "成交金额": "gmv", "直接成交金额": "direct_pay_amount", "支付金额": "gmv_paid",
+    "点赞数": "likes", "评论数": "comments", "分享数": "shares",
+    "新增粉丝数": "new_followers", "涨粉数": "new_followers",
+}
+_BATCH_NAME_COLS = ("素材名称", "视频名称", "素材名", "视频名", "creative_name", "素材", "视频")
+_BATCH_ID_COLS = ("视频ID", "素材ID", "视频id", "素材id", "video_id", "creative_id", "广告ID", "计划ID")
+
+
+async def record_ad_metrics_batch(
+    *,
+    experiment_id: str,
+    csv_text: str | None = None,
+    csv_path: str | None = None,
+    name_column: str | None = None,
+    id_column: str | None = None,
+    column_map: dict[str, str] | None = None,
+    round_no: int | None = None,
+    mark_published: bool = True,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """整轮 CSV 回灌：巨量素材报表（一行一条视频）按臂码匹配到实验臂，逐行写投后数据。
+
+    匹配：每臂派生臂码 R{round}{label}（如 R2B），跟 name_column 列做大小写无关子串匹配；
+    匹配不到再退而用 variable_value 子串。命中后调 record_ad_metrics(experiment_arm_id=臂)
+    逐行落库（有 id_column 则带 external_video_id，重复导入按它去重不产生重复 asset）。
+    dry_run=True 只返匹配预览不写库（先看匹配对不对再真写）。
+    """
+    import csv as _csv
+    import io as _io
+
+    pool = get_pool()
+    exp = await pool.fetchrow(
+        "SELECT id::text AS id, sku_id FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)
+    if not exp:
+        return {"ok": False, "error": "experiment_not_found"}
+
+    if round_no is not None:
+        arm_rows = await pool.fetch(
+            "SELECT id::text AS arm_id, round_no, arm_label, variable_value, swept_variable "
+            "FROM pipeline.experiment_arms WHERE experiment_id=$1::uuid AND round_no=$2 "
+            "ORDER BY round_no, arm_label", experiment_id, round_no)
+    else:
+        arm_rows = await pool.fetch(
+            "SELECT id::text AS arm_id, round_no, arm_label, variable_value, swept_variable "
+            "FROM pipeline.experiment_arms WHERE experiment_id=$1::uuid "
+            "ORDER BY round_no, arm_label", experiment_id)
+    if not arm_rows:
+        return {"ok": False, "error": "no_arms",
+                "hint": "该实验（或该轮）还没挂臂——先 experiment_attach_arm / experiment_register_round"}
+    arms = [dict(r) for r in arm_rows]
+    for a in arms:
+        a["arm_code"] = f"R{a['round_no']}{a['arm_label']}"
+
+    # 读 CSV 文本（path 优先 utf-8-sig，再 gb18030；巨量导出常见这两种）
+    text = csv_text
+    if text is None:
+        if not csv_path:
+            return {"ok": False, "error": "missing_csv", "hint": "传 csv_text 或 csv_path"}
+        try:
+            with open(csv_path, "rb") as f:
+                raw = f.read()
+        except FileNotFoundError:
+            return {"ok": False, "error": "csv_path_not_found", "csv_path": csv_path}
+        for enc in ("utf-8-sig", "gb18030", "utf-8"):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        if text is None:
+            return {"ok": False, "error": "csv_decode_failed", "hint": "试试另存为 UTF-8 CSV"}
+
+    try:
+        reader = _csv.DictReader(_io.StringIO(text))
+        headers = [h.strip() for h in (reader.fieldnames or [])]
+    except Exception as exc:
+        return {"ok": False, "error": "csv_parse_failed", "detail": str(exc)}
+    if not headers:
+        return {"ok": False, "error": "csv_empty"}
+
+    def _pick(cands: tuple[str, ...]) -> str | None:
+        return next((h for h in headers if h in cands), None)
+
+    name_col = name_column or _pick(_BATCH_NAME_COLS)
+    id_col = id_column or _pick(_BATCH_ID_COLS)
+    if not name_col:
+        return {"ok": False, "error": "name_column_not_found",
+                "hint": f"找不到素材名列，显式传 name_column；现有表头={headers}"}
+
+    metric_map = {**_BATCH_DEFAULT_METRIC_MAP, **(column_map or {})}
+    active_metric_cols = {h: metric_map[h] for h in headers if h in metric_map}
+    if not active_metric_cols:
+        return {"ok": False, "error": "no_metric_columns",
+                "hint": f"表头里没认出任何指标列，用 column_map 显式映射；现有表头={headers}"}
+
+    matched, unmatched, ambiguous = [], [], []
+    applied = 0
+    rows = list(reader)
+    for idx, r in enumerate(rows):
+        row = {(k.strip() if k else k): v for k, v in r.items()}
+        name_val = (row.get(name_col) or "").strip()
+        if not name_val:
+            continue
+        low = name_val.lower()
+        hits = [a for a in arms if a["arm_code"].lower() in low]
+        if not hits:
+            hits = [a for a in arms if a["variable_value"] and a["variable_value"] in name_val]
+        if not hits:
+            unmatched.append({"row": idx + 1, "name": name_val})
+            continue
+        if len(hits) > 1:
+            ambiguous.append({"row": idx + 1, "name": name_val,
+                              "candidates": [a["arm_code"] for a in hits]})
+            continue
+        arm = hits[0]
+        metrics = {key: row[h].strip() for h, key in active_metric_cols.items()
+                   if (row.get(h) or "").strip() != ""}
+        ext_vid = (row.get(id_col) or "").strip() if id_col else None
+        rec = {"row": idx + 1, "name": name_val, "arm_code": arm["arm_code"],
+               "arm_id": arm["arm_id"], "metrics": metrics,
+               "has_impressions": "impressions" in metrics,
+               "external_video_id": ext_vid or None}
+        if not metrics:
+            rec["skipped"] = "row_has_no_metric_values"
+            matched.append(rec)
+            continue
+        if not dry_run:
+            asset = await record_ad_metrics(
+                metrics=metrics, experiment_arm_id=arm["arm_id"],
+                external_video_id=ext_vid or None, mark_published=mark_published)
+            rec["written"] = bool(asset)
+            if asset:
+                rec["asset_id"] = asset.get("asset_id")
+                applied += 1
+        matched.append(rec)
+
+    n_missing_imp = sum(1 for m in matched if not m["has_impressions"] and not m.get("skipped"))
+    warnings: list[str] = []
+    if n_missing_imp:
+        warnings.append(f"⚠ {n_missing_imp} 条匹配上但没带曝光量(impressions)——补上才能判 winner 可不可信。")
+    if unmatched:
+        warnings.append(f"⚠ {len(unmatched)} 行没匹配到臂（臂码没写进素材名？）——见 unmatched，改名/补 column 后重导。")
+    if ambiguous:
+        warnings.append(f"⚠ {len(ambiguous)} 行匹配到多个臂——见 ambiguous，手动消歧。")
+    if not id_col and not dry_run:
+        warnings.append("⚠ 没找到视频ID列——本次每行新建 asset，重复导入同一份会产生重复行（建议加 id_column 或别重导）。")
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "experiment_id": experiment_id,
+        "columns": {"name_column": name_col, "id_column": id_col,
+                    "metric_columns": active_metric_cols},
+        "summary": {"rows": len(rows), "matched": len(matched), "applied": applied,
+                    "unmatched": len(unmatched), "ambiguous": len(ambiguous),
+                    "missing_impressions": n_missing_imp},
+        "matched": matched, "unmatched": unmatched, "ambiguous": ambiguous,
+        "warnings": warnings,
+        "next_step_hint": (
+            "dry_run=True 是预览——确认匹配无误后 record_ad_metrics_batch(..., dry_run=False) 真写库。"
+            if dry_run else
+            f"已写 {applied} 条投后数据进各臂。experiment_status(experiment_id) 看排名 + 曝光量是否均衡。"
+        ),
+    }
 
 
 async def get_asset_lineage(asset_id: str) -> dict[str, Any] | None:

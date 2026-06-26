@@ -125,6 +125,39 @@ async def experiment_register_round(
 
 
 @tool_with_audit(mcp, require_approval=False)
+async def experiment_attach_arm(
+    experiment_id: str,
+    script_id: str,
+    variable_value: str,
+    round_no: int | None = None,
+    swept_variable: str | None = None,
+    adopt_script: bool = True,
+) -> dict:
+    """采纳即挂臂：把老板采纳的一条 brief/AI 脚本挂成某轮某臂（单条追加，配合采纳动作）。
+
+    register_round 是"一次登记整轮 ≥2 臂"；本 tool 是"老板一条条采纳、逐条标成臂"——采纳
+    step3.6 编导 brief 或 step5 creative_pack(AI) 后，标"这是实验X第N轮、本轮扫变量Z、本臂取值Y"，
+    自动挂成臂 + 把该脚本 draft→adopted。老板话术"把这条采纳为实验X的某臂 / 这条挂成钩子=悬念那个臂"。
+
+    Args:
+        experiment_id: experiment_create 返的 id
+        script_id: 采纳的 pipeline.scripts.id（director_brief 或 creative_pack 脚本）
+        variable_value: 本臂的变量取值（如"悬念式钩子"）
+        round_no: 不填=挂到最新 open 轮（要已存在）；显式给则用该轮（不存在则新开，要 swept_variable）
+        swept_variable: 新开一轮时必填——本轮扫的变量 key（opening_hook_3s/selling_point_set/...）
+        adopt_script: True（默认）顺手把该 script draft→adopted
+
+    Returns:
+        {ok, arm:{arm_id, arm_label, round_no, swept_variable, variable_value, arm_code}, script_adopted,
+         warnings, next_step_hint}；arm_code（如 R2B）写进巨量视频名，投后 record_ad_metrics_batch 按它回灌。
+    """
+    return await lab.attach_arm(
+        experiment_id=experiment_id, script_id=script_id, variable_value=variable_value,
+        round_no=round_no, swept_variable=swept_variable, adopt_script=adopt_script,
+    )
+
+
+@tool_with_audit(mcp, require_approval=False)
 async def experiment_status(experiment_id: str, round_no: int | None = None) -> dict:
     """看某轮各臂的投后排名 + 当前基线 + 建议下个变量。确定性、R-14 分层、R-15 待验证。
 
@@ -186,6 +219,42 @@ async def experiment_list(
 async def experiment_get(experiment_id: str) -> dict:
     """看一个实验的全貌：基线 + 每轮各臂 + 投后结果。确定性只读。"""
     return await lab.get_experiment(experiment_id)
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def experiment_next_version_seed(
+    experiment_id: str, override_variable: str | None = None,
+) -> dict:
+    """一键出下一版（块B）：把已锁的获胜 baseline + 建议扫的下个变量预填好，喂下一版生成。
+
+    半自动——本 tool 不生成、不写库，只算清"下一版该带哪些获胜设定、测哪个变量"返回。主大脑据此
+    调 generate_director_brief / generate_creative_pack（带返回的 experiment_context），给本轮 ≥2 个
+    取值各生成一条 → 各自 experiment_attach_arm 挂臂。老板话术"出下一版 / 接着测下一个变量"。
+
+    Args:
+        experiment_id: 实验 id
+        override_variable: 不想按建议、指定本轮扫某个变量（默认 None=确定性差集自动选撬动最大的）
+
+    Returns:
+        {ok, baseline, next_variable:{variable,label}, next_round_no,
+         generation:{tool, suggested_args:{...experiment_context...}}, hint}
+        都扫完了 → {ok, done:True, hint=可以 distill 沉淀}
+    """
+    return await lab.next_version_seed(experiment_id, override_variable=override_variable)
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def experiment_changelog(experiment_id: str) -> dict:
+    """版本变更日志（块C）：逐轮"改了哪个变量 / 取值从→到 / 这版赢面(avg/n/曝光)"，串成演化树。
+
+    确定性只读（派生视图 v_content_version_changelog + tool 层按相邻轮快照算 X→Y diff）。
+    老板话术"这实验改过哪些 / 看演化 / 每版动了啥"。
+
+    Returns:
+        {ok, status, current_baseline, entries:[{round_no, swept_variable_label, from_value,
+         to_value, north_star_avg, n_videos, impressions, forced, status}], markdown}
+    """
+    return await lab.get_changelog(experiment_id)
 
 
 @tool_with_audit(mcp, require_approval=False)
@@ -447,3 +516,82 @@ async def experiment_prescreen_round(experiment_id: str, round_no: int | None = 
             "⚠️ 视觉分只是投前代理，过关≠带货。"
         ),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 内容↔人群向量匹配（投前预测分）+ 北极星闭环（migration 066）
+# ══════════════════════════════════════════════════════════════════════════════
+@tool_with_audit(mcp, require_approval=False)
+async def embed_content_and_audience(
+    script_id: str | None = None,
+    portrait_id: str | None = None,
+) -> dict:
+    """把内容脚本/人群画像的文本 embed 成向量落库（投前匹配分的前置步）。
+
+    复用现成 embed_texts（gemini 1536 维，带缓存）。内容侧抽 文字/画面/音乐 三路文本
+    （director_brief 三向量段最干净；creative_pack 节点 scenes 字段次之；whole_prompt 整段降级成
+    text 单路）；人群侧抽画像「1.3 算法信号原料」段。script_id / portrait_id 给一个或都给。
+
+    Args:
+        script_id: pipeline.scripts.id（内容脚本，落 pipeline.content_vectors 三行）
+        portrait_id: pipeline.audience_portraits.id（人群画像，落 pipeline.audience_vectors 一行）
+
+    Returns:
+        {ok, content?:{tracks, note}, audience?:{chars}}；二者按传入分别返回
+    """
+    from app.services import match_vectors as mv
+    if not (script_id or portrait_id):
+        return {"ok": False, "error": "missing_target", "hint": "script_id / portrait_id 至少给一个"}
+    out: dict = {"ok": True}
+    if portrait_id:
+        out["audience"] = await mv.embed_and_store_audience(portrait_id)
+    if script_id:
+        out["content"] = await mv.embed_and_store_content(script_id)
+    out["ok"] = all(v.get("ok") for k, v in out.items() if isinstance(v, dict))
+    out["next_step_hint"] = "内容+人群都 embed 后 → predict_audience_match(experiment_id) 算投前预测分。"
+    return out
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def predict_audience_match(experiment_id: str, round_no: int | None = None) -> dict:
+    """投前向量预测匹配分：本轮各臂内容向量 vs 人群向量 余弦相似度（三路分开看 + 简单平均），
+    写进 experiment_arms.predicted_match_score。**排序候选臂、少烧广告费用，不判 winner。**
+
+    前置：实验绑了 portrait_id；该画像 + 各臂脚本都先 embed_content_and_audience 过。
+    没 embed 的臂会跳过并提示先 embed。
+
+    Args:
+        experiment_id: 实验 id（须绑 portrait_id 当人群锚）
+        round_no: 哪一轮（不填=最新轮）
+
+    Returns:
+        {ok, round_no, arms:[{arm_label, predicted_match_score, tracks:{text,visual,music}} | {skipped}],
+         ranking, disclaimer, next_step_hint}
+    """
+    from app.services import match_vectors as mv
+    return await mv.predict_match(experiment_id, round_no=round_no)
+
+
+@tool_with_audit(mcp, require_approval=False)
+async def calibrate_match_predictor(
+    sku_id: str | None = None,
+    experiment_id: str | None = None,
+    min_pairs: int = 8,
+) -> dict:
+    """闭环校准（"同时升级"的投后半）：拉 (投前预测分, 投后北极星) 配对 → 看相关性 + 四象限偏差
+    → 建议三路权重。**确定性记账，不训练、不自动改权重**（建议仅供老板拍板）。
+
+    配对天然成立（同锚 experiment_arm_id：预测分写在臂、北极星经 record_ad_metrics 聚到同臂）。
+    样本不足（<min_pairs 个 n≥5 的臂）时返 insufficient_samples——校准要先攒够投放数据才有意义。
+
+    Args:
+        sku_id / experiment_id: 限定范围（都不给=全量已有配对）
+        min_pairs: 起算门槛（默认 8 个 n≥5 的臂配对）
+
+    Returns:
+        样本不足 {ok, status:'insufficient_samples', n_pairs, hint}
+        够了    {ok, status:'calibrated', n_pairs, overall_correlation, quadrants(tp/tn/fp/fn),
+                 track_correlation, suggested_weights, reading, disclaimer}
+    """
+    from app.services import match_vectors as mv
+    return await mv.calibrate(sku_id=sku_id, experiment_id=experiment_id, min_pairs=min_pairs)

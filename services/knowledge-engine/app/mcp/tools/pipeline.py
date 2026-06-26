@@ -209,6 +209,45 @@ async def record_ad_metrics(
 
 
 @tool_with_audit(mcp, require_approval=False)
+async def record_ad_metrics_batch(
+    experiment_id: str,
+    csv_text: str | None = None,
+    csv_path: str | None = None,
+    name_column: str | None = None,
+    id_column: str | None = None,
+    column_map: dict | None = None,
+    round_no: int | None = None,
+    mark_published: bool = True,
+    dry_run: bool = False,
+) -> dict:
+    """整轮 CSV 回灌投后数据：巨量素材报表(一行一视频)按臂码匹配到实验臂，逐行写 ad_metrics。
+
+    把"投完每条视频手抄一次 record_ad_metrics"压成"从巨量后台导出素材报表 → 一次回灌整轮"。
+    匹配：每臂派生臂码 R{round}{label}（如 R2B，experiment_attach_arm/experiment_status 会给），
+    跟素材名列做大小写无关子串匹配（匹配不到再退用变量取值子串）。**先 dry_run=True 看匹配对不对再真写**。
+
+    Args:
+        experiment_id: 哪个实验
+        csv_text / csv_path: CSV 文本 或 容器内可达路径（二选一；path 自动试 utf-8/gb18030）
+        name_column: 素材名列名（不填自动找 素材名称/视频名称/...）
+        id_column: 视频ID列名（不填自动找 视频ID/素材ID/...；有它重复导入按 id 去重不产生重复 asset）
+        column_map: {CSV表头: ad_metrics_key} 覆盖/补充默认映射（默认含 完播率/转化率/曝光/消耗/成交额 等）
+        round_no: 只回灌某一轮（不填=全实验所有臂参与匹配）
+        mark_published: True 把回灌到的 asset 状态推到 published
+        dry_run: True（建议先跑）只返匹配预览不写库
+
+    Returns:
+        {ok, dry_run, columns, summary:{rows,matched,applied,unmatched,ambiguous,missing_impressions},
+         matched, unmatched, ambiguous, warnings, next_step_hint}
+    """
+    return await pipeline_lineage.record_ad_metrics_batch(
+        experiment_id=experiment_id, csv_text=csv_text, csv_path=csv_path,
+        name_column=name_column, id_column=id_column, column_map=column_map,
+        round_no=round_no, mark_published=mark_published, dry_run=dry_run,
+    )
+
+
+@tool_with_audit(mcp, require_approval=False)
 async def pipeline_get_asset_lineage(asset_id: str) -> dict:
     """按 asset_id 一句反查全链路：这条视频/图 从哪个 SKU/卖点矩阵/人群/圈包/脚本来的 + 投后 ad_metrics。
 

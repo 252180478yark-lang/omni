@@ -204,6 +204,15 @@ def _wanted_tools() -> set[str]:
             "experiment_distill",
             # 2026-06-15 AI 链 Y-尾移植（migration 053）：投前视觉快环
             "experiment_prescreen_round",
+            # 2026-06-26 内容版本迭代闭环 块0+块A（migration 064）：
+            # 采纳即挂臂（单条追加）+ 巨量素材报表 CSV 整轮回灌（按臂码匹配 + 曝光量旁证）
+            "experiment_attach_arm", "record_ad_metrics_batch",
+            # 2026-06-26 内容版本迭代闭环 块B+块C（migration 065）：
+            # 一键出下一版（组获胜 baseline + 建议变量预填生成）+ 版本变更日志（逐轮 X→Y 演化树）
+            "experiment_next_version_seed", "experiment_changelog",
+            # 2026-06-26 内容↔人群向量匹配 + 北极星闭环（migration 066）：投前向量预测分(排序少烧钱)
+            # + 投后北极星并排 + 闭环校准(确定性记账建议三路权重，不训练)
+            "embed_content_and_audience", "predict_audience_match", "calibrate_match_predictor",
     }
 
 

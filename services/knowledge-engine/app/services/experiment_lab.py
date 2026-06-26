@@ -338,6 +338,173 @@ async def register_round(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# attach arm（采纳即挂臂：老板一条条采纳 brief/AI，逐条标成某轮某臂；单条追加）
+# ══════════════════════════════════════════════════════════════════════════════
+def arm_code(round_no: int, arm_label: str) -> str:
+    """实验内唯一臂码（派生，不落库）：R{轮号}{臂标}，如 R2B。
+    老板把它写进巨量视频名/备注，CSV 回灌(record_ad_metrics_batch)按它精确匹配到臂。"""
+    return f"R{round_no}{arm_label}"
+
+
+async def attach_arm(
+    *,
+    experiment_id: str,
+    script_id: str,
+    variable_value: str,
+    round_no: int | None = None,
+    swept_variable: str | None = None,
+    adopt_script: bool = True,
+) -> dict:
+    """把一条已生成、老板采纳的 brief/AI 脚本挂成某轮某臂（采纳即挂臂，单条追加）。
+
+    register_round 是"一次登记整轮 ≥2 臂"；本函数是"老板一条条采纳、逐条标成臂"。
+    - round_no 不给 + swept_variable 不给 → 挂到最新 open 轮（必须已存在）
+    - swept_variable 给了且无可用 open 轮 → 自动新开一轮
+    - round_no 显式给：存在则追加（必须 open），不存在则用该号新开（要 swept_variable）
+    臂标 A/B/C... 按轮内已有臂数派生；同取值不重复挂。adopt_script=True 顺手把 draft→adopted。
+    """
+    pool = get_pool()
+    exp = await pool.fetchrow(
+        "SELECT id::text AS id, sku_id, track, status FROM pipeline.experiments WHERE id=$1::uuid",
+        experiment_id,
+    )
+    if not exp:
+        return {"ok": False, "error": "experiment_not_found"}
+
+    value = (variable_value or "").strip()
+    if not value:
+        return {"ok": False, "error": "missing_variable_value",
+                "hint": "本臂的变量取值（如『悬念式钩子』）"}
+
+    # 校验 script 存在 + sku 对得上（同 register_round）
+    srow = await pool.fetchrow(
+        "SELECT sku_id, kind, status FROM pipeline.scripts WHERE id=$1::uuid", script_id,
+    )
+    if not srow:
+        return {"ok": False, "error": "script_not_found", "script_id": script_id}
+    if srow["sku_id"] != exp["sku_id"]:
+        return {"ok": False, "error": "script_sku_mismatch", "script_id": script_id,
+                "hint": f"该 script 属于 {srow['sku_id']}，实验是 {exp['sku_id']}"}
+
+    warnings: list[str] = []
+    try:
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                # ── 定位/新建轮 ──
+                if round_no is not None:
+                    rnd = await conn.fetchrow(
+                        "SELECT id::text AS id, round_no, swept_variable, status "
+                        "FROM pipeline.experiment_rounds WHERE experiment_id=$1::uuid AND round_no=$2",
+                        experiment_id, round_no,
+                    )
+                else:
+                    rnd = await conn.fetchrow(
+                        "SELECT id::text AS id, round_no, swept_variable, status "
+                        "FROM pipeline.experiment_rounds "
+                        "WHERE experiment_id=$1::uuid AND status='open' "
+                        "ORDER BY round_no DESC LIMIT 1",
+                        experiment_id,
+                    )
+
+                if rnd is None:
+                    # 要新开一轮，必须有 swept_variable
+                    sv = (swept_variable or "").strip()
+                    if not sv:
+                        return {"ok": False, "error": "missing_swept_variable",
+                                "hint": "这是本实验/本轮第一条臂，要新开一轮——传 swept_variable（本轮扫的变量，如 opening_hook_3s）"}
+                    exp2 = await conn.fetchrow(
+                        "SELECT baseline FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)
+                    baseline = _as_dict(exp2["baseline"]) if exp2 else {}
+                    if sv in baseline:
+                        warnings.append(f"⚠ 变量「{var_label(sv)}」已在 baseline（值={baseline[sv]}）——这是二次提纯/复测")
+                    if sv not in SWEEP_VARIABLE_ORDER:
+                        warnings.append(f"⚠ 「{sv}」不在标准变量池（自定义变量，不进'建议下个变量'轮转）")
+                    rno = round_no
+                    if rno is None:
+                        rr = await conn.fetchrow(
+                            "SELECT COALESCE(MAX(round_no),0) AS m FROM pipeline.experiment_rounds WHERE experiment_id=$1::uuid",
+                            experiment_id)
+                        rno = int(rr["m"]) + 1
+                    rnd = await conn.fetchrow(
+                        "INSERT INTO pipeline.experiment_rounds (experiment_id, sku_id, round_no, swept_variable) "
+                        "VALUES ($1::uuid,$2,$3,$4) RETURNING id::text AS id, round_no, swept_variable, status",
+                        experiment_id, exp["sku_id"], rno, sv,
+                    )
+                else:
+                    if rnd["status"] != "open":
+                        return {"ok": False, "error": "round_locked",
+                                "hint": f"第 {rnd['round_no']} 轮已锁定，不能再加臂；新开一轮（传新 round_no + swept_variable）"}
+                    if swept_variable and swept_variable.strip() and swept_variable.strip() != rnd["swept_variable"]:
+                        warnings.append(f"⚠ 第 {rnd['round_no']} 轮扫的是「{var_label(rnd['swept_variable'])}」，忽略本次传的「{var_label(swept_variable.strip())}」（一轮只扫一个变量）")
+
+                round_id = rnd["id"]
+                round_no_eff = int(rnd["round_no"])
+                sv_eff = rnd["swept_variable"]
+
+                # ── 同轮取值去重 ──
+                dup = await conn.fetchrow(
+                    "SELECT arm_label FROM pipeline.experiment_arms "
+                    "WHERE round_id=$1::uuid AND variable_value=$2", round_id, value,
+                )
+                if dup:
+                    return {"ok": False, "error": "variable_value_exists",
+                            "hint": f"第 {round_no_eff} 轮已有臂 {dup['arm_label']} 用「{value}」——同取值不重复挂"}
+
+                # ── 派生臂标 A/B/C...（轮内已有臂数）──
+                cnt = await conn.fetchval(
+                    "SELECT count(*) FROM pipeline.experiment_arms WHERE round_id=$1::uuid", round_id)
+                if int(cnt) >= 26:
+                    return {"ok": False, "error": "too_many_arms", "hint": "单轮臂标 A-Z，已满 26"}
+                label = chr(ord("A") + int(cnt))
+
+                # production_mode：扫 production_mode 时取值=模式；否则继承 experiment.track
+                if sv_eff == "production_mode":
+                    pmode = value if value in ("human_brief", "ai_video") else None
+                else:
+                    pmode = exp["track"] if exp["track"] in ("human_brief", "ai_video") else None
+
+                arm = await conn.fetchrow(
+                    "INSERT INTO pipeline.experiment_arms "
+                    "(round_id, experiment_id, sku_id, round_no, swept_variable, variable_value, arm_label, script_id, production_mode) "
+                    "VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8::uuid,$9) "
+                    "RETURNING id::text AS id, arm_label, variable_value, script_id::text AS script_id",
+                    round_id, experiment_id, exp["sku_id"], round_no_eff,
+                    sv_eff, value, label, script_id, pmode,
+                )
+
+                adopted = False
+                if adopt_script:
+                    ad = await conn.fetchrow(
+                        "UPDATE pipeline.scripts SET status='adopted' "
+                        "WHERE id=$1::uuid AND status<>'archived' RETURNING id", script_id)
+                    adopted = bool(ad)
+    except Exception as exc:
+        if "experiment_arms_uq" in str(exc):
+            return {"ok": False, "error": "arm_label_collision", "hint": "并发挂臂撞臂标，重试一次"}
+        logger.exception("attach_arm failed: %s", exc)
+        return {"ok": False, "error": "db_error", "detail": str(exc)}
+
+    code = arm_code(round_no_eff, arm["arm_label"])
+    return {
+        "ok": True,
+        "arm": {"arm_id": arm["id"], "arm_label": arm["arm_label"],
+                "round_no": round_no_eff, "swept_variable": sv_eff,
+                "swept_variable_label": var_label(sv_eff),
+                "variable_value": arm["variable_value"], "script_id": arm["script_id"],
+                "arm_code": code},
+        "script_adopted": adopted,
+        "warnings": warnings,
+        "next_step_hint": (
+            f"挂成 第{round_no_eff}轮·臂{arm['arm_label']}（扫{var_label(sv_eff)}=「{value}」）。"
+            f"投放时把臂码「{code}」写进巨量视频名/备注；投后用 "
+            f"record_ad_metrics_batch(experiment_id, csv) 导出报表整轮回灌（按臂码匹配），"
+            f"或单条 record_ad_metrics(experiment_arm_id='{arm['id']}', metrics=...)。"
+            f"⚠️ metrics 务必带 impressions（曝光量），否则没法判 winner 可不可信。"
+        ),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # status（确定性排名 + R-14 分层 + R-15 待验证 + 建议下变量）
 # ══════════════════════════════════════════════════════════════════════════════
 async def experiment_status(experiment_id: str, round_no: int | None = None) -> dict:
@@ -369,7 +536,7 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
             """SELECT arm_id::text AS arm_id, arm_label, variable_value, swept_variable,
                       n_videos, north_star_avg, north_star_sum, sample_status,
                       is_winner, is_baseline_locked, forced, production_mode,
-                      script_id::text AS script_id
+                      impressions_sum, predicted_match_score, script_id::text AS script_id
                FROM pipeline.v_experiment_round_results
                WHERE experiment_id = $1::uuid AND round_no = $2
                ORDER BY arm_label""",
@@ -380,6 +547,9 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
             d["n_videos"] = int(d["n_videos"] or 0)
             d["north_star_avg"] = _num(d["north_star_avg"])
             d["north_star_sum"] = _num(d["north_star_sum"])
+            d["impressions"] = _num(d.pop("impressions_sum", None))  # 064：曝光量旁证
+            d["predicted_match_score"] = _num(d.get("predicted_match_score"))  # 066：投前向量预测分旁证
+            d["arm_code"] = arm_code(round_no, d["arm_label"])       # 巨量命名/CSV 回灌匹配码
             arms_out.append(d)
 
     # 排名（只在有北极星值的臂之间；sufficient 优先）
@@ -388,6 +558,23 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
     sufficient = [a for a in ranked if a["sample_status"] == "sufficient"]
     leader = sufficient[0] if sufficient else (ranked[0] if ranked else None)
     can_lock = bool(sufficient)  # 有 ≥1 个 n≥5 的臂才允许正常锁定（n<5 要 force）
+
+    # 曝光量旁证（064/块0b）：北极星是比率、对曝光量脱敏。臂间曝光差太大时 winner 可能是
+    # "被多灌量灌出来的"——给确定性存疑提示，不改排名（系统强制不了等量投放，留给老板眼判）。
+    exposure_skew_warning = None
+    _imps = [a["impressions"] for a in ranked if a.get("impressions") and a["impressions"] > 0]
+    if len(_imps) >= 2:
+        _ratio = max(_imps) / min(_imps)
+        if _ratio >= 3:
+            exposure_skew_warning = (
+                f"⚠ 臂间曝光量差 {_ratio:.1f} 倍（{int(min(_imps))}~{int(max(_imps))}）——北极星是比率、对曝光量脱敏，"
+                f"曝光差这么大时 winner 可能是被多灌量灌出来的，别直接按均值定输赢；尽量等量投放后再判。"
+            )
+    _missing_imp = [a["arm_label"] for a in ranked if a.get("impressions") is None]
+    exposure_note = (
+        f"臂 {','.join(_missing_imp)} 没回传曝光量(impressions)——补上才能判这个比率可不可信。"
+        if (_missing_imp and ranked) else None
+    )
 
     # 观察层（R-14：客观事实，不含因果）
     observations = [
@@ -443,6 +630,8 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
             {"variable": next_var, "label": var_label(next_var)} if next_var else None
         ),
         "metric_scale_warning": metric_scale_warning,
+        "exposure_skew_warning": exposure_skew_warning,
+        "exposure_note": exposure_note,
         "next_step_hint": (
             "锁定 winner：experiment_lock_winner(experiment_id, round_no, winning_arm_id)"
             if can_lock else
@@ -538,6 +727,142 @@ async def lock_winner(
             else "标准变量都扫完了——可 experiment_distill 把获胜框架沉淀成 prompt_rule（先 dry_run 看）"
         ),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# next version seed（块B：一键出下一版——组上版获胜 baseline + 建议扫的下个变量，预填生成）
+# ══════════════════════════════════════════════════════════════════════════════
+async def next_version_seed(experiment_id: str, override_variable: str | None = None) -> dict:
+    """组下一版生成的"种子"：把已锁的获胜 baseline + 建议扫的下个变量预填好，喂 generate_*。
+
+    半自动（符合"每步停等反馈"）：本函数不生成、不写库，只把"下一版该带啥设定、测哪个变量"
+    算清楚返回；主大脑据此调 generate_director_brief / generate_creative_pack（带 experiment_context），
+    给本轮 ≥2 个取值各生成一条 → 各自 experiment_attach_arm 挂臂。
+    """
+    pool = get_pool()
+    exp = await pool.fetchrow(
+        "SELECT id::text AS id, sku_id, portrait_id::text AS portrait_id, "
+        "audience_record_id::text AS audience_record_id, intent, track, "
+        "north_star_metric, baseline, status FROM pipeline.experiments WHERE id=$1::uuid",
+        experiment_id)
+    if not exp:
+        return {"ok": False, "error": "experiment_not_found"}
+    baseline = _as_dict(exp["baseline"])
+
+    # 建议下个变量：override 优先；否则确定性差集（标准池 - 已测 - baseline 已锁）
+    tested = set(baseline.keys())
+    trows = await pool.fetch(
+        "SELECT DISTINCT swept_variable FROM pipeline.experiment_rounds WHERE experiment_id=$1::uuid",
+        experiment_id)
+    tested |= {t["swept_variable"] for t in trows}
+    next_var = (override_variable.strip() if override_variable
+                else next((k for k in sweep_order_for_track(exp["track"]) if k not in tested), None))
+
+    next_round_no = int(await pool.fetchval(
+        "SELECT COALESCE(MAX(round_no),0)+1 FROM pipeline.experiment_rounds WHERE experiment_id=$1::uuid",
+        experiment_id))
+
+    if not next_var:
+        return {"ok": True, "experiment_id": experiment_id, "baseline": baseline,
+                "next_variable": None, "next_round_no": next_round_no, "done": True,
+                "hint": "标准变量都扫完了——可 experiment_distill 把获胜框架沉淀成 prompt_rule（先 dry_run）。"}
+
+    # experiment_context：固定 baseline、本轮只动 next_var（value 留空，老板/生成时填每臂取值）
+    experiment_context = {"baseline": baseline, "sweep": {"variable": next_var, "value": None}}
+    target_model = baseline.get("target_model")
+    if exp["track"] == "ai_video":
+        gen_tool = "generate_creative_pack"
+        gen_args = {"kind": intent_to_creative_kind(exp["intent"]),
+                    "audience_record_id": exp["audience_record_id"],
+                    "intent": exp["intent"], "experiment_context": experiment_context}
+    else:  # human_brief / mixed → 真人编导 brief
+        gen_tool = "generate_director_brief"
+        gen_args = {"portrait_id": exp["portrait_id"],
+                    "audience_record_id": exp["audience_record_id"],
+                    "intent": exp["intent"], "experiment_context": experiment_context}
+    if target_model:
+        gen_args["target_model"] = target_model
+
+    return {
+        "ok": True,
+        "experiment_id": experiment_id,
+        "sku_id": exp["sku_id"], "intent": exp["intent"], "track": exp["track"],
+        "north_star_metric": exp["north_star_metric"],
+        "baseline": baseline,
+        "next_variable": {"variable": next_var, "label": var_label(next_var)},
+        "next_round_no": next_round_no,
+        "generation": {"tool": gen_tool, "suggested_args": gen_args},
+        "hint": (
+            f"下一版（第{next_round_no}轮）建议扫【{var_label(next_var)}】。调 {gen_tool}(...) 带上 "
+            f"experiment_context（已固定 {len(baseline)} 项获胜 baseline），给本轮 ≥2 个取值各生成一条 → "
+            f"各自 experiment_attach_arm(round_no={next_round_no}, swept_variable='{next_var}', variable_value=该取值) 挂臂。"
+            + ("⚠️ 真人链单变量是近似（演员/光线/剪辑噪声消不掉），结论是粗信号。" if exp["track"] != "ai_video" else "")
+        ),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# changelog（块C：版本变更日志——逐轮"改了哪个变量 / 取值从→到 / 这版赢面"，派生只读）
+# ══════════════════════════════════════════════════════════════════════════════
+async def get_changelog(experiment_id: str) -> dict:
+    pool = get_pool()
+    exp = await pool.fetchrow(
+        "SELECT id::text AS id, sku_id, intent, track, north_star_metric, baseline, status "
+        "FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)
+    if not exp:
+        return {"ok": False, "error": "experiment_not_found"}
+    rows = await pool.fetch(
+        "SELECT round_no, swept_variable, status, winner_label, winner_value, winner_forced, "
+        "       winner_north_star_avg, winner_n_videos, winner_impressions, n_arms, baseline_snapshot "
+        "FROM pipeline.v_content_version_changelog WHERE experiment_id=$1::uuid ORDER BY round_no",
+        experiment_id)
+
+    entries = []
+    prev_baseline: dict = {}
+    for r in rows:
+        sv = r["swept_variable"]
+        to_val = r["winner_value"]
+        entries.append({
+            "round_no": int(r["round_no"]),
+            "swept_variable": sv, "swept_variable_label": var_label(sv),
+            "status": r["status"],
+            "from_value": prev_baseline.get(sv),   # 上一版该变量取值（None=首次确定）
+            "to_value": to_val,
+            "winner_label": r["winner_label"], "forced": bool(r["winner_forced"]) if r["winner_forced"] is not None else False,
+            "north_star_avg": _num(r["winner_north_star_avg"]),
+            "n_videos": int(r["winner_n_videos"]) if r["winner_n_videos"] is not None else 0,
+            "impressions": _num(r["winner_impressions"]),
+            "n_arms": int(r["n_arms"] or 0),
+        })
+        snap = _as_dict(r["baseline_snapshot"]) if r["baseline_snapshot"] else {}
+        if snap:
+            prev_baseline = snap
+        elif to_val is not None and r["status"] == "locked":
+            prev_baseline = {**prev_baseline, sv: to_val}
+
+    cur_baseline = _as_dict(exp["baseline"])
+    lines = [f"# 内容版本变更日志 · {exp['sku_id']} · {INTENT_LABELS.get(exp['intent'], exp['intent'])}",
+             f"> 北极星：{exp['north_star_metric']}；当前 baseline 已锁 {len(cur_baseline)} 项。", ""]
+    for e in entries:
+        if e["status"] == "locked" and e["to_value"] is not None:
+            chg = (f"【{e['swept_variable_label']}】定为「{e['to_value']}」"
+                   + (f"（上版「{e['from_value']}」→改）" if e["from_value"] else "（首次确定）"))
+            nsa = e["north_star_avg"]
+            mp = ""
+            if nsa is not None:
+                mp = (f"，赢面 {nsa}（n={e['n_videos']}"
+                      + (f"·曝光{int(e['impressions'])}" if e["impressions"] else "")
+                      + ("·FORCED·n<5" if e["forced"] else "") + "）")
+            lines.append(f"- **第{e['round_no']}轮** {chg}{mp}")
+        else:
+            lines.append(f"- **第{e['round_no']}轮** 扫【{e['swept_variable_label']}】（{e['n_arms']}臂，进行中·未锁）")
+    if not entries:
+        lines.append("- （还没有任何轮次——experiment_attach_arm 挂第一轮的臂开始）")
+
+    return {"ok": True, "experiment_id": experiment_id, "sku_id": exp["sku_id"],
+            "intent": exp["intent"], "north_star_metric": exp["north_star_metric"],
+            "status": exp["status"], "current_baseline": cur_baseline,
+            "entries": entries, "markdown": "\n".join(lines)}
 
 
 # ══════════════════════════════════════════════════════════════════════════════

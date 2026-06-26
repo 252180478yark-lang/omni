@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -867,3 +867,43 @@ async def exec_pipeline_get_asset_lineage(payload: PipelineGetAssetLineageReques
     except Exception as exc:
         logger.exception("pipeline_get_asset_lineage REST 异常")
         return JSONResponse(status_code=500, content={"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+
+
+# ── 通用兜底 dispatch（必须注册在所有显式 /exec/<tool> 之后 → 显式优先、其余按名派发）─────
+# 背景（2026-06-26）：experiment_* 等后加工具的 web 路由调 /exec/<tool> 却没有显式端点 → 404
+# （web step37「A/B 实验」tab 一直在打 404）。这个 catch-all 用 TOOL_REGISTRY（白名单=
+# @tool_with_audit 注册过的）按路径名派发，请求 body 即 args，复用 catalog/exec 同款护栏
+# （registry 白名单 + bind 参数校验），不绕过 audit/trace/Gate。一处修好所有 /exec/<tool> 404。
+@router.post("/exec/{tool_name}")
+async def exec_tool_generic(tool_name: str, request: Request) -> Any:
+    """按路径工具名通用派发（兜底显式端点没覆盖的已注册 tool）。"""
+    import inspect
+
+    from app.mcp.audit import TOOL_REGISTRY
+
+    reg = TOOL_REGISTRY.get(tool_name)
+    if not reg:
+        return JSONResponse(status_code=404, content={
+            "ok": False, "error": f"unknown_tool: {tool_name}",
+            "hint": "GET /api/v1/mcp/catalog/tools 看可用清单",
+        })
+    try:
+        args = await request.json()
+    except Exception:
+        args = {}
+    if not isinstance(args, dict):
+        return JSONResponse(status_code=422, content={
+            "ok": False, "error": "body_must_be_json_object"})
+    fn = reg["fn"]
+    try:
+        inspect.signature(fn).bind(**args)
+    except TypeError as exc:
+        return JSONResponse(status_code=422, content={
+            "ok": False, "error": f"bad_args: {exc}",
+            "hint": "对照 catalog 里该工具的 input_schema 检查参数名/类型"})
+    try:
+        return await fn(**args)
+    except Exception as exc:
+        logger.exception("exec(generic) %s 异常", tool_name)
+        return JSONResponse(status_code=500, content={
+            "ok": False, "error": f"{type(exc).__name__}: {exc}"})

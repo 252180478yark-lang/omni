@@ -5,7 +5,7 @@
 
 ## omni MCP server
 
-omni 暴露 **98 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 98 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
+omni 暴露 **105 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 的 `wanted` 集为权威清单（自检 `all 105 ok`）；实现见 `services/knowledge-engine/app/mcp/tools/`。
 
 - 查询：`list_skus`, `get_sku`, `list_kbs`, `search_kb`, `list_briefs`, `query_costs`
 - 算账：`compute_margin`
@@ -29,8 +29,9 @@ omni 暴露 **98 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - W4 加分：`save_decision`, `schedule_observation`, `send_wecom_message`, `dy_publish_creative`
 - 字典查询：`list_product_prices`（工厂出厂价）, `list_channel_fees`（渠道扣点）
 - 链路血缘（W4-B 切片 14.3 phase A）：`pipeline_list_matrix_runs`, `pipeline_get_matrix_run`, `pipeline_list_audience_runs`, `pipeline_get_audience_run`, `pipeline_list_audience_records`, `pipeline_get_audience_record`, `pipeline_adopt`
-- 投后回传闭环：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘；可带 `experiment_arm_id` 把 asset 挂 A/B 实验臂）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
-- 编导 brief A/B 单变量迭代闭环（migration 052/053，见下专节）：`experiment_create`, `experiment_register_round`, `experiment_status`, `experiment_lock_winner`, `experiment_list`, `experiment_get`（确定性状态机）, `experiment_distill`（市场数据→prompt_rule 沉淀桥）, `experiment_prescreen_round`（AI 链投前视觉快环 judge）
+- 投后回传闭环：`record_ad_metrics`（测试投放后把 ROI/GMV/完播率写回素材血缘；可带 `experiment_arm_id` 把 asset 挂 A/B 实验臂）, `record_ad_metrics_batch`（巨量素材报表 CSV 整轮回灌：按臂码 R{轮}{臂} 匹配到实验臂逐行写投后数据，dry_run 预览；把"手抄N次"压成"导出+拖文件"——内容版本迭代闭环命门）, `pipeline_get_asset_lineage`（按 asset 反查 SKU/卖点/人群/脚本全链路）, `pipeline_list_asset_performance`（"哪套内容真带货"榜）
+- 编导 brief A/B 单变量迭代闭环（migration 052/053，见下专节）：`experiment_create`, `experiment_register_round`, `experiment_attach_arm`（采纳即挂臂：老板采纳一条 brief/AI 脚本→单条追加成某轮某臂+派生臂码+脚本 draft→adopted，配合采纳动作，区别于 register_round 一次登记整轮），`experiment_status`, `experiment_lock_winner`, `experiment_next_version_seed`（一键出下一版：组上版获胜 baseline+建议扫的下个变量预填 generate_director_brief/creative_pack，半自动不写库）, `experiment_changelog`（版本变更日志：逐轮"改了哪变量/取值 X→Y/赢面"演化树）, `experiment_list`, `experiment_get`（确定性状态机）, `experiment_distill`（市场数据→prompt_rule 沉淀桥）, `experiment_prescreen_round`（AI 链投前视觉快环 judge）
+- 内容↔人群向量匹配 + 北极星闭环（migration 066，见下专节）：`embed_content_and_audience`（内容三路文字/画面/音乐 + 人群算法信号 文本→1536维向量落库，复用 embed_texts）, `predict_audience_match`（投前各臂内容向量 vs 人群向量余弦相似度→预测匹配分写臂级，**排序少烧钱、不判 winner**）, `calibrate_match_predictor`（投后闭环：(预测分,北极星)配对→相关性+四象限偏差→建议三路权重，确定性记账不训练）
 - 三平台实时取数底座（经 scout-agent）：`platform_fetch`（单端点真取数）, `platform_batch_fetch`（一会话连打多端点）, `platform_list_endpoints`（检索端点目录）, `platform_auth_status`（三平台 cookies 有效性）
 - 落库桥：`ingest_platform_metrics`（手动触发一次全量落库——实时取 10 端点 → 抽取器落库（metric_registry 注册 95 指标；库内实有 159 个 distinct metric_name，含维表后超注册数）+ 同行标杆 → upsert mvp_daily_metric + mvp_industry_benchmark；日级 cron 也自动跑）
 - 综合经营分析 + 临时问数（§6 分析半）：`generate_business_analysis`（读 mvp_daily_metric 近 N 天序列 + mvp_industry_benchmark 同行 + mvp_anomaly 异动 → R-14 强制分层《综合经营分析》：观察到的 vs 可能的原因；按 face=owner 经营诊断 / operator 投放选品建议两面分别出；确定性为主、polish=True 可选 LLM 润色过 R-14）, `query_metric_nl`（口语问句 → metric_name+时间窗+维度 → 查 mvp_daily_metric 返序列+简述；确定性不归因，覆盖 metric_registry 注册的 95 指标）
@@ -51,6 +52,7 @@ omni 暴露 **98 个 tool**。以 `services/knowledge-engine/app/mcp/doctor.py` 
 - **取数（三层）**：要此刻实时真值 → `platform_fetch`（platform-data skill）；要结构化日报+异动判断 → `daily-store-pulse`；要已落库历史序列 → `query_metric_nl`（不触发抓取）。`fetch_compass_*`/`fetch_yuntu_*` 是读存量底层端点、日常话术别直点（除非 skill 内部调）。
 - **人群包**：从 0 生成圈人策略 → `crowd-sop`；step4 圈包 SOP（有 audience_record_id）→ `generate_audience_pack`；**投前诊断/提纯一个已有包** → `diagnose_audience_pack`（audience-pack-diagnosis）。**"包"字 + 生成动词（圈/做/出/写一个…包、受众咋定、圈人策略）= 生成侧，不是诊断**（见下「诊断路由硬规则」的生成例外）。
 - **出片**：正式出片挂血缘 → `generate_storyboard_images`/`generate_video_segments`；无血缘临时/试拍 → `generate_image`/`generate_video`；只要脚本 → `script-writer`；要成片/全链路（烧 token）→ `sku-pipeline`（明确要全链路才触发）。
+- **纯AI短视频 vs 真人拍（2026-06-26 收敛，解 brief/creative_pack 模糊）**：老板主场景=**纯AI短视频**。要纯AI出片（挂血缘、可投后回溯、进 step6.5→7 出片链）→ **走 `generate_creative_pack(kind=video_*)`，它是唯一血缘出片入口**。`generate_director_brief` 只在老板**明说「给真人编导下 brief / 要真人拍」**时走——它本体是真人拍摄备忘录，第5部分 AI 提示词是**无血缘的临时旁路**（手动复制喂模型、被 step7 的 `kind` 硬闸 `media.py` 挡死、进不了出片链），**不是纯AI主路径**。两者 AI 提示词写法/`target_model`/`intent`/单变量约束同源，别因产出像就混用。**种草/软广出片必带产品参考图**（`generate_video_segments` 缺 `product_refs` 返 `missing_product_refs` 硬拦，确要无产品片传 `allow_no_product=True`）。`kind`(6类) 与 `intent`(4类) 同传错配（如 `kind=video_harvest`+`intent=planting`）会被软 warning（北极星按 intent 算，别比错指标）。
 - **标签体系 / 某标签在哪个维度 / 圈包提纯用哪些标签** → `query_yuntu_taxonomy`（确定性全量不截断），**别用** `search_kb` RAG（只返碎片）。
 - **禁**：`brainstorming`/`using-superpowers`/`test-driven-development` 等工程元 skill **不要**在业务话术（出片/脚本/人群包/分析/成本）上触发，直接进对应业务 skill。
 
@@ -234,6 +236,8 @@ audience_pack_id?, extra_context?)` —— 输入种子词，输出 N 个**纯�
 
 ## sku-pipeline step 3.5/3.6 内容 brief 链（2026-06-12）
 
+> **⚠️ 纯AI短视频别默认走这条 brief 链（2026-06-26）**：`generate_director_brief` 是给**真人编导**的拍摄备忘录（第5部分 AI 提示词是无血缘旁路、进不了血缘出片链）。老板**默认场景是纯AI短视频** → 走 step5 `generate_creative_pack(kind=video_*)`（唯一血缘出片入口）→ step6.5→7 出片。只有老板**明说"要真人拍/给编导下 brief"**才走 3.6 director_brief。详见路由总则「纯AI短视频 vs 真人拍」条。
+
 step 3 选中人群后**分流**：投放圈包走 step 4；**内容 brief 走 3.5→3.6**（每步停等老板反馈）：
 
 | 老板说 | Claude 应做 |
@@ -280,6 +284,24 @@ step 3.5/3.6 内容 brief 链的"闭环层"：把【编导 brief → N 条视频
 
 **铁律**（每份状态/沉淀都带）：画像/投放数据只是冷启动代理；**n≥5 是 R-15 工程门槛、不是统计显著**（抖音冷启动波动可能让 winner 也是噪声）——winner=**当前领先 ≠ 证明更好**，靠逐条点亮+待验证标注+混杂因子免责软兜底，不做 t-test/置信区间（个人自用不过度工程）。单变量纯度对软创意靠 experiment_context 写进 brief 结构 + 老板等量投放自律（系统强制不了等量投放）。沉淀规则只表达"获胜设定"不表达"为什么"（distill 默认纯模板，polish=True 才 LLM 润色且过禁因果/禁新增数值护栏）。
 
+## 内容↔人群向量匹配 + 北极星闭环（migration 066，2026-06-26）
+
+老板要"向量相似度 + 北极星匹配度 同时升级"。两层匹配度闭环，**复用现成 embedding 基建（`embed_texts` gemini 1536 维 + pgvector `<=>` 余弦），不造 ML**：
+
+- **投前·向量预测分**：内容三路（文字/画面/音乐）文本 + 人群算法信号文本 → embed → 余弦相似度 → 预测匹配分（**三路分开看 + 简单平均**），写 `pipeline.experiment_arms.predicted_match_score`。**只排序候选臂、少烧广告费，不判 winner**。
+- **投后·北极星**：完播率/cvr（已有），跟预测分**同锚在臂上**（`v_experiment_round_results` 并排带 `predicted_match_score`）。
+- **闭环·同时升级**：`calibrate_match_predictor` 拉 `(预测分, 北极星)` 配对 → 相关性 + 四象限偏差（向量高北极星低=假阳性）→ **建议三路权重**（确定性记账，**不训练、不自动改**，老板拍板才调）。样本不足返 `insufficient_samples`——校准要先攒够投放数据。
+
+**文本源**：内容侧 `director_brief` 的「算法信号三向量」段最干净（三路对齐）；creative_pack 节点 scenes 的 visual/dialog/sound 次之；**whole_prompt 新形态（老板纯AI主力）整段叙事无法分三路→降级成 text 单路粗匹配**（要三路分开需脚本带结构化三向量段）。人群侧 = 画像「1.3 算法信号原料」段。落 `pipeline.content_vectors`（一脚本三行）+ `pipeline.audience_vectors`（一画像一行）。
+
+**铁律（写进每份预测分）**：向量分只是投前冷启动代理（余弦近=用词/语义像，可能像得毫无意义、≠会买），**winner 永远只认投后北极星**，预测分只当旁证（同曝光量旁证）。升级的是"排序准头"，不是"替代投放"。
+
+| 老板说 | Claude 应做 |
+|---|---|
+| "把这内容/画像转向量 / embed 一下" | `embed_content_and_audience(script_id?, portrait_id?)` |
+| "投前看哪条内容更匹配这人群 / 算预测分 / 排序" | `predict_audience_match(experiment_id)`（先 embed 过画像+各臂脚本） |
+| "向量准不准 / 校准一下 / 投前预测对得上投后没" | `calibrate_match_predictor(sku_id?/experiment_id?)`（样本不足会直说先攒数据） |
+
 ## sku 出片标准链路（老板说"sku-X 全链路"时按此走）
 
 > W3a 起：第 3 步从"裸 LLM"升级为"先 KB grounding 再 LLM"。
@@ -307,6 +329,11 @@ step 3.5/3.6 内容 brief 链的"闭环层"：把【编导 brief → N 条视频
 | 录成本 / 加成本 / 录入物流费 | cost 数据录入 | 调 `record_cost(...)`，老板用 `python -m app.mcp.cli_approve approve <id>` 批 |
 | KB 没命中 / KB 引用不对 | 3a 返回的上下文不好 | 看 sources 哪个 kb_role 弱，提示老板"补 X 类 KB" 或换 query 重调 gather_brief_context |
 | 改 prompt / 改 brief 系统提示 | 改 prompt 不改代码 | 编辑 `services/knowledge-engine/config/prompts/<tool>.{system,user}.md`，KE 容器无需 restart（mtime 自检） |
+
+**「继续」防误触守卫（2026-06-25，客户端"满意/继续"已解耦）**：客户端"满意"按钮**不再**自动发"继续"——现在收到的"继续"是老板**主动点了「继续下一步」键或亲手打的**。但"继续"≠"随便发挥下一步"：
+- 只有**上一步明确留了待续动作**（刚返回 next_step_hint、或正处在 sku-pipeline / 实验 / cost-luru 等多步流程中途）时，"继续"才按 next_step_hint.suggested_tool 推进。
+- **没有明确待续步骤时收到"继续"**（尤其紧跟在一个已收尾的查询/汇报之后）：**不要自己现编后续任务**（如"顺手核一遍同名 SKU""接着算个利润"），直接回一句"这步完事了，要我接着做什么？"等老板说。
+- 绝不让一条旧"继续"**串味进老板的下一个新问题**——老板新开口问别的，就只答新问题，丢掉那条悬空的"继续"。
 
 ## 业务 skill 全集（cost-luru + 5 业务 + 1 编排，W4-B 切片 10/12/13）
 
@@ -403,7 +430,7 @@ KE 容器 lifespan 启动期起 4 个 asyncio loop，每小时唤醒一次检查
 
 ## 调试常用命令
 
-- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 90 ok` 的 tool 列表
+- **容器内自检**：`docker exec omni-knowledge-engine bash -c "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"` —— 应输出 `all 105 ok` 的 tool 列表
 - **审计表**：`docker exec omni-postgres psql -U omni_user -d omni_vibe_db -c "SELECT tool_name, status, duration_ms FROM mcp.tool_calls ORDER BY created_at DESC LIMIT 20"`
 - **ai-provider-hub 状态**：`curl http://localhost:8001/api/v1/ai/providers`
 - **Human Gate 批/驳**（W3a）：

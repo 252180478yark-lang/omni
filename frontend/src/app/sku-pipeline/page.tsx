@@ -497,6 +497,41 @@ interface ExperimentDistillResp {
   hint?: string
 }
 
+// 块B 出下一版 / 块C 变更日志 / 向量投前预测分（2026-06-26）
+interface SeedResp {
+  ok: boolean
+  error?: string
+  hint?: string
+  done?: boolean
+  next_round_no?: number
+  next_variable?: { variable: string; label: string } | null
+  baseline?: Record<string, string>
+  generation?: { tool: string; suggested_args: Record<string, unknown> }
+}
+interface ChangelogResp {
+  ok: boolean
+  error?: string
+  markdown?: string
+  status?: string
+}
+interface PredictArm {
+  arm_label: string
+  variable_value?: string
+  predicted_match_score?: number
+  tracks?: Record<string, number>
+  skipped?: string
+  hint?: string
+}
+interface PredictResp {
+  ok: boolean
+  error?: string
+  hint?: string
+  round_no?: number
+  ranking?: string[]
+  disclaimer?: string
+  arms?: PredictArm[]
+}
+
 // 投前视觉快环（experiment_prescreen_round）：每条 AI 视频的 5 维分 + gate
 interface PrescreenScores {
   fidelity?: number | null
@@ -913,6 +948,11 @@ export default function SkuPipelinePage() {
   const [metricVideoId, setMetricVideoId] = useState('')
   const [metricSubmitting, setMetricSubmitting] = useState(false)
   const [metricError, setMetricError] = useState<string | null>(null)
+  // 出下一版 / 变更日志 / 投前向量预测分（2026-06-26）
+  const [seedResp, setSeedResp] = useState<SeedResp | null>(null)
+  const [changelogResp, setChangelogResp] = useState<ChangelogResp | null>(null)
+  const [predictResp, setPredictResp] = useState<PredictResp | null>(null)
+  const [vecBusy, setVecBusy] = useState<string | null>(null)
 
   // 录投后数据：在臂卡片内直接 POST experiment_arm_id + 北极星指标，
   // 后端 record_ad_metrics 定位不到 asset 时会自动在该臂下建一条 video 资产挂数据。
@@ -2100,6 +2140,63 @@ export default function SkuPipelinePage() {
     } finally {
       setExpDetailLoading(false)
     }
+  }
+
+  // ── 出下一版 / 变更日志 / 投前向量预测分（2026-06-26）──────────────────────
+  const callNextVersionSeed = async () => {
+    if (!activeExpId) return
+    setVecBusy('seed'); setSeedResp(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/experiment-next-version-seed', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ experiment_id: activeExpId }),
+      })
+      const json = await res.json()
+      setSeedResp(json.success ? (json.data as SeedResp) : { ok: false, error: json.error })
+    } catch (e) { setSeedResp({ ok: false, error: String(e) }) } finally { setVecBusy(null) }
+  }
+
+  const callChangelog = async () => {
+    if (!activeExpId) return
+    setVecBusy('changelog'); setChangelogResp(null)
+    try {
+      const res = await fetch('/api/omni/sku-pipeline/experiment-changelog', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ experiment_id: activeExpId }),
+      })
+      const json = await res.json()
+      setChangelogResp(json.success ? (json.data as ChangelogResp) : { ok: false, error: json.error })
+    } catch (e) { setChangelogResp({ ok: false, error: String(e) }) } finally { setVecBusy(null) }
+  }
+
+  // 投前向量预测分：先 embed 画像 + 各臂脚本，再 predict，最后刷新 status 带出预测分列
+  const callPredict = async () => {
+    if (!activeExpId) return
+    setVecBusy('predict'); setPredictResp(null)
+    try {
+      const pid = expGet?.experiment?.portrait_id
+      if (pid) {
+        await fetch('/api/omni/sku-pipeline/embed-content-and-audience', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ portrait_id: pid }),
+        })
+      }
+      const sids = (expStatus?.arms || []).map(a => a.script_id).filter(Boolean) as string[]
+      for (const sid of sids) {
+        await fetch('/api/omni/sku-pipeline/embed-content-and-audience', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script_id: sid }),
+        })
+      }
+      const res = await fetch('/api/omni/sku-pipeline/predict-audience-match', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ experiment_id: activeExpId }),
+      })
+      const json = await res.json()
+      const data: PredictResp = json.success ? (json.data as PredictResp) : { ok: false, error: json.error }
+      setPredictResp(data)
+      if (data.ok) await refreshExperimentDetail(activeExpId)
+    } catch (e) { setPredictResp({ ok: false, error: String(e) }) } finally { setVecBusy(null) }
   }
 
   // 当前实验的生产链（experiment_get / status 透出；缺省 human_brief）
@@ -4580,6 +4677,99 @@ export default function SkuPipelinePage() {
                 )}
               </CardContent>
             </Card>
+
+            {activeExpId && (
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle className="text-base">🔮 向量匹配 + 迭代</CardTitle>
+                  <CardDescription className="text-xs">
+                    投前向量预测分（排序候选、少烧钱，不判 winner）· 出下一版（带上版获胜设定）· 版本变更日志（演化树）
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2 flex-wrap">
+                    <Button size="sm" variant="outline" onClick={callPredict} disabled={vecBusy !== null}>
+                      {vecBusy === 'predict'
+                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />算向量预测分…</>
+                        : '🔮 算投前预测分'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={callNextVersionSeed} disabled={vecBusy !== null}>
+                      {vecBusy === 'seed'
+                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />…</>
+                        : '⏭ 出下一版'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={callChangelog} disabled={vecBusy !== null}>
+                      {vecBusy === 'changelog'
+                        ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />…</>
+                        : '📜 变更日志'}
+                    </Button>
+                  </div>
+
+                  {predictResp && (
+                    <div className="text-xs space-y-2 border rounded p-3 bg-muted/30">
+                      {!predictResp.ok && (
+                        <div className="text-amber-600">预测分：{predictResp.hint || predictResp.error}</div>
+                      )}
+                      {predictResp.ok && (
+                        <>
+                          <div className="font-medium">
+                            投前向量预测分（第 {predictResp.round_no} 轮，排序：{(predictResp.ranking || []).join(' › ')}）
+                          </div>
+                          {(predictResp.arms || []).map(a => (
+                            <div key={a.arm_label} className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="secondary" className="text-[10px]">臂 {a.arm_label}</Badge>
+                              {a.skipped
+                                ? <span className="text-muted-foreground">{a.skipped === 'content_not_embedded' ? '内容未 embed（先点算预测分会自动 embed）' : a.skipped}</span>
+                                : (
+                                  <>
+                                    <span className="font-medium">综合 {a.predicted_match_score?.toFixed(3)}</span>
+                                    <span className="text-muted-foreground">
+                                      {Object.entries(a.tracks || {}).map(([k, v]) =>
+                                        `${k === 'text' ? '文字' : k === 'visual' ? '画面' : '音乐'} ${v.toFixed(2)}`).join(' / ')}
+                                    </span>
+                                  </>
+                                )}
+                            </div>
+                          ))}
+                          <div className="text-[11px] text-amber-700 dark:text-amber-400">{predictResp.disclaimer}</div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {seedResp && (
+                    <div className="text-xs space-y-1.5 border rounded p-3 bg-muted/30">
+                      {!seedResp.ok && <div className="text-amber-600">{seedResp.hint || seedResp.error}</div>}
+                      {seedResp.ok && seedResp.done && (
+                        <div className="text-emerald-700 dark:text-emerald-400">标准变量都扫完了——可去"沉淀为规则"。</div>
+                      )}
+                      {seedResp.ok && !seedResp.done && (
+                        <>
+                          <div className="font-medium">下一版（第 {seedResp.next_round_no} 轮）建议扫：{seedResp.next_variable?.label}</div>
+                          <div className="text-muted-foreground">
+                            已固定 baseline：{Object.entries(seedResp.baseline || {}).map(([k, v]) => `${sweepLabel(k)}=${v}`).join('、') || '（无）'}
+                          </div>
+                          <div className="text-muted-foreground">
+                            用 <code>{seedResp.generation?.tool}</code> 带 experiment_context 给本轮 ≥2 个取值各生成一条 → experiment_attach_arm 挂臂。
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {changelogResp && (
+                    <div className="text-xs border rounded p-3 bg-muted/30">
+                      {!changelogResp.ok && <div className="text-amber-600">{changelogResp.error}</div>}
+                      {changelogResp.ok && changelogResp.markdown && (
+                        <div className="prose prose-sm max-w-none dark:prose-invert text-xs">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{changelogResp.markdown}</ReactMarkdown>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
