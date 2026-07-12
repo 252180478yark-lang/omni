@@ -2,7 +2,7 @@
 
 日期：2026-07-13
 
-状态：核心架构已确认；框架库与单变量细化已完成，待用户终审
+状态：用户已终审认可；实施计划已拆分，待选择执行方式
 
 适用仓库：omni
 
@@ -166,7 +166,7 @@ skill 不增加 planting_status 或 soft_ad_status。每次调用都根据真实
 - 请求的视频模型和模型档案版本
 - framework_library_version、production_track（pure_ai / future_real_material）和证据资格快照
 
-永久事实不能作为内容实验变量。
+永久事实不能作为内容实验变量。请求的视频模型属于每个 arm 必须持久化的生成事实，默认同样固定；唯一例外是 track=ai_video 且本轮显式登记 swept_variable=target_model 的技术实验。此时只允许各臂的请求模型和模型档案版本不同，产品图、人物、时长、画幅和全部内容语义仍保持一致；实际 provider/model 继续按臂留痕。该轮只能回答“哪种出片模型更适合当前固定内容”，不能当作内容框架 winner。
 
 ### 5.2 人群内容原料
 
@@ -336,7 +336,7 @@ ownership registry 必须覆盖全部标准 swept variable，而不只覆盖框�
 
 - 同一 arm 的 content contract、人物、产品图、模型、时长和画幅保持一致。
 - 允许的差异只限于 AI 模型不可避免的采样噪声。
-- 若主动测试模型、运镜或锁脸方法，应把它登记为正式 swept variable，不能混在 replica 中。
+- 若主动测试模型、运镜或锁脸方法，应把它登记为正式 swept variable，不能混在 replica 中。测试模型时适用 5.1 的 arm-scoped 生成事实例外，不放宽任何内容字段。
 - winner 在 arm 级聚合，避免把偶然生成得更漂亮的一条视频误判成内容变量胜出。
 
 ## 7. 两个 intent 的内容与指标规则
