@@ -74,6 +74,7 @@ SKU002 的旧产物并非没有痛点：
 - 自动继承已采用的人群包，不要求用户重复输入人群包。
 - 生成前得到稳定的结构化内容契约。
 - 产品白底图缺失或不可用时停止正式出片。
+- 生成通过整片质检、可直接进入投放测试的最终 MP4，而不是把视频段当成完成品。
 - 每轮只测试一个内容变量。
 - 投后回传消耗、展现、播放、三秒观看、完播、CTR、A3 和 ROI 等指标。
 - 软广按播放质量迭代；种草按 A3 转化率迭代。
@@ -133,13 +134,14 @@ skill 不增加 planting_status 或 soft_ad_status。每次调用都根据真实
 4. 选择本轮唯一变量，生成 2—3 个实验臂脚本。
 5. 用户采纳脚本后才挂实验臂。
 6. 生成角色定妆、运行三角审计和单变量检查。
-7. 使用真实指定模型并携带产品白底图生成视频。
-8. 运行投前视觉质检。
-9. 投放后按素材和实验臂回传数据。
-10. 判断样本、归因窗口和曝光平衡。
-11. 锁定 winner 或保留“当前领先”。
-12. winner 合入 baseline，生成下一轮单变量施工单。
-13. 达到停止条件后标记 converged。
+7. 使用真实指定模型并携带产品白底图生成视频段。
+8. 拼接、标准化并落库最终 MP4。
+9. 对最终整片运行投前视觉质检。
+10. 投放后按素材和实验臂回传数据。
+11. 判断样本、归因窗口和曝光平衡。
+12. 锁定 winner 或保留“当前领先”。
+13. winner 合入 baseline，生成下一轮单变量施工单。
+14. 达到停止条件后标记 converged。
 
 ## 5. 内容实验契约
 
@@ -335,9 +337,156 @@ baseline 保存已经锁定的变量值：
 - 有证据才可使用：权威信息、检测、认证和来源说明。
 - 纯 AI 默认禁止：冒充真实消费者证言、假采访、虚构专家或权威背书。
 
-## 8. 上游兼容与 SKU002 补强
+## 8. 种草短视频生成器
 
-### 8.1 三类兼容结果
+本节定义用户真正调用的 ai-planting-video 生成功能。它不是“只写一份脚本”的 skill，而是跨多个对话步骤完成“内容方案 → 用户采纳 → AI 出片 → 成片质检 → 实验挂臂”的全链路生成器。
+
+### 8.1 用户怎样调用
+
+典型触发语句：
+
+- 给 SKU-002 生成种草短视频。
+- 用这个人群包和产品白底图做两条 A/B 种草片。
+- 按 A3 目标给这个人群做深度种草。
+- 采纳 B 方案并正式出片。
+- 继续这条种草实验的下一版。
+
+用户只需给 SKU 或现有链路锚点，以及当前 SKU 的产品白底图。人群包、卖点、人群画像、痛点和实际包画像由 skill 沿血缘自动继承。
+
+“生成种草短视频”的完成标准是产出通过质检的最终 MP4 asset，并挂到 script、audience pack 和 experiment arm。只产出文案、分镜或未拼接视频段不算完成。
+
+### 8.2 输入契约
+
+必需输入：
+
+- sku_id，或能反查到 sku_id 的 audience_pack_id
+- product_ref：当前 SKU 产品白底图
+
+有默认值的输入：
+
+- target_model：默认 seedance
+- duration_seconds：默认 30；证据确实需要双判断依据时允许 45
+- aspect_ratio：默认 9:16
+- candidate_count：默认 2，用户明确要求时最多 3
+
+可选输入：
+
+- idea_seed：用户指定的生活事件或创意方向
+- swept_variable：用户指定本轮测试变量
+- variable_values：用户指定的 A/B/C 取值
+- extra_context：本轮临时限制
+
+用户没有指定 swept variable 时：
+
+1. 新实验默认先测试 opening_hook_3s。
+2. 如果上游仍有多条互斥的“痛点—卖点—证明”路线，则先测试 value_proposition_route。
+3. 已有投后历史时，由下一变量算法选择，不重置为第一轮。
+
+### 8.3 生成前内容决策
+
+生成器必须先从 content contract 做出五项明确选择：
+
+1. 选择一个真实需求和一个具体内容障碍。
+2. 选择一个能承接该需求的痛点或价值路线。
+3. 选择一个来自画像或实际包信号的生活场景和情绪底色。
+4. 从 M1 生活切片或 M2 问题命名中选择一个相关性入口。
+5. 从可被当前生产方式诚实执行的 M3—M9 中选择一个判断依据。
+
+默认单条视频只使用“一个相关性入口 + 一个判断依据”。只有 45 秒且两个依据都具备真实证据时才允许双依据。
+
+纯 AI 模式默认优先可诚实执行的原因解释、对比框架和使用演示。真实用户证言、专家身份和权威背书没有可验证素材时不得选择。
+
+### 8.4 默认 30 秒内容骨架
+
+| 时间 | 内容任务 | 硬约束 |
+|---|---|---|
+| 0—3 秒 | 用可见痛点、情绪动作或场景冲突让目标人群立刻认出“这是我” | 不出现品牌名，不用产品特写，不喊卖货口号 |
+| 3—8 秒 | 延续真实生活事件，命名问题或放大未被说出的不适 | 人物身份、场景和痛点具体；前 5 秒仍不出现品牌名或产品特写 |
+| 8—15 秒 | 产品通过真实使用动作进入故事，建立痛点与产品的桥 | 产品不是展示台道具，必须发生倒、蘸、拌、烹调等合理动作 |
+| 15—24 秒 | 给出一个判断依据：演示、对比、原因解释或可验证标准 | 全片产品功能介绍不超过一句，不堆卖点 |
+| 24—30 秒 | 让情绪和场景落回生活，形成可记住的判断或未来使用画面 | 不用价格和强购买 CTA；允许搜索、收藏、评论或场景联想型 A3 触发 |
+
+45 秒版本保持相同骨架，只延长判断依据段；不能为了凑时长增加第二个故事或多套卖点。
+
+### 8.5 每个候选脚本必须产出什么
+
+每个 A/B/C arm 在脚本审阅阶段必须同时输出：
+
+1. 本方案要把谁从什么障碍推向 A3。
+2. 本轮唯一变量、该臂取值，以及与其他臂的唯一差异。
+3. 继承的卖点证据、具体痛点、场景、情绪和实际包信号。
+4. 30 秒或 45 秒的完整时间轴脚本。
+5. 6—9 个连续剧情节点，标明人物、动作、台词、声音和产品是否出场。
+6. 角色定妆清单。
+7. 产品出现计划：首次出现时间、每次使用动作、外观参考来源。
+8. 按真实目标模型能力拆分的连续 AI 视频提示词。
+9. 文字、画面、声音和产品动作四路信号。
+10. metrics、自检结果、三角匹配结果和所有阻断告警。
+
+脚本阶段必须展示一张“变量差异卡”。如果系统不能证明两臂只差本轮变量，就不允许用户采纳为正式 A/B。
+
+### 8.6 从脚本到最终视频
+
+用户采纳至少两个不同取值后，skill 继续执行：
+
+1. 调 experiment_adopt_script，把脚本从 draft 变为 adopted，并挂到同一 open round 的不同 arm。
+2. 调 generate_character_sheets，为各臂生成并验证角色定妆照。
+3. 运行产品—内容—人群三角匹配、content vector gate 和单变量 diff。
+4. 调 generate_video_segments，传入 product_ref、全部有效角色图和 experiment_arm_id。
+5. 对每个视频段检查真实 provider/model、产品 refs used、人物连续性和产品动作。
+6. 多段视频按剧情顺序确定性拼接成一个最终 MP4；统一分辨率、帧率、编码和音轨，不擅自新增转场、字幕或营销元素。
+7. 最终 MP4 以 asset_type=video、scene_no=NULL 保存；generation_meta.asset_role=final，并记录全部 segment asset ids。
+8. 对最终整条视频运行 visual prescreen，而不只检查单段。
+9. gate 通过后返回最终 asset_id、文件地址、实验臂码和回传字段模板。
+
+现有 generate_video_segments 只生成视频段，因此本功能必须补一个确定性的 assemble/finalize 能力。若目标模型一次直接生成完整视频，则跳过拼接，但仍要创建 final asset 并运行整片质检。
+
+### 8.7 用户可见的阶段
+
+skill 自身不保存状态，但必须向用户明确显示当前阶段：
+
+- READY：血缘、内容契约和产品图已齐。
+- SCRIPT_REVIEW：候选脚本已生成，等待采纳。
+- RENDERING：已采纳，正在定妆和生成视频段。
+- ASSEMBLING：正在拼接和标准化最终 MP4。
+- PRESCREEN_REVIEW：最终视频正在或已经完成投前质检。
+- READY_FOR_TEST：成片和实验臂均就绪，可进入投放。
+- METRICS_PENDING：等待回传。
+- NEXT_ROUND_READY：已根据数据生成下一轮施工单。
+
+这些是从真实 artifact 派生的用户界面阶段，不新增数据库状态枚举。
+
+### 8.8 生成功能的返回值
+
+脚本审阅阶段返回：
+
+- content contract 摘要
+- candidate scripts
+- variable diff
+- validation gates
+- script ids
+- 下一动作“采纳至少两个不同取值”
+
+正式出片阶段返回：
+
+- final video asset ids 和文件地址
+- segment asset ids
+- 实际 provider/model
+- product refs requested/used
+- character sheet asset ids
+- prescreen 结果
+- experiment id、round no、arm ids 和 arm codes
+- 投放命名建议与数据回传模板
+
+只有 final video asset 存在且 prescreen 通过时，skill 才能说“种草短视频已生成完成”。
+
+### 8.9 软广的复用边界
+
+ai-soft-ad-video 复用同一套产品图验证、定妆、视频段生成、最终拼接、整片质检和实验挂臂能力，但使用 soft_ad 自己的内容骨架与播放质量指标。不能为了共享渲染器而让软广使用 planting 的产品浓度和 A3 判断依据。
+
+## 9. 上游兼容与 SKU002 补强
+
+### 9.1 三类兼容结果
 
 - directly_usable：字段和证据完整，直接继承。
 - migratable：原文已有信息但结构旧，确定性迁入 content contract。
@@ -345,7 +494,7 @@ baseline 保存已经锁定的变量值：
 
 旧版本不覆盖，不伪造新字段。
 
-### 8.2 SKU002 处理
+### 9.2 SKU002 处理
 
 - 保留现有云图实际人群包及外部 ID，不重新圈包。
 - 从旧 matrix 和 record 迁移已有痛点、需求和场景。
@@ -354,9 +503,9 @@ baseline 保存已经锁定的变量值：
 - 现有 pack 继续使用，同时补实际采用的 portrait 版本和内容继承快照。
 - 只有 readiness check 仍发现关键事实缺失时，才补跑对应分析节点。
 
-## 9. 产品白底图与真实出片模型硬闸
+## 10. 产品白底图与真实出片模型硬闸
 
-### 9.1 产品图检查
+### 10.1 产品图检查
 
 产品白底图在首次内容前检时就是必需输入，而不是等到视频渲染时才补。正式生成候选和出片前必须确认：
 
@@ -369,7 +518,7 @@ baseline 保存已经锁定的变量值：
 
 soft_ad 前三秒可以不出现产品，但整条素材仍必须绑定产品图。video_soft_ad 和 video_planting 禁止 allow_no_product 旁路。
 
-### 9.2 模型一致性
+### 10.2 模型一致性
 
 系统必须区分：
 
@@ -381,9 +530,9 @@ soft_ad 前三秒可以不出现产品，但整条素材仍必须绑定产品图
 
 拆段长度按实际模型档案确定，不能把所有模型统一写死为 15 秒。
 
-## 10. 投后数据契约
+## 11. 投后数据契约
 
-### 10.1 共同必传
+### 11.1 共同必传
 
 - asset_id
 - experiment_arm_id 或臂码
@@ -396,14 +545,14 @@ soft_ad 前三秒可以不出现产品，但整条素材仍必须绑定产品图
 - spend
 - impressions
 
-### 10.2 软广必传
+### 11.2 软广必传
 
 - plays
 - play_3s 或 play_3s_rate
 - play_complete 或 completion_rate
 - 平均观看时长（平台有则传）
 
-### 10.3 种草必传
+### 11.3 种草必传
 
 - a3_ratio
 - 推荐同时传 new_a3 和对应分母
@@ -413,13 +562,13 @@ soft_ad 前三秒可以不出现产品，但整条素材仍必须绑定产品图
 
 人群包不重复回传，通过 asset → script → pack 血缘自动确定。
 
-### 10.4 ROI 口径
+### 11.4 ROI 口径
 
 - GMV 与 spend 都有时，由后端复算统一 ROI。
 - 平台直接导出的 ROI 保存为 platform_reported_roi，并带 source=platform_export；它可以作为旁证，但不得覆盖后端统一口径。
 - ROI 不参与 soft_ad 或 planting 的主 winner 排序。
 
-### 10.5 多次回传
+### 11.5 多次回传
 
 V1 沿用 pipeline.assets.ad_metrics JSONB 的累计合并，并增加规范化窗口元字段。
 
@@ -427,9 +576,9 @@ V1 沿用 pipeline.assets.ad_metrics JSONB 的累计合并，并增加规范化�
 
 若未来需要同一素材保存多个窗口快照和趋势，再增加 append-only asset_metric_snapshots 事实表。该事实表不是状态机，本期不创建。
 
-## 11. 判胜、诊断与下一轮建议
+## 12. 判胜、诊断与下一轮建议
 
-### 11.1 可判胜条件
+### 12.1 可判胜条件
 
 - 至少两个有效实验臂。
 - 数据窗口一致并结束。
@@ -439,7 +588,7 @@ V1 沿用 pipeline.assets.ad_metrics JSONB 的累计合并，并增加规范化�
 
 现有“每臂 n≥5”只保留为稳定性旁证，不再是唯一闸门。工程门槛不等于统计显著；数据不足只显示“当前领先”。
 
-### 11.2 诊断规则
+### 12.2 诊断规则
 
 系统先输出观察事实，再输出待验证假设，禁止写成因果定论。
 
@@ -456,7 +605,7 @@ V1 沿用 pipeline.assets.ad_metrics JSONB 的累计合并，并增加规范化�
 - A3 高、ROI 低：保留种草胜者，进入独立收割实验。
 - 曝光或消耗严重失衡：不换变量，先补量或重跑当前轮。
 
-### 11.3 下一变量算法
+### 12.3 下一变量算法
 
 1. 找当前最明显的漏损位置。
 2. 映射到对应变量组。
@@ -467,7 +616,7 @@ V1 沿用 pipeline.assets.ad_metrics JSONB 的累计合并，并增加规范化�
 
 推荐顺序不是固定轮播，也不是让 LLM 自由发挥。
 
-### 11.4 历史最佳
+### 12.4 历史最佳
 
 每轮保存：
 
@@ -481,20 +630,20 @@ V1 沿用 pipeline.assets.ad_metrics JSONB 的累计合并，并增加规范化�
 
 失败臂保留用于复盘，但不进入 baseline。
 
-## 12. 数据模型
+## 13. 数据模型
 
 复用现有 experiments → experiment_rounds → experiment_arms → assets.ad_metrics，不增加表或状态枚举。
 
 建议的加法字段：
 
-### 12.1 pipeline.scripts
+### 13.1 pipeline.scripts
 
 - content_contract JSONB NOT NULL DEFAULT {}
 - target_video_model TEXT
 
 content contract 包含 schema version、永久事实、baseline、sweep、变量清单、请求模型和产品图清单。
 
-### 12.2 pipeline.assets
+### 13.2 pipeline.assets
 
 - generation_meta JSONB NOT NULL DEFAULT {}
 
@@ -509,22 +658,25 @@ generation meta 是设计中的 render manifest，保存：
 - refs blocked reason
 - allow_no_product
 - gate results
+- asset_role：segment 或 final
+- segment_asset_ids：final asset 使用的全部视频段
+- assembly 参数和整片音视频探测结果
 
-### 12.3 pipeline.audience_packs
+### 13.3 pipeline.audience_packs
 
 - audience_portrait_id UUID NULL
 - execution_meta JSONB NOT NULL DEFAULT {}
 
 用于补齐实际采用画像到人群包的血缘，并保存外部人群包 ID、实际包画像来源、估算人数和执行时间。
 
-### 12.4 pipeline.experiments
+### 13.4 pipeline.experiments
 
 - audience_pack_id UUID NULL
 - evaluation_policy JSONB NOT NULL DEFAULT {}
 
 显式绑定实际人群包；evaluation policy 保存该实验的归因窗口、最低样本、曝光失衡门槛、guardrails 和 policy version。
 
-### 12.5 pipeline.experiment_rounds
+### 13.5 pipeline.experiment_rounds
 
 - evaluation_snapshot JSONB NOT NULL DEFAULT {}
 
@@ -532,16 +684,16 @@ generation meta 是设计中的 render manifest，保存：
 
 现有 experiments.baseline、rounds.swept_variable/baseline_snapshot、arms.variable_value 和 assets.experiment_arm_id 继续作为唯一实验状态来源。
 
-## 13. 服务、工具和 Prompt 改造
+## 14. 服务、工具和 Prompt 改造
 
-### 13.1 内容桥接
+### 14.1 内容桥接
 
 - 扩展卖点解析器，解析痛点原料、真需求和完整场景块。
 - 用 section-aware 字段抽取替换全局 36 行关键词抢占。
 - portrait 内容槽优先于 record 和 pack 的冗余摘要。
 - audience pack 固定输出内容继承卡。
 
-### 13.2 生成
+### 14.2 生成
 
 - generate_creative_pack 构建、校验并持久化 content contract。
 - video_soft_ad 和 video_planting 使用各自 profile。
@@ -549,15 +701,18 @@ generation meta 是设计中的 render manifest，保存：
 - 所有 repair suffix 只使用当前 lineage，不得包含固定 SKU 文案。
 - 脚本保存后运行单变量 diff 和三角审计。
 
-### 13.3 出片
+### 14.3 出片
 
 - 校验产品图文件和绑定。
 - 持久化实际 provider/model 和 refs used。
 - 产品 ref 被运行时清除时停止。
 - whole-prompt 模式按模型能力拆段。
 - 角色定妆全失败时不得返回可继续状态。
+- 增加确定性的 assemble/finalize 能力，把视频段按时间顺序拼成最终 MP4。
+- 拼接后统一视频编码、分辨率、帧率和音轨，并用媒体探测校验时长、画幅、视频流和音频流。
+- 最终整片单独落 asset，整片 prescreen 通过后才进入 READY_FOR_TEST。
 
-### 13.4 实验
+### 14.4 实验
 
 - planting 默认 north star 改为 a3_ratio。
 - soft_ad 保持 completion_rate，并增加 play_3s_rate guardrail。
@@ -565,7 +720,7 @@ generation meta 是设计中的 render manifest，保存：
 - experiment_status 使用 evaluation policy 进行判胜资格检查。
 - experiment_next_version_seed 使用诊断映射和全部历史选择下一变量。
 
-### 13.5 数据回灌
+### 14.5 数据回灌
 
 补充默认 CSV 映射：
 
@@ -581,7 +736,7 @@ generation meta 是设计中的 render manifest，保存：
 
 所有新增 MCP 工具必须使用 audit 装饰器。所有新增 LLM 生成必须使用外置 prompt、返回 trace，并复用现有 OutputFeedback。
 
-## 14. 前端
+## 15. 前端
 
 不新建页面，扩展现有 SKU Pipeline 创意素材区和 A/B 实验看板：
 
@@ -597,7 +752,7 @@ generation meta 是设计中的 render manifest，保存：
 
 所有新增产物区继续挂 OutputFeedback。
 
-## 15. 错误处理
+## 16. 错误处理
 
 错误按执行顺序只返回最靠前的一个：
 
@@ -611,38 +766,44 @@ generation meta 是设计中的 render manifest，保存：
 8. triangle_match_low
 9. character_sheet_failed
 10. product_refs_dropped
-11. prescreen_failed
-12. attribution_window_open
-13. insufficient_sample
-14. exposure_imbalance
+11. segment_generation_failed
+12. assembly_failed
+13. final_media_invalid
+14. prescreen_failed
+15. attribution_window_open
+16. insufficient_sample
+17. exposure_imbalance
 
 修复后从当前位置继续，不重跑已经完成且仍然有效的产物。
 
-## 16. 测试与验收
+## 17. 测试与验收
 
-### 16.1 上游与兼容
+### 17.1 上游与兼容
 
 - SKU002 旧 matrix、record、portrait、pack 作为真实 fixture。
 - 旧格式可迁移字段不丢。
 - 缺字段标 unknown/missing，不伪造。
 - portrait 新旧版本均可解析。
 
-### 16.2 单变量
+### 17.2 单变量
 
 - 除 swept variable 外完全一致时通过。
 - 同时改两个变量返回 multi_variable_drift。
 - LLM 擅自改场景或卖点可被生成后校验发现。
 - winner baseline 能正确进入下一轮。
 
-### 16.3 产品和模型
+### 17.3 产品和模型
 
 - 无图、失效图、非图片、明显非白底、错 SKU 均停止。
 - mock 实际视频 provider，断言产品 refs 真正转发。
 - refs 被 provider 清除时 fail-close。
 - target model 的 prompt profile、持久化值和实际 provider/model 一致。
 - seedance、veo、jimeng 使用各自真实时长能力。
+- 多段结果能按顺序拼接成一个最终 MP4。
+- 最终 MP4 的时长、9:16 画幅、视频流和音轨通过媒体探测。
+- 缺段、乱序、无视频流或拼接失败时不能创建 READY_FOR_TEST 的 final asset。
 
-### 16.4 Prompt 与质检
+### 17.4 Prompt 与质检
 
 - planting 标准输出经 validator 零伪告警。
 - 缺关键字段会硬告警或阻断。
@@ -650,7 +811,7 @@ generation meta 是设计中的 render manifest，保存：
 - pure AI 不生成假消费者证言或假权威。
 - 醋、黑醋、寿喜烧等 SKU 不出现 SKU002 酱油事实。
 
-### 16.5 数据与循环
+### 17.5 数据与循环
 
 - 软广按三秒门槛和完播率判定。
 - 种草按 a3_ratio 判定。
@@ -660,28 +821,29 @@ generation meta 是设计中的 render manifest，保存：
 - 第一轮 winner 合入 baseline，第二轮只改变一个新变量。
 - 多轮 changelog 能回答“每轮改了哪里、为什么、结果如何、下一步改什么”。
 
-### 16.6 Skill
+### 17.6 Skill
 
 - ai-soft-ad-video 与 ai-planting-video 触发互不抢占。
 - “软广、播放、前三秒”进入 soft-ad。
 - “深度种草、A3、建立相信、痛点与卖点连接”进入 planting。
 - 两个 skill 均通过 skill quick validation。
 
-## 17. 发布顺序
+## 18. 发布顺序
 
 1. 共享内容契约、解析和单变量校验。
 2. 数据模型加法迁移。
 3. 实验北极星、指标窗口和判胜升级。
 4. 产品图、模型一致性和三角硬闸。
-5. 改造 canonical soft-ad skill。
-6. 创建 planting skill。
-7. 前端现有页面增加预览和诊断卡。
-8. 用 SKU002 做只读迁移预检。
-9. 补跑并审阅 SKU002 portrait 新版本。
-10. 用户提供产品白底图后生成第一轮脚本候选。
-11. 用户采纳后出片、投放、回传并验证 Round 1 → Round 2。
+5. 视频 assemble/finalize 与最终整片质检。
+6. 改造 canonical soft-ad skill。
+7. 创建 planting skill。
+8. 前端现有页面增加预览和诊断卡。
+9. 用 SKU002 做只读迁移预检。
+10. 补跑并审阅 SKU002 portrait 新版本。
+11. 用户提供产品白底图后生成第一轮脚本候选。
+12. 用户采纳后生成最终 MP4、投放、回传并验证 Round 1 → Round 2。
 
-## 18. 完成定义
+## 19. 完成定义
 
 设计完成后的真实用户体验应是：
 
@@ -689,7 +851,7 @@ generation meta 是设计中的 render manifest，保存：
 2. 系统自动继承卖点、人群、画像、人群包和实际画像。
 3. 缺产品白底图或关键内容事实时明确阻断。
 4. 系统展示本轮唯一变量和 2—3 个候选。
-5. 用户采纳后生成具有完整血缘的 AI 视频。
+5. 用户采纳后生成具有完整血缘、通过整片质检的最终 MP4。
 6. 平台数据按素材和实验臂回传。
 7. 系统说明当前 winner、客观依据、样本限制和下一版只改哪里。
 8. 下一轮固定历史最佳，只测试一个新变量。
