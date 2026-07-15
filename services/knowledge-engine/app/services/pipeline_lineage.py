@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 import hashlib
 import json
 import logging
@@ -44,8 +45,8 @@ def _coerce_jsonb_list(v) -> list:
 
 
 def _coerce_jsonb_dict(v) -> dict:
-    if isinstance(v, dict):
-        return v
+    if isinstance(v, Mapping):
+        return dict(v)
     if isinstance(v, str):
         try:
             parsed = json.loads(v)
@@ -1512,6 +1513,8 @@ async def save_creative_pack(
     portrait_id: str | None = None,
     intent: str | None = None,
     parent_script_id: str | None = None,
+    notes: str | None = None,
+    content_contract: dict | None = None,
 ) -> str | None:
     """落 1 行 pipeline.scripts，返回 id。失败返 None 不抛。
 
@@ -1523,6 +1526,9 @@ async def save_creative_pack(
         return None
     if kind not in CREATIVE_KINDS:
         logger.warning("save_creative_pack: kind=%s 非法，跳过落库", kind)
+        return None
+    if content_contract is not None and not isinstance(content_contract, Mapping):
+        logger.warning("save_creative_pack: content_contract 非映射，跳过落库")
         return None
 
     pool = get_pool()
@@ -1570,13 +1576,14 @@ async def save_creative_pack(
                 script_md, hooks, scenes, character_sheets, target_purpose, kind,
                 extra_context,
                 model_provider, model, prompt_hash, cost_estimate,
-                status, version, parent_script_id, portrait_id, intent
+                status, version, parent_script_id, portrait_id, intent, notes,
+                content_contract
             ) VALUES (
                 $1::uuid, $2::uuid, $3::uuid, $4,
                 $5, $6::jsonb, $7::jsonb, $8::jsonb, $9, $10,
                 $11,
                 $12, $13, $14, $15,
-                'draft', $16, $17::uuid, $18::uuid, $19
+                'draft', $16, $17::uuid, $18::uuid, $19, $20, $21::jsonb
             ) RETURNING id::text AS id
             """,
             audience_pack_id,
@@ -1598,6 +1605,8 @@ async def save_creative_pack(
             parent_script_id,
             portrait_id,
             intent,
+            notes,
+            json.dumps(dict(content_contract or {}), ensure_ascii=False),
         )
         return rec["id"] if rec else None
     except Exception as exc:
@@ -2394,7 +2403,7 @@ async def list_creative_packs(
         f"""
         SELECT id::text, sku_id, kind, audience_record_id::text, audience_pack_id::text,
                matrix_run_id::text, version, status, target_purpose,
-               model_provider, model, created_at, parent_script_id::text
+               model_provider, model, content_contract, created_at, parent_script_id::text
         FROM pipeline.scripts
         {where_sql}
         ORDER BY created_at DESC
@@ -2402,7 +2411,12 @@ async def list_creative_packs(
         """,
         *params,
     )
-    return [dict(r) for r in rows]
+    result = []
+    for row in rows:
+        item = dict(row)
+        item["content_contract"] = _coerce_jsonb_dict(item.get("content_contract"))
+        result.append(item)
+    return result
 
 
 async def get_creative_pack(script_id: str) -> dict[str, Any] | None:
@@ -2413,7 +2427,8 @@ async def get_creative_pack(script_id: str) -> dict[str, Any] | None:
                matrix_run_id::text, script_md, hooks, scenes, character_sheets,
                target_purpose,
                extra_context, model_provider, model, version, status,
-               parent_script_id::text, created_at, updated_at
+               parent_script_id::text, portrait_id::text, intent, notes, content_contract,
+               created_at, updated_at
         FROM pipeline.scripts
         WHERE id = $1::uuid
         """,
@@ -2425,6 +2440,7 @@ async def get_creative_pack(script_id: str) -> dict[str, Any] | None:
     d["hooks"] = _coerce_jsonb_list(d.get("hooks"))
     d["scenes"] = _coerce_jsonb_list(d.get("scenes"))
     d["character_sheets"] = _coerce_jsonb_list(d.get("character_sheets"))
+    d["content_contract"] = _coerce_jsonb_dict(d.get("content_contract"))
     return d
 
 

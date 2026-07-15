@@ -8,7 +8,7 @@ from uuid import UUID
 
 import pytest
 
-from app.services import video_content_gate
+from app.services import pipeline_lineage, video_content_gate
 from app.services.video_content_gate import (
     assert_script_ready_for_media,
     build_content_contract,
@@ -680,3 +680,154 @@ async def test_media_readiness_performs_one_explicit_join_without_latest_lookup(
     assert "order by" not in normalized_sql
     assert "limit" not in normalized_sql
     assert args == (ARM_ID,)
+
+
+class _ContractPersistencePool:
+    def __init__(
+        self,
+        *,
+        fetchrow_results: list[Mapping[str, Any] | None] | None = None,
+        fetch_results: list[Mapping[str, Any]] | None = None,
+    ):
+        self.fetchrow_results = list(fetchrow_results or [])
+        self.fetch_results = list(fetch_results or [])
+        self.fetchrow_calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.fetch_calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    async def fetchrow(self, sql: str, *args: Any) -> Mapping[str, Any] | None:
+        self.fetchrow_calls.append((sql, args))
+        return self.fetchrow_results.pop(0) if self.fetchrow_results else None
+
+    async def fetch(self, sql: str, *args: Any) -> list[Mapping[str, Any]]:
+        self.fetch_calls.append((sql, args))
+        return list(self.fetch_results)
+
+
+def _creative_pack_kwargs(**updates: Any) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "sku_id": "SKU-CONTRACT-1",
+        "kind": "video_planting",
+        "script_md": "一段可执行的种草脚本",
+        "portrait_id": "33333333-3333-4333-8333-333333333333",
+        "intent": "planting",
+        "notes": "gate=passed",
+    }
+    kwargs.update(updates)
+    return kwargs
+
+
+@pytest.mark.asyncio
+async def test_save_creative_pack_persists_content_contract_as_explicit_jsonb(
+    monkeypatch,
+):
+    pool = _ContractPersistencePool(
+        fetchrow_results=[{"v": None}, {"id": SCRIPT_ID}]
+    )
+    monkeypatch.setattr(pipeline_lineage, "get_pool", lambda: pool)
+    contract = {"version": "2026-07-15.v1", "标题": "锅气", "gate": {"pass": True}}
+
+    result = await pipeline_lineage.save_creative_pack(
+        **_creative_pack_kwargs(content_contract=contract)
+    )
+
+    assert result == SCRIPT_ID
+    assert len(pool.fetchrow_calls) == 2
+    insert_sql, insert_args = pool.fetchrow_calls[-1]
+    normalized_sql = " ".join(insert_sql.split())
+    assert "INSERT INTO pipeline.scripts" in normalized_sql
+    assert "status, version, parent_script_id, portrait_id, intent, notes, content_contract" in normalized_sql
+    assert "'draft', $16, $17::uuid, $18::uuid, $19, $20, $21::jsonb" in normalized_sql
+    assert len(insert_args) == 21
+    assert insert_args[-2] == "gate=passed"
+    assert insert_args[-1] == '{"version": "2026-07-15.v1", "标题": "锅气", "gate": {"pass": true}}'
+
+
+@pytest.mark.asyncio
+async def test_save_creative_pack_defaults_content_contract_to_empty_object(monkeypatch):
+    pool = _ContractPersistencePool(
+        fetchrow_results=[{"v": None}, {"id": SCRIPT_ID}]
+    )
+    monkeypatch.setattr(pipeline_lineage, "get_pool", lambda: pool)
+
+    result = await pipeline_lineage.save_creative_pack(**_creative_pack_kwargs())
+
+    assert result == SCRIPT_ID
+    assert pool.fetchrow_calls[-1][1][-1] == "{}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid_contract", [[], "{}", 1, object()])
+async def test_save_creative_pack_rejects_nonmapping_contract_before_pool_access(
+    monkeypatch, invalid_contract
+):
+    def _unexpected_pool_access():
+        raise AssertionError("invalid content_contract must not access the database pool")
+
+    monkeypatch.setattr(pipeline_lineage, "get_pool", _unexpected_pool_access)
+
+    result = await pipeline_lineage.save_creative_pack(
+        **_creative_pack_kwargs(content_contract=invalid_contract)
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored_contract",
+    [
+        _Record({"version": "record-v1", "gate": {"pass": True}}),
+        '{"version":"string-v1","gate":{"pass":true}}',
+    ],
+)
+async def test_get_creative_pack_decodes_mapping_and_json_string_contracts(
+    monkeypatch, stored_contract
+):
+    row = _Record(
+        {
+            "id": SCRIPT_ID,
+            "hooks": "[]",
+            "scenes": "[]",
+            "character_sheets": "[]",
+            "content_contract": stored_contract,
+            "notes": "gate=passed",
+            "status": "draft",
+        }
+    )
+    pool = _ContractPersistencePool(fetchrow_results=[row])
+    monkeypatch.setattr(pipeline_lineage, "get_pool", lambda: pool)
+
+    result = await pipeline_lineage.get_creative_pack(SCRIPT_ID)
+
+    assert result is not None
+    assert isinstance(result["content_contract"], dict)
+    assert result["content_contract"]["gate"] == {"pass": True}
+    select_sql, select_args = pool.fetchrow_calls[0]
+    assert "content_contract" in select_sql
+    assert "notes" in select_sql
+    assert select_args == (SCRIPT_ID,)
+
+
+@pytest.mark.asyncio
+async def test_list_creative_packs_decodes_contract_dict_string_and_null(monkeypatch):
+    rows = [
+        {"id": "one", "content_contract": {"version": "dict-v1"}},
+        {"id": "two", "content_contract": '{"version":"string-v1"}'},
+        {"id": "three", "content_contract": None},
+    ]
+    pool = _ContractPersistencePool(fetch_results=rows)
+    monkeypatch.setattr(pipeline_lineage, "get_pool", lambda: pool)
+
+    result = await pipeline_lineage.list_creative_packs(
+        sku_id="SKU-CONTRACT-1", kind="video_planting"
+    )
+
+    assert [item["content_contract"] for item in result] == [
+        {"version": "dict-v1"},
+        {"version": "string-v1"},
+        {},
+    ]
+    select_sql, select_args = pool.fetch_calls[0]
+    assert "content_contract" in select_sql
+    assert "status" in select_sql
+    assert select_args == ("SKU-CONTRACT-1", "video_planting", 30)
