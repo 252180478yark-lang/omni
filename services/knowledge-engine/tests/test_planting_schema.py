@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from decimal import Decimal
+from pathlib import Path
 from uuid import uuid4
 
 import asyncpg
@@ -48,6 +51,10 @@ EXPECTED_VIEW_COLUMNS = [
     ("completion_rate_pooled", "numeric"),
     ("metric_coverage_complete", "boolean"),
 ]
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+MIGRATION_068 = "068_ai_planting_agent_parity.sql"
+MIGRATION_069 = "069_fix_planting_zero_impression_cpm.sql"
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -332,6 +339,67 @@ async def test_experiment_results_view_uses_shape_safe_eligibility_predicates():
     assert "gs.selected_assets ? a.id::text" in compact
     assert "suspect}')::boolean" not in compact
     assert "suspect}'::text[])::boolean" not in compact
+
+
+@pytest.mark.asyncio
+async def test_069_ships_cpm_fix_after_recorded_068_without_replaying_068():
+    migration_path = REPO_ROOT / "migrations" / MIGRATION_069
+    assert migration_path.is_file()
+    migration_sql = migration_path.read_text(encoding="utf-8")
+    assert "CREATE OR REPLACE VIEW pipeline.v_experiment_round_results" in migration_sql
+    assert "positive_impression_count = eligible_asset_count" in migration_sql
+    assert "raw_positive_impression_sum" in migration_sql
+    assert "DROP VIEW" not in migration_sql.upper()
+    assert "ALTER TABLE" not in migration_sql.upper()
+    assert "CREATE TABLE" not in migration_sql.upper()
+
+    pool = get_pool()
+    applied_068_at = await pool.fetchval(
+        "SELECT applied_at FROM public.schema_migrations WHERE filename=$1", MIGRATION_068
+    )
+    assert applied_068_at is not None
+
+    # A prior interrupted test may have reached only the ledger insert. Remove
+    # that one test-owned marker so this test always exercises normal ordering.
+    await pool.execute(
+        "DELETE FROM public.schema_migrations WHERE filename=$1", MIGRATION_069
+    )
+    assert await pool.fetchval(
+        "SELECT 1 FROM public.schema_migrations WHERE filename=$1", MIGRATION_069
+    ) is None
+
+    applied = subprocess.run(
+        [sys.executable, "scripts/apply_migrations.py", "--only", "069"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    assert "[OK] 069_fix_planting_zero_impression_cpm.sql applied" in applied.stdout
+    assert await pool.fetchval(
+        "SELECT applied_at FROM public.schema_migrations WHERE filename=$1", MIGRATION_068
+    ) == applied_068_at
+    assert await pool.fetchval(
+        "SELECT 1 FROM public.schema_migrations WHERE filename=$1", MIGRATION_069
+    ) == 1
+
+    skipped = subprocess.run(
+        [sys.executable, "scripts/apply_migrations.py", "--only", "069"],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert skipped.returncode == 0, skipped.stdout + skipped.stderr
+    assert "all 1 migrations already applied" in skipped.stdout
+    assert await pool.fetchval(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_schema='pipeline' AND table_name='v_experiment_round_results'"
+    ) == 34
+    assert await pool.fetchval(
+        "SELECT to_regclass('pipeline.v_content_version_changelog')::text"
+    ) == "pipeline.v_content_version_changelog"
 
 
 @pytest.mark.asyncio
