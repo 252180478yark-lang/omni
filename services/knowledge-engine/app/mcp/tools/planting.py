@@ -66,43 +66,68 @@ def _render_bridge_prompts(facts: Mapping[str, Any]) -> tuple[str, str]:
     return system_prompt, user_prompt
 
 
-def _model_config_errors(config: Mapping[str, Any]) -> list[str]:
+def _validated_model_config(
+    config: Mapping[str, Any],
+) -> tuple[dict[str, Any] | None, list[str]]:
     errors: list[str] = []
-    if config.get("provider") != _PROVIDER:
+    provider = config.get("provider")
+    model = config.get("model")
+    if provider != _PROVIDER:
         errors.append(f"provider must be {_PROVIDER!r}")
-    if config.get("model") != _MODEL:
+    if model != _MODEL:
         errors.append(f"model must be {_MODEL!r}")
 
-    temperature = config.get("temperature")
-    if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):
+    raw_temperature = config.get("temperature")
+    try:
+        if isinstance(raw_temperature, bool):
+            raise TypeError
+        temperature = float(raw_temperature)
+    except (TypeError, ValueError):
+        temperature = None
         errors.append(f"temperature must be exactly {_TEMPERATURE}")
-    elif float(temperature) != _TEMPERATURE:
-        errors.append(f"temperature must be exactly {_TEMPERATURE}")
+    else:
+        if temperature != _TEMPERATURE:
+            errors.append(f"temperature must be exactly {_TEMPERATURE}")
 
-    max_tokens = config.get("max_tokens")
-    if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
-        errors.append(f"max_tokens must be exactly {_MAX_TOKENS}")
-    elif max_tokens != _MAX_TOKENS:
+    raw_max_tokens = config.get("max_tokens")
+    if isinstance(raw_max_tokens, bool):
+        max_tokens = None
+    elif isinstance(raw_max_tokens, int):
+        max_tokens = raw_max_tokens
+    elif isinstance(raw_max_tokens, str) and raw_max_tokens.strip().isdigit():
+        max_tokens = int(raw_max_tokens.strip())
+    else:
+        max_tokens = None
+    if max_tokens != _MAX_TOKENS:
         errors.append(f"max_tokens must be exactly {_MAX_TOKENS}")
 
     expected_prompts = {"system": _SYSTEM_PROMPT, "user": _USER_PROMPT}
     if config.get("prompts") != expected_prompts:
         errors.append(f"prompts must be exactly {expected_prompts!r}")
-    return errors
+
+    if errors:
+        return None, errors
+    return {
+        "provider": provider,
+        "model": model,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }, []
 
 
 def _bridge_trace(
     *,
     final_prompt: str,
     upstream_fact_hash: str | None,
+    model_config: Mapping[str, Any],
 ) -> dict[str, Any]:
     return build_trace(
-        provider=_PROVIDER,
-        model=_MODEL,
+        provider=model_config["provider"],
+        model=model_config["model"],
         prompt=final_prompt,
         params={
-            "temperature": _TEMPERATURE,
-            "max_tokens": _MAX_TOKENS,
+            "temperature": model_config["temperature"],
+            "max_tokens": model_config["max_tokens"],
             "upstream_fact_hash": upstream_fact_hash,
         },
         cost_estimate="1 Gemini Pro call",
@@ -112,16 +137,20 @@ def _bridge_trace(
 def _invalid_result(
     *,
     errors: list[str],
+    missing_or_invalid: list[str],
     final_prompt: str,
     upstream_fact_hash: str | None,
+    model_config: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "ok": False,
         "error": "pain_solution_bridge_invalid",
+        "missing_or_invalid": list(dict.fromkeys(missing_or_invalid)),
         "errors": errors,
         "trace": _bridge_trace(
             final_prompt=final_prompt,
             upstream_fact_hash=upstream_fact_hash,
+            model_config=model_config,
         ),
     }
 
@@ -133,15 +162,6 @@ async def _generate_planting_pain_solution_bridge_impl(
     audience_pack_id: str | None = None,
 ) -> dict[str, Any]:
     """Generate exactly two grounded bridge candidates with one Pro call."""
-
-    config = get_model_for_tool(_TOOL_NAME)
-    config_errors = _model_config_errors(config)
-    if config_errors:
-        return {
-            "ok": False,
-            "error": "pain_solution_bridge_model_misconfigured",
-            "detail": "; ".join(config_errors),
-        }
 
     upstream = await load_planting_bridge_context(
         sku_id,
@@ -161,12 +181,22 @@ async def _generate_planting_pain_solution_bridge_impl(
             "reason": "facts_missing",
         }
 
+    config = get_model_for_tool(_TOOL_NAME)
+    model_config, config_errors = _validated_model_config(config)
+    if model_config is None:
+        return {
+            "ok": False,
+            "error": "pain_solution_bridge_model_misconfigured",
+            "detail": "; ".join(config_errors),
+        }
+
     try:
         system_prompt, user_prompt = _render_bridge_prompts(facts)
     except Exception as exc:
         return {
             "ok": False,
             "error": "pain_solution_bridge_invalid",
+            "missing_or_invalid": ["prompt"],
             "errors": [f"prompt_render_failed: {exc}"],
         }
     final_prompt = f"[system]\n{system_prompt}\n\n[user]\n{user_prompt}"
@@ -177,10 +207,10 @@ async def _generate_planting_pain_solution_bridge_impl(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            provider=_PROVIDER,
-            model=_MODEL,
-            temperature=_TEMPERATURE,
-            max_tokens=_MAX_TOKENS,
+            provider=model_config["provider"],
+            model=model_config["model"],
+            temperature=model_config["temperature"],
+            max_tokens=model_config["max_tokens"],
             enforce_human_voice=False,
         )
     except Exception as exc:
@@ -192,6 +222,7 @@ async def _generate_planting_pain_solution_bridge_impl(
             "trace": _bridge_trace(
                 final_prompt=final_prompt,
                 upstream_fact_hash=str(upstream_fact_hash),
+                model_config=model_config,
             ),
         }
 
@@ -200,12 +231,16 @@ async def _generate_planting_pain_solution_bridge_impl(
     except (TypeError, ValueError) as exc:
         return _invalid_result(
             errors=[str(exc)],
+            missing_or_invalid=["payload"],
             final_prompt=final_prompt,
             upstream_fact_hash=str(upstream_fact_hash),
+            model_config=model_config,
         )
 
     raw_catalog = facts.get("eligible_evidence_catalog")
-    evidence_catalog = copy.deepcopy(raw_catalog) if isinstance(raw_catalog, Mapping) else {}
+    evidence_catalog = (
+        dict(copy.deepcopy(raw_catalog)) if isinstance(raw_catalog, Mapping) else {}
+    )
     pack_catalog = facts.get("pack_calibration_catalog")
     if isinstance(pack_catalog, str) and pack_catalog:
         evidence_catalog["pack"] = pack_catalog
@@ -213,12 +248,18 @@ async def _generate_planting_pain_solution_bridge_impl(
     validation = validate_bridge_pair(bridges, evidence_catalog=evidence_catalog)
     if not validation.get("ok"):
         validation_errors = [str(error) for error in validation.get("errors") or []]
+        missing_or_invalid = [
+            str(field) for field in validation.get("missing_or_invalid") or []
+        ]
         if any("must be identical across both bridges" in error for error in validation_errors):
             validation_errors.insert(0, "cross_candidate_drift")
+            missing_or_invalid.insert(0, "cross_candidate_drift")
         return _invalid_result(
             errors=validation_errors,
+            missing_or_invalid=missing_or_invalid or ["bridges"],
             final_prompt=final_prompt,
             upstream_fact_hash=str(upstream_fact_hash),
+            model_config=model_config,
         )
 
     result: dict[str, Any] = {
@@ -230,6 +271,7 @@ async def _generate_planting_pain_solution_bridge_impl(
         "trace": _bridge_trace(
             final_prompt=final_prompt,
             upstream_fact_hash=str(upstream_fact_hash),
+            model_config=model_config,
         ),
     }
     return attach_next_step(

@@ -39,6 +39,11 @@ _EVIDENCE_FIELDS = (
     "product_evidence",
 )
 _REQUIRED_FIELDS = frozenset((*_TEXT_FIELDS, *_EVIDENCE_FIELDS))
+_EVIDENCE_ENTRY_KEYS = {
+    "portrait_evidence": frozenset({"source", "field", "value"}),
+    "pack_calibration_evidence": frozenset({"field", "value"}),
+    "product_evidence": frozenset({"source", "field", "value"}),
+}
 _VARIABLE_PAIR_FIELDS = frozenset(
     ("trigger_scene", "pain_point", "pain_consequence")
 )
@@ -537,18 +542,34 @@ def _validate_evidence_list(
     allowed_sources: frozenset[str] | None,
     catalog_source: str | None,
     evidence_catalog: Mapping[str, Any] | None,
-) -> list[str]:
+    require_nonempty: bool,
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
+    missing_or_invalid: list[str] = []
     entries = bridge.get(field)
-    if not isinstance(entries, list) or not entries:
-        return [f"{field} must be a non-empty list"]
+    if not isinstance(entries, list):
+        return [f"{field} must be a list"], [field]
+    if not entries:
+        if require_nonempty:
+            return [f"{field} must be a non-empty list"], [field]
+        return [], []
 
     has_allowed_source = False
+    expected_keys = _EVIDENCE_ENTRY_KEYS[field]
     for index, entry in enumerate(entries):
         prefix = f"{field}[{index}]"
         if not isinstance(entry, Mapping):
             errors.append(f"{prefix} must be an object")
+            missing_or_invalid.append(prefix)
             continue
+
+        entry_keys = set(entry)
+        for key in sorted(expected_keys - entry_keys):
+            errors.append(f"{prefix} missing required key: {key}")
+            missing_or_invalid.append(f"{prefix}.{key}")
+        for key in sorted(entry_keys - expected_keys):
+            errors.append(f"{prefix} has unexpected key: {key}")
+            missing_or_invalid.append(f"{prefix}.{key}")
 
         source: str | None = catalog_source
         if allowed_sources is not None:
@@ -556,6 +577,7 @@ def _validate_evidence_list(
             if not isinstance(raw_source, str) or raw_source not in allowed_sources:
                 allowed = _allowed_source_label(allowed_sources)
                 errors.append(f"{prefix}.source must be one of {allowed}")
+                missing_or_invalid.append(f"{prefix}.source")
                 source = None
             else:
                 has_allowed_source = True
@@ -564,6 +586,7 @@ def _validate_evidence_list(
         for key in ("field", "value"):
             if not _is_meaningful_text(entry.get(key)):
                 errors.append(f"{prefix}.{key} must be non-empty evidence text")
+                missing_or_invalid.append(f"{prefix}.{key}")
 
         evidence_value = entry.get("value")
         if (
@@ -576,73 +599,138 @@ def _validate_evidence_list(
                 errors.append(
                     f"{prefix}.value is not present in evidence_catalog[{source!r}]"
                 )
+                missing_or_invalid.append(f"{prefix}.value")
 
     if allowed_sources is not None and not has_allowed_source:
         allowed = _allowed_source_label(allowed_sources)
         errors.append(f"{field} must contain evidence from {allowed}")
-    return errors
+        missing_or_invalid.append(field)
+    return errors, missing_or_invalid
+
+
+def _dedupe(items: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys(items))
+
+
+def _bridge_validation_result(
+    bridge: Any,
+    errors: list[str],
+    missing_or_invalid: list[str],
+) -> dict[str, Any]:
+    if errors:
+        return {
+            "ok": False,
+            "error": "pain_solution_bridge_invalid",
+            "missing_or_invalid": _dedupe(missing_or_invalid),
+            "errors": errors,
+        }
+    return {
+        "ok": True,
+        "bridge": bridge,
+        "missing_or_invalid": [],
+        "errors": [],
+    }
 
 
 def validate_pain_solution_bridge(
     bridge: Any,
     evidence_catalog: Mapping[str, Any] | None = None,
+    *,
+    require_pack_evidence: bool | None = None,
 ) -> dict[str, Any]:
     """Validate one pain-solution bridge and return deterministic errors."""
 
     if not isinstance(bridge, Mapping):
-        return {"ok": False, "errors": ["bridge must be an object"]}
+        return _bridge_validation_result(
+            bridge,
+            ["bridge must be an object"],
+            ["bridge"],
+        )
     if evidence_catalog is not None and not isinstance(evidence_catalog, Mapping):
-        return {
-            "ok": False,
-            "errors": ["evidence_catalog must be an object when provided"],
-        }
+        return _bridge_validation_result(
+            bridge,
+            ["evidence_catalog must be an object when provided"],
+            ["evidence_catalog"],
+        )
+    if require_pack_evidence is not None and not isinstance(require_pack_evidence, bool):
+        return _bridge_validation_result(
+            bridge,
+            ["require_pack_evidence must be a bool when provided"],
+            ["require_pack_evidence"],
+        )
+
+    if require_pack_evidence is None:
+        pack_catalog = (
+            _catalog_text(evidence_catalog, "pack")
+            if evidence_catalog is not None
+            else None
+        )
+        require_pack_evidence = bool(pack_catalog and pack_catalog.strip())
 
     errors: list[str] = []
+    missing_or_invalid: list[str] = []
+    bridge_keys = set(bridge)
+    for field in sorted(_REQUIRED_FIELDS - bridge_keys):
+        errors.append(f"missing required bridge field: {field}")
+        missing_or_invalid.append(field)
+    for field in sorted(bridge_keys - _REQUIRED_FIELDS):
+        errors.append(f"unexpected bridge field: {field}")
+        missing_or_invalid.append(field)
+
     for field in _TEXT_FIELDS:
         if not _is_meaningful_text(bridge.get(field)):
             errors.append(f"{field} must be non-empty text")
+            missing_or_invalid.append(field)
 
     relevance_module = bridge.get("relevance_module")
     if _is_meaningful_text(relevance_module) and relevance_module not in {"M1", "M2"}:
         errors.append("relevance_module must be M1 or M2")
+        missing_or_invalid.append("relevance_module")
 
     justification_module = bridge.get("justification_module")
     if _is_meaningful_text(justification_module) and justification_module not in {
         f"M{number}" for number in range(3, 10)
     }:
         errors.append("justification_module must be one of M3..M9")
+        missing_or_invalid.append("justification_module")
 
-    errors.extend(
-        _validate_evidence_list(
-            bridge,
-            "portrait_evidence",
-            allowed_sources=frozenset({"portrait", "record"}),
-            catalog_source=None,
-            evidence_catalog=evidence_catalog,
-        )
+    evidence_errors, evidence_invalid = _validate_evidence_list(
+        bridge,
+        "portrait_evidence",
+        allowed_sources=frozenset({"portrait", "record"}),
+        catalog_source=None,
+        evidence_catalog=evidence_catalog,
+        require_nonempty=True,
     )
-    errors.extend(
-        _validate_evidence_list(
-            bridge,
-            "pack_calibration_evidence",
-            allowed_sources=None,
-            catalog_source="pack",
-            evidence_catalog=evidence_catalog,
-        )
+    errors.extend(evidence_errors)
+    missing_or_invalid.extend(evidence_invalid)
+
+    evidence_errors, evidence_invalid = _validate_evidence_list(
+        bridge,
+        "pack_calibration_evidence",
+        allowed_sources=None,
+        catalog_source="pack",
+        evidence_catalog=evidence_catalog,
+        require_nonempty=require_pack_evidence,
     )
-    errors.extend(
-        _validate_evidence_list(
-            bridge,
-            "product_evidence",
-            allowed_sources=frozenset({"sku", "matrix"}),
-            catalog_source=None,
-            evidence_catalog=evidence_catalog,
-        )
+    errors.extend(evidence_errors)
+    missing_or_invalid.extend(evidence_invalid)
+
+    evidence_errors, evidence_invalid = _validate_evidence_list(
+        bridge,
+        "product_evidence",
+        allowed_sources=frozenset({"sku", "matrix"}),
+        catalog_source=None,
+        evidence_catalog=evidence_catalog,
+        require_nonempty=True,
     )
+    errors.extend(evidence_errors)
+    missing_or_invalid.extend(evidence_invalid)
 
     pain_point = bridge.get("pain_point")
     if _is_meaningful_text(pain_point) and _is_attribute_only_pain_point(pain_point):
         errors.append("pain_point must describe a pain, not only an attribute label/list")
+        missing_or_invalid.append("pain_point")
 
     product_action = bridge.get("product_action")
     visible_result = bridge.get("visible_result")
@@ -651,13 +739,16 @@ def validate_pain_solution_bridge(
             errors.append(
                 "product_action and visible_result must not be the same slogan"
             )
+            missing_or_invalid.extend(("product_action", "visible_result"))
 
-    return {"ok": not errors, "errors": errors}
+    return _bridge_validation_result(bridge, errors, missing_or_invalid)
 
 
 def validate_bridge_pair(
     bridges: Any,
     evidence_catalog: Mapping[str, Any] | None = None,
+    *,
+    require_pack_evidence: bool | None = None,
 ) -> dict[str, Any]:
     """Validate the two-bridge contract and fixed/variable field discipline."""
 
@@ -666,11 +757,26 @@ def validate_bridge_pair(
         or isinstance(bridges, (str, bytes, bytearray))
         or len(bridges) != 2
     ):
-        return {"ok": False, "errors": ["bridges must contain exactly 2 items"]}
+        return {
+            "ok": False,
+            "error": "pain_solution_bridge_invalid",
+            "missing_or_invalid": ["bridges"],
+            "errors": ["bridges must contain exactly 2 items"],
+        }
 
     errors: list[str] = []
+    missing_or_invalid: list[str] = []
     for index, bridge in enumerate(bridges):
-        result = validate_pain_solution_bridge(bridge, evidence_catalog)
+        result = validate_pain_solution_bridge(
+            bridge,
+            evidence_catalog,
+            require_pack_evidence=require_pack_evidence,
+        )
+        for field in result["missing_or_invalid"]:
+            if field == "bridge":
+                missing_or_invalid.append(f"bridges[{index}]")
+            else:
+                missing_or_invalid.append(f"bridges[{index}].{field}")
         for error in result["errors"]:
             if error == "bridge must be an object":
                 errors.append(f"bridges[{index}] must be an object")
@@ -682,13 +788,7 @@ def validate_bridge_pair(
         for field in _FIXED_PAIR_FIELDS:
             if first.get(field) != second.get(field):
                 errors.append(f"{field} must be identical across both bridges")
-
-        extra_fixed_fields = sorted(
-            (set(first) | set(second)) - _REQUIRED_FIELDS - _VARIABLE_PAIR_FIELDS
-        )
-        for field in extra_fixed_fields:
-            if first.get(field) != second.get(field):
-                errors.append(f"{field} must be identical across both bridges")
+                missing_or_invalid.extend(("cross_candidate_drift", field))
 
         first_path = tuple(first.get(field) for field in _VARIABLE_PAIR_FIELDS)
         second_path = tuple(second.get(field) for field in _VARIABLE_PAIR_FIELDS)
@@ -696,8 +796,21 @@ def validate_bridge_pair(
             errors.append(
                 "trigger_scene/pain_point/pain_consequence tuples must differ"
             )
+            missing_or_invalid.extend(sorted(_VARIABLE_PAIR_FIELDS))
 
-    return {"ok": not errors, "errors": errors}
+    if errors:
+        return {
+            "ok": False,
+            "error": "pain_solution_bridge_invalid",
+            "missing_or_invalid": _dedupe(missing_or_invalid),
+            "errors": errors,
+        }
+    return {
+        "ok": True,
+        "bridges": bridges,
+        "missing_or_invalid": [],
+        "errors": [],
+    }
 
 
 def _member(value: Any, name: str) -> Any:

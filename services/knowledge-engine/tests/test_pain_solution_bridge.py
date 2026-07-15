@@ -267,7 +267,14 @@ def test_canonical_hash_rejects_unsupported_objects_and_non_string_keys() -> Non
 
 
 def test_validate_bridge_accepts_complete_grounded_bridge() -> None:
-    assert validate_pain_solution_bridge(_bridge()) == {"ok": True, "errors": []}
+    bridge = _bridge()
+
+    assert validate_pain_solution_bridge(bridge) == {
+        "ok": True,
+        "bridge": bridge,
+        "missing_or_invalid": [],
+        "errors": [],
+    }
 
 
 @pytest.mark.parametrize(
@@ -293,12 +300,45 @@ def test_validate_bridge_rejects_missing_text_and_invalid_modules(
     assert any(field in error for error in result["errors"])
 
 
-@pytest.mark.parametrize("field", ["portrait_evidence", "pack_calibration_evidence", "product_evidence"])
+@pytest.mark.parametrize("field", ["portrait_evidence", "product_evidence"])
 def test_validate_bridge_requires_nonempty_evidence_lists(field: str) -> None:
     result = validate_pain_solution_bridge(_bridge(**{field: []}))
 
     assert result["ok"] is False
     assert any(field in error for error in result["errors"])
+
+
+def test_validate_bridge_pack_evidence_policy_tracks_real_pack_context() -> None:
+    no_pack = _bridge(pack_calibration_evidence=[])
+    assert validate_pain_solution_bridge(
+        no_pack,
+        evidence_catalog={
+            "portrait": no_pack["portrait_evidence"][0]["value"],
+            "sku": no_pack["product_evidence"][0]["value"],
+        },
+    )["ok"] is True
+
+    packed = validate_pain_solution_bridge(
+        no_pack,
+        evidence_catalog={
+            "portrait": no_pack["portrait_evidence"][0]["value"],
+            "sku": no_pack["product_evidence"][0]["value"],
+            "pack": "pack calibration exists",
+        },
+    )
+    assert packed["ok"] is False
+    assert "pack_calibration_evidence" in packed["missing_or_invalid"]
+
+    fabricated = _bridge()
+    ungrounded = validate_pain_solution_bridge(
+        fabricated,
+        evidence_catalog={
+            "portrait": fabricated["portrait_evidence"][0]["value"],
+            "sku": fabricated["product_evidence"][0]["value"],
+        },
+    )
+    assert ungrounded["ok"] is False
+    assert any("pack_calibration_evidence" in error for error in ungrounded["errors"])
 
 
 def test_pack_evidence_cannot_substitute_for_portrait_or_record_evidence() -> None:
@@ -368,7 +408,49 @@ def test_validate_bridge_allows_demographic_context_inside_a_real_pain() -> None
         )
     )
 
-    assert result == {"ok": True, "errors": []}
+    assert result["ok"] is True
+    assert result["bridge"]["pain_point"]
+    assert result["missing_or_invalid"] == []
+    assert result["errors"] == []
+
+
+@pytest.mark.parametrize(
+    "bridge",
+    [
+        {**_bridge(), "unexpected": "must fail"},
+        {key: value for key, value in _bridge().items() if key != "belief_shift"},
+        {
+            **_bridge(),
+            "portrait_evidence": [
+                {
+                    **_bridge()["portrait_evidence"][0],
+                    "invented_confidence": 0.99,
+                }
+            ],
+        },
+        {
+            **_bridge(),
+            "product_evidence": [
+                {
+                    **_bridge()["product_evidence"][0],
+                    "invented_confidence": 0.99,
+                }
+            ],
+        },
+    ],
+)
+def test_validate_bridge_rejects_missing_or_extra_schema_keys(
+    bridge: dict[str, object],
+) -> None:
+    result = validate_pain_solution_bridge(bridge)
+
+    assert result["ok"] is False
+    assert result["error"] == "pain_solution_bridge_invalid"
+    assert result["missing_or_invalid"]
+    assert any(
+        marker in " ".join(result["errors"])
+        for marker in ("unexpected", "missing")
+    )
 
 
 def test_validate_bridge_rejects_slogan_equality_after_normalization() -> None:
@@ -409,7 +491,14 @@ def test_evidence_catalog_reports_each_unmatched_source_value() -> None:
 
 
 def test_validate_pair_accepts_two_bridges_with_only_pain_path_variation() -> None:
-    assert validate_bridge_pair(_pair()) == {"ok": True, "errors": []}
+    bridges = _pair()
+
+    assert validate_bridge_pair(bridges) == {
+        "ok": True,
+        "bridges": bridges,
+        "missing_or_invalid": [],
+        "errors": [],
+    }
 
 
 @pytest.mark.parametrize("bad_pair", [[], [_bridge()], [_bridge(), _bridge(), _bridge()]])
@@ -417,7 +506,21 @@ def test_validate_pair_requires_exactly_two_bridges(bad_pair: list[dict[str, obj
     result = validate_bridge_pair(bad_pair)
 
     assert result["ok"] is False
+    assert result["error"] == "pain_solution_bridge_invalid"
+    assert result["missing_or_invalid"] == ["bridges"]
     assert result["errors"] == ["bridges must contain exactly 2 items"]
+
+
+def test_validate_pair_rejects_same_extra_root_key_on_both_candidates() -> None:
+    bridges = _pair()
+    bridges[0]["invented_score"] = 91
+    bridges[1]["invented_score"] = 91
+
+    result = validate_bridge_pair(bridges)
+
+    assert result["ok"] is False
+    assert "bridges[0].invented_score" in result["missing_or_invalid"]
+    assert "bridges[1].invented_score" in result["missing_or_invalid"]
 
 
 def test_validate_pair_requires_fixed_fields_to_match() -> None:
@@ -1013,6 +1116,15 @@ def _tool_context() -> dict[str, object]:
     }
 
 
+def _tool_context_without_pack() -> dict[str, object]:
+    context = copy.deepcopy(_tool_context())
+    facts = context["facts"]
+    facts["pack_calibration"] = None
+    facts["pack_calibration_catalog"] = ""
+    context["upstream_fact_hash"] = canonical_upstream_fact_hash(facts)
+    return context
+
+
 class _FakeAIHubClient:
     calls: list[dict[str, object]] = []
     response: object = None
@@ -1122,6 +1234,65 @@ async def test_bridge_tool_calls_pro_once_and_returns_review_only_result(
 
 
 @pytest.mark.asyncio
+async def test_bridge_tool_succeeds_without_optional_pack_and_requires_empty_pack_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pair = _pair()
+    for bridge in pair:
+        bridge["pack_calibration_evidence"] = []
+    planting = _install_tool_fakes(
+        monkeypatch,
+        context=_tool_context_without_pack(),
+        response={"content": json.dumps({"bridges": pair}, ensure_ascii=False)},
+    )
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, None
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["bridges"] == pair
+    assert result["result"]["bridges"][0]["pack_calibration_evidence"] == []
+    assert len(_FakeAIHubClient.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_bridge_tool_normalizes_validated_effective_config_for_call_and_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pair = _pair()
+    planting = _install_tool_fakes(
+        monkeypatch,
+        config={
+            "provider": "gemini",
+            "model": "gemini-3.1-pro-preview",
+            "temperature": "0.2",
+            "max_tokens": "4000",
+            "prompts": {
+                "system": "planting_pain_solution_bridge.system",
+                "user": "planting_pain_solution_bridge.user",
+            },
+        },
+        response={"content": json.dumps({"bridges": pair}, ensure_ascii=False)},
+    )
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+
+    assert result["ok"] is True
+    call = _FakeAIHubClient.calls[0]
+    assert call["provider"] == "gemini"
+    assert call["model"] == "gemini-3.1-pro-preview"
+    assert call["temperature"] == 0.2
+    assert call["max_tokens"] == 4000
+    assert result["trace"]["model_provider"] == call["provider"]
+    assert result["trace"]["model"] == call["model"]
+    assert result["trace"]["params"]["temperature"] == call["temperature"]
+    assert result["trace"]["params"]["max_tokens"] == call["max_tokens"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("key", "bad_value"),
     [
@@ -1227,6 +1398,7 @@ async def test_bridge_tool_fails_closed_on_invalid_model_payloads(
 
     assert result["ok"] is False
     assert result["error"] == "pain_solution_bridge_invalid"
+    assert result["missing_or_invalid"]
     assert error_fragment in json.dumps(result.get("errors"), ensure_ascii=False)
     assert len(_FakeAIHubClient.calls) == 1
     assert result["trace"]["params"]["upstream_fact_hash"] == _tool_context()["upstream_fact_hash"]
@@ -1261,6 +1433,35 @@ async def test_bridge_tool_returns_upstream_failure_without_ai_call(
         "reason": "portrait_not_adopted",
     }
     planting = _install_tool_fakes(monkeypatch, context=upstream)
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    assert result == upstream
+    assert _FakeAIHubClient.calls == []
+    assert _FakeAIHubClient.timeouts == []
+
+
+@pytest.mark.asyncio
+async def test_bridge_tool_prioritizes_upstream_failure_over_bad_model_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upstream = {
+        "ok": False,
+        "error": "upstream_lineage_incomplete",
+        "reason": "portrait_not_adopted",
+    }
+    planting = _install_tool_fakes(
+        monkeypatch,
+        context=upstream,
+        config={
+            "provider": "openai",
+            "model": "wrong",
+            "temperature": 9,
+            "max_tokens": 1,
+        },
+    )
 
     result = await planting._generate_planting_pain_solution_bridge_impl(
         SKU_ID, RECORD_ID, PORTRAIT_ID
