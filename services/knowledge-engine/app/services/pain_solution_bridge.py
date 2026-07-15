@@ -18,6 +18,9 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from app.database import get_pool
+from app.services import pipeline_lineage
+
 
 _TEXT_FIELDS = (
     "audience_segment",
@@ -142,6 +145,346 @@ def canonical_upstream_fact_hash(facts: Any) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _canonical_uuid(value: Any) -> str | None:
+    try:
+        return str(UUID(str(value)))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _normalize_json_text(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return value
+    return parsed if isinstance(parsed, (dict, list)) else value
+
+
+def _stable_json(value: Any) -> str:
+    return json.dumps(
+        _canonicalize(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _lineage_failure(
+    reason: str,
+    *,
+    passed_checks: list[str],
+    lineage: Mapping[str, Any],
+    detail: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": "upstream_lineage_incomplete",
+        "reason": reason,
+        "passed_checks": list(passed_checks),
+        "lineage": dict(lineage),
+        "detail": dict(detail or {}),
+    }
+
+
+def _stable_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    fields = (
+        "id",
+        "audience_run_id",
+        "matrix_run_id",
+        "sku_id",
+        "ordinal",
+        "name",
+        "kb_doc",
+        "kb_section",
+        "kb_chunk_text",
+        "match_reasons",
+        "layer_tags",
+        "raw_md_segment",
+        "status",
+        "selected_for_pack",
+    )
+    return {field: record.get(field) for field in fields}
+
+
+async def load_planting_bridge_context(
+    sku_id: str,
+    audience_record_id: str,
+    portrait_id: str,
+    audience_pack_id: str | None = None,
+) -> dict[str, Any]:
+    """Load one explicit, adopted lineage for planting bridge generation.
+
+    The caller must supply record and portrait IDs (and optionally a pack ID).
+    This function never selects a latest or implicit upstream artifact.
+    """
+
+    passed_checks: list[str] = []
+    lineage: dict[str, Any] = {"sku_id": sku_id}
+
+    pool = get_pool()
+    sku_row = await pool.fetchrow(
+        "SELECT id,name,category,price_min,price_max,specifications,"
+        "owner_selling_points,owner_notes,platform_status "
+        "FROM mvp_sku WHERE id=$1",
+        sku_id,
+    )
+    if not sku_row:
+        return _lineage_failure(
+            "sku_not_found",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"sku_id": sku_id},
+        )
+    passed_checks.append("sku_exists")
+
+    canonical_record_id = _canonical_uuid(audience_record_id)
+    if canonical_record_id is None:
+        return _lineage_failure(
+            "invalid_audience_record_id",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"audience_record_id": audience_record_id},
+        )
+    lineage["audience_record_id"] = canonical_record_id
+    passed_checks.append("audience_record_id_valid")
+
+    record = await pipeline_lineage.get_audience_record(canonical_record_id)
+    if record is None:
+        return _lineage_failure(
+            "record_not_found",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"audience_record_id": canonical_record_id},
+        )
+    passed_checks.append("audience_record_exists")
+    if record.get("sku_id") != sku_id:
+        return _lineage_failure(
+            "record_sku_mismatch",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"expected_sku_id": sku_id, "actual_sku_id": record.get("sku_id")},
+        )
+    passed_checks.append("audience_record_sku_matches")
+    if not (
+        record.get("status") == "adopted"
+        or record.get("selected_for_pack") is True
+    ):
+        return _lineage_failure(
+            "record_not_eligible",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={
+                "status": record.get("status"),
+                "selected_for_pack": record.get("selected_for_pack"),
+            },
+        )
+    passed_checks.append("audience_record_eligible")
+
+    canonical_matrix_id = _canonical_uuid(record.get("matrix_run_id"))
+    canonical_run_id = _canonical_uuid(record.get("audience_run_id"))
+    lineage["matrix_run_id"] = canonical_matrix_id or record.get("matrix_run_id")
+    lineage["audience_run_id"] = canonical_run_id or record.get("audience_run_id")
+    if canonical_matrix_id is None:
+        return _lineage_failure(
+            "matrix_not_found",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"matrix_run_id": record.get("matrix_run_id")},
+        )
+
+    matrix = await pipeline_lineage.get_matrix_run(canonical_matrix_id)
+    if matrix is None:
+        return _lineage_failure(
+            "matrix_not_found",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"matrix_run_id": canonical_matrix_id},
+        )
+    passed_checks.append("matrix_exists")
+    if matrix.get("status") != "adopted":
+        return _lineage_failure(
+            "matrix_not_adopted",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"status": matrix.get("status")},
+        )
+    passed_checks.append("matrix_adopted")
+    if (
+        _canonical_uuid(matrix.get("id")) != canonical_matrix_id
+        or matrix.get("sku_id") != sku_id
+    ):
+        return _lineage_failure(
+            "matrix_lineage_mismatch",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={
+                "expected": {"id": canonical_matrix_id, "sku_id": sku_id},
+                "actual": {"id": matrix.get("id"), "sku_id": matrix.get("sku_id")},
+            },
+        )
+    passed_checks.append("matrix_lineage_matches")
+
+    canonical_portrait_id = _canonical_uuid(portrait_id)
+    if canonical_portrait_id is None:
+        return _lineage_failure(
+            "invalid_portrait_id",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"portrait_id": portrait_id},
+        )
+    lineage["portrait_id"] = canonical_portrait_id
+    passed_checks.append("portrait_id_valid")
+
+    portrait = await pipeline_lineage.get_audience_portrait(canonical_portrait_id)
+    if portrait is None:
+        return _lineage_failure(
+            "portrait_not_found",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"portrait_id": canonical_portrait_id},
+        )
+    passed_checks.append("portrait_exists")
+    if portrait.get("status") != "adopted":
+        return _lineage_failure(
+            "portrait_not_adopted",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"status": portrait.get("status")},
+        )
+    passed_checks.append("portrait_adopted")
+
+    expected_lineage = {
+        "sku_id": sku_id,
+        "audience_record_id": canonical_record_id,
+        "audience_run_id": canonical_run_id,
+        "matrix_run_id": canonical_matrix_id,
+    }
+    actual_portrait_lineage = {
+        "sku_id": portrait.get("sku_id"),
+        "audience_record_id": _canonical_uuid(portrait.get("audience_record_id")),
+        "audience_run_id": _canonical_uuid(portrait.get("audience_run_id")),
+        "matrix_run_id": _canonical_uuid(portrait.get("matrix_run_id")),
+    }
+    if actual_portrait_lineage != expected_lineage:
+        return _lineage_failure(
+            "portrait_lineage_mismatch",
+            passed_checks=passed_checks,
+            lineage=lineage,
+            detail={"expected": expected_lineage, "actual": actual_portrait_lineage},
+        )
+    passed_checks.append("portrait_lineage_matches")
+
+    pack: Mapping[str, Any] | None = None
+    canonical_pack_id: str | None = None
+    if audience_pack_id is not None:
+        canonical_pack_id = _canonical_uuid(audience_pack_id)
+        if canonical_pack_id is None:
+            return _lineage_failure(
+                "invalid_audience_pack_id",
+                passed_checks=passed_checks,
+                lineage=lineage,
+                detail={"audience_pack_id": audience_pack_id},
+            )
+        lineage["audience_pack_id"] = canonical_pack_id
+        passed_checks.append("audience_pack_id_valid")
+        pack = await pipeline_lineage.get_audience_pack(canonical_pack_id)
+        if pack is None:
+            return _lineage_failure(
+                "pack_not_found",
+                passed_checks=passed_checks,
+                lineage=lineage,
+                detail={"audience_pack_id": canonical_pack_id},
+            )
+        passed_checks.append("pack_exists")
+        if pack.get("status") != "adopted":
+            return _lineage_failure(
+                "pack_not_adopted",
+                passed_checks=passed_checks,
+                lineage=lineage,
+                detail={"status": pack.get("status")},
+            )
+        passed_checks.append("pack_adopted")
+        actual_pack_lineage = {
+            "sku_id": pack.get("sku_id"),
+            "audience_record_id": _canonical_uuid(pack.get("audience_record_id")),
+            "audience_run_id": _canonical_uuid(pack.get("audience_run_id")),
+            "matrix_run_id": _canonical_uuid(pack.get("matrix_run_id")),
+        }
+        if actual_pack_lineage != expected_lineage:
+            return _lineage_failure(
+                "pack_lineage_mismatch",
+                passed_checks=passed_checks,
+                lineage=lineage,
+                detail={"expected": expected_lineage, "actual": actual_pack_lineage},
+            )
+        passed_checks.append("pack_lineage_matches")
+
+    sku_source = dict(sku_row)
+    sku_facts = {
+        "id": sku_source.get("id"),
+        "name": sku_source.get("name"),
+        "category": sku_source.get("category"),
+        "price_min": sku_source.get("price_min"),
+        "price_max": sku_source.get("price_max"),
+        "specifications": _normalize_json_text(sku_source.get("specifications")),
+        "owner_selling_points": _normalize_json_text(
+            sku_source.get("owner_selling_points")
+        ),
+        "owner_notes": sku_source.get("owner_notes"),
+        "platform_status": sku_source.get("platform_status"),
+    }
+    record_evidence = _stable_record(record)
+    pack_calibration = (
+        {
+            "id": canonical_pack_id,
+            "pack_md": pack.get("pack_md"),
+            "dmp_tags": pack.get("dmp_tags"),
+        }
+        if pack is not None
+        else None
+    )
+    facts = {
+        "lineage": {
+            "sku_id": sku_id,
+            "matrix_run_id": canonical_matrix_id,
+            "audience_run_id": canonical_run_id,
+            "audience_record_id": canonical_record_id,
+            "portrait_id": canonical_portrait_id,
+            "audience_pack_id": canonical_pack_id,
+        },
+        "sku_facts": sku_facts,
+        "matrix_evidence": {
+            "id": canonical_matrix_id,
+            "matrix_md": matrix.get("matrix_md"),
+        },
+        "portrait_record_evidence": {
+            "record": record_evidence,
+            "portrait": {
+                "id": canonical_portrait_id,
+                "portrait_md": portrait.get("portrait_md"),
+            },
+        },
+        "pack_calibration": pack_calibration,
+        "eligible_evidence_catalog": {
+            "sku": _stable_json(sku_facts),
+            "matrix": matrix.get("matrix_md") or "",
+            "record": _stable_json(record_evidence),
+            "portrait": portrait.get("portrait_md") or "",
+        },
+        "pack_calibration_catalog": (
+            _stable_json(pack_calibration) if pack_calibration is not None else ""
+        ),
+    }
+    return {
+        "ok": True,
+        "facts": facts,
+        "upstream_fact_hash": canonical_upstream_fact_hash(facts),
+    }
 
 
 def _is_meaningful_text(value: Any) -> bool:
@@ -458,6 +801,7 @@ def parse_bridge_payload(text: str) -> list[dict[str, Any]]:
 __all__ = [
     "canonical_upstream_fact_hash",
     "extract_response_text",
+    "load_planting_bridge_context",
     "parse_bridge_payload",
     "validate_bridge_pair",
     "validate_pain_solution_bridge",

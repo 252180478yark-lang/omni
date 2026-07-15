@@ -12,13 +12,155 @@ from uuid import UUID
 
 import pytest
 
+from app.services import pain_solution_bridge as bridge_service
 from app.services.pain_solution_bridge import (
     canonical_upstream_fact_hash,
     extract_response_text,
+    load_planting_bridge_context,
     parse_bridge_payload,
     validate_bridge_pair,
     validate_pain_solution_bridge,
 )
+
+
+SKU_ID = "SKU-TEST-001"
+RECORD_ID = "11111111-1111-4111-8111-111111111111"
+MATRIX_ID = "22222222-2222-4222-8222-222222222222"
+RUN_ID = "33333333-3333-4333-8333-333333333333"
+PORTRAIT_ID = "44444444-4444-4444-8444-444444444444"
+PACK_ID = "55555555-5555-4555-8555-555555555555"
+_UNSET = object()
+
+
+class _FakePool:
+    def __init__(self, sku: dict[str, object] | None) -> None:
+        self.sku = sku
+        self.calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, object] | None:
+        self.calls.append((query, args))
+        return copy.deepcopy(self.sku)
+
+
+def _sku() -> dict[str, object]:
+    return {
+        "id": SKU_ID,
+        "name": "test seasoning",
+        "category": "seasoning",
+        "price_min": Decimal("29.90"),
+        "price_max": Decimal("39.90"),
+        "specifications": '{"volume":"500ml"}',
+        "owner_selling_points": '["organic brew","fresh taste"]',
+        "owner_notes": "owner note",
+        "platform_status": "active",
+    }
+
+
+def _record(**overrides: object) -> dict[str, object]:
+    value: dict[str, object] = {
+        "id": RECORD_ID,
+        "audience_run_id": RUN_ID,
+        "matrix_run_id": MATRIX_ID,
+        "sku_id": SKU_ID,
+        "ordinal": 2,
+        "name": "busy family cook",
+        "kb_doc": "audience study",
+        "kb_section": "family dinner",
+        "kb_chunk_text": "weeknight dinner must be fast and reliable",
+        "match_reasons": ["needs stable flavor"],
+        "layer_tags": ["family cook"],
+        "raw_md_segment": "record raw markdown",
+        "status": "adopted",
+        "selected_for_pack": False,
+    }
+    value.update(overrides)
+    return value
+
+
+def _matrix(**overrides: object) -> dict[str, object]:
+    value: dict[str, object] = {
+        "id": MATRIX_ID,
+        "sku_id": SKU_ID,
+        "matrix_md": "matrix evidence: organic brew and stable flavor",
+        "status": "adopted",
+    }
+    value.update(overrides)
+    return value
+
+
+def _portrait(**overrides: object) -> dict[str, object]:
+    value: dict[str, object] = {
+        "id": PORTRAIT_ID,
+        "audience_record_id": RECORD_ID,
+        "audience_run_id": RUN_ID,
+        "matrix_run_id": MATRIX_ID,
+        "sku_id": SKU_ID,
+        "portrait_md": "portrait evidence: rushed weeknight family dinner",
+        "status": "adopted",
+    }
+    value.update(overrides)
+    return value
+
+
+def _pack(**overrides: object) -> dict[str, object]:
+    value: dict[str, object] = {
+        "id": PACK_ID,
+        "audience_record_id": RECORD_ID,
+        "audience_run_id": RUN_ID,
+        "matrix_run_id": MATRIX_ID,
+        "sku_id": SKU_ID,
+        "pack_md": "pack calibration: high-value city users",
+        "dmp_tags": ["high consumption", "tier 1-2 city"],
+        "status": "adopted",
+    }
+    value.update(overrides)
+    return value
+
+
+def _install_lineage_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    sku: dict[str, object] | None | object = _UNSET,
+    record: dict[str, object] | None | object = _UNSET,
+    matrix: dict[str, object] | None | object = _UNSET,
+    portrait: dict[str, object] | None | object = _UNSET,
+    pack: dict[str, object] | None | object = _UNSET,
+) -> tuple[_FakePool, list[tuple[str, str]]]:
+    resolved_sku = _sku() if sku is _UNSET else sku
+    assert resolved_sku is None or isinstance(resolved_sku, dict)
+    pool = _FakePool(resolved_sku)
+    calls: list[tuple[str, str]] = []
+
+    async def get_record(value: str) -> dict[str, object] | None:
+        calls.append(("record", value))
+        resolved = _record() if record is _UNSET else record
+        assert resolved is None or isinstance(resolved, dict)
+        return copy.deepcopy(resolved)
+
+    async def get_matrix(value: str) -> dict[str, object] | None:
+        calls.append(("matrix", value))
+        resolved = _matrix() if matrix is _UNSET else matrix
+        assert resolved is None or isinstance(resolved, dict)
+        return copy.deepcopy(resolved)
+
+    async def get_portrait(value: str) -> dict[str, object] | None:
+        calls.append(("portrait", value))
+        resolved = _portrait() if portrait is _UNSET else portrait
+        assert resolved is None or isinstance(resolved, dict)
+        return copy.deepcopy(resolved)
+
+    async def get_pack(value: str) -> dict[str, object] | None:
+        calls.append(("pack", value))
+        resolved = _pack() if pack is _UNSET else pack
+        assert resolved is None or isinstance(resolved, dict)
+        return copy.deepcopy(resolved)
+
+    monkeypatch.setattr(bridge_service, "get_pool", lambda: pool)
+    monkeypatch.setattr(bridge_service.pipeline_lineage, "get_audience_record", get_record)
+    monkeypatch.setattr(bridge_service.pipeline_lineage, "get_matrix_run", get_matrix)
+    monkeypatch.setattr(bridge_service.pipeline_lineage, "get_audience_portrait", get_portrait)
+    monkeypatch.setattr(bridge_service.pipeline_lineage, "get_audience_pack", get_pack)
+    return pool, calls
 
 
 def _bridge(**overrides: object) -> dict[str, object]:
@@ -379,3 +521,453 @@ def test_parse_bridge_payload_rejects_malformed_or_non_object_bridges(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         parse_bridge_payload(text)
+
+
+def _stable_json(value: object) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+@pytest.mark.asyncio
+async def test_load_context_without_pack_returns_stable_facts_and_hash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pool, calls = _install_lineage_fakes(monkeypatch)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    expected_sku = {
+        "id": SKU_ID,
+        "name": "test seasoning",
+        "category": "seasoning",
+        "price_min": Decimal("29.90"),
+        "price_max": Decimal("39.90"),
+        "specifications": {"volume": "500ml"},
+        "owner_selling_points": ["organic brew", "fresh taste"],
+        "owner_notes": "owner note",
+        "platform_status": "active",
+    }
+    expected_record = _record()
+    expected_facts = {
+        "lineage": {
+            "sku_id": SKU_ID,
+            "matrix_run_id": MATRIX_ID,
+            "audience_run_id": RUN_ID,
+            "audience_record_id": RECORD_ID,
+            "portrait_id": PORTRAIT_ID,
+            "audience_pack_id": None,
+        },
+        "sku_facts": expected_sku,
+        "matrix_evidence": {
+            "id": MATRIX_ID,
+            "matrix_md": "matrix evidence: organic brew and stable flavor",
+        },
+        "portrait_record_evidence": {
+            "record": expected_record,
+            "portrait": {
+                "id": PORTRAIT_ID,
+                "portrait_md": "portrait evidence: rushed weeknight family dinner",
+            },
+        },
+        "pack_calibration": None,
+        "eligible_evidence_catalog": {
+            "sku": _stable_json(expected_sku),
+            "matrix": "matrix evidence: organic brew and stable flavor",
+            "record": _stable_json(expected_record),
+            "portrait": "portrait evidence: rushed weeknight family dinner",
+        },
+        "pack_calibration_catalog": "",
+    }
+    assert result == {
+        "ok": True,
+        "facts": expected_facts,
+        "upstream_fact_hash": canonical_upstream_fact_hash(expected_facts),
+    }
+    assert calls == [
+        ("record", RECORD_ID),
+        ("matrix", MATRIX_ID),
+        ("portrait", PORTRAIT_ID),
+    ]
+    assert len(pool.calls) == 1
+    query, args = pool.calls[0]
+    assert args == (SKU_ID,)
+    compact_query = " ".join(query.split()).lower()
+    assert compact_query == (
+        "select id,name,category,price_min,price_max,specifications,"
+        "owner_selling_points,owner_notes,platform_status "
+        "from mvp_sku where id=$1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_load_context_with_pack_keeps_calibration_outside_eligible_catalog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(monkeypatch)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+
+    assert result["ok"] is True
+    facts = result["facts"]
+    assert facts["lineage"]["audience_pack_id"] == PACK_ID
+    assert facts["pack_calibration"] == {
+        "id": PACK_ID,
+        "pack_md": "pack calibration: high-value city users",
+        "dmp_tags": ["high consumption", "tier 1-2 city"],
+    }
+    assert facts["pack_calibration_catalog"] == _stable_json(
+        facts["pack_calibration"]
+    )
+    assert set(facts["eligible_evidence_catalog"]) == {
+        "sku",
+        "matrix",
+        "record",
+        "portrait",
+    }
+    assert "pack calibration" not in _stable_json(
+        facts["eligible_evidence_catalog"]
+    )
+    assert calls[-1] == ("pack", PACK_ID)
+    assert result["upstream_fact_hash"] == canonical_upstream_fact_hash(facts)
+
+
+@pytest.mark.asyncio
+async def test_load_context_normalizes_uppercase_explicit_uuids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(monkeypatch)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID.upper(), PORTRAIT_ID.upper(), PACK_ID.upper()
+    )
+
+    assert result["ok"] is True
+    assert calls == [
+        ("record", RECORD_ID),
+        ("matrix", MATRIX_ID),
+        ("portrait", PORTRAIT_ID),
+        ("pack", PACK_ID),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_load_context_does_not_fetch_pack_when_id_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(monkeypatch)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, None
+    )
+
+    assert result["ok"] is True
+    assert all(name != "pack" for name, _ in calls)
+
+
+@pytest.mark.asyncio
+async def test_load_context_never_uses_list_or_latest_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_lineage_fakes(monkeypatch)
+
+    async def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("list/latest lineage helper must not be used")
+
+    for name in (
+        "list_audience_records",
+        "list_matrix_runs",
+        "list_audience_portraits",
+        "list_audience_packs",
+        "get_latest_audience_record",
+        "get_latest_audience_portrait",
+    ):
+        monkeypatch.setattr(
+            bridge_service.pipeline_lineage,
+            name,
+            forbidden,
+            raising=False,
+        )
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+
+    assert result["ok"] is True
+
+
+def _assert_lineage_failure(
+    result: dict[str, object], reason: str
+) -> None:
+    assert result["ok"] is False
+    assert result["error"] == "upstream_lineage_incomplete"
+    assert result["reason"] == reason
+    assert isinstance(result["passed_checks"], list)
+    assert isinstance(result["lineage"], dict)
+    assert isinstance(result["detail"], dict)
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_sku_not_found_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(monkeypatch, sku=None)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, "not-a-uuid", "also-not-a-uuid"
+    )
+
+    _assert_lineage_failure(result, "sku_not_found")
+    assert result["passed_checks"] == []
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_malformed_record_uuid_without_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(monkeypatch)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, "not-a-uuid", "also-not-a-uuid"
+    )
+
+    _assert_lineage_failure(result, "invalid_audience_record_id")
+    assert result["passed_checks"] == ["sku_exists"]
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_record_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(monkeypatch, record=None)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, "not-a-uuid"
+    )
+
+    _assert_lineage_failure(result, "record_not_found")
+    assert calls == [("record", RECORD_ID)]
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_record_sku_mismatch_before_later_stages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(
+        monkeypatch, record=_record(sku_id="SKU-OTHER")
+    )
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, "not-a-uuid"
+    )
+
+    _assert_lineage_failure(result, "record_sku_mismatch")
+    assert calls == [("record", RECORD_ID)]
+
+
+@pytest.mark.asyncio
+async def test_load_context_rejects_unselected_draft_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(
+        monkeypatch,
+        record=_record(status="draft", selected_for_pack=False),
+        matrix=None,
+    )
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    _assert_lineage_failure(result, "record_not_eligible")
+    assert calls == [("record", RECORD_ID)]
+
+
+@pytest.mark.asyncio
+async def test_selected_for_pack_allows_draft_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_lineage_fakes(
+        monkeypatch,
+        record=_record(status="draft", selected_for_pack=True),
+    )
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    assert result["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_matrix_missing_and_not_adopted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, missing_calls = _install_lineage_fakes(monkeypatch, matrix=None)
+    missing = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+    _assert_lineage_failure(missing, "matrix_not_found")
+    assert missing_calls == [("record", RECORD_ID), ("matrix", MATRIX_ID)]
+
+    _, draft_calls = _install_lineage_fakes(
+        monkeypatch, matrix=_matrix(status="draft")
+    )
+    draft = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+    _assert_lineage_failure(draft, "matrix_not_adopted")
+    assert draft_calls == [("record", RECORD_ID), ("matrix", MATRIX_ID)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"id": "66666666-6666-4666-8666-666666666666"},
+        {"sku_id": "SKU-OTHER"},
+    ],
+)
+async def test_load_context_compares_matrix_id_and_sku_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+) -> None:
+    _, calls = _install_lineage_fakes(
+        monkeypatch, matrix=_matrix(**overrides)
+    )
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    _assert_lineage_failure(result, "matrix_lineage_mismatch")
+    assert all(name != "portrait" for name, _ in calls)
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_malformed_portrait_uuid_after_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(monkeypatch)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, "not-a-uuid"
+    )
+
+    _assert_lineage_failure(result, "invalid_portrait_id")
+    assert calls == [("record", RECORD_ID), ("matrix", MATRIX_ID)]
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_portrait_missing_and_not_adopted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, missing_calls = _install_lineage_fakes(monkeypatch, portrait=None)
+    missing = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+    _assert_lineage_failure(missing, "portrait_not_found")
+    assert missing_calls[-1] == ("portrait", PORTRAIT_ID)
+
+    _, draft_calls = _install_lineage_fakes(
+        monkeypatch, portrait=_portrait(status="draft")
+    )
+    draft = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+    _assert_lineage_failure(draft, "portrait_not_adopted")
+    assert draft_calls[-1] == ("portrait", PORTRAIT_ID)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"sku_id": "SKU-OTHER"},
+        {"audience_record_id": "66666666-6666-4666-8666-666666666666"},
+        {"audience_run_id": "66666666-6666-4666-8666-666666666666"},
+        {"matrix_run_id": "66666666-6666-4666-8666-666666666666"},
+    ],
+)
+async def test_load_context_compares_all_four_portrait_lineage_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+) -> None:
+    _, calls = _install_lineage_fakes(
+        monkeypatch, portrait=_portrait(**overrides)
+    )
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+
+    _assert_lineage_failure(result, "portrait_lineage_mismatch")
+    assert all(name != "pack" for name, _ in calls)
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_malformed_pack_uuid_without_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, calls = _install_lineage_fakes(monkeypatch)
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, "not-a-uuid"
+    )
+
+    _assert_lineage_failure(result, "invalid_audience_pack_id")
+    assert all(name != "pack" for name, _ in calls)
+
+
+@pytest.mark.asyncio
+async def test_load_context_reports_pack_missing_and_not_adopted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, missing_calls = _install_lineage_fakes(monkeypatch, pack=None)
+    missing = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+    _assert_lineage_failure(missing, "pack_not_found")
+    assert missing_calls[-1] == ("pack", PACK_ID)
+
+    _, draft_calls = _install_lineage_fakes(
+        monkeypatch, pack=_pack(status="draft")
+    )
+    draft = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+    _assert_lineage_failure(draft, "pack_not_adopted")
+    assert draft_calls[-1] == ("pack", PACK_ID)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"sku_id": "SKU-OTHER"},
+        {"audience_record_id": "66666666-6666-4666-8666-666666666666"},
+        {"audience_run_id": "66666666-6666-4666-8666-666666666666"},
+        {"matrix_run_id": "66666666-6666-4666-8666-666666666666"},
+    ],
+)
+async def test_load_context_compares_all_four_pack_lineage_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+) -> None:
+    _install_lineage_fakes(monkeypatch, pack=_pack(**overrides))
+
+    result = await load_planting_bridge_context(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+
+    _assert_lineage_failure(result, "pack_lineage_mismatch")
