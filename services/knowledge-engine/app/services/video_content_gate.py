@@ -6,6 +6,9 @@ from collections.abc import Mapping
 from copy import deepcopy
 from math import isfinite
 from typing import Any
+from uuid import UUID
+
+from app.database import get_pool
 
 
 _CONTRACT_VERSION = "2026-07-15.v1"
@@ -236,7 +239,133 @@ def build_soft_ad_content_contract(
     }
 
 
+def _failure(error: str, field: str | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {"ok": False, "error": error}
+    if field is not None:
+        result["field"] = field
+    return result
+
+
+def _canonical_uuid(value: object) -> str | None:
+    if isinstance(value, UUID):
+        return str(value)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return str(UUID(value.strip()))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+async def assert_script_ready_for_media(
+    script: Mapping[str, Any], experiment_arm_id: str
+) -> dict[str, Any]:
+    """Admit only an adopted, gated script attached to its explicit AI-video arm."""
+
+    if not isinstance(script, Mapping):
+        return _failure("planting_content_gate_failed", "content_contract")
+
+    contract = script.get("content_contract")
+    if not isinstance(contract, Mapping):
+        return _failure("planting_content_gate_failed", "content_contract")
+    if contract.get("version") != _CONTRACT_VERSION:
+        return _failure("planting_content_gate_failed", "contract_version")
+
+    content_gate = contract.get("content_gate")
+    if not isinstance(content_gate, Mapping) or content_gate.get("pass") is not True:
+        return _failure("planting_content_gate_failed", "content_gate")
+
+    if script.get("status") != "adopted":
+        return _failure("script_not_adopted")
+
+    canonical_arm_id = _canonical_uuid(experiment_arm_id)
+    if canonical_arm_id is None:
+        return _failure(
+            "experiment_arm_missing_or_mismatch", "experiment_arm_id"
+        )
+
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT arm.id AS arm_id,
+               arm.script_id,
+               arm.sku_id AS arm_sku_id,
+               arm.production_mode,
+               experiment.id AS experiment_id,
+               experiment.sku_id AS experiment_sku_id,
+               experiment.intent AS experiment_intent,
+               experiment.track AS experiment_track
+          FROM pipeline.experiment_arms AS arm
+          JOIN pipeline.experiments AS experiment
+            ON experiment.id = arm.experiment_id
+         WHERE arm.id = $1::uuid
+        """,
+        canonical_arm_id,
+    )
+    if not isinstance(row, Mapping):
+        return _failure(
+            "experiment_arm_missing_or_mismatch", "experiment_arm_id"
+        )
+
+    if _canonical_uuid(row.get("arm_id")) != canonical_arm_id:
+        return _failure(
+            "experiment_arm_missing_or_mismatch", "experiment_arm_id"
+        )
+
+    script_id = _canonical_uuid(script.get("id"))
+    arm_script_id = _canonical_uuid(row.get("script_id"))
+    if script_id is None or script_id != arm_script_id:
+        return _failure("experiment_arm_missing_or_mismatch", "script_id")
+
+    script_sku_id = script.get("sku_id")
+    arm_sku_id = row.get("arm_sku_id")
+    experiment_sku_id = row.get("experiment_sku_id")
+    if (
+        script_sku_id != arm_sku_id
+        or arm_sku_id != experiment_sku_id
+        or not isinstance(script_sku_id, str)
+        or not script_sku_id
+    ):
+        return _failure("experiment_arm_missing_or_mismatch", "sku_id")
+
+    script_intent = script.get("intent")
+    contract_intent = contract.get("intent")
+    experiment_intent = row.get("experiment_intent")
+    if (
+        script_intent != contract_intent
+        or contract_intent != experiment_intent
+        or not isinstance(script_intent, str)
+        or not script_intent
+    ):
+        return _failure("experiment_arm_missing_or_mismatch", "intent")
+
+    production_mode = row.get("production_mode")
+    effective_track = (
+        production_mode
+        if production_mode is not None and production_mode != ""
+        else row.get("experiment_track")
+    )
+    if effective_track != "ai_video":
+        return _failure("experiment_arm_missing_or_mismatch", "track")
+
+    experiment_id = _canonical_uuid(row.get("experiment_id"))
+    if experiment_id is None:
+        return _failure("experiment_arm_missing_or_mismatch", "track")
+
+    return {
+        "ok": True,
+        "script_id": script_id,
+        "experiment_arm_id": canonical_arm_id,
+        "experiment_id": experiment_id,
+        "sku_id": script_sku_id,
+        "intent": script_intent,
+        "track": "ai_video",
+        "contract_version": _CONTRACT_VERSION,
+    }
+
+
 __all__ = [
+    "assert_script_ready_for_media",
     "build_content_contract",
     "build_soft_ad_content_contract",
     "evaluate_planting_content_gate",

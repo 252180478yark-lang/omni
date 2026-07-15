@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from math import inf, nan
+from typing import Any
+from uuid import UUID
 
 import pytest
 
+from app.services import video_content_gate
 from app.services.video_content_gate import (
+    assert_script_ready_for_media,
     build_content_contract,
     build_soft_ad_content_contract,
     evaluate_planting_content_gate,
@@ -401,3 +406,277 @@ def test_build_soft_ad_contract_has_same_envelope_without_pain_bridge():
     triangle["edges_100"]["product_content"] = 0
     assert result["prompt_blocks"][0]["prompt"] == "厨房场景"
     assert result["script_vector_gate"]["edges_100"]["product_content"] == 70
+
+
+SCRIPT_ID = "11111111-1111-4111-8111-111111111111"
+ARM_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+EXPERIMENT_ID = "22222222-2222-4222-8222-222222222222"
+
+
+def _ready_script(**updates: Any) -> dict[str, Any]:
+    script: dict[str, Any] = {
+        "id": SCRIPT_ID,
+        "sku_id": "SKU-READY-1",
+        "intent": "planting",
+        "status": "adopted",
+        "content_contract": {
+            "version": "2026-07-15.v1",
+            "intent": "planting",
+            "content_gate": {"pass": True},
+        },
+    }
+    script.update(updates)
+    return script
+
+
+def _ready_arm_row(**updates: Any) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "arm_id": ARM_ID,
+        "script_id": SCRIPT_ID,
+        "arm_sku_id": "SKU-READY-1",
+        "production_mode": "ai_video",
+        "experiment_id": EXPERIMENT_ID,
+        "experiment_sku_id": "SKU-READY-1",
+        "experiment_intent": "planting",
+        "experiment_track": "ai_video",
+    }
+    row.update(updates)
+    return row
+
+
+class _FakePool:
+    def __init__(self, row: Mapping[str, Any] | None):
+        self.row = row
+        self.fetchrow_calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    async def fetchrow(self, sql: str, *args: Any) -> Mapping[str, Any] | None:
+        self.fetchrow_calls.append((sql, args))
+        return self.row
+
+
+class _Record(Mapping[str, Any]):
+    """Minimal asyncpg.Record-like mapping used to prevent dict-only code."""
+
+    def __init__(self, values: Mapping[str, Any]):
+        self._values = dict(values)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._values[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._values)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("script", "field"),
+    [
+        (None, "content_contract"),
+        ({"content_contract": []}, "content_contract"),
+        (
+            _ready_script(
+                status="draft",
+                content_contract={
+                    "version": "old",
+                    "intent": "planting",
+                    "content_gate": {"pass": True},
+                },
+            ),
+            "contract_version",
+        ),
+        (
+            _ready_script(
+                status="draft",
+                content_contract={
+                    "version": "2026-07-15.v1",
+                    "intent": "planting",
+                    "content_gate": {"pass": False},
+                },
+            ),
+            "content_gate",
+        ),
+    ],
+)
+async def test_media_readiness_prioritizes_contract_gate_before_status_and_arm(
+    monkeypatch, script, field
+):
+    pool = _FakePool(_ready_arm_row())
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+
+    result = await assert_script_ready_for_media(script, "not-a-uuid")
+
+    assert result == {
+        "ok": False,
+        "error": "planting_content_gate_failed",
+        "field": field,
+    }
+    assert pool.fetchrow_calls == []
+
+
+@pytest.mark.asyncio
+async def test_media_readiness_rejects_draft_before_malformed_arm(monkeypatch):
+    pool = _FakePool(_ready_arm_row())
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+
+    result = await assert_script_ready_for_media(
+        _ready_script(status="draft"), "not-a-uuid"
+    )
+
+    assert result == {"ok": False, "error": "script_not_adopted"}
+    assert pool.fetchrow_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arm_id", [None, "", "not-a-uuid"])
+async def test_media_readiness_rejects_malformed_arm_without_fetch(
+    monkeypatch, arm_id
+):
+    pool = _FakePool(_ready_arm_row())
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+
+    result = await assert_script_ready_for_media(_ready_script(), arm_id)
+
+    assert result == {
+        "ok": False,
+        "error": "experiment_arm_missing_or_mismatch",
+        "field": "experiment_arm_id",
+    }
+    assert pool.fetchrow_calls == []
+
+
+@pytest.mark.asyncio
+async def test_media_readiness_rejects_missing_joined_arm(monkeypatch):
+    pool = _FakePool(None)
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+
+    result = await assert_script_ready_for_media(_ready_script(), ARM_ID)
+
+    assert result == {
+        "ok": False,
+        "error": "experiment_arm_missing_or_mismatch",
+        "field": "experiment_arm_id",
+    }
+    assert len(pool.fetchrow_calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("script_updates", "row_updates", "field"),
+    [
+        ({"id": "33333333-3333-4333-8333-333333333333"}, {}, "script_id"),
+        ({"sku_id": "SKU-OTHER"}, {}, "sku_id"),
+        ({}, {"experiment_sku_id": "SKU-OTHER"}, "sku_id"),
+        ({"intent": "soft_ad"}, {}, "intent"),
+        (
+            {
+                "content_contract": {
+                    "version": "2026-07-15.v1",
+                    "intent": "soft_ad",
+                    "content_gate": {"pass": True},
+                }
+            },
+            {},
+            "intent",
+        ),
+        ({}, {"experiment_intent": "soft_ad"}, "intent"),
+        ({}, {"production_mode": "human_brief"}, "track"),
+    ],
+)
+async def test_media_readiness_reports_first_lineage_mismatch(
+    monkeypatch, script_updates, row_updates, field
+):
+    pool = _FakePool(_ready_arm_row(**row_updates))
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+
+    result = await assert_script_ready_for_media(
+        _ready_script(**script_updates), ARM_ID
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "experiment_arm_missing_or_mismatch",
+        "field": field,
+    }
+    assert len(pool.fetchrow_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_media_readiness_uses_arm_mode_over_mixed_experiment_track(monkeypatch):
+    pool = _FakePool(
+        _ready_arm_row(production_mode="ai_video", experiment_track="mixed")
+    )
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+
+    result = await assert_script_ready_for_media(_ready_script(), ARM_ID)
+
+    assert result == {
+        "ok": True,
+        "script_id": SCRIPT_ID,
+        "experiment_arm_id": ARM_ID,
+        "experiment_id": EXPERIMENT_ID,
+        "sku_id": "SKU-READY-1",
+        "intent": "planting",
+        "track": "ai_video",
+        "contract_version": "2026-07-15.v1",
+    }
+
+
+@pytest.mark.asyncio
+async def test_media_readiness_rejects_human_brief_effective_track(monkeypatch):
+    pool = _FakePool(
+        _ready_arm_row(production_mode="", experiment_track="human_brief")
+    )
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+
+    result = await assert_script_ready_for_media(_ready_script(), ARM_ID)
+
+    assert result == {
+        "ok": False,
+        "error": "experiment_arm_missing_or_mismatch",
+        "field": "track",
+    }
+
+
+@pytest.mark.asyncio
+async def test_media_readiness_canonicalizes_uuids_and_accepts_record_mapping(
+    monkeypatch,
+):
+    row = _ready_arm_row(
+        arm_id=UUID(ARM_ID),
+        script_id=UUID(SCRIPT_ID),
+        experiment_id=UUID(EXPERIMENT_ID),
+    )
+    pool = _FakePool(_Record(row))
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+    script = _ready_script(id=SCRIPT_ID.upper())
+
+    result = await assert_script_ready_for_media(script, ARM_ID.upper())
+
+    assert result["ok"] is True
+    assert result["script_id"] == SCRIPT_ID
+    assert result["experiment_arm_id"] == ARM_ID
+    assert result["experiment_id"] == EXPERIMENT_ID
+
+
+@pytest.mark.asyncio
+async def test_media_readiness_performs_one_explicit_join_without_latest_lookup(
+    monkeypatch,
+):
+    pool = _FakePool(_ready_arm_row())
+    monkeypatch.setattr(video_content_gate, "get_pool", lambda: pool)
+
+    result = await assert_script_ready_for_media(_ready_script(), ARM_ID.upper())
+
+    assert result["ok"] is True
+    assert len(pool.fetchrow_calls) == 1
+    sql, args = pool.fetchrow_calls[0]
+    normalized_sql = " ".join(sql.lower().split())
+    assert "pipeline.experiment_arms" in normalized_sql
+    assert "pipeline.experiments" in normalized_sql
+    assert " join " in normalized_sql
+    assert "order by" not in normalized_sql
+    assert "limit" not in normalized_sql
+    assert args == (ARM_ID,)
