@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from functools import lru_cache
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -72,7 +73,7 @@ class VideoIntentProfile:
     metric_policy: str
     north_star: str
     diagnostic_metrics: tuple[str, ...]
-    vector_threshold_100: int
+    vector_threshold_100: int | float
     key_vector_dimensions: tuple[str, ...]
     prompt_budget: PromptBudgetProfile
     evaluation_policy: dict[str, Any]
@@ -82,6 +83,10 @@ class VideoIntentProfile:
 
 def _invalid(reason: str) -> ValueError:
     return ValueError(f"video_intent_profiles_invalid:{reason}")
+
+
+def _profile_invalid(intent: str, reason: str) -> ValueError:
+    return ValueError(f"video_intent_profile_invalid:{intent}:{reason}")
 
 
 def _required_fields(
@@ -104,10 +109,69 @@ def _string_tuple(value: object, location: str) -> tuple[str, ...]:
     return tuple(value)
 
 
+def _unique_string_tuple(value: object, location: str) -> tuple[str, ...]:
+    parsed = _string_tuple(value, location)
+    if len(parsed) != len(set(parsed)):
+        raise _invalid(f"{location}:duplicates")
+    return parsed
+
+
 def _positive_int(value: object, location: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise _invalid(location)
     return value
+
+
+def _is_finite_number(value: object) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and (not isinstance(value, float) or isfinite(value))
+    )
+
+
+def _number_in_closed_range(
+    value: object,
+    minimum: int | float,
+    maximum: int | float,
+    location: str,
+) -> int | float:
+    if not _is_finite_number(value) or not minimum <= value <= maximum:
+        raise _invalid(location)
+    return value
+
+
+def _validate_evaluation_policy(policy: dict[str, Any], intent: str) -> None:
+    rate_fields = ("play_3s_floor", "completion_floor", "a3_floor")
+    for field in rate_fields:
+        value = policy[field]
+        if value is not None and (
+            not _is_finite_number(value) or not 0 <= value <= 1
+        ):
+            raise _profile_invalid(intent, f"evaluation_policy:{field}")
+
+    nonnegative_fields = (
+        "cpm_ceiling",
+        "min_impressions",
+        "min_a3_eligible_users",
+    )
+    for field in nonnegative_fields:
+        value = policy[field]
+        if value is not None and (
+            not _is_finite_number(value) or value < 0
+        ):
+            raise _profile_invalid(intent, f"evaluation_policy:{field}")
+
+    max_exposure_ratio = policy["max_exposure_ratio"]
+    if (
+        not _is_finite_number(max_exposure_ratio)
+        or max_exposure_ratio <= 0
+    ):
+        raise _profile_invalid(intent, "evaluation_policy:max_exposure_ratio")
+    if policy["rate_scale"] != "0-1":
+        raise _profile_invalid(intent, "evaluation_policy:rate_scale")
+    if policy["currency"] != "CNY":
+        raise _profile_invalid(intent, "evaluation_policy:currency")
 
 
 def _parse_prompt_budget(raw: object, intent: str) -> PromptBudgetProfile:
@@ -181,7 +245,12 @@ def _parse_profile(
         _REQUIRED_EVALUATION_POLICY_FIELDS,
         f"{name}:evaluation_policy",
     )
+    _validate_evaluation_policy(evaluation_policy, name)
 
+    global_iteration_order = _unique_string_tuple(
+        raw["global_iteration_order"], f"{name}:global_iteration_order"
+    )
+    global_variables = set(global_iteration_order)
     iteration_candidates = raw["iteration_candidates"]
     if not isinstance(iteration_candidates, dict) or not iteration_candidates:
         raise _invalid(f"{name}:iteration_candidates")
@@ -189,10 +258,18 @@ def _parse_profile(
     for metric, candidates in iteration_candidates.items():
         if not isinstance(metric, str) or not metric:
             raise _invalid(f"{name}:iteration_candidates:metric")
-        parsed_candidates[metric] = _string_tuple(
+        parsed_metric_candidates = _unique_string_tuple(
             candidates,
             f"{name}:iteration_candidates:{metric}",
         )
+        if any(
+            candidate not in global_variables
+            for candidate in parsed_metric_candidates
+        ):
+            raise _invalid(
+                f"{name}:iteration_candidates:{metric}:not_in_global_order"
+            )
+        parsed_candidates[metric] = parsed_metric_candidates
 
     return VideoIntentProfile(
         version=version,
@@ -207,8 +284,11 @@ def _parse_profile(
         diagnostic_metrics=_string_tuple(
             raw["diagnostic_metrics"], f"{name}:diagnostic_metrics"
         ),
-        vector_threshold_100=_positive_int(
-            raw["vector_threshold_100"], f"{name}:vector_threshold_100"
+        vector_threshold_100=_number_in_closed_range(
+            raw["vector_threshold_100"],
+            0,
+            100,
+            f"{name}:vector_threshold_100",
         ),
         key_vector_dimensions=_string_tuple(
             raw["key_vector_dimensions"], f"{name}:key_vector_dimensions"
@@ -216,9 +296,7 @@ def _parse_profile(
         prompt_budget=_parse_prompt_budget(raw["prompt_budget"], name),
         evaluation_policy=deepcopy(evaluation_policy),
         iteration_candidates=parsed_candidates,
-        global_iteration_order=_string_tuple(
-            raw["global_iteration_order"], f"{name}:global_iteration_order"
-        ),
+        global_iteration_order=global_iteration_order,
     )
 
 
@@ -245,7 +323,7 @@ def _load_profiles() -> dict[str, VideoIntentProfile]:
     try:
         with _PROFILE_PATH.open(encoding="utf-8") as profile_file:
             raw = yaml.safe_load(profile_file)
-    except (OSError, yaml.YAMLError) as exc:
+    except (OSError, UnicodeError, yaml.YAMLError) as exc:
         raise _invalid("load_failed") from exc
     return _parse_config(raw)
 
