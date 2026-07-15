@@ -36,6 +36,7 @@ from app.services.triangle_match import audit_content_triangle, build_product_te
 from app.services.video_content_gate import (
     build_content_contract,
     build_soft_ad_content_contract,
+    build_soft_ad_upstream_fact_snapshot,
 )
 from app.services.video_intent_profiles import get_video_intent_profile
 
@@ -4372,6 +4373,24 @@ async def _creative_pack_one(
     else:
         audience_pack_summary = "（无 — 未跑 step 4 圈包；本素材直接用 audience 画像 + matrix 卖点出稿）"
 
+    soft_ad_upstream_fact_hash = None
+    if formal_soft_ad:
+        soft_ad_fact_snapshot = build_soft_ad_upstream_fact_snapshot(
+            sku_id=sku_id,
+            audience_record_id=audience_record_id,
+            audience_pack_id=audience_pack_id,
+            portrait_id=portrait_id,
+            matrix_run_id=matrix_run_id,
+            audience_run_id=audience_run_id,
+            sku_text=sku_md,
+            matrix_text=matrix_md,
+            audience_text=audience_md,
+            pack_text=audience_pack_summary,
+        )
+        soft_ad_upstream_fact_hash = canonical_upstream_fact_hash(
+            soft_ad_fact_snapshot
+        )
+
     # === 目标出片模型写法档案（video_* kind 的「AI 出片提示词」段用；同 3.6 机制）===
     if kind.startswith("video_"):
         _tm = (target_model or "seedance").strip().lower()
@@ -4569,6 +4588,7 @@ async def _creative_pack_one(
                     _metrics or {},
                     _triangle,
                     _prompt_blocks,
+                    soft_ad_upstream_fact_hash,
                 )
             _content_gate = _content_contract["content_gate"]
             if not _content_gate.get("pass"):
@@ -4607,6 +4627,18 @@ async def _creative_pack_one(
             cost_estimate=f"1 quota call (~3-6k tokens, temp={temp})",
         )
         label = chr(ord("A") + variant_idx)  # "A", "B", "C"
+        if not _sid:
+            return {
+                "error": "creative_pack_persistence_failed",
+                "script_id": None,
+                "script_md": md,
+                "variant_label": f"方案 {label}",
+                "metrics": _metrics,
+                "validation_warnings": _warnings,
+                "content_vector_gate": _content_gate,
+                "content_triangle": _triangle,
+                "content_contract": _content_contract,
+            }
         return {"script_id": _sid, "script_md": md, "variant_label": f"方案 {label}",
                 "metrics": _metrics, "validation_warnings": _warnings,
                 "content_vector_gate": _content_gate,
@@ -4616,6 +4648,66 @@ async def _creative_pack_one(
     raw_variants = await asyncio.gather(*[_call_one(i) for i in range(_n)])
     variants = list(raw_variants)
     quality_gate_enabled = formal_profile
+    persistence_failures = [
+        variant
+        for variant in variants
+        if variant.get("error") == "creative_pack_persistence_failed"
+    ]
+    if persistence_failures:
+        quality_gate_passed = (
+            not quality_gate_enabled
+            or all(
+                bool((variant.get("content_vector_gate") or {}).get("pass"))
+                for variant in variants
+            )
+        )
+        return attach_next_step(
+            {
+                "ok": False,
+                "error": "creative_pack_persistence_failed",
+                "result": {
+                    "kind": kind,
+                    "sku_id": sku_id,
+                    "quality_gate_enabled": quality_gate_enabled,
+                    "quality_gate_passed": quality_gate_passed,
+                    "failed_variants": [
+                        {
+                            "variant_label": variant.get("variant_label"),
+                            "content_vector_gate": variant.get("content_vector_gate"),
+                            "validation_warnings": variant.get("validation_warnings") or [],
+                        }
+                        for variant in persistence_failures
+                    ],
+                    "persisted_script_ids": [
+                        variant["script_id"]
+                        for variant in variants
+                        if variant.get("script_id")
+                    ],
+                },
+                "trace": build_trace(
+                    provider=_provider,
+                    model=_model,
+                    prompt=final_prompt,
+                    params={
+                        "kind": kind,
+                        "num_variants": _n,
+                        "persistence_failed_variants": [
+                            variant.get("variant_label")
+                            for variant in persistence_failures
+                        ],
+                        "quality_gate_enabled": quality_gate_enabled,
+                        "quality_gate_passed": quality_gate_passed,
+                    },
+                    cost_estimate="1 quota call (~3-6k tokens)",
+                ),
+            },
+            suggested_tool=None,
+            suggested_args={},
+            human_text=(
+                "脚本内容已生成，但没有成功写入脚本库；当前没有可采纳或可进入媒体链路的脚本，"
+                "请排查持久化后重试。"
+            ),
+        )
     if quality_gate_enabled:
         variants = sorted(
             variants,

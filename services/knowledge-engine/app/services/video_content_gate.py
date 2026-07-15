@@ -225,17 +225,57 @@ def build_soft_ad_content_contract(
     metrics: object,
     triangle: object,
     prompt_blocks: object,
-    upstream_fact_hash: object = None,
+    upstream_fact_hash: object,
 ) -> dict[str, Any]:
     """Build a detached soft-ad contract without a planting pain bridge."""
 
+    if not isinstance(upstream_fact_hash, str) or not upstream_fact_hash.strip():
+        raise ValueError("upstream_fact_hash must be a non-empty string")
     return {
         "version": _CONTRACT_VERSION,
         **_profile_envelope(profile, "completion_rate"),
         "content_gate": evaluate_soft_ad_content_gate(metrics, triangle),
         "script_vector_gate": deepcopy(triangle),
         "prompt_blocks": deepcopy(prompt_blocks),
-        "upstream_fact_hash": deepcopy(upstream_fact_hash),
+        "upstream_fact_hash": upstream_fact_hash.strip(),
+    }
+
+
+def build_soft_ad_upstream_fact_snapshot(
+    *,
+    sku_id: str | None,
+    audience_record_id: str | None,
+    audience_pack_id: str | None,
+    portrait_id: str | None,
+    matrix_run_id: str | None,
+    audience_run_id: str | None,
+    sku_text: str,
+    matrix_text: str,
+    audience_text: str,
+    pack_text: str,
+) -> dict[str, Any]:
+    """Return the deterministic factual inputs used by one formal soft-ad call.
+
+    Temporary creative directions are deliberately absent so freshness checks can
+    distinguish upstream fact changes from one-off generation instructions.
+    """
+
+    return {
+        "snapshot_version": "soft_ad_facts_v1",
+        "lineage": {
+            "sku_id": sku_id,
+            "audience_record_id": audience_record_id,
+            "audience_pack_id": audience_pack_id,
+            "portrait_id": portrait_id,
+            "matrix_run_id": matrix_run_id,
+            "audience_run_id": audience_run_id,
+        },
+        "factual_context": {
+            "sku": str(sku_text or "").strip(),
+            "matrix": str(matrix_text or "").strip(),
+            "audience": str(audience_text or "").strip(),
+            "pack": str(pack_text or "").strip(),
+        },
     }
 
 
@@ -368,6 +408,7 @@ __all__ = [
     "assert_script_ready_for_media",
     "build_content_contract",
     "build_soft_ad_content_contract",
+    "build_soft_ad_upstream_fact_snapshot",
     "evaluate_planting_content_gate",
     "evaluate_soft_ad_content_gate",
 ]

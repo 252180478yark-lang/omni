@@ -395,7 +395,11 @@ def test_build_soft_ad_contract_has_same_envelope_without_pain_bridge():
     triangle = _triangle()
 
     result = build_soft_ad_content_contract(
-        profile, SOFT_AD_METRICS, triangle, prompt_blocks
+        profile,
+        SOFT_AD_METRICS,
+        triangle,
+        prompt_blocks,
+        "soft-ad-facts-hash",
     )
 
     assert result == {
@@ -407,7 +411,7 @@ def test_build_soft_ad_contract_has_same_envelope_without_pain_bridge():
         "content_gate": evaluate_soft_ad_content_gate(SOFT_AD_METRICS, triangle),
         "script_vector_gate": triangle,
         "prompt_blocks": prompt_blocks,
-        "upstream_fact_hash": None,
+        "upstream_fact_hash": "soft-ad-facts-hash",
     }
     assert "pain_solution_bridge" not in result
 
@@ -415,6 +419,59 @@ def test_build_soft_ad_contract_has_same_envelope_without_pain_bridge():
     triangle["edges_100"]["product_content"] = 0
     assert result["prompt_blocks"][0]["prompt"] == "厨房场景"
     assert result["script_vector_gate"]["edges_100"]["product_content"] == 70
+
+
+@pytest.mark.parametrize("fact_hash", [None, "", "   "])
+def test_soft_ad_contract_rejects_missing_upstream_fact_hash(fact_hash):
+    with pytest.raises(ValueError, match="upstream_fact_hash"):
+        build_soft_ad_content_contract(
+            {
+                "kind": "video_soft_ad",
+                "intent": "soft_ad",
+                "version": "soft-v1",
+            },
+            SOFT_AD_METRICS,
+            _triangle(),
+            _prompt_blocks(),
+            fact_hash,
+        )
+
+
+def _soft_ad_snapshot_args() -> dict[str, str]:
+    return {
+        "sku_id": "SKU-SOFT-1",
+        "audience_record_id": "record-1",
+        "audience_pack_id": "pack-1",
+        "portrait_id": "portrait-1",
+        "matrix_run_id": "matrix-1",
+        "audience_run_id": "audience-run-1",
+        "sku_text": "sku factual text",
+        "matrix_text": "matrix factual text",
+        "audience_text": "audience factual text",
+        "pack_text": "pack factual text",
+    }
+
+
+def test_soft_ad_fact_snapshot_hash_is_stable_for_input_order():
+    args = _soft_ad_snapshot_args()
+    snapshot = video_content_gate.build_soft_ad_upstream_fact_snapshot(**args)
+    reordered = video_content_gate.build_soft_ad_upstream_fact_snapshot(
+        **dict(reversed(list(args.items())))
+    )
+
+    assert canonical_upstream_fact_hash(snapshot) == canonical_upstream_fact_hash(
+        reordered
+    )
+
+
+@pytest.mark.parametrize("field", list(_soft_ad_snapshot_args()))
+def test_soft_ad_fact_snapshot_hash_changes_when_any_fact_changes(field):
+    args = _soft_ad_snapshot_args()
+    baseline = video_content_gate.build_soft_ad_upstream_fact_snapshot(**args)
+    args[field] += " changed"
+    changed = video_content_gate.build_soft_ad_upstream_fact_snapshot(**args)
+
+    assert canonical_upstream_fact_hash(baseline) != canonical_upstream_fact_hash(changed)
 
 
 SCRIPT_ID = "11111111-1111-4111-8111-111111111111"
@@ -779,6 +836,7 @@ async def _install_formal_media_fakes(
     monkeypatch: pytest.MonkeyPatch,
     *,
     metrics: dict[str, Any],
+    save_result: str | None = SCRIPT_ID,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
     facts = _formal_facts()
     fact_hash = canonical_upstream_fact_hash(facts)
@@ -812,7 +870,7 @@ async def _install_formal_media_fakes(
 
     async def fake_save(**kwargs):
         saved.append(kwargs)
-        return SCRIPT_ID
+        return save_result
 
     class FakeHub:
         def __init__(self, *args, **kwargs):
@@ -987,6 +1045,65 @@ async def test_formal_planting_gate_pass_stops_at_review_and_arm_attachment(
 
 
 @pytest.mark.asyncio
+async def test_formal_gate_pass_fails_closed_when_script_persistence_fails(monkeypatch):
+    state, saved, _ = await _install_formal_media_fakes(
+        monkeypatch,
+        metrics=PLANTING_METRICS,
+        save_result=None,
+    )
+
+    result = await media._creative_pack_one(
+        kind="video_planting",
+        intent="planting",
+        sku_id="SKU-FORMAL-1",
+        audience_record_id="66666666-6666-4666-8666-666666666666",
+        portrait_id="77777777-7777-4777-8777-777777777777",
+        pain_solution_bridge=_formal_bridge(),
+        upstream_fact_hash=state["hash"],
+    )
+
+    assert len(saved) == 1
+    assert result["ok"] is False
+    assert result["error"] == "creative_pack_persistence_failed"
+    assert result["next_step_hint"]["suggested_tool"] is None
+    rendered = json.dumps(result, ensure_ascii=False)
+    assert "experiment_adopt_script" not in rendered
+    assert "留档" not in rendered
+    assert "draft" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_formal_gate_failure_reports_persistence_failure_not_saved_draft(
+    monkeypatch,
+):
+    state, saved, _ = await _install_formal_media_fakes(
+        monkeypatch,
+        metrics=_planting_metrics(pain_specificity_score=79),
+        save_result=None,
+    )
+
+    result = await media._creative_pack_one(
+        kind="video_planting",
+        intent="planting",
+        sku_id="SKU-FORMAL-1",
+        audience_record_id="66666666-6666-4666-8666-666666666666",
+        portrait_id="77777777-7777-4777-8777-777777777777",
+        pain_solution_bridge=_formal_bridge(),
+        upstream_fact_hash=state["hash"],
+    )
+
+    assert len(saved) == 1
+    assert saved[0]["content_contract"]["content_gate"]["pass"] is False
+    assert result["ok"] is False
+    assert result["error"] == "creative_pack_persistence_failed"
+    assert result["next_step_hint"]["suggested_tool"] is None
+    rendered = json.dumps(result, ensure_ascii=False)
+    assert "experiment_adopt_script" not in rendered
+    assert "留档" not in rendered
+    assert "draft" not in rendered
+
+
+@pytest.mark.asyncio
 async def test_formal_planting_rejects_temperature_drift_variants_before_llm(monkeypatch):
     async def forbidden(*args, **kwargs):
         raise AssertionError("LLM path must not run")
@@ -1147,8 +1264,29 @@ async def test_formal_soft_ad_has_completion_contract_and_no_pain_bridge(monkeyp
     contract = saved[0]["content_contract"]
     assert contract["north_star_metric"] == "completion_rate"
     assert contract["intent"] == "soft_ad"
+    assert isinstance(contract["upstream_fact_hash"], str)
+    assert len(contract["upstream_fact_hash"]) == 64
     assert "pain_solution_bridge" not in contract
     assert result["next_step_hint"]["suggested_tool"] == "experiment_adopt_script"
+
+
+@pytest.mark.asyncio
+async def test_formal_soft_ad_fact_hash_excludes_temporary_instructions(monkeypatch):
+    saved = await _install_nonplanting_media_fakes(
+        monkeypatch, metrics=SOFT_AD_METRICS, formal_soft_ad=True
+    )
+    common = {
+        "kind": "video_soft_ad",
+        "intent": "soft_ad",
+        "sku_id": "SKU-SOFT-1",
+    }
+
+    await media._creative_pack_one(**common, extra_context="temporary direction A")
+    await media._creative_pack_one(**common, extra_context="temporary direction B")
+
+    hashes = [item["content_contract"]["upstream_fact_hash"] for item in saved]
+    assert all(isinstance(value, str) and len(value) == 64 for value in hashes)
+    assert hashes[0] == hashes[1]
 
 
 @pytest.mark.asyncio
