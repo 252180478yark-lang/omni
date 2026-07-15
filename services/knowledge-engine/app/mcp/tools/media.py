@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,19 @@ from app.mcp.audit import tool_with_audit
 from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
-from app.services import experiment_lab, pipeline_lineage, prompt_rules, rag_chain
+from app.services import experiment_lab, match_vectors, pipeline_lineage, prompt_rules, rag_chain, vector_presets
 from app.services.ai_hub_client import AIHubClient, HubError
+from app.services.pain_solution_bridge import (
+    canonical_upstream_fact_hash,
+    load_planting_bridge_context,
+    validate_pain_solution_bridge,
+)
+from app.services.triangle_match import audit_content_triangle, build_product_text
+from app.services.video_content_gate import (
+    build_content_contract,
+    build_soft_ad_content_contract,
+)
+from app.services.video_intent_profiles import get_video_intent_profile
 
 
 # === 烧钱护栏：出图/出视频单日闸（按 mcp.tool_calls 当日 completed 次数硬闸） ===
@@ -3896,11 +3908,178 @@ def _validate_video_planting_metrics(metrics: dict, *, scenes: list[dict] | None
     return warnings
 
 
+def _formal_join_text(parts: list[object], limit: int = 2600) -> str:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in parts:
+        text = re.sub(r"\s+", " ", str(item or "").strip())[:800]
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+    return re.sub(r"\s+", " ", " ".join(out).strip())[:limit]
+
+
+def _creative_audience_context(
+    record: Mapping[str, object],
+    *,
+    portrait_md: str | None,
+    pack_md: str | None,
+) -> str:
+    """Render only the selected lineage into a compact creative context."""
+
+    payload = {
+        "name": record.get("name"),
+        "kb_doc": record.get("kb_doc"),
+        "kb_section": record.get("kb_section"),
+        "layer_tags": record.get("layer_tags") or [],
+        "match_reasons": record.get("match_reasons") or [],
+        "record_evidence": (
+            record.get("raw_md_segment") or record.get("kb_chunk_text") or ""
+        ),
+        "portrait_evidence": portrait_md or "",
+        "pack_calibration": pack_md or "",
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)[:6600]
+
+
+def _intent_kind_mismatch(kind: str, intent: str) -> dict | None:
+    """Fail closed for explicit video intents while preserving generic legacy reads."""
+    if not kind.startswith("video_") or not intent or intent == "generic":
+        return None
+    expected = experiment_lab.intent_to_creative_kind(intent)
+    if expected == kind:
+        return None
+    return {
+        "ok": False,
+        "error": "intent_kind_mismatch",
+        "expected_kind": expected,
+        "actual_kind": kind,
+        "intent": intent,
+    }
+
+
+def _lineage_input_failure(reason: str) -> dict:
+    return {
+        "ok": False,
+        "error": "upstream_lineage_incomplete",
+        "reason": reason,
+    }
+
+
+def _formal_planting_anchors(
+    bridge: Mapping[str, object], facts: Mapping[str, object]
+) -> dict[str, str]:
+    portrait_record = facts.get("portrait_record_evidence")
+    portrait_record = portrait_record if isinstance(portrait_record, Mapping) else {}
+    portrait = portrait_record.get("portrait")
+    portrait = portrait if isinstance(portrait, Mapping) else {}
+    record = portrait_record.get("record")
+    record = record if isinstance(record, Mapping) else {}
+    matrix = facts.get("matrix_evidence")
+    matrix = matrix if isinstance(matrix, Mapping) else {}
+    sku = facts.get("sku_facts")
+    sku = sku if isinstance(sku, Mapping) else {}
+
+    def compact(*parts: object) -> str:
+        return _formal_join_text(
+            [
+                json.dumps(part, ensure_ascii=False, sort_keys=True)
+                if isinstance(part, (Mapping, list, tuple))
+                else str(part or "")
+                for part in parts
+            ],
+            limit=2800,
+        )
+
+    return {
+        "audience_scene": compact(
+            bridge.get("audience_segment"),
+            bridge.get("trigger_scene"),
+            portrait.get("portrait_md"),
+            record.get("raw_md_segment"),
+        ),
+        "pain_conflict": compact(
+            bridge.get("pain_point"), bridge.get("pain_consequence")
+        ),
+        "product_action": compact(
+            bridge.get("product_action"),
+            sku.get("name"),
+            sku.get("owner_selling_points"),
+        ),
+        "result_relief": compact(
+            bridge.get("visible_result"), bridge.get("belief_shift")
+        ),
+        "justification_evidence": compact(
+            bridge.get("justification_module"),
+            bridge.get("product_evidence"),
+            matrix.get("matrix_md"),
+        ),
+    }
+
+
+def _formal_soft_ad_anchors(
+    *, sku_md: str, matrix_md: str, audience_md: str, extra_context: str | None
+) -> dict[str, str]:
+    return {
+        "audience_scene": _formal_join_text([audience_md, extra_context or ""]),
+        "product_action": _formal_join_text([sku_md, matrix_md]),
+        "watchability": _formal_join_text(
+            [audience_md, extra_context or "", "原生生活内容、前三秒可看性、自然软植入"]
+        ),
+    }
+
+
+def _formal_audience_text(
+    facts: Mapping[str, object] | None,
+    bridge: Mapping[str, object] | None,
+    fallback: str,
+) -> str:
+    if bridge is None:
+        return fallback
+    portrait_record = (facts or {}).get("portrait_record_evidence")
+    portrait_record = portrait_record if isinstance(portrait_record, Mapping) else {}
+    portrait = portrait_record.get("portrait")
+    portrait = portrait if isinstance(portrait, Mapping) else {}
+    return _formal_join_text(
+        [
+            str(bridge.get("audience_segment") or ""),
+            str(bridge.get("trigger_scene") or ""),
+            str(bridge.get("pain_point") or ""),
+            str(portrait.get("portrait_md") or ""),
+        ],
+        limit=6000,
+    )
+
+
+def _contract_prompt_blocks(scenes: list[dict]) -> list[dict]:
+    blocks: list[dict] = []
+    for index, scene in enumerate(scenes or [], start=1):
+        prompt = (
+            scene.get("video_prompt")
+            or scene.get("motion_prompt")
+            or scene.get("visual")
+            or scene.get("image_prompt")
+            or ""
+        )
+        if str(prompt).strip():
+            blocks.append(
+                {
+                    "block": scene.get("scene_no") or index,
+                    "time_range": scene.get("time_range"),
+                    "prompt": str(prompt).strip(),
+                }
+            )
+    return blocks
+
+
 async def _creative_pack_one(
     kind: str,
     sku_id: str | None = None,
     audience_record_id: str | None = None,
     audience_pack_id: str | None = None,
+    portrait_id: str | None = None,
+    pain_solution_bridge: dict | None = None,
+    upstream_fact_hash: str | None = None,
     extra_context: str | None = None,
     num_variants: int = 1,
     target_model: str = "seedance",
@@ -3920,48 +4099,148 @@ async def _creative_pack_one(
             "hint": f"必须 6 选 1：{list(pipeline_lineage.CREATIVE_KINDS)}",
         }
 
-    pool = get_pool()
+    mismatch = _intent_kind_mismatch(kind, intent)
+    if mismatch:
+        return mismatch
 
-    # === 弹性反查 record / pack / matrix ===
+    formal_planting = kind == "video_planting" and intent == "planting"
+    formal_soft_ad = kind == "video_soft_ad" and intent == "soft_ad"
+    formal_profile = formal_planting or formal_soft_ad
+    profile = get_video_intent_profile(intent) if formal_profile else None
+    formal_facts: dict | None = None
+
+    # Formal planting is immutable-lineage input: reject before DB inference,
+    # embedding, LLM, or persistence.  The bridge generator already exposed
+    # these exact IDs/hash to the Agent, so no "latest portrait" lookup belongs here.
+    if formal_planting:
+        if int(num_variants or 1) != 1:
+            return {
+                "ok": False,
+                "error": "formal_planting_requires_single_variant",
+                "hint": "首轮两个候选必须由 Agent 分别调用两次，每次绑定一个 bridge。",
+            }
+        for field, value in (
+            ("sku_id", sku_id),
+            ("audience_record_id", audience_record_id),
+            ("portrait_id", portrait_id),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                return _lineage_input_failure(f"{field}_missing")
+        if not isinstance(pain_solution_bridge, Mapping):
+            return {
+                "ok": False,
+                "error": "pain_solution_bridge_invalid",
+                "reason": "bridge_missing",
+            }
+        if not isinstance(upstream_fact_hash, str) or not upstream_fact_hash.strip():
+            return _lineage_input_failure("upstream_fact_hash_missing")
+
+        context = await load_planting_bridge_context(
+            sku_id=sku_id,
+            audience_record_id=audience_record_id,
+            portrait_id=portrait_id,
+            audience_pack_id=audience_pack_id,
+        )
+        if not context.get("ok"):
+            return context
+        facts_value = context.get("facts")
+        if not isinstance(facts_value, Mapping):
+            return _lineage_input_failure("facts_missing")
+        formal_facts = dict(facts_value)
+        recomputed_hash = canonical_upstream_fact_hash(formal_facts)
+        if (
+            context.get("upstream_fact_hash") != recomputed_hash
+            or upstream_fact_hash != recomputed_hash
+        ):
+            return _lineage_input_failure("upstream_fact_hash_mismatch")
+
+        evidence_catalog = dict(formal_facts.get("eligible_evidence_catalog") or {})
+        evidence_catalog["pack"] = dict(
+            formal_facts.get("pack_calibration_catalog") or {}
+        )
+        bridge_check = validate_pain_solution_bridge(
+            pain_solution_bridge,
+            evidence_catalog,
+            require_pack_evidence=bool(audience_pack_id),
+        )
+        if not bridge_check.get("ok"):
+            return bridge_check
+
+    # === 弹性反查 record / pack / matrix；formal planting only uses loaded facts ===
     record = None
     pack = None
     matrix_run = None
     audience_run_id = None
     matrix_run_id = None
+    portrait_md = None
 
-    if audience_pack_id:
-        pack = await pipeline_lineage.get_audience_pack(audience_pack_id)
-        if not pack:
-            return {"ok": False, "error": "audience_pack_not_found", "audience_pack_id": audience_pack_id}
-        sku_id = sku_id or pack.get("sku_id")
-        audience_record_id = audience_record_id or pack.get("audience_record_id")
-        audience_run_id = pack.get("audience_run_id")
-        matrix_run_id = pack.get("matrix_run_id")
+    if formal_planting:
+        lineage = formal_facts.get("lineage") or {}
+        portrait_record = formal_facts.get("portrait_record_evidence") or {}
+        record = dict(portrait_record.get("record") or {})
+        portrait_md = (portrait_record.get("portrait") or {}).get("portrait_md")
+        matrix_evidence = formal_facts.get("matrix_evidence") or {}
+        matrix_run = {"matrix_md": matrix_evidence.get("matrix_md")}
+        pack_evidence = formal_facts.get("pack_calibration")
+        pack = dict(pack_evidence) if isinstance(pack_evidence, Mapping) else None
+        audience_run_id = lineage.get("audience_run_id")
+        matrix_run_id = lineage.get("matrix_run_id")
+        sku = dict(formal_facts.get("sku_facts") or {})
+    else:
+        pool = get_pool()
+        if audience_pack_id:
+            pack = await pipeline_lineage.get_audience_pack(audience_pack_id)
+            if not pack:
+                return {"ok": False, "error": "audience_pack_not_found", "audience_pack_id": audience_pack_id}
+            sku_id = sku_id or pack.get("sku_id")
+            audience_record_id = audience_record_id or pack.get("audience_record_id")
+            audience_run_id = pack.get("audience_run_id")
+            matrix_run_id = pack.get("matrix_run_id")
 
-    if audience_record_id:
-        record = await pipeline_lineage.get_audience_record(audience_record_id)
-        if record:
-            sku_id = sku_id or record.get("sku_id")
-            audience_run_id = audience_run_id or record.get("audience_run_id")
-            matrix_run_id = matrix_run_id or record.get("matrix_run_id")
+        if audience_record_id:
+            record = await pipeline_lineage.get_audience_record(audience_record_id)
+            if record:
+                sku_id = sku_id or record.get("sku_id")
+                audience_run_id = audience_run_id or record.get("audience_run_id")
+                matrix_run_id = matrix_run_id or record.get("matrix_run_id")
 
-    if matrix_run_id:
-        matrix_run = await pipeline_lineage.get_matrix_run(matrix_run_id)
+        if matrix_run_id:
+            matrix_run = await pipeline_lineage.get_matrix_run(matrix_run_id)
 
-    if not sku_id:
-        return {
-            "ok": False,
-            "error": "sku_id 缺失",
-            "hint": "至少给 sku_id 或 audience_record_id 或 audience_pack_id 之一",
-        }
+        if audience_record_id:
+            if portrait_id:
+                portrait = await pipeline_lineage.get_audience_portrait(portrait_id)
+                portrait_md = (portrait or {}).get("portrait_md")
+            else:
+                portrait_id = await pool.fetchval(
+                    """
+                    SELECT id::text
+                    FROM pipeline.audience_portraits
+                    WHERE audience_record_id = $1::uuid
+                      AND status != 'archived'
+                    ORDER BY (status = 'adopted') DESC, created_at DESC
+                    LIMIT 1
+                    """,
+                    audience_record_id,
+                )
+                if portrait_id:
+                    portrait = await pipeline_lineage.get_audience_portrait(portrait_id)
+                    portrait_md = (portrait or {}).get("portrait_md")
 
-    # === 拉 SKU ===
-    sku = await pool.fetchrow(
-        "SELECT id, name, category, price_min, price_max, specifications, "
-        "owner_selling_points, owner_notes, platform_status "
-        "FROM mvp_sku WHERE id = $1",
-        sku_id,
-    )
+        if not sku_id:
+            return {
+                "ok": False,
+                "error": "sku_id 缺失",
+                "hint": "至少给 sku_id 或 audience_record_id 或 audience_pack_id 之一",
+            }
+
+        sku = await pool.fetchrow(
+            "SELECT id, name, category, price_min, price_max, specifications, "
+            "owner_selling_points, owner_notes, platform_status "
+            "FROM mvp_sku WHERE id = $1",
+            sku_id,
+        )
+
     if not sku:
         return {"ok": False, "error": "sku_not_found", "sku_id": sku_id}
 
@@ -3987,16 +4266,10 @@ async def _creative_pack_one(
     matrix_md = (matrix_run.get("matrix_md") if matrix_run else None) or "（无 — 单 SKU 模式或未跑 step 2 卖点矩阵）"
 
     if record:
-        layer_tags = " / ".join(record.get("layer_tags") or []) or "（无）"
-        kb_chunk = (record.get("kb_chunk_text") or "").strip() or "（KB 原文缺）"
-        reasons = record.get("match_reasons") or []
-        reasons_md = "\n".join(f"  {i + 1}. {r}" for i, r in enumerate(reasons)) if reasons else "  （无）"
-        audience_md = (
-            f"- 人群名：{record.get('name')}\n"
-            f"- KB 来源：{record.get('kb_doc') or '（无）'}{(' / ' + record['kb_section']) if record.get('kb_section') else ''}\n"
-            f"- 圈层标签：{layer_tags}\n"
-            f"- KB 原文画像：\n\n{kb_chunk}\n\n"
-            f"- 5 条匹配理由：\n{reasons_md}\n"
+        audience_md = _creative_audience_context(
+            record,
+            portrait_md=portrait_md,
+            pack_md=pack.get("pack_md") if pack else None,
         )
     else:
         audience_md = "（无 — 单 SKU 模式或未跑 step 3 人群匹配，按 SKU 通用画像出稿）"
@@ -4022,6 +4295,61 @@ async def _creative_pack_one(
         _tm = None
         target_model_profile = "（不适用——本 kind 无 AI 出片提示词段）"
 
+    # === 投前向量预设库：video_* 先选元素再生成，给状态机留下 baseline/sweep 种子 ===
+    vector_preset = None
+    if kind.startswith("video_"):
+        lineage_anchors = None
+        if formal_planting:
+            lineage_anchors = _formal_planting_anchors(
+                pain_solution_bridge, formal_facts
+            )
+        elif formal_soft_ad:
+            lineage_anchors = _formal_soft_ad_anchors(
+                sku_md=sku_md,
+                matrix_md=matrix_md.strip(),
+                audience_md=audience_md.strip(),
+                extra_context=extra_context,
+            )
+        try:
+            vector_preset = await vector_presets.build_creative_vector_preset(
+                kind=kind,
+                sku_md=sku_md,
+                matrix_md=matrix_md.strip(),
+                audience_md=audience_md.strip(),
+                audience_pack_summary=audience_pack_summary.strip(),
+                extra_context=(extra_context or "").strip(),
+                intent=intent,
+                profile=profile,
+                lineage_anchors=lineage_anchors,
+            )
+        except Exception as exc:
+            logger.exception("creative vector preset failed: %s", exc)
+            return {
+                "ok": False,
+                "error": "vector_preset_failed",
+                "hint": "video_* 生成前必须先完成投前向量预设；检查 embedding provider / DB / 上游画像文本后重跑。",
+            }
+        if not vector_preset.get("ok"):
+            return {
+                "ok": False,
+                "error": vector_preset.get("error") or "vector_preset_failed",
+                "detail": vector_preset,
+                "hint": "video_* 生成前必须先完成投前向量预设；不能无预设直接出脚本。",
+            }
+        vector_preset_md = vector_preset["markdown"]
+        vector_preset_notes = json.dumps({
+            "vector_preset": {
+                "score_100": vector_preset.get("score_100"),
+                "lane_scores": vector_preset.get("lane_scores"),
+                "baseline": (vector_preset.get("state_machine_seed") or {}).get("baseline"),
+                "allowed_sweeps": (vector_preset.get("state_machine_seed") or {}).get("allowed_sweeps"),
+                "disclaimer": vector_preset.get("disclaimer"),
+            }
+        }, ensure_ascii=False)
+    else:
+        vector_preset_md = "（非 video_* 素材，暂不强制投前向量预设）"
+        vector_preset_notes = None
+
     # === render prompt ===
     sys_template = f"creative_pack.{kind}.system"
     sys_msg = prompts.load(sys_template)
@@ -4035,9 +4363,16 @@ async def _creative_pack_one(
         matrix_md=matrix_md.strip(),
         audience_md=audience_md.strip(),
         audience_pack_summary=audience_pack_summary.strip(),
+        vector_preset_md=vector_preset_md,
         extra_context=(extra_context or "").strip() or "（无）",
         target_model_profile=target_model_profile,
     )
+    if (
+        kind.startswith("video_")
+        and vector_preset_md
+        and vector_preset_md not in user_msg
+    ):
+        user_msg += "\n\n## 投前向量预设\n" + vector_preset_md
     # prompt 反馈飞轮：注入累积修正规则（migration 051/052；scope 带 kind/sku_id/intent 便于按类/意图细分）
     _cp_scope = {"kind": kind}
     if sku_id:
@@ -4045,6 +4380,18 @@ async def _creative_pack_one(
     if intent and intent != "generic":
         _cp_scope["intent"] = intent
     user_msg += await prompt_rules.render_rules_suffix("pipeline.creative_pack", _cp_scope)
+    if formal_planting:
+        bridge_json = json.dumps(
+            pain_solution_bridge,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        user_msg += (
+            "\n\n## 本次正式种草痛点—解决桥（唯一结构化输入）\n"
+            "严格逐字段承接，不得改写证据，不得扩写上游 CSV 或方法论原文。\n"
+            f"{bridge_json}"
+        )
     final_prompt = sys_msg + "\n\n" + user_msg
 
     # === 调 LLM（支持并行多方案）===
@@ -4084,6 +4431,71 @@ async def _creative_pack_one(
             _warnings = ["⚠ LLM 没输出 metrics_json 代码块（或 JSON 解析失败），无法跑硬约束校验。改 prompt 或重跑。"]
         else:
             _warnings = _validate_creative_metrics(_metrics, kind, scenes=_scenes)
+        _content_gate = None
+        _triangle = None
+        _content_contract = None
+        if formal_profile:
+            _tracks = match_vectors.extract_content_tracks(md, kind, _scenes)
+            if not _tracks and md:
+                _tracks = {"text": md[:2000]}
+            _product_text = build_product_text(
+                dict(sku),
+                matrix_md=matrix_md.strip(),
+            )
+            _audience_text = _formal_audience_text(
+                formal_facts,
+                pain_solution_bridge if formal_planting else None,
+                audience_md.strip(),
+            )
+            _triangle = await audit_content_triangle(
+                product_text=_product_text,
+                audience_text=_audience_text,
+                content_tracks=_tracks,
+                profile=profile,
+            )
+            if not _triangle.get("ok"):
+                _triangle = {
+                    **_triangle,
+                    "overall_score_100": 0,
+                    "edges_100": {
+                        "product_audience": 0,
+                        "product_content": 0,
+                        "audience_content": 0,
+                    },
+                }
+            _prompt_blocks = _contract_prompt_blocks(_scenes)
+            if formal_planting:
+                _content_contract = build_content_contract(
+                    profile,
+                    pain_solution_bridge,
+                    _metrics or {},
+                    _triangle,
+                    _prompt_blocks,
+                    upstream_fact_hash,
+                )
+            else:
+                _content_contract = build_soft_ad_content_contract(
+                    profile,
+                    _metrics or {},
+                    _triangle,
+                    _prompt_blocks,
+                )
+            _content_gate = _content_contract["content_gate"]
+            if not _content_gate.get("pass"):
+                _warnings.append(
+                    f"{intent}_content_gate_failed: "
+                    + "; ".join(_content_gate.get("failed_checks") or ["unknown"])
+                )
+        _notes_obj = {}
+        if vector_preset_notes:
+            try:
+                _notes_obj = json.loads(vector_preset_notes)
+            except Exception:
+                _notes_obj = {"vector_preset_raw": vector_preset_notes}
+        if _content_gate is not None:
+            _notes_obj["content_vector_gate"] = _content_gate
+        if _triangle is not None:
+            _notes_obj["content_triangle"] = _triangle
         _sid = await pipeline_lineage.save_creative_pack(
             sku_id=sku_id,
             kind=kind,
@@ -4092,9 +4504,12 @@ async def _creative_pack_one(
             audience_pack_id=audience_pack_id,
             audience_run_id=audience_run_id,
             matrix_run_id=matrix_run_id,
+            portrait_id=portrait_id,
             hooks=[],
-            scenes=[],
+            scenes=_scenes if formal_profile else [],
             intent=intent,
+            notes=json.dumps(_notes_obj, ensure_ascii=False) if _notes_obj else None,
+            content_contract=_content_contract,
             extra_context=extra_context,
             model_provider=_provider,
             model=_model,
@@ -4103,10 +4518,38 @@ async def _creative_pack_one(
         )
         label = chr(ord("A") + variant_idx)  # "A", "B", "C"
         return {"script_id": _sid, "script_md": md, "variant_label": f"方案 {label}",
-                "metrics": _metrics, "validation_warnings": _warnings}
+                "metrics": _metrics, "validation_warnings": _warnings,
+                "content_vector_gate": _content_gate,
+                "content_triangle": _triangle,
+                "content_contract": _content_contract}
 
     raw_variants = await asyncio.gather(*[_call_one(i) for i in range(_n)])
     variants = list(raw_variants)
+    quality_gate_enabled = formal_profile
+    if quality_gate_enabled:
+        variants = sorted(
+            variants,
+            key=lambda v: (
+                1
+                if (
+                    (v.get("content_vector_gate") or {}).get("pass")
+                )
+                else 0,
+                float(
+                    (
+                        (v.get("content_triangle") or {}).get("overall_score_100")
+                    )
+                    or 0
+                ),
+            ),
+            reverse=True,
+        )
+    quality_gate_passed = (
+        not quality_gate_enabled
+        or bool(
+            (variants[0].get("content_vector_gate") or {}).get("pass")
+        )
+    )
 
     # backward-compat: expose first variant's fields at top level
     script_id = variants[0]["script_id"]
@@ -4115,16 +4558,25 @@ async def _creative_pack_one(
     validation_warnings = variants[0]["validation_warnings"]
 
     next_hint = {
-        "video_soft_ad": "step 6 拿主脚本里的分镜清单调 generate_image 出 5-7 张分镜图",
-        "video_planting": "step 6 拿主脚本里的分镜清单调 generate_image 出 6-9 张分镜图",
-        "video_harvest": "step 6 拿主脚本里的分镜清单调 generate_image 出 4-6 张分镜图",
+        "video_soft_ad": "先 step 6.5 调 generate_character_sheets 出角色定妆照；再 step 7 调 generate_video_segments，带产品白底图 product_refs 直出 Seedance 视频段",
+        "video_planting": "先 step 6.5 调 generate_character_sheets 出角色定妆照；再 step 7 调 generate_video_segments，带产品白底图 product_refs 直出 Seedance 视频段",
+        "video_harvest": "先 step 6.5 调 generate_character_sheets 出角色定妆照；再 step 7 调 generate_video_segments，带产品白底图 product_refs 直出 Seedance 视频段",
         "graphic_harvest": "step 6 拿配图 brief 调 generate_image 出 4-6 张图文配图",
         "product_main_image": "step 6 拿主图 brief 调 generate_image 出 5-9 张主图",
         "product_detail_page": "step 6 拿详情页段落 brief 调 generate_image 出 8-12 段长图",
     }.get(kind, "step 6 调 generate_image 出图")
 
+    next_tool = "generate_character_sheets" if kind.startswith("video_") else "generate_image"
+    if formal_profile:
+        next_tool = "experiment_adopt_script" if quality_gate_passed else None
+        next_hint = (
+            "脚本内容闸已通过：先人工审稿，再采纳并挂到 AI 视频实验臂；挂臂后才允许生成定妆和视频段。"
+            if quality_gate_passed
+            else "正式内容闸未通过：脚本已按 draft 留档，先按 failed_checks 重写，禁止进入定妆或视频生成。"
+        )
+
     result = {
-        "ok": True,
+        "ok": not formal_profile or quality_gate_passed,
         "result": {
             "script_md": script_md,
             "script_id": script_id,
@@ -4134,7 +4586,19 @@ async def _creative_pack_one(
             "sku_id": sku_id,
             "audience_record_id": audience_record_id,
             "audience_pack_id": audience_pack_id,
+            "portrait_id": portrait_id,
             "matrix_run_id": matrix_run_id,
+            "vector_preset": vector_preset,
+            "quality_gate_passed": quality_gate_passed,
+            "quality_gate_enabled": quality_gate_enabled,
+            "content_vector_gate": variants[0].get("content_vector_gate"),
+            "content_triangle": variants[0].get("content_triangle"),
+            "content_contract": variants[0].get("content_contract"),
+            "legacy_warning": (
+                "Legacy generic creative pack has no versioned content contract and cannot enter the formal arm-bound media path."
+                if intent == "generic"
+                else None
+            ),
             "metrics": metrics,
             "validation_warnings": validation_warnings,
         },
@@ -4151,20 +4615,50 @@ async def _creative_pack_one(
                 "script_ids": [v["script_id"] for v in variants],
                 "validation_warnings_count": len(validation_warnings),
                 "metrics_extracted": metrics is not None,
+                "quality_gate_enabled": quality_gate_enabled,
+                "quality_gate_passed": quality_gate_passed,
+                "content_vector_gate": variants[0].get("content_vector_gate"),
+                "vector_preset": {
+                    "enabled": bool(vector_preset),
+                    "score_100": vector_preset.get("score_100") if vector_preset else None,
+                    "lane_scores": vector_preset.get("lane_scores") if vector_preset else None,
+                    "baseline": (
+                        (vector_preset.get("state_machine_seed") or {}).get("baseline")
+                        if vector_preset else None
+                    ),
+                },
                 "lineage": {
                     "sku_id": sku_id,
                     "audience_record_id": audience_record_id,
                     "audience_pack_id": audience_pack_id,
+                    "portrait_id": portrait_id,
                     "matrix_run_id": matrix_run_id,
                 },
             },
             cost_estimate="1 quota call (~3-6k tokens)",
         ),
     }
+    if formal_profile and not quality_gate_passed:
+        result["error"] = (
+            "planting_content_gate_failed"
+            if formal_planting
+            else "soft_ad_content_gate_failed"
+        )
     return attach_next_step(
         result,
-        suggested_tool="generate_image",
-        suggested_args={"sku_id": sku_id, "script_id": script_id},
+        suggested_tool=next_tool,
+        suggested_args=(
+            {
+                "script_id": script_id,
+                "swept_variable": (
+                    "pain_scene_bridge" if formal_planting else "opening_hook_3s"
+                ),
+            }
+            if formal_profile and next_tool
+            else {"sku_id": sku_id, "script_id": script_id}
+            if next_tool
+            else {}
+        ),
         human_text=next_hint,
     )
 
@@ -4181,6 +4675,9 @@ async def generate_creative_pack(
     sku_id: str | None = None,
     audience_record_id: str | None = None,
     audience_pack_id: str | None = None,
+    portrait_id: str | None = None,
+    pain_solution_bridge: dict | None = None,
+    upstream_fact_hash: str | None = None,
     extra_context: str | None = None,
     num_variants: int = 1,
     target_model: str = "seedance",
@@ -4254,6 +4751,16 @@ async def generate_creative_pack(
         if bad:
             return {"ok": False, "error": f"非法 kind：{bad}",
                     "hint": f"必须 6 选 1：{list(pipeline_lineage.CREATIVE_KINDS)}"}
+        for requested_kind in kind_list:
+            mismatch = _intent_kind_mismatch(requested_kind, intent)
+            if mismatch:
+                return mismatch
+        if intent == "planting" and "video_planting" in kind_list:
+            return {
+                "ok": False,
+                "error": "formal_batch_not_supported",
+                "hint": "正式种草每个候选必须分别传自己的 portrait_id、bridge 与 fact hash；请让 Agent 逐条调用。",
+            }
         rec_list = [r for r in dict.fromkeys(audience_record_ids or []) if r] or [audience_record_id]
         combos = [(r, k) for r in rec_list for k in kind_list]
         dropped = max(0, len(combos) - _CP_MAX_BATCH)
@@ -4265,7 +4772,10 @@ async def generate_creative_pack(
             async with sem:
                 return await _creative_pack_one(
                     kind=k, sku_id=sku_id, audience_record_id=rid,
-                    audience_pack_id=audience_pack_id, extra_context=extra_context,
+                    audience_pack_id=audience_pack_id, portrait_id=portrait_id,
+                    pain_solution_bridge=pain_solution_bridge,
+                    upstream_fact_hash=upstream_fact_hash,
+                    extra_context=extra_context,
                     num_variants=1, target_model=target_model, intent=intent,
                 )
 
@@ -4288,6 +4798,7 @@ async def generate_creative_pack(
                     "audience_record_id": rid,
                     "script_id": res.get("script_id"),
                     "sku_id": res.get("sku_id"),
+                    "portrait_id": res.get("portrait_id"),
                     "validation_warnings": res.get("validation_warnings") or [],
                     "excerpt": md[:300] + ("…" if len(md) > 300 else ""),
                 })
@@ -4328,9 +4839,17 @@ async def generate_creative_pack(
     if not kind:
         return {"ok": False, "error": "缺 kind（单跑）或 kinds（批量）",
                 "hint": f"kind 6 选 1：{list(pipeline_lineage.CREATIVE_KINDS)}"}
+
+    mismatch = _intent_kind_mismatch(kind, intent)
+    if mismatch:
+        return mismatch
+
     return await _creative_pack_one(
         kind=kind, sku_id=sku_id, audience_record_id=audience_record_id,
-        audience_pack_id=audience_pack_id, extra_context=extra_context,
+        audience_pack_id=audience_pack_id, portrait_id=portrait_id,
+        pain_solution_bridge=pain_solution_bridge,
+        upstream_fact_hash=upstream_fact_hash,
+        extra_context=extra_context,
         num_variants=num_variants, target_model=target_model,
         intent=intent, experiment_context=experiment_context,
     )

@@ -806,6 +806,18 @@
   "brand_total_mention_count": 2,
   "brand_first_appearance_second": 12,
 
+  "portrait_scene_alignment_score": 80,
+  "pain_specificity_score": 80,
+  "product_solution_fit_score": 80,
+  "product_action_visible": true,
+  "solution_result_visible": true,
+  "justification_grounded": true,
+  "belief_shift_present": true,
+  "hard_cta_present": false,
+  "price_promotion_present": false,
+  "fabricated_qualification_present": false,
+  "fake_testimonial_present": false,
+
   "slice_setting_specificity_high": false,
   "slice_brand_appearance_seconds_le_2": false,
   "slice_routine_disclosure_count": 0,
@@ -872,6 +884,14 @@
 - `transmission_target` 必须**单一**具体的人/群，**严禁**用"或""和""/"等连接多目标
 - `brand_total_mention_count`：A1/A2→A3 控制在 1-3 次（不像软广严限 ≤ 1，但也不能轰炸）
 - `brand_first_appearance_second`：**必须 ≥ 5**（前 5 秒禁品牌名）
+
+正式种草内容闸（11 字段全部必填，任一不合格都只保存 draft、禁止进入定妆/出片）：
+- `portrait_scene_alignment_score`：**必须 ≥ 80**；人物身份、生活细节和触发场景须能在所选画像中找到依据
+- `pain_specificity_score`：**必须 ≥ 80**；必须是该场景中可观察的具体麻烦及后果，不得只写年龄、消费力或空泛焦虑
+- `product_solution_fit_score`：**必须 ≥ 80**；产品动作必须直接解决前述痛点，不能只有产品露出或情绪氛围
+- `product_action_visible` / `solution_result_visible` / `justification_grounded` / `belief_shift_present`：**必须全为 true**；脚本画面要依次看见产品动作、结果变化、上游事实支撑和用户认知变化
+- `hard_cta_present` / `price_promotion_present` / `fabricated_qualification_present` / `fake_testimonial_present`：**必须全为 false**；正式种草不做硬催单、不写价格优惠、不编资质、不造用户证言
+- 三个分数字段按脚本真实表现自评，不能为了过闸虚报；后端还会用产品×人群×内容向量三角复核，整体及 audience_content/product_content 均须 ≥ 70
 
 角色清单 + 产品出场（给 step 6.5/6/7 出片链直接喂用）：
 - `character_sheet_count` ≥ 1（出场 ≥ 2 段的角色都要列；通常 1-3 个）

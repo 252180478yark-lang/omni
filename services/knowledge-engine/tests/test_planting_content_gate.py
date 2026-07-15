@@ -5,10 +5,14 @@ from dataclasses import dataclass
 from math import inf, nan
 from typing import Any
 from uuid import UUID
+import json
 
 import pytest
 
+import app.mcp.server  # noqa: F401  # load tool graph before importing media directly
 from app.services import pipeline_lineage, video_content_gate
+from app.mcp.tools import media
+from app.services.pain_solution_bridge import canonical_upstream_fact_hash
 from app.services.video_content_gate import (
     assert_script_ready_for_media,
     build_content_contract,
@@ -680,6 +684,484 @@ async def test_media_readiness_performs_one_explicit_join_without_latest_lookup(
     assert "order by" not in normalized_sql
     assert "limit" not in normalized_sql
     assert args == (ARM_ID,)
+
+
+def _formal_bridge() -> dict[str, Any]:
+    return {
+        "audience_segment": "下班后仍认真做晚饭的家庭掌勺人",
+        "trigger_scene": "工作日晚饭端上桌前，清淡家常菜闻起来没食欲",
+        "pain_point": "菜已经做熟却寡淡没香气，家人只夹一筷子就停下",
+        "pain_consequence": "做饭的人费了时间却得不到家人的正向反馈",
+        "product_action": "拿起和田宽酱油沿锅边少量淋入并翻匀",
+        "visible_result": "热气带出酱香，家人重新夹菜并继续吃",
+        "belief_shift": "提味不是把菜做咸，而是让普通家常菜更有食欲",
+        "relevance_module": "M1",
+        "justification_module": "M3",
+        "portrait_evidence": [
+            {
+                "source": "portrait",
+                "field": "portrait_md",
+                "value": "工作日晚饭重视家人反馈",
+            }
+        ],
+        "pack_calibration_evidence": [],
+        "product_evidence": [
+            {
+                "source": "sku",
+                "field": "name",
+                "value": "和田宽酱油",
+            }
+        ],
+    }
+
+
+def _formal_facts() -> dict[str, Any]:
+    return {
+        "lineage": {
+            "sku_id": "SKU-FORMAL-1",
+            "matrix_run_id": "44444444-4444-4444-8444-444444444444",
+            "audience_run_id": "55555555-5555-4555-8555-555555555555",
+            "audience_record_id": "66666666-6666-4666-8666-666666666666",
+            "portrait_id": "77777777-7777-4777-8777-777777777777",
+            "audience_pack_id": None,
+        },
+        "sku_facts": {
+            "id": "SKU-FORMAL-1",
+            "name": "和田宽酱油",
+            "category": "调味品",
+            "price_min": 29,
+            "price_max": 29,
+            "specifications": "500ml",
+            "owner_selling_points": ["提鲜"],
+            "owner_notes": None,
+            "platform_status": "active",
+        },
+        "matrix_evidence": {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "matrix_md": "卖点：家常菜提鲜；动作：沿锅边少量淋入",
+        },
+        "portrait_record_evidence": {
+            "record": {
+                "id": "66666666-6666-4666-8666-666666666666",
+                "audience_run_id": "55555555-5555-4555-8555-555555555555",
+                "matrix_run_id": "44444444-4444-4444-8444-444444444444",
+                "sku_id": "SKU-FORMAL-1",
+                "name": "家庭掌勺人",
+                "kb_doc": "画像",
+                "kb_section": "晚饭",
+                "kb_chunk_text": "工作日晚饭重视家人反馈",
+                "match_reasons": ["重视家人吃饭反馈"],
+                "layer_tags": ["家庭餐桌"],
+                "raw_md_segment": "工作日晚饭重视家人反馈",
+            },
+            "portrait": {
+                "id": "77777777-7777-4777-8777-777777777777",
+                "portrait_md": "工作日晚饭重视家人反馈",
+            },
+        },
+        "pack_calibration": None,
+        "eligible_evidence_catalog": {
+            "sku": {"name": "和田宽酱油"},
+            "matrix": {"matrix_md": "卖点：家常菜提鲜；动作：沿锅边少量淋入"},
+            "record": {"raw_md_segment": "工作日晚饭重视家人反馈"},
+            "portrait": {"portrait_md": "工作日晚饭重视家人反馈"},
+        },
+        "pack_calibration_catalog": {},
+    }
+
+
+async def _install_formal_media_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    metrics: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[str]]:
+    facts = _formal_facts()
+    fact_hash = canonical_upstream_fact_hash(facts)
+    saved: list[dict[str, Any]] = []
+    prompts_seen: list[str] = []
+
+    async def fake_load(*args, **kwargs):
+        return {"ok": True, "facts": facts, "upstream_fact_hash": fact_hash}
+
+    async def fake_preset(**kwargs):
+        assert kwargs["profile"].intent == "planting"
+        assert set(kwargs["lineage_anchors"]) == {
+            "audience_scene",
+            "pain_conflict",
+            "product_action",
+            "result_relief",
+            "justification_evidence",
+        }
+        return {
+            "ok": True,
+            "markdown": "formal vector preset",
+            "score_100": 82,
+            "lane_scores": {},
+            "state_machine_seed": {"baseline": {}, "allowed_sweeps": []},
+            "anchors": kwargs["lineage_anchors"],
+            "legacy_warning": None,
+        }
+
+    async def fake_triangle(**kwargs):
+        return {"ok": True, **TRIANGLE}
+
+    async def fake_save(**kwargs):
+        saved.append(kwargs)
+        return SCRIPT_ID
+
+    class FakeHub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def chat(self, *, messages, **kwargs):
+            prompts_seen.append(messages[-1]["content"])
+            return {
+                "content": "脚本正文\n```json\n"
+                + json.dumps(metrics, ensure_ascii=False)
+                + "\n```"
+            }
+
+    async def no_rules(*args, **kwargs):
+        return ""
+
+    monkeypatch.setattr(media, "load_planting_bridge_context", fake_load)
+    monkeypatch.setattr(media.vector_presets, "build_creative_vector_preset", fake_preset)
+    monkeypatch.setattr(media, "audit_content_triangle", fake_triangle)
+    monkeypatch.setattr(media.pipeline_lineage, "save_creative_pack", fake_save)
+    monkeypatch.setattr(media, "AIHubClient", FakeHub)
+    monkeypatch.setattr(media.prompt_rules, "render_rules_suffix", no_rules)
+    monkeypatch.setattr(
+        media,
+        "get_pool",
+        lambda: (_ for _ in ()).throw(AssertionError("formal planting must use loaded facts")),
+    )
+    return {"facts": facts, "hash": fact_hash}, saved, prompts_seen
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("updates", "error", "reason"),
+    [
+        ({"sku_id": None}, "upstream_lineage_incomplete", "sku_id_missing"),
+        (
+            {"audience_record_id": None},
+            "upstream_lineage_incomplete",
+            "audience_record_id_missing",
+        ),
+        ({"portrait_id": None}, "upstream_lineage_incomplete", "portrait_id_missing"),
+        (
+            {"pain_solution_bridge": None},
+            "pain_solution_bridge_invalid",
+            "bridge_missing",
+        ),
+        (
+            {"upstream_fact_hash": None},
+            "upstream_lineage_incomplete",
+            "upstream_fact_hash_missing",
+        ),
+    ],
+)
+async def test_formal_planting_rejects_missing_inputs_before_embedding_or_llm(
+    monkeypatch, updates, error, reason
+):
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("embedding/LLM path must not run")
+
+    monkeypatch.setattr(media.vector_presets, "build_creative_vector_preset", forbidden)
+    monkeypatch.setattr(media, "AIHubClient", forbidden)
+    args = {
+        "kind": "video_planting",
+        "intent": "planting",
+        "sku_id": "SKU-FORMAL-1",
+        "audience_record_id": "66666666-6666-4666-8666-666666666666",
+        "portrait_id": "77777777-7777-4777-8777-777777777777",
+        "pain_solution_bridge": _formal_bridge(),
+        "upstream_fact_hash": "hash",
+    }
+    args.update(updates)
+
+    result = await media._creative_pack_one(**args)
+
+    assert result["ok"] is False
+    assert result["error"] == error
+    assert result["reason"] == reason
+
+
+@pytest.mark.asyncio
+async def test_formal_planting_rechecks_hash_before_embedding_or_llm(monkeypatch):
+    facts = _formal_facts()
+
+    async def fake_load(*args, **kwargs):
+        return {
+            "ok": True,
+            "facts": facts,
+            "upstream_fact_hash": canonical_upstream_fact_hash(facts),
+        }
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("embedding/LLM path must not run")
+
+    monkeypatch.setattr(media, "load_planting_bridge_context", fake_load)
+    monkeypatch.setattr(media.vector_presets, "build_creative_vector_preset", forbidden)
+    monkeypatch.setattr(media, "AIHubClient", forbidden)
+
+    result = await media._creative_pack_one(
+        kind="video_planting",
+        intent="planting",
+        sku_id="SKU-FORMAL-1",
+        audience_record_id="66666666-6666-4666-8666-666666666666",
+        portrait_id="77777777-7777-4777-8777-777777777777",
+        pain_solution_bridge=_formal_bridge(),
+        upstream_fact_hash="stale-hash",
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "upstream_lineage_incomplete",
+        "reason": "upstream_fact_hash_mismatch",
+    }
+
+
+@pytest.mark.asyncio
+async def test_formal_planting_gate_failure_saves_contract_and_stops_media(
+    monkeypatch,
+):
+    state, saved, prompts_seen = await _install_formal_media_fakes(
+        monkeypatch,
+        metrics=_planting_metrics(pain_specificity_score=79),
+    )
+
+    result = await media._creative_pack_one(
+        kind="video_planting",
+        intent="planting",
+        sku_id="SKU-FORMAL-1",
+        audience_record_id="66666666-6666-4666-8666-666666666666",
+        portrait_id="77777777-7777-4777-8777-777777777777",
+        pain_solution_bridge=_formal_bridge(),
+        upstream_fact_hash=state["hash"],
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "planting_content_gate_failed"
+    assert len(saved) == 1
+    contract = saved[0]["content_contract"]
+    assert contract["content_gate"]["pass"] is False
+    assert contract["upstream_fact_hash"] == state["hash"]
+    assert contract["north_star_metric"] == "a3_ratio"
+    assert "pain_solution_bridge" in contract
+    assert "generate_character_sheets" not in json.dumps(result, ensure_ascii=False)
+    assert prompts_seen and json.dumps(
+        _formal_bridge(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ) in prompts_seen[0]
+    assert "eligible_evidence_catalog" not in prompts_seen[0]
+
+
+@pytest.mark.asyncio
+async def test_formal_planting_gate_pass_stops_at_review_and_arm_attachment(
+    monkeypatch,
+):
+    state, saved, _ = await _install_formal_media_fakes(
+        monkeypatch, metrics=PLANTING_METRICS
+    )
+
+    result = await media._creative_pack_one(
+        kind="video_planting",
+        intent="planting",
+        sku_id="SKU-FORMAL-1",
+        audience_record_id="66666666-6666-4666-8666-666666666666",
+        portrait_id="77777777-7777-4777-8777-777777777777",
+        pain_solution_bridge=_formal_bridge(),
+        upstream_fact_hash=state["hash"],
+    )
+
+    assert result["ok"] is True
+    assert saved[0]["content_contract"]["content_gate"]["pass"] is True
+    assert result["next_step_hint"]["suggested_tool"] == "experiment_adopt_script"
+    assert result["next_step_hint"]["suggested_args"]["script_id"] == SCRIPT_ID
+    assert "generate_character_sheets" not in json.dumps(result, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_formal_planting_rejects_temperature_drift_variants_before_llm(monkeypatch):
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("LLM path must not run")
+
+    monkeypatch.setattr(media, "AIHubClient", forbidden)
+
+    result = await media._creative_pack_one(
+        kind="video_planting",
+        intent="planting",
+        sku_id="SKU-FORMAL-1",
+        audience_record_id="66666666-6666-4666-8666-666666666666",
+        portrait_id="77777777-7777-4777-8777-777777777777",
+        pain_solution_bridge=_formal_bridge(),
+        upstream_fact_hash="hash",
+        num_variants=2,
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "formal_planting_requires_single_variant"
+
+
+@pytest.mark.asyncio
+async def test_public_creative_pack_rejects_formal_kind_intent_mismatch(monkeypatch):
+    async def forbidden(**kwargs):
+        raise AssertionError("mismatched formal request must not reach implementation")
+
+    monkeypatch.setattr(media, "_creative_pack_one", forbidden)
+
+    result = await media.generate_creative_pack.__wrapped__(
+        kind="video_soft_ad", intent="planting", sku_id="SKU-FORMAL-1"
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "intent_kind_mismatch"
+
+
+@pytest.mark.asyncio
+async def test_public_generic_path_remains_legacy_and_passes_experiment_context(
+    monkeypatch,
+):
+    seen: dict[str, Any] = {}
+
+    async def fake_one(**kwargs):
+        seen.update(kwargs)
+        return {"ok": True, "result": {"script_id": "legacy"}}
+
+    monkeypatch.setattr(media, "_creative_pack_one", fake_one)
+    experiment_context = {"sweep": {"variable": "scene", "value": "kitchen"}}
+
+    result = await media.generate_creative_pack.__wrapped__(
+        kind="video_planting",
+        intent="generic",
+        sku_id="SKU-LEGACY",
+        experiment_context=experiment_context,
+    )
+
+    assert result["ok"] is True
+    assert seen["experiment_context"] == experiment_context
+    assert seen["portrait_id"] is None
+    assert seen["pain_solution_bridge"] is None
+    assert seen["upstream_fact_hash"] is None
+
+
+class _CreativePackSkuPool:
+    async def fetchrow(self, sql: str, *args: Any) -> Mapping[str, Any] | None:
+        assert "FROM mvp_sku" in sql
+        return {
+            "id": args[0],
+            "name": "和田宽酱油",
+            "category": "调味品",
+            "price_min": 29,
+            "price_max": 29,
+            "specifications": "500ml",
+            "owner_selling_points": ["家常提鲜"],
+            "owner_notes": None,
+            "platform_status": "active",
+        }
+
+
+async def _install_nonplanting_media_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    metrics: dict[str, Any],
+    formal_soft_ad: bool,
+) -> list[dict[str, Any]]:
+    saved: list[dict[str, Any]] = []
+
+    async def fake_preset(**kwargs):
+        if formal_soft_ad:
+            assert kwargs["profile"].intent == "soft_ad"
+            assert set(kwargs["lineage_anchors"]) == {
+                "audience_scene",
+                "product_action",
+                "watchability",
+            }
+        else:
+            assert kwargs["profile"] is None
+            assert kwargs["lineage_anchors"] is None
+        return {
+            "ok": True,
+            "markdown": "vector preset",
+            "score_100": 80,
+            "lane_scores": {},
+            "state_machine_seed": {"baseline": {}, "allowed_sweeps": []},
+            "anchors": {
+                "audience": "家庭晚饭",
+                "product": "和田宽酱油",
+                "selling_point": "提鲜",
+                "scene": "厨房",
+            },
+            "legacy_warning": None if formal_soft_ad else "legacy",
+        }
+
+    async def fake_triangle(**kwargs):
+        return {"ok": True, **TRIANGLE}
+
+    async def fake_save(**kwargs):
+        saved.append(kwargs)
+        return SCRIPT_ID
+
+    class FakeHub:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def chat(self, **kwargs):
+            return {
+                "content": "生活脚本\n```json\n"
+                + json.dumps(metrics, ensure_ascii=False)
+                + "\n```"
+            }
+
+    async def no_rules(*args, **kwargs):
+        return ""
+
+    monkeypatch.setattr(media, "get_pool", lambda: _CreativePackSkuPool())
+    monkeypatch.setattr(media.vector_presets, "build_creative_vector_preset", fake_preset)
+    monkeypatch.setattr(media, "audit_content_triangle", fake_triangle)
+    monkeypatch.setattr(media.pipeline_lineage, "save_creative_pack", fake_save)
+    monkeypatch.setattr(media, "AIHubClient", FakeHub)
+    monkeypatch.setattr(media.prompt_rules, "render_rules_suffix", no_rules)
+    return saved
+
+
+@pytest.mark.asyncio
+async def test_formal_soft_ad_has_completion_contract_and_no_pain_bridge(monkeypatch):
+    saved = await _install_nonplanting_media_fakes(
+        monkeypatch, metrics=SOFT_AD_METRICS, formal_soft_ad=True
+    )
+
+    result = await media._creative_pack_one(
+        kind="video_soft_ad",
+        intent="soft_ad",
+        sku_id="SKU-SOFT-1",
+        extra_context="工作日晚饭的自然生活片段",
+    )
+
+    assert result["ok"] is True
+    contract = saved[0]["content_contract"]
+    assert contract["north_star_metric"] == "completion_rate"
+    assert contract["intent"] == "soft_ad"
+    assert "pain_solution_bridge" not in contract
+    assert result["next_step_hint"]["suggested_tool"] == "experiment_adopt_script"
+
+
+@pytest.mark.asyncio
+async def test_generic_media_path_is_marked_legacy_without_formal_contract(monkeypatch):
+    saved = await _install_nonplanting_media_fakes(
+        monkeypatch, metrics=PLANTING_METRICS, formal_soft_ad=False
+    )
+
+    result = await media._creative_pack_one(
+        kind="video_planting",
+        intent="generic",
+        sku_id="SKU-LEGACY-1",
+    )
+
+    assert result["ok"] is True
+    assert saved[0]["content_contract"] is None
+    assert "Legacy generic" in result["result"]["legacy_warning"]
+    assert result["next_step_hint"]["suggested_tool"] == "generate_character_sheets"
 
 
 class _ContractPersistencePool:

@@ -53,7 +53,10 @@ async def test_cross_product_cap_and_slim_items(monkeypatch):
 
     async def fake_one(*, kind, sku_id=None, audience_record_id=None,
                        audience_pack_id=None, extra_context=None,
-                       num_variants=1, target_model="seedance"):
+                       num_variants=1, target_model="seedance",
+                       intent="generic", experiment_context=None,
+                       portrait_id=None, pain_solution_bridge=None,
+                       upstream_fact_hash=None):
         calls.append((audience_record_id, kind, num_variants))
         if audience_record_id == "r2" and kind == "video_harvest":
             return {"ok": False, "error": "audience_record 未找到", "hint": "x"}
@@ -82,6 +85,26 @@ async def test_cross_product_cap_and_slim_items(monkeypatch):
         assert "script_md" not in it
     sids = {i["script_id"] for i in ok_items}
     assert "s-r1-video_soft_ad" in sids
+
+
+@pytest.mark.asyncio
+async def test_formal_planting_batch_is_rejected_without_per_item_contracts(monkeypatch):
+    async def forbidden(**kwargs):
+        raise AssertionError("formal planting batch must not reuse one bridge implicitly")
+
+    monkeypatch.setattr(media, "_creative_pack_one", forbidden)
+
+    out = await generate_creative_pack(
+        audience_record_ids=["r1", "r2"],
+        kinds=["video_planting"],
+        intent="planting",
+        portrait_id="77777777-7777-4777-8777-777777777777",
+        pain_solution_bridge={"candidate": "one"},
+        upstream_fact_hash="facts",
+    )
+
+    assert out["ok"] is False
+    assert out["error"] == "formal_batch_not_supported"
 
 
 @pytest.mark.asyncio

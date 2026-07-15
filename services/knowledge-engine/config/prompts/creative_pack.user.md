@@ -32,6 +32,14 @@
 
 ---
 
+## Pre-generation vector preset
+
+{vector_preset_md}
+
+Formal video generation must use this preset and its 现实物理约束 as a cold-start ordering input; the post-launch north-star still decides the winner.
+
+---
+
 ## ⑥ 老板临时要求（extra_context）
 
 {extra_context}
