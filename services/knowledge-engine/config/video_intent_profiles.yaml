@@ -1,0 +1,115 @@
+version: '2026-07-15.v1'
+
+profiles:
+  planting:
+    kind: video_planting
+    intent: planting
+    method: M1/M2_x_M3-M9
+    bridge_extractor: generate_planting_pain_solution_bridge
+    content_gate: planting_v1
+    prompt_profile: creative_pack.video_planting
+    metric_policy: planting_a3_v1
+    north_star: a3_ratio
+    diagnostic_metrics:
+      - cpm
+      - play_3s_rate
+      - completion_rate
+    vector_threshold_100: 70
+    key_vector_dimensions:
+      - audience_scene
+      - pain_conflict
+      - product_action
+      - result_relief
+      - justification_evidence
+    prompt_budget:
+      segment_max_seconds: 15
+      min_chars_per_second: 50
+      recommended_chars_per_second: [60, 87]
+      max_chars_per_second: 107
+    evaluation_policy:
+      play_3s_floor: null
+      completion_floor: null
+      a3_floor: null
+      cpm_ceiling: null
+      min_impressions: null
+      min_a3_eligible_users: null
+      max_exposure_ratio: 3.0
+      rate_scale: '0-1'
+      currency: CNY
+    iteration_candidates:
+      play_3s_rate:
+        - opening_hook_3s
+        - presentation_motif
+      completion_rate:
+        - story_pace
+        - justification_density
+      a3_ratio:
+        - pain_scene_bridge
+        - justification_module
+    global_iteration_order:
+      - pain_scene_bridge
+      - idea_seed
+      - opening_hook_3s
+      - selling_point_set
+      - scene
+      - emotion
+      - story_pace
+      - justification_density
+      - justification_module
+      - presentation_motif
+      - edit_pace
+      - visual_vector
+      - bgm
+      - target_model
+
+  soft_ad:
+    kind: video_soft_ad
+    intent: soft_ad
+    method: soft_ad_life_flow
+    bridge_extractor: null
+    content_gate: soft_ad_v1
+    prompt_profile: creative_pack.video_soft_ad
+    metric_policy: soft_ad_completion_v1
+    north_star: completion_rate
+    diagnostic_metrics:
+      - play_3s_rate
+      - completion_rate
+    vector_threshold_100: 70
+    key_vector_dimensions:
+      - audience_scene
+      - product_action
+      - watchability
+    prompt_budget:
+      segment_max_seconds: 15
+      min_chars_per_second: 50
+      recommended_chars_per_second: [60, 87]
+      max_chars_per_second: 107
+    evaluation_policy:
+      play_3s_floor: null
+      completion_floor: null
+      a3_floor: null
+      cpm_ceiling: null
+      min_impressions: null
+      min_a3_eligible_users: null
+      max_exposure_ratio: 3.0
+      rate_scale: '0-1'
+      currency: CNY
+    iteration_candidates:
+      play_3s_rate:
+        - opening_hook_3s
+        - presentation_motif
+      completion_rate:
+        - story_pace
+        - edit_pace
+    global_iteration_order:
+      - idea_seed
+      - opening_hook_3s
+      - selling_point_set
+      - scene
+      - emotion
+      - story_pace
+      - edit_pace
+      - presentation_motif
+      - visual_vector
+      - bgm
+      - target_model
