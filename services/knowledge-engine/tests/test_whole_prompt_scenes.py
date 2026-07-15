@@ -8,6 +8,7 @@ import app.mcp.server  # noqa: F401  # 先完整加载 server：media 当首入�
 
 from app.database import init_pool, close_pool
 from app.services import pipeline_lineage
+from app.services.video_prompt_compiler import compile_final_prompt_segment
 from app.services.pipeline_lineage import (
     parse_scenes_from_script_md,
     _parse_whole_prompt_blocks,
@@ -175,6 +176,15 @@ _WHOLE_SCRIPT = {
 }
 
 
+@pytest.fixture
+def legacy_whole_script():
+    return {
+        **_WHOLE_SCRIPT,
+        "contract_version": "legacy",
+        "scenes": [dict(scene) for scene in _WHOLE_SCRIPT["scenes"]],
+    }
+
+
 @pytest.mark.asyncio
 async def test_step6_whole_prompt_gate(monkeypatch):
     async def fake_get(script_id):
@@ -187,9 +197,9 @@ async def test_step6_whole_prompt_gate(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_step7_dry_run_whole_mode(monkeypatch):
+async def test_step7_dry_run_legacy_whole_mode(monkeypatch, legacy_whole_script):
     async def fake_get(script_id):
-        return dict(_WHOLE_SCRIPT)
+        return legacy_whole_script
 
     async def fake_assets(**kwargs):
         return []
@@ -218,5 +228,17 @@ async def test_step7_dry_run_whole_mode(monkeypatch):
     assert r1["t2v_mode"] is True
     assert r1["whole_prompt"] is True
     assert r1["duration_s"] == 15 and r1["duration_clamped"] is False
-    # 22s 块被 clamp 到 15s 并标记
+    # 显式 legacy 数据保留旧 clamp 兼容；formal 段走下面的编译硬闸。
     assert r2["duration_s"] == 15 and r2["duration_clamped"] is True
+
+
+def test_formal_22_second_segment_returns_duration_invalid():
+    out = compile_final_prompt_segment(
+        {},
+        duration_seconds=22,
+        intent="planting",
+    )
+
+    assert out["ok"] is False
+    assert out["error"] == "video_segment_duration_invalid"
+    assert out["failed_checks"] == ["duration"]
