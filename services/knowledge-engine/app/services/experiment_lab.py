@@ -14,6 +14,7 @@ import logging
 import math
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 from app.database import get_pool
 from app.services.ad_metrics_validation import _WHITELIST
@@ -123,12 +124,22 @@ def _snapshot_evaluation_policy(
 
     try:
         profile = get_video_intent_profile(intent)
-    except ValueError:
-        # harvest/hard_ad do not have a shared video-intent profile yet.
-        if overrides:
-            field = next(iter(overrides), "evaluation_policy_overrides")
-            return None, _invalid_policy_override(field)
-        return {}, None
+    except ValueError as exc:
+        # Only the two intentionally unconfigured legacy intents may use an empty policy.
+        is_legacy_missing = (
+            intent in {"harvest", "hard_ad"}
+            and str(exc) == f"video_intent_profile_not_found:{intent}"
+        )
+        if is_legacy_missing:
+            if overrides:
+                field = next(iter(overrides), "evaluation_policy_overrides")
+                return None, _invalid_policy_override(field)
+            return {}, None
+        return None, {
+            "ok": False,
+            "error": "evaluation_policy_unavailable",
+            "intent": intent,
+        }
 
     policy = dict(profile.evaluation_policy)
     policy.update({
@@ -694,6 +705,13 @@ async def adopt_script_as_arm(
     才凑成真 A/B（status/changelog 会提示）。
     """
     explicit_experiment_id = experiment_id is not None
+    if explicit_experiment_id:
+        if not isinstance(experiment_id, str) or not experiment_id.strip():
+            return _arm_mismatch("experiment_id")
+        try:
+            experiment_id = str(UUID(experiment_id.strip()))
+        except ValueError:
+            return _arm_mismatch("experiment_id")
     explicit_round_no = round_no is not None
     pool = get_pool()
     srow = await pool.fetchrow(
@@ -725,7 +743,7 @@ async def adopt_script_as_arm(
         return _arm_mismatch("intent")
 
     # ── 定位实验：显式 experiment_id 优先；否则找同 SKU×intent×track 的 running 实验 ──
-    if experiment_id:
+    if explicit_experiment_id:
         erow = await pool.fetchrow(
             "SELECT id::text AS id, sku_id, intent, track, north_star_metric "
             "FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)

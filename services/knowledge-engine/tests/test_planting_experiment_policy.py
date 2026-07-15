@@ -158,6 +158,66 @@ async def test_policy_override_rejects_invalid_or_immutable_fields(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("intent", ["planting", "soft_ad"])
+@pytest.mark.parametrize(
+    "profile_error",
+    [
+        "video_intent_profile_not_found:test",
+        "video_intent_profiles_invalid:load_failed",
+    ],
+)
+async def test_formal_profile_failure_blocks_experiment_creation(
+    monkeypatch, intent, profile_error
+):
+    def fail_profile_loader(_intent: str):
+        raise ValueError(profile_error)
+
+    monkeypatch.setattr(lab, "get_video_intent_profile", fail_profile_loader)
+    monkeypatch.setattr(
+        lab,
+        "get_pool",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("formal profile failure must stop before pool access")
+        ),
+    )
+
+    result = await lab.create_experiment(
+        sku_id="SKU-POLICY-FAIL",
+        intent=intent,
+        audience_record_id="22222222-2222-4222-8222-222222222222",
+        track="ai_video",
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "evaluation_policy_unavailable",
+        "intent": intent,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("intent", ["harvest", "hard_ad"])
+async def test_unconfigured_legacy_profile_keeps_empty_policy(monkeypatch, intent):
+    pool = _CreatePool()
+
+    def missing_legacy_profile(requested_intent: str):
+        raise ValueError(f"video_intent_profile_not_found:{requested_intent}")
+
+    monkeypatch.setattr(lab, "get_video_intent_profile", missing_legacy_profile)
+    monkeypatch.setattr(lab, "get_pool", lambda: pool)
+
+    result = await lab.create_experiment(
+        sku_id="SKU-LEGACY",
+        intent=intent,
+        audience_record_id="22222222-2222-4222-8222-222222222222",
+        track="ai_video",
+    )
+
+    assert result["ok"] is True
+    assert result["experiment"]["evaluation_policy"] == {}
+
+
+@pytest.mark.asyncio
 async def test_formal_planting_rejects_non_a3_custom_north_star_before_pool(monkeypatch):
     monkeypatch.setattr(
         lab,
@@ -291,6 +351,7 @@ async def test_attach_arm_requires_explicit_matching_open_round_for_second_plant
 
 class _AdoptPool:
     def __init__(self) -> None:
+        self.experiment_query_args: list[tuple[Any, ...]] = []
         self.script = {
             "sku_id": "SKU-P",
             "kind": "video_planting",
@@ -304,6 +365,7 @@ class _AdoptPool:
         if "FROM pipeline.scripts" in query:
             return self.script
         if "FROM pipeline.experiments" in query:
+            self.experiment_query_args.append(args)
             return {
                 "id": "11111111-1111-4111-8111-111111111111",
                 "sku_id": "SKU-P",
@@ -350,6 +412,34 @@ async def test_second_planting_candidate_requires_explicit_experiment_and_round(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("bad_experiment_id", ["", "not-a-uuid"])
+async def test_explicit_planting_experiment_id_must_be_nonempty_uuid(
+    monkeypatch, bad_experiment_id
+):
+    monkeypatch.setattr(
+        lab,
+        "get_pool",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("invalid explicit experiment id must fail before DB lookup")
+        ),
+    )
+
+    result = await lab.adopt_script_as_arm(
+        script_id="33333333-3333-4333-8333-333333333333",
+        variable_value="反复试味",
+        swept_variable="pain_scene_bridge",
+        experiment_id=bad_experiment_id,
+        round_no=1,
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "experiment_arm_missing_or_mismatch",
+        "field": "experiment_id",
+    }
+
+
+@pytest.mark.asyncio
 async def test_explicit_second_planting_candidate_reuses_same_round(monkeypatch):
     pool = _AdoptPool()
     monkeypatch.setattr(lab, "get_pool", lambda: pool)
@@ -383,6 +473,9 @@ async def test_explicit_second_planting_candidate_reuses_same_round(monkeypatch)
     assert result["experiment_id"] == "11111111-1111-4111-8111-111111111111"
     assert result["round_no"] == 1
     assert result["arm"]["round_no"] == 1
+    assert pool.experiment_query_args == [
+        ("11111111-1111-4111-8111-111111111111",)
+    ]
 
 
 def test_mcp_experiment_create_exposes_policy_overrides():
