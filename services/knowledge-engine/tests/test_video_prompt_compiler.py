@@ -37,12 +37,12 @@ def _valid_source() -> dict:
         "sound_detail": "钥匙落桌声、锅中轻响、瓷碗放到桌面的清脆声。",
         "decorative_detail": "竖屏手机实拍，自然室内光，轻微手持感。",
         "negative": "禁止换脸、包装变形、手部畸形、乱码、动作跳变。",
-        "required_anchors": [
-            "主角小林",
-            "和田宽寿喜烧汁",
-            "倒入锅中",
-            "热饭端上桌",
-        ],
+        "required_anchors": {
+            "character": "主角小林",
+            "product": "和田宽寿喜烧汁",
+            "action": "倒入锅中",
+            "result": "热饭端上桌",
+        },
     }
 
 
@@ -200,6 +200,26 @@ def test_required_anchor_mapping_requires_all_four_categories() -> None:
 
     assert result["ok"] is True
     assert result["failed_checks"] == []
+
+
+def test_required_anchor_list_schema_fails_even_with_all_four_positions() -> None:
+    source = _valid_source()
+    source["required_anchors"] = [
+        "主角小林",
+        "和田宽寿喜烧汁",
+        "倒入锅中",
+        "热饭端上桌",
+    ]
+
+    result = compile_final_prompt_segment(
+        source,
+        duration_seconds=15,
+        intent="planting",
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "prompt_detail_insufficient"
+    assert "required_anchors_schema" in result["failed_checks"]
 
 
 @pytest.mark.parametrize("category", ["character", "product", "action", "result"])

@@ -1073,6 +1073,25 @@ async def generate_video_segments(
         isinstance(_content_contract, Mapping)
         and _content_contract.get("version") == "2026-07-15.v1"
     )
+    _legacy_prompt_contract = (
+        _content_contract is None
+        and script.get("contract_version") == "legacy"
+    )
+    if not _formal_prompt_contract and not _legacy_prompt_contract:
+        return {
+            "ok": False,
+            "error": "unsupported_video_content_contract",
+            "script_id": script_id,
+            "contract_version": (
+                _content_contract.get("version")
+                if isinstance(_content_contract, Mapping)
+                else _content_contract
+            ),
+            "hint": (
+                "Step 7 accepts only content_contract.version=2026-07-15.v1 "
+                "or an explicit top-level contract_version=legacy marker."
+            ),
+        }
     if _formal_prompt_contract:
         from app.services.video_prompt_compiler import compile_final_prompt_segment
 
@@ -1521,6 +1540,8 @@ async def generate_video_segments(
             # Populated by the early formal compiler gate above. Never clamp a
             # formal segment; provider incompatibility must fail explicitly.
             return int(scene["_formal_duration_s"])
+        if not _legacy_prompt_contract:
+            raise ValueError("unsupported_video_content_contract")
         d = scene.get("duration_s")
         if isinstance(d, (int, float)) and d > 0:
             return max(4, min(15, int(d)))
@@ -1579,11 +1600,11 @@ async def generate_video_segments(
             return {"scene_no": scene_no, "error": "scene_prompt_empty"}
 
         # character_anchor：角色+场景描述前置注入，维持跨镜一致性（t2v 模式核心手段）
-        if character_anchor:
+        if character_anchor and not _formal_prompt_contract:
             prompt = character_anchor.strip() + ". " + prompt
 
         # Lineage enrichment for video（whole 模式禁：块全文=单一创意源，任何追加都是二次加工）
-        if not scene.get("whole_prompt"):
+        if not _formal_prompt_contract and not scene.get("whole_prompt"):
             _v_scene_no = scene.get("scene_no") or 1
             _sp_hint = build_selling_point_motion_hint(_lineage_ctx_v, _v_scene_no)
             _v_lineage = []
@@ -1644,12 +1665,18 @@ async def generate_video_segments(
             scene_product_refs = None
         # Veo t2v：scene_face_refs + scene_product_refs 直接透传 → ASSET reference_images
 
-        if scene_product_refs:
+        if scene_product_refs and not _formal_prompt_contract:
             prompt = _append_strict_product_hint(
                 prompt,
                 face_count=len(scene_face_refs or []),
                 product_count=len(scene_product_refs),
             )
+
+        if _formal_prompt_contract:
+            # Defense in depth: the compiler owns the exact provider prompt.
+            # No downstream reference, lineage, repair, or caller suffix may
+            # change the byte-for-byte prompt submitted to the provider.
+            prompt = scene["_compiled_final_prompt"]
 
         try:
             start_resp = await client.generate_video_v2(

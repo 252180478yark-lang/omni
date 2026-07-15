@@ -160,12 +160,7 @@ def _required_anchor_failed_checks(
     value: object,
     final_prompt: str,
 ) -> list[str]:
-    """Validate the four executable anchors with an unambiguous category map.
-
-    Mapping is the preferred JSON shape.  A legacy list remains compatible only
-    in the fixed order character/product/action/result; shorter lists cannot
-    silently redefine which categories are required.
-    """
+    """Validate the four executable anchors with an exact category mapping."""
 
     schema_invalid = False
     if isinstance(value, Mapping):
@@ -173,12 +168,6 @@ def _required_anchor_failed_checks(
         anchors = {
             category: value.get(category)
             for category in _REQUIRED_ANCHOR_CATEGORIES
-        }
-    elif isinstance(value, list):
-        schema_invalid = len(value) != len(_REQUIRED_ANCHOR_CATEGORIES)
-        anchors = {
-            category: value[index] if index < len(value) else None
-            for index, category in enumerate(_REQUIRED_ANCHOR_CATEGORIES)
         }
     else:
         schema_invalid = True
