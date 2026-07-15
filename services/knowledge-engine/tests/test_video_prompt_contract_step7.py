@@ -38,7 +38,7 @@ def _formal_prompt_source_3s() -> dict[str, Any]:
     }
 
 
-def _script(*, contract: object = None, legacy: bool = False) -> dict[str, Any]:
+def _script(*, contract: object = None) -> dict[str, Any]:
     script: dict[str, Any] = {
         "id": "script-contract-test",
         "kind": "video_planting",
@@ -58,8 +58,6 @@ def _script(*, contract: object = None, legacy: bool = False) -> dict[str, Any]:
     }
     if contract is not None:
         script["content_contract"] = contract
-    if legacy:
-        script["contract_version"] = "legacy"
     return script
 
 
@@ -108,11 +106,18 @@ def _install_pipeline_fakes(
     "contract",
     [
         None,
+        {},
         {"version": "2026-07-16.v2", "intent": "planting"},
         {"version": "legacy"},
         "2026-07-15.v1",
     ],
-    ids=["missing", "future", "legacy-inside-content-contract", "non-mapping"],
+    ids=[
+        "missing",
+        "empty-getter-contract",
+        "future",
+        "legacy-inside-content-contract",
+        "non-mapping",
+    ],
 )
 async def test_step7_rejects_missing_or_unknown_content_contracts(
     monkeypatch: pytest.MonkeyPatch,
@@ -130,6 +135,92 @@ async def test_step7_rejects_missing_or_unknown_content_contracts(
     assert result["ok"] is False
     assert result["error"] == "unsupported_video_content_contract"
     assert asset_reads == []
+
+
+@pytest.mark.asyncio
+async def test_step7_explicit_legacy_mode_accepts_real_getter_empty_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = _script(contract={})
+    _install_pipeline_fakes(monkeypatch, script)
+
+    result = await media.generate_video_segments.__wrapped__(
+        script_id=script["id"],
+        product_refs=["https://example.test/product.png"],
+        dry_run=True,
+        legacy_mode=True,
+    )
+
+    assert result["ok"] is True
+    row = result["result"]["results"][0]
+    assert row["duration_s"] == 4
+    assert row["duration_clamped"] is True
+
+
+@pytest.mark.asyncio
+async def test_step7_legacy_mode_cannot_override_future_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = _script(
+        contract={"version": "2026-07-16.v2", "intent": "planting"}
+    )
+    asset_reads = _install_pipeline_fakes(monkeypatch, script)
+
+    result = await media.generate_video_segments.__wrapped__(
+        script_id=script["id"],
+        product_refs=["https://example.test/product.png"],
+        dry_run=True,
+        legacy_mode=True,
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "unsupported_video_content_contract"
+    assert asset_reads == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dry_run", [True, False], ids=["dry", "provider"])
+async def test_formal_nonwhole_scene_without_prompt_source_fails_before_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+    dry_run: bool,
+) -> None:
+    script = _script(
+        contract={"version": "2026-07-15.v1", "intent": "planting"}
+    )
+    scene = script["scenes"][0]
+    scene["whole_prompt"] = False
+    scene.pop("prompt_source")
+    asset_reads = _install_pipeline_fakes(monkeypatch, script)
+    provider_calls: list[dict[str, Any]] = []
+
+    class FakeClient:
+        async def generate_video_v2(self, **kwargs: Any) -> dict[str, Any]:
+            provider_calls.append(kwargs)
+            return {"video_url": "https://example.test/should-not-run.mp4"}
+
+    async def no_cap(kind: str) -> None:
+        return None
+
+    monkeypatch.setattr(media, "AIHubClient", lambda **kwargs: FakeClient())
+    monkeypatch.setattr(media, "_check_daily_media_cap", no_cap)
+    monkeypatch.setattr(
+        media,
+        "get_model_for_tool",
+        lambda tool_name: {"provider": "seedance", "model": "seedance-2-0"},
+    )
+
+    result = await media.generate_video_segments.__wrapped__(
+        script_id=script["id"],
+        product_refs=["https://example.test/product.png"],
+        dry_run=dry_run,
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "prompt_detail_insufficient"
+    assert result["failed_checks"] == ["prompt_source"]
+    assert result["scene_no"] == 1
+    assert asset_reads == []
+    assert provider_calls == []
 
 
 @pytest.mark.asyncio

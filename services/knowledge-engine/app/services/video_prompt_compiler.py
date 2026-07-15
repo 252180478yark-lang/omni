@@ -230,19 +230,22 @@ def compile_final_prompt_segment(
         "compression": compressed,
         "failed_checks": failed_checks,
     }
-    if char_count > budget.max_chars:
+    detail_failed = bool(failed_checks)
+    over_capacity = char_count > budget.max_chars
+    if over_capacity:
         result["failed_checks"].append("capacity")
-        return {
-            "ok": False,
-            "error": "prompt_capacity_exceeded",
-            **result,
-        }
-    if failed_checks or char_count < budget.min_chars:
+    if detail_failed or char_count < budget.min_chars:
         if char_count < budget.min_chars:
             result["failed_checks"].append("min_chars")
         return {
             "ok": False,
             "error": "prompt_detail_insufficient",
+            **result,
+        }
+    if over_capacity:
+        return {
+            "ok": False,
+            "error": "prompt_capacity_exceeded",
             **result,
         }
     return {"ok": True, **result}

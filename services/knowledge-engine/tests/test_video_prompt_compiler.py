@@ -263,7 +263,7 @@ def test_single_action_required_anchor_list_cannot_pass() -> None:
     assert "required_anchor:result" in result["failed_checks"]
 
 
-def test_capacity_error_precedes_anchor_failures_without_truncation() -> None:
+def test_detail_error_precedes_capacity_without_hiding_capacity_check() -> None:
     source = _valid_source()
     source["identity_product_anchor"] = _unique_detail("独特身份", 120)
     source["required_anchors"] = {}
@@ -275,7 +275,7 @@ def test_capacity_error_precedes_anchor_failures_without_truncation() -> None:
     )
 
     assert result["ok"] is False
-    assert result["error"] == "prompt_capacity_exceeded"
+    assert result["error"] == "prompt_detail_insufficient"
     assert result["char_count"] > result["budget"]["max_chars"]
     assert "capacity" in result["failed_checks"]
     assert "required_anchor:character" in result["failed_checks"]

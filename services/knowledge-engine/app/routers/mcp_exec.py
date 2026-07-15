@@ -462,6 +462,7 @@ class GenerateVideoSegmentsRequest(BaseModel):
     use_last_frame: bool = False
     extra_prompt_suffix: str | None = None
     dry_run: bool = False
+    legacy_mode: bool = False
     force_t2v: bool = False
     character_anchor: str | None = None
     model_override: str | None = None
@@ -489,6 +490,7 @@ async def exec_generate_video_segments(
             use_last_frame=payload.use_last_frame,
             extra_prompt_suffix=payload.extra_prompt_suffix,
             dry_run=payload.dry_run,
+            legacy_mode=payload.legacy_mode,
             force_t2v=payload.force_t2v,
             character_anchor=payload.character_anchor,
             model_override=payload.model_override,

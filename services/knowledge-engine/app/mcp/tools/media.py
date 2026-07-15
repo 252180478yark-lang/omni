@@ -995,6 +995,7 @@ async def generate_video_segments(
     use_last_frame: bool = True,
     extra_prompt_suffix: str | None = None,
     dry_run: bool = False,
+    legacy_mode: bool = False,
     skip_first_frame_scene_nums: list[int] | None = None,
     force_t2v: bool = False,
     character_anchor: str | None = None,
@@ -1073,10 +1074,11 @@ async def generate_video_segments(
         isinstance(_content_contract, Mapping)
         and _content_contract.get("version") == "2026-07-15.v1"
     )
-    _legacy_prompt_contract = (
+    _empty_content_contract = (
         _content_contract is None
-        and script.get("contract_version") == "legacy"
+        or (isinstance(_content_contract, Mapping) and not _content_contract)
     )
+    _legacy_prompt_contract = legacy_mode and _empty_content_contract
     if not _formal_prompt_contract and not _legacy_prompt_contract:
         return {
             "ok": False,
@@ -1089,7 +1091,7 @@ async def generate_video_segments(
             ),
             "hint": (
                 "Step 7 accepts only content_contract.version=2026-07-15.v1 "
-                "or an explicit top-level contract_version=legacy marker."
+                "or legacy_mode=true with an empty persisted content contract."
             ),
         }
     if _formal_prompt_contract:
@@ -1126,7 +1128,7 @@ async def generate_video_segments(
             scene["_formal_duration_s"] = raw_duration
 
             prompt_source = scene.get("prompt_source")
-            if scene.get("whole_prompt") and not isinstance(prompt_source, Mapping):
+            if not isinstance(prompt_source, Mapping):
                 return {
                     "ok": False,
                     "error": "prompt_detail_insufficient",
@@ -1134,8 +1136,8 @@ async def generate_video_segments(
                     "script_id": script_id,
                     "scene_no": scene.get("scene_no"),
                     "hint": (
-                        "正式 whole-prompt 段缺结构化 prompt_source，无法证明预算、"
-                        "四类锚点和时间戳已通过编译；请回到脚本阶段补齐后重试。"
+                        "Formal video segments require a Mapping prompt_source "
+                        "before budget, anchor, and timestamp compilation."
                     ),
                 }
             if isinstance(prompt_source, Mapping):

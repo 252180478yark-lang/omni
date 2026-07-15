@@ -180,7 +180,7 @@ _WHOLE_SCRIPT = {
 def legacy_whole_script():
     return {
         **_WHOLE_SCRIPT,
-        "contract_version": "legacy",
+        "content_contract": {},
         "scenes": [dict(scene) for scene in _WHOLE_SCRIPT["scenes"]],
     }
 
@@ -294,6 +294,7 @@ async def test_step7_dry_run_legacy_whole_mode(monkeypatch, legacy_whole_script)
     out = await generate_video_segments(
         script_id="script-whole-1", dry_run=True,
         extra_prompt_suffix="slow handheld",
+        legacy_mode=True,
     )
     assert out["ok"] is True
     rows = {r["scene_no"]: r for r in out["result"]["results"]}
