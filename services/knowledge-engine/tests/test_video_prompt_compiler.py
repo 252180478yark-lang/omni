@@ -154,16 +154,17 @@ def test_non_contiguous_timestamps_fail_with_structured_check() -> None:
 
 
 @pytest.mark.parametrize(
-    "missing_anchor",
+    ("category", "missing_anchor"),
     [
-        "主角小林",
-        "和田宽寿喜烧汁",
-        "倒入锅中",
-        "热饭端上桌",
+        ("character", "主角小林"),
+        ("product", "和田宽寿喜烧汁"),
+        ("action", "倒入锅中"),
+        ("result", "热饭端上桌"),
     ],
     ids=["character", "product", "action", "result"],
 )
 def test_missing_executable_anchor_fails_explicitly(
+    category: str,
     missing_anchor: str,
 ) -> None:
     source = _valid_source()
@@ -179,7 +180,88 @@ def test_missing_executable_anchor_fails_explicitly(
 
     assert result["ok"] is False
     assert result["error"] == "prompt_detail_insufficient"
-    assert f"required_anchor:{missing_anchor}" in result["failed_checks"]
+    assert f"required_anchor:{category}" in result["failed_checks"]
+
+
+def test_required_anchor_mapping_requires_all_four_categories() -> None:
+    source = _valid_source()
+    source["required_anchors"] = {
+        "character": "主角小林",
+        "product": "和田宽寿喜烧汁",
+        "action": "倒入锅中",
+        "result": "热饭端上桌",
+    }
+
+    result = compile_final_prompt_segment(
+        source,
+        duration_seconds=15,
+        intent="planting",
+    )
+
+    assert result["ok"] is True
+    assert result["failed_checks"] == []
+
+
+@pytest.mark.parametrize("category", ["character", "product", "action", "result"])
+def test_required_anchor_mapping_fails_closed_when_category_missing(
+    category: str,
+) -> None:
+    source = _valid_source()
+    anchors = {
+        "character": "主角小林",
+        "product": "和田宽寿喜烧汁",
+        "action": "倒入锅中",
+        "result": "热饭端上桌",
+    }
+    anchors.pop(category)
+    source["required_anchors"] = anchors
+
+    result = compile_final_prompt_segment(
+        source,
+        duration_seconds=15,
+        intent="planting",
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "prompt_detail_insufficient"
+    assert f"required_anchor:{category}" in result["failed_checks"]
+
+
+def test_single_action_required_anchor_list_cannot_pass() -> None:
+    source = _valid_source()
+    source["required_anchors"] = ["倒入锅中"]
+
+    result = compile_final_prompt_segment(
+        source,
+        duration_seconds=15,
+        intent="planting",
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "prompt_detail_insufficient"
+    assert "required_anchor:product" in result["failed_checks"]
+    assert "required_anchor:result" in result["failed_checks"]
+
+
+def test_capacity_error_precedes_anchor_failures_without_truncation() -> None:
+    source = _valid_source()
+    source["identity_product_anchor"] = _unique_detail("独特身份", 120)
+    source["required_anchors"] = {}
+
+    result = compile_final_prompt_segment(
+        source,
+        duration_seconds=15,
+        intent="planting",
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "prompt_capacity_exceeded"
+    assert result["char_count"] > result["budget"]["max_chars"]
+    assert "capacity" in result["failed_checks"]
+    assert "required_anchor:character" in result["failed_checks"]
+    assert "required_anchor:product" in result["failed_checks"]
+    assert "required_anchor:action" in result["failed_checks"]
+    assert "required_anchor:result" in result["failed_checks"]
 
 
 def test_unicode_code_points_and_inserted_whitespace_are_counted() -> None:

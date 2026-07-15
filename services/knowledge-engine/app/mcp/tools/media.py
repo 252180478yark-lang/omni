@@ -1065,6 +1065,86 @@ async def generate_video_segments(
         return {"ok": False, "error": "no_matching_scenes", "scene_nums": scene_nums,
                 "hint": f"指定 scene_nums={scene_nums} 在脚本里没匹配；脚本含 scene_no={[s.get('scene_no') for s in (script.get('scenes') or [])]}"}
 
+    # Formal prompt-contract scenes are compiler-owned. Validate and compile
+    # before product/reference checks, asset reads, provider setup, or jobs.
+    _content_contract = script.get("content_contract")
+    _formal_prompt_contract = (
+        isinstance(_content_contract, Mapping)
+        and _content_contract.get("version") == "2026-07-15.v1"
+    )
+    if _formal_prompt_contract:
+        from app.services.video_prompt_compiler import compile_final_prompt_segment
+
+        _formal_intent = _content_contract.get("intent") or script.get("intent")
+        _compiled_scenes: list[dict] = []
+        for raw_scene in scenes:
+            scene = dict(raw_scene)
+            raw_duration = scene.get("duration_s")
+            if raw_duration is None:
+                start, end = pipeline_lineage._time_range_to_seconds(
+                    str(scene.get("time_range") or "")
+                )
+                raw_duration = (
+                    end - start
+                    if start is not None and end is not None and end > start
+                    else None
+                )
+            if (
+                isinstance(raw_duration, bool)
+                or not isinstance(raw_duration, int)
+                or not 1 <= raw_duration <= 15
+            ):
+                return {
+                    "ok": False,
+                    "error": "video_segment_duration_invalid",
+                    "failed_checks": ["duration"],
+                    "script_id": script_id,
+                    "scene_no": scene.get("scene_no"),
+                    "duration_s": raw_duration,
+                    "hint": "正式 API 分段时长必须为 1–15 秒；不得静默截断或抬高时长。",
+                }
+            scene["_formal_duration_s"] = raw_duration
+
+            prompt_source = scene.get("prompt_source")
+            if scene.get("whole_prompt") and not isinstance(prompt_source, Mapping):
+                return {
+                    "ok": False,
+                    "error": "prompt_detail_insufficient",
+                    "failed_checks": ["prompt_source"],
+                    "script_id": script_id,
+                    "scene_no": scene.get("scene_no"),
+                    "hint": (
+                        "正式 whole-prompt 段缺结构化 prompt_source，无法证明预算、"
+                        "四类锚点和时间戳已通过编译；请回到脚本阶段补齐后重试。"
+                    ),
+                }
+            if isinstance(prompt_source, Mapping):
+                try:
+                    compiled = compile_final_prompt_segment(
+                        dict(prompt_source),
+                        duration_seconds=raw_duration,
+                        intent=str(_formal_intent or ""),
+                    )
+                except ValueError:
+                    return {
+                        "ok": False,
+                        "error": "prompt_detail_insufficient",
+                        "failed_checks": ["intent"],
+                        "script_id": script_id,
+                        "scene_no": scene.get("scene_no"),
+                        "hint": "正式提示词缺有效 intent profile，无法执行容量编译。",
+                    }
+                if not compiled.get("ok"):
+                    return {
+                        **compiled,
+                        "script_id": script_id,
+                        "scene_no": scene.get("scene_no"),
+                    }
+                scene["_compiled_final_prompt"] = compiled["final_prompt"]
+                scene["_prompt_compilation"] = compiled
+            _compiled_scenes.append(scene)
+        scenes = _compiled_scenes
+
     # 新形态（一大段提示词块）：块全文直出 r2v，不依赖分镜图（parse 保证全有或全无）
     _whole_mode = all(s.get("whole_prompt") for s in scenes)
 
@@ -1219,6 +1299,12 @@ async def generate_video_segments(
 
         dialog 字段三类：speech（嘴动）/ voiceover（嘴静）/ subtitle（嘴静不渲染字幕）
         """
+        compiled_prompt = scene.get("_compiled_final_prompt")
+        if isinstance(compiled_prompt, str) and compiled_prompt:
+            # Formal compiler output is the exact provider prompt. Appending a
+            # suffix here would invalidate its budget and negative-tail checks.
+            return compiled_prompt
+
         # ── 新形态：一大段提示词块 → 原样直出（铁律：脚本=单一创意源，禁二次加工）──
         if scene.get("whole_prompt"):
             p = (scene.get("video_prompt") or "").strip()
@@ -1430,6 +1516,10 @@ async def generate_video_segments(
     _TIME_RANGE_RE_LOCAL = re.compile(r'^\s*(\d+)\s*-\s*(\d+)\s*s?\s*$', re.I)
 
     def _compute_scene_duration(scene: dict, fallback: int) -> int:
+        if _formal_prompt_contract:
+            # Populated by the early formal compiler gate above. Never clamp a
+            # formal segment; provider incompatibility must fail explicitly.
+            return int(scene["_formal_duration_s"])
         d = scene.get("duration_s")
         if isinstance(d, (int, float)) and d > 0:
             return max(4, min(15, int(d)))

@@ -185,6 +185,82 @@ def legacy_whole_script():
     }
 
 
+def _formal_prompt_source_3s() -> dict:
+    return {
+        "identity_product_anchor": (
+            "主角小林保持同一张脸和米色针织衫。"
+            "和田宽寿喜烧汁保持方瓶、红盖和米白标签一致。"
+        ),
+        "reference_instruction": "角色参考图锁定小林，产品参考图锁定寿喜烧汁包装。",
+        "product_solution_action": "小林把寿喜烧汁倒入锅中，一次完成晚饭调味。",
+        "timeline": (
+            "0-1秒小林拿起寿喜烧汁；"
+            "1-2秒把汁连续倒入锅中；"
+            "2-3秒热饭完成并端上桌。"
+        ),
+        "scene_detail": "晚归厨房有通勤包、灶台蒸汽和自然暖光，竖屏近景保持生活感。" * 2,
+        "sound_detail": "瓶盖轻响、锅中咕嘟声和瓷碗落桌声清楚连续。",
+        "decorative_detail": "轻微手持感，真实皮肤和厨房使用痕迹可见。",
+        "negative": "禁止换脸、包装变形、手部畸形、乱码、动作跳变。",
+        "required_anchors": {
+            "character": "主角小林",
+            "product": "和田宽寿喜烧汁",
+            "action": "倒入锅中",
+            "result": "热饭完成并端上桌",
+        },
+    }
+
+
+def _formal_whole_script(
+    *, duration_s: int, prompt_source: dict | None = None
+) -> dict:
+    scene = {
+        "scene_no": 1,
+        "time_range": f"0-{duration_s}s",
+        "duration_s": duration_s,
+        "whole_prompt": True,
+        "video_prompt": "未经正式编译的原始提示词。",
+    }
+    if prompt_source is not None:
+        scene["prompt_source"] = prompt_source
+    return {
+        "id": "script-formal-1",
+        "kind": "video_planting",
+        "intent": "planting",
+        "sku_id": "SKU-TEST",
+        "content_contract": {
+            "version": "2026-07-15.v1",
+            "intent": "planting",
+        },
+        "scenes": [scene],
+    }
+
+
+def _install_step7_fakes(monkeypatch, script: dict) -> list[dict]:
+    asset_calls: list[dict] = []
+
+    async def fake_get(script_id):
+        return script
+
+    async def fake_assets(**kwargs):
+        asset_calls.append(kwargs)
+        return []
+
+    async def fake_sheets(script_id):
+        return []
+
+    async def fake_lineage_ctx(script_row):
+        return {}
+
+    monkeypatch.setattr(pipeline_lineage, "get_creative_pack", fake_get)
+    monkeypatch.setattr(pipeline_lineage, "list_assets", fake_assets)
+    monkeypatch.setattr(
+        pipeline_lineage, "list_character_sheets_for_script", fake_sheets
+    )
+    monkeypatch.setattr(pipeline_lineage, "gather_lineage_context", fake_lineage_ctx)
+    return asset_calls
+
+
 @pytest.mark.asyncio
 async def test_step6_whole_prompt_gate(monkeypatch):
     async def fake_get(script_id):
@@ -242,3 +318,64 @@ def test_formal_22_second_segment_returns_duration_invalid():
     assert out["ok"] is False
     assert out["error"] == "video_segment_duration_invalid"
     assert out["failed_checks"] == ["duration"]
+
+
+@pytest.mark.asyncio
+async def test_step7_formal_22_second_segment_fails_before_asset_reads(monkeypatch):
+    script = _formal_whole_script(duration_s=22)
+    asset_calls = _install_step7_fakes(monkeypatch, script)
+
+    out = await generate_video_segments(
+        script_id=script["id"],
+        dry_run=True,
+        product_refs=["http://x/product.png"],
+    )
+
+    assert out["ok"] is False
+    assert out["error"] == "video_segment_duration_invalid"
+    assert out["failed_checks"] == ["duration"]
+    assert out["scene_no"] == 1
+    assert asset_calls == []
+
+
+@pytest.mark.asyncio
+async def test_step7_formal_whole_prompt_without_source_fails_closed(monkeypatch):
+    script = _formal_whole_script(duration_s=15)
+    asset_calls = _install_step7_fakes(monkeypatch, script)
+
+    out = await generate_video_segments(
+        script_id=script["id"],
+        dry_run=True,
+        product_refs=["http://x/product.png"],
+    )
+
+    assert out["ok"] is False
+    assert out["error"] == "prompt_detail_insufficient"
+    assert out["failed_checks"] == ["prompt_source"]
+    assert out["scene_no"] == 1
+    assert asset_calls == []
+
+
+@pytest.mark.asyncio
+async def test_step7_formal_three_second_prompt_is_compiled_without_clamp(monkeypatch):
+    source = _formal_prompt_source_3s()
+    expected = compile_final_prompt_segment(
+        source,
+        duration_seconds=3,
+        intent="planting",
+    )
+    assert expected["ok"] is True
+    script = _formal_whole_script(duration_s=3, prompt_source=source)
+    _install_step7_fakes(monkeypatch, script)
+
+    out = await generate_video_segments(
+        script_id=script["id"],
+        dry_run=True,
+        product_refs=["http://x/product.png"],
+    )
+
+    assert out["ok"] is True
+    row = out["result"]["results"][0]
+    assert row["duration_s"] == 3
+    assert row["duration_clamped"] is False
+    assert row["prompt"] == expected["final_prompt"]

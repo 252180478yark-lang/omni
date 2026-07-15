@@ -1,6 +1,7 @@
 """Compile executable per-segment video prompts within model profile limits."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from math import ceil
 import re
@@ -49,6 +50,7 @@ _REQUIRED_SOURCE_FIELDS = (
     "sound_detail",
     "negative",
 )
+_REQUIRED_ANCHOR_CATEGORIES = ("character", "product", "action", "result")
 _CLAUSE_SPLIT_RE = re.compile(r"(?<=[。；！？!?;\n])")
 _TIMESTAMP_RE = re.compile(r"(?<!\d)(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)秒")
 
@@ -154,6 +156,46 @@ def _timestamp_failed_checks(timeline: str, duration_seconds: int) -> list[str]:
     return failed
 
 
+def _required_anchor_failed_checks(
+    value: object,
+    final_prompt: str,
+) -> list[str]:
+    """Validate the four executable anchors with an unambiguous category map.
+
+    Mapping is the preferred JSON shape.  A legacy list remains compatible only
+    in the fixed order character/product/action/result; shorter lists cannot
+    silently redefine which categories are required.
+    """
+
+    schema_invalid = False
+    if isinstance(value, Mapping):
+        schema_invalid = set(value) != set(_REQUIRED_ANCHOR_CATEGORIES)
+        anchors = {
+            category: value.get(category)
+            for category in _REQUIRED_ANCHOR_CATEGORIES
+        }
+    elif isinstance(value, list):
+        schema_invalid = len(value) != len(_REQUIRED_ANCHOR_CATEGORIES)
+        anchors = {
+            category: value[index] if index < len(value) else None
+            for index, category in enumerate(_REQUIRED_ANCHOR_CATEGORIES)
+        }
+    else:
+        schema_invalid = True
+        anchors = {category: None for category in _REQUIRED_ANCHOR_CATEGORIES}
+
+    failed = [
+        f"required_anchor:{category}"
+        for category, anchor in anchors.items()
+        if not isinstance(anchor, str)
+        or not anchor.strip()
+        or anchor.strip() not in final_prompt
+    ]
+    if schema_invalid:
+        failed.append("required_anchors_schema")
+    return failed
+
+
 def compile_final_prompt_segment(
     source: dict[str, Any],
     *,
@@ -188,15 +230,9 @@ def compile_final_prompt_segment(
     failed_checks.extend(
         field for field in _REQUIRED_SOURCE_FIELDS if not source_lanes[field]
     )
-    required_anchors = source.get("required_anchors")
-    if not isinstance(required_anchors, list) or not required_anchors:
-        failed_checks.append("required_anchors")
-    else:
-        for anchor in required_anchors:
-            if not isinstance(anchor, str) or not anchor.strip():
-                failed_checks.append("required_anchor_invalid")
-            elif anchor not in final_prompt:
-                failed_checks.append(f"required_anchor:{anchor}")
+    failed_checks.extend(
+        _required_anchor_failed_checks(source.get("required_anchors"), final_prompt)
+    )
 
     result = {
         "final_prompt": final_prompt,
@@ -205,19 +241,19 @@ def compile_final_prompt_segment(
         "compression": compressed,
         "failed_checks": failed_checks,
     }
+    if char_count > budget.max_chars:
+        result["failed_checks"].append("capacity")
+        return {
+            "ok": False,
+            "error": "prompt_capacity_exceeded",
+            **result,
+        }
     if failed_checks or char_count < budget.min_chars:
         if char_count < budget.min_chars:
             result["failed_checks"].append("min_chars")
         return {
             "ok": False,
             "error": "prompt_detail_insufficient",
-            **result,
-        }
-    if char_count > budget.max_chars:
-        result["failed_checks"].append("capacity")
-        return {
-            "ok": False,
-            "error": "prompt_capacity_exceeded",
             **result,
         }
     return {"ok": True, **result}
