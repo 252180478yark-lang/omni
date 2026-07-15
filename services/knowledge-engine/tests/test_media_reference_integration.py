@@ -139,6 +139,53 @@ async def test_register_product_reference_reuses_same_sku_and_rejects_other_sku(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "invalid_owner",
+    [
+        {"status": "draft"},
+        {"status": "published"},
+        {"status": "discarded"},
+        {"status": "archived"},
+        {"script_id": "script-a"},
+        {"experiment_arm_id": "arm-a"},
+        {"generation_set_id": "set-a"},
+    ],
+)
+async def test_register_product_reference_rejects_noncanonical_same_sku_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    invalid_owner: dict[str, Any],
+) -> None:
+    path = tmp_path / "product.png"
+    path.write_bytes(b"product")
+    existing = _product_asset("existing", path, sku_id="SKU-A")
+    existing.update(invalid_owner)
+
+    async def existing_same_sku(file_ref: str) -> dict[str, Any]:
+        return existing
+
+    async def must_not_save(**kwargs: Any) -> str:
+        raise AssertionError("invalid existing reference must not be replaced")
+
+    monkeypatch.setattr(
+        pipeline_lineage,
+        "get_product_reference_by_file",
+        existing_same_sku,
+    )
+    monkeypatch.setattr(
+        pipeline_lineage,
+        "save_product_reference_asset",
+        must_not_save,
+    )
+
+    result = await planting.register_product_reference_asset.__wrapped__(
+        "SKU-A", str(path)
+    )
+
+    assert result == {"ok": False, "error": "product_ref_invalid_or_mismatch"}
+
+
+@pytest.mark.asyncio
 async def test_register_product_reference_saves_canonical_readable_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -211,6 +258,119 @@ async def test_character_sheets_arm_mismatch_stops_before_cap_provider_and_save(
 
     assert result == {"ok": False, "error": "experiment_arm_missing_or_mismatch"}
     assert calls == ["gate"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content_contract",
+    [
+        {"version": "2026-07-16.v2"},
+        {"unexpected": True},
+        ["2026-07-15.v1"],
+        "2026-07-15.v1",
+    ],
+)
+async def test_character_sheets_reject_unknown_contract_before_any_side_effect(
+    monkeypatch: pytest.MonkeyPatch,
+    content_contract: Any,
+) -> None:
+    calls: list[str] = []
+    script = _formal_script()
+    script["content_contract"] = content_contract
+
+    async def get_script(script_id: str) -> dict[str, Any]:
+        return script
+
+    async def gate(script_row: dict[str, Any], arm_id: str) -> dict[str, Any]:
+        calls.append("gate")
+        return {"ok": True}
+
+    async def cap(kind: str) -> None:
+        calls.append("cap")
+        return None
+
+    async def lineage(script_row: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
+    async def save(**kwargs: Any) -> str:
+        calls.append("save")
+        return "asset"
+
+    class FakeClient:
+        async def generate_image_v2(self, **kwargs: Any) -> dict[str, Any]:
+            calls.append("provider")
+            return {"images": [{"url": "data:image/png;base64,eA=="}]}
+
+    monkeypatch.setattr(pipeline_lineage, "get_creative_pack", get_script)
+    monkeypatch.setattr(pipeline_lineage, "gather_lineage_context", lineage)
+    monkeypatch.setattr(pipeline_lineage, "save_storyboard_asset", save)
+    monkeypatch.setattr(video_content_gate, "assert_script_ready_for_media", gate)
+    monkeypatch.setattr(media, "_check_daily_media_cap", cap)
+    monkeypatch.setattr(media, "AIHubClient", lambda **kwargs: FakeClient())
+    monkeypatch.setattr(
+        media,
+        "get_model_for_tool",
+        lambda name: {"provider": "openai", "model": "gpt-image-2"},
+    )
+
+    result = await media.generate_character_sheets.__wrapped__(
+        "script-a", experiment_arm_id="arm-a"
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "unsupported_video_content_contract"
+    assert calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("content_contract", [None, {}])
+async def test_character_sheets_empty_contract_remains_legacy(
+    monkeypatch: pytest.MonkeyPatch,
+    content_contract: Any,
+) -> None:
+    calls: list[str] = []
+    script = _formal_script()
+    script["content_contract"] = content_contract
+
+    async def get_script(script_id: str) -> dict[str, Any]:
+        return script
+
+    async def gate(script_row: dict[str, Any], arm_id: str) -> dict[str, Any]:
+        calls.append("gate")
+        return {"ok": False}
+
+    async def no_cap(kind: str) -> None:
+        calls.append("cap")
+        return None
+
+    async def lineage(script_row: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
+    async def save(**kwargs: Any) -> str:
+        calls.append("save")
+        return "asset"
+
+    class FakeClient:
+        async def generate_image_v2(self, **kwargs: Any) -> dict[str, Any]:
+            calls.append("provider")
+            return {"images": [{"url": "data:image/png;base64,eA=="}]}
+
+    monkeypatch.setattr(pipeline_lineage, "get_creative_pack", get_script)
+    monkeypatch.setattr(pipeline_lineage, "gather_lineage_context", lineage)
+    monkeypatch.setattr(pipeline_lineage, "save_storyboard_asset", save)
+    monkeypatch.setattr(video_content_gate, "assert_script_ready_for_media", gate)
+    monkeypatch.setattr(media, "_check_daily_media_cap", no_cap)
+    monkeypatch.setattr(media, "AIHubClient", lambda **kwargs: FakeClient())
+    monkeypatch.setattr(
+        media,
+        "get_model_for_tool",
+        lambda name: {"provider": "openai", "model": "gpt-image-2"},
+    )
+
+    result = await media.generate_character_sheets.__wrapped__("script-a")
+
+    assert result["ok"] is True
+    assert calls == ["cap", "provider", "save"]
 
 
 @pytest.mark.asyncio

@@ -334,7 +334,14 @@ async def register_product_reference_asset(
 
     existing = await pipeline_lineage.get_product_reference_by_file(canonical_file)
     if existing:
-        if existing.get("sku_id") != sku_id:
+        reusable = (
+            existing.get("sku_id") == sku_id
+            and existing.get("status") == "adopted"
+            and existing.get("script_id") is None
+            and existing.get("experiment_arm_id") is None
+            and existing.get("generation_set_id") is None
+        )
+        if not reusable:
             return {"ok": False, "error": "product_ref_invalid_or_mismatch"}
         return {
             "ok": True,

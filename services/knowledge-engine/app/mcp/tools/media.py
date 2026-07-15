@@ -369,6 +369,25 @@ async def generate_character_sheets(
         isinstance(content_contract, Mapping)
         and content_contract.get("version") == "2026-07-15.v1"
     )
+    empty_content_contract = (
+        content_contract is None
+        or (isinstance(content_contract, Mapping) and not content_contract)
+    )
+    if not formal_contract and not empty_content_contract:
+        return {
+            "ok": False,
+            "error": "unsupported_video_content_contract",
+            "script_id": script_id,
+            "contract_version": (
+                content_contract.get("version")
+                if isinstance(content_contract, Mapping)
+                else content_contract
+            ),
+            "hint": (
+                "Character sheets accept only content_contract.version="
+                "2026-07-15.v1 or an empty legacy content contract."
+            ),
+        }
     if formal_contract:
         from app.services.video_content_gate import assert_script_ready_for_media
 

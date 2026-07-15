@@ -1794,14 +1794,17 @@ async def list_character_sheets_for_script(
     pool = get_pool()
     rows = await pool.fetch(
         """
-        SELECT id::text, sku_id, asset_type, script_id::text,
-               character_role, file_url, status,
+        SELECT DISTINCT ON (btrim(character_role))
+               id::text, sku_id, asset_type, script_id::text,
+               btrim(character_role) AS character_role, file_url, status,
                experiment_arm_id::text, generation_set_id::text, created_at
         FROM pipeline.assets
         WHERE script_id = $1::uuid
           AND asset_type = 'character_sheet'
-          AND ($2::uuid IS NULL OR experiment_arm_id = $2::uuid)
-        ORDER BY character_role, created_at DESC
+          AND status IN ('draft', 'adopted', 'published')
+          AND NULLIF(btrim(character_role), '') IS NOT NULL
+          AND experiment_arm_id IS NOT DISTINCT FROM $2::uuid
+        ORDER BY btrim(character_role), created_at DESC, id DESC
         """,
         script_id,
         experiment_arm_id,
