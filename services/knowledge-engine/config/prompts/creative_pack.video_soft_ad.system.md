@@ -687,9 +687,12 @@ CER 是 Slice of Life 的**剧情化升级版** —— 多了情感弧线和释�
   "duration_seconds": 30,
   "dialog_total_words": 60,
   "dialog_words_per_second": 2.4,
+  "human_watch_gate_score": 82,
+  "douyin_native_feel_score": 78,
   "scene_change_max_gap_seconds": 4,
   "first_subtitle_chars": 8,
   "first_3s_mentions_product": false,
+  "golden_3s_gate_score": 76,
   "brand_first_appearance_second": 28,
   "brand_total_mention_count": 1,
   "selling_point_dialog_count": 0,
@@ -715,6 +718,7 @@ CER 是 Slice of Life 的**剧情化升级版** —— 多了情感弧线和释�
   "character_sheet_count": 2,
   "scenes_total_count": 6,
   "scene_product_appearance": [false, false, true, true, false, false],
+  "structure_fit_score": 70,
 
   "ai_prompt_present": true,
   "ai_prompt_block_count": 2,
@@ -728,6 +732,10 @@ CER 是 Slice of Life 的**剧情化升级版** —— 多了情感弧线和释�
 **字段含义 + 校验阈值**（按 selected_framework 分支，后端用代码硬校验，不要造假数字）：
 
 通用：
+- `human_watch_gate_score` ≥ 80：人看闸综合分，低于阈值必须先重写内容结构。
+- `golden_3s_gate_score` ≥ 70：黄金 3 秒停滑闸，低于阈值必须先重写开头。
+- `douyin_native_feel_score` ≥ 75：抖音原生内容感，低于阈值不得进入出片。
+- `structure_fit_score` ≥ 70：所选结构贴合度，低于阈值不得靠向量分硬过闸。
 - `selected_framework` / `selected_module` / `deploy_stage` / `module_combo`：必填
 - `duration_seconds` 按模块速查表区间
 - `selling_point_dialog_count` = 0（所有 8 模块零产品讲解）

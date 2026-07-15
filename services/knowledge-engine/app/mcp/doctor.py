@@ -136,6 +136,7 @@ def _wanted_tools() -> set[str]:
             "pipeline_list_matrix_runs", "pipeline_get_matrix_run",
             "pipeline_list_audience_runs", "pipeline_get_audience_run",
             "pipeline_list_audience_records", "pipeline_get_audience_record",
+            "pipeline_get_script",
             "pipeline_adopt",
             # W4-B 切片 14.4 phase D：投后 ad_metrics 回传闭环
             "record_ad_metrics", "pipeline_get_asset_lineage",

@@ -129,6 +129,16 @@ async def pipeline_get_audience_record(record_id: str) -> dict:
 
 
 @tool_with_audit(mcp, require_approval=False)
+async def pipeline_get_script(script_id: str) -> dict:
+    """Return one persisted script, including its ``content_contract``."""
+    script = await pipeline_lineage.get_creative_pack(script_id)
+    if not script:
+        return {"ok": False, "error": "not_found", "script_id": script_id}
+    return {"ok": True, "script": script}
+
+
+
+@tool_with_audit(mcp, require_approval=False)
 async def pipeline_adopt(
     table: str,
     run_id: str,

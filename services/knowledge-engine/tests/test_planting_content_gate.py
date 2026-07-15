@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from math import inf, nan
+from pathlib import Path
+import re
 from typing import Any
 from uuid import UUID
 import json
@@ -10,6 +12,9 @@ import json
 import pytest
 
 import app.mcp.server  # noqa: F401  # load tool graph before importing media directly
+from app.mcp.doctor import _wanted_tools
+from app.mcp.server import mcp
+from app.mcp.tools import pipeline as pipeline_tools
 from app.services import pipeline_lineage, video_content_gate
 from app.mcp.tools import media
 from app.services.pain_solution_bridge import canonical_upstream_fact_hash
@@ -1313,3 +1318,79 @@ async def test_list_creative_packs_decodes_contract_dict_string_and_null(monkeyp
     assert "content_contract" in select_sql
     assert "status" in select_sql
     assert select_args == ("SKU-CONTRACT-1", "video_planting", 30)
+
+
+def test_soft_ad_metrics_json_declares_every_content_gate_score_and_threshold():
+    prompt_path = (
+        Path(__file__).resolve().parents[1]
+        / "config"
+        / "prompts"
+        / "creative_pack.video_soft_ad.system.md"
+    )
+    prompt = prompt_path.read_text(encoding="utf-8")
+    metrics_section = prompt.split("### 第 8 部分：metrics_json", 1)[1]
+    json_block = metrics_section.split("```json", 1)[1].split("```", 1)[0]
+    field_descriptions = metrics_section.split("```", 2)[2]
+    expected_thresholds = {
+        "human_watch_gate_score": 80,
+        "golden_3s_gate_score": 70,
+        "douyin_native_feel_score": 75,
+        "structure_fit_score": 70,
+    }
+
+    for field, threshold in expected_thresholds.items():
+        assert f'"{field}"' in json_block
+        assert re.search(rf"`{field}`[^\n]*≥\s*{threshold}", field_descriptions)
+
+
+@pytest.mark.asyncio
+async def test_pipeline_get_script_exposes_persisted_content_contract(monkeypatch):
+    expected_script = {
+        "id": SCRIPT_ID,
+        "status": "draft",
+        "content_contract": {
+            "version": "2026-07-15.v1",
+            "intent": "planting",
+            "content_gate": {"pass": True},
+        },
+    }
+    requested_ids: list[str] = []
+
+    async def fake_get_creative_pack(script_id: str):
+        requested_ids.append(script_id)
+        return expected_script
+
+    monkeypatch.setattr(
+        pipeline_tools.pipeline_lineage,
+        "get_creative_pack",
+        fake_get_creative_pack,
+    )
+
+    result = await pipeline_tools.pipeline_get_script.__wrapped__(SCRIPT_ID)
+
+    assert result == {"ok": True, "script": expected_script}
+    assert result["script"]["content_contract"]["content_gate"] == {"pass": True}
+    assert requested_ids == [SCRIPT_ID]
+
+
+@pytest.mark.asyncio
+async def test_pipeline_get_script_returns_stable_not_found(monkeypatch):
+    async def fake_get_creative_pack(_script_id: str):
+        return None
+
+    monkeypatch.setattr(
+        pipeline_tools.pipeline_lineage,
+        "get_creative_pack",
+        fake_get_creative_pack,
+    )
+
+    result = await pipeline_tools.pipeline_get_script.__wrapped__(SCRIPT_ID)
+
+    assert result == {"ok": False, "error": "not_found", "script_id": SCRIPT_ID}
+
+
+@pytest.mark.asyncio
+async def test_pipeline_get_script_is_registered_and_in_doctor_contract():
+    assert "pipeline_get_script" in _wanted_tools()
+    registered_names = {tool.name for tool in await mcp.list_tools()}
+    assert "pipeline_get_script" in registered_names
