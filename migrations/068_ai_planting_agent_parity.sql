@@ -246,10 +246,8 @@ rollup AS (
         sum(a3_numerator_value) AS raw_a3_numerator_sum,
         sum(a3_denominator_value) AS raw_a3_denominator_sum,
         count(spend_value) AS spend_count,
-        count(impression_value) AS impression_count,
         count(cny_marker) AS cny_count,
         sum(spend_value) AS raw_spend_sum,
-        sum(impression_value) AS raw_impression_sum,
         count(play_3s_value) AS play_3s_count,
         count(positive_impression_value) AS positive_impression_count,
         sum(play_3s_value) AS raw_play_3s_sum,
@@ -278,7 +276,7 @@ evaluated AS (
             AS a3_coverage_complete,
         eligible_asset_count > 0
             AND spend_count = eligible_asset_count
-            AND impression_count = eligible_asset_count
+            AND positive_impression_count = eligible_asset_count
             AND cny_count = eligible_asset_count
             AS spend_coverage_complete,
         eligible_asset_count > 0
@@ -331,7 +329,7 @@ SELECT
          ELSE NULL END AS a3_ratio_pooled,
     CASE WHEN spend_coverage_complete THEN raw_spend_sum ELSE NULL END AS spend_sum,
     CASE WHEN spend_coverage_complete
-         THEN round(raw_spend_sum / NULLIF(raw_impression_sum, 0) * 1000, 6)
+         THEN round(raw_spend_sum / NULLIF(raw_positive_impression_sum, 0) * 1000, 6)
          ELSE NULL END AS cpm_pooled,
     CASE WHEN play_3s_coverage_complete THEN raw_play_3s_sum ELSE NULL END AS play_3s_sum,
     CASE WHEN play_3s_coverage_complete

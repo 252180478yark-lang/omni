@@ -443,6 +443,30 @@ async def test_planting_metrics_pool_raw_counts_and_missing_a3_denominator_fails
 
 
 @pytest.mark.asyncio
+async def test_cpm_pooling_rejects_any_zero_impression_asset(db_connection):
+    graph = await _make_arm(db_connection, intent="planting", north_star_metric="a3_ratio")
+    await _insert_asset(db_connection, graph, {
+        "new_a3": 1,
+        "a3_eligible_users": 10,
+        "spend": 10,
+        "impressions": 0,
+        "currency": "CNY",
+    })
+    await _insert_asset(db_connection, graph, {
+        "new_a3": 2,
+        "a3_eligible_users": 20,
+        "spend": 20,
+        "impressions": 1000,
+        "currency": "CNY",
+    })
+
+    row = await _arm_result(db_connection, graph["arm_id"])
+    assert row["impressions_sum"] == Decimal("1000")
+    assert row["spend_sum"] is None
+    assert row["cpm_pooled"] is None
+
+
+@pytest.mark.asyncio
 async def test_soft_ad_keeps_legacy_completion_average(db_connection):
     graph = await _make_arm(
         db_connection, intent="soft_ad", north_star_metric="completion_rate"
