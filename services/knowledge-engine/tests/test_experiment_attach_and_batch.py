@@ -17,6 +17,7 @@ from app.services import pipeline_lineage as pl
 
 SKU = "SKU-TEST-VILOOP"
 SKU_ADOPT = "SKU-TEST-ADOPT"
+SKU_SOFT_AD = "SKU-TEST-SOFT-IMPLICIT"
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -25,7 +26,7 @@ async def setup_pool():
     yield
     pool = get_pool()
     # assets.experiment_id/script_id 是 ON DELETE SET NULL，按 sku_id 直接清；experiment 级联 rounds/arms
-    for s in (SKU, SKU_ADOPT):
+    for s in (SKU, SKU_ADOPT, SKU_SOFT_AD):
         await pool.execute("DELETE FROM pipeline.assets WHERE sku_id = $1", s)
         await pool.execute("DELETE FROM pipeline.experiments WHERE sku_id = $1", s)
         await pool.execute("DELETE FROM pipeline.scripts WHERE sku_id = $1", s)
@@ -38,7 +39,7 @@ async def exp_with_two_scripts():
     r = await lab.create_experiment(
         sku_id=SKU, intent="planting", audience_record_id=str(uuid.uuid4()))
     assert r["ok"], r
-    assert r["experiment"]["north_star_metric"] == "completion_rate"
+    assert r["experiment"]["north_star_metric"] == "a3_ratio"
     exp_id = r["experiment"]["id"]
     pool = get_pool()
     sids = []
@@ -102,13 +103,15 @@ async def test_batch_match_and_status_exposure(exp_with_two_scripts):
                          variable_value="悬念式钩子", swept_variable="opening_hook_3s")
     await lab.attach_arm(experiment_id=exp_id, script_id=sids[1], variable_value="痛点式钩子")
 
-    csv = ("素材名称,视频ID,完播率,曝光量,转化率\n"
-           "和田宽_R1A_悬念,V001,0.32,8000,0.02\n"
-           "和田宽_R1B_痛点,V002,0.28,30000,0.018\n"
-           "没臂码的无关视频,V099,0.5,100,0.01\n")
+    csv = ("素材名称,视频ID,完播率,曝光量,转化率,新增A3,A3有效用户\n"
+           "和田宽_R1A_悬念,V001,0.32,8000,0.02,32,100\n"
+           "和田宽_R1B_痛点,V002,0.28,30000,0.018,28,100\n"
+           "没臂码的无关视频,V099,0.5,100,0.01,1,10\n")
 
     # dry_run：匹配 2 / 未匹配 1 / 不写库；列名自动识别
-    dry = await pl.record_ad_metrics_batch(experiment_id=exp_id, csv_text=csv, dry_run=True)
+    column_map = {"新增A3": "new_a3", "A3有效用户": "a3_eligible_users"}
+    dry = await pl.record_ad_metrics_batch(
+        experiment_id=exp_id, csv_text=csv, column_map=column_map, dry_run=True)
     assert dry["ok"]
     assert dry["summary"]["matched"] == 2 and dry["summary"]["unmatched"] == 1
     assert dry["summary"]["applied"] == 0
@@ -118,18 +121,28 @@ async def test_batch_match_and_status_exposure(exp_with_two_scripts):
     assert dry["columns"]["metric_columns"]["曝光量"] == "impressions"
 
     # 真写：2 条落库
-    real = await pl.record_ad_metrics_batch(experiment_id=exp_id, csv_text=csv, dry_run=False)
+    real = await pl.record_ad_metrics_batch(
+        experiment_id=exp_id, csv_text=csv, column_map=column_map, dry_run=False)
     assert real["ok"] and real["summary"]["applied"] == 2
 
     # 排名：曝光量透出 + 臂码 + 曝光差 3.75x → 偏斜告警；n=1<5 → 不能正常锁
     s = await lab.experiment_status(exp_id)
     assert s["ok"]
+    assert s["evaluation_policy"]["north_star"] == "a3_ratio"
     by = {a["arm_label"]: a for a in s["arms"]}
     assert by["A"]["impressions"] == 8000 and by["B"]["impressions"] == 30000
     assert by["A"]["arm_code"] == "R1A" and by["B"]["arm_code"] == "R1B"
     assert by["A"]["north_star_avg"] == 0.32
     assert s["exposure_skew_warning"] is not None
     assert s["can_lock"] is False
+
+    detail = await lab.get_experiment(exp_id)
+    assert detail["experiment"]["evaluation_policy"]["profile_version"] == "2026-07-15.v1"
+    listed = await lab.list_experiments(sku_id=SKU)
+    listed_exp = next(item for item in listed["experiments"] if item["id"] == exp_id)
+    assert listed_exp["evaluation_policy"]["diagnostic_metrics"] == [
+        "cpm", "play_3s_rate", "completion_rate"
+    ]
 
 
 @pytest.mark.asyncio
@@ -138,8 +151,15 @@ async def test_next_version_seed_and_changelog(exp_with_two_scripts):
     a1 = await lab.attach_arm(experiment_id=exp_id, script_id=sids[0],
                               variable_value="悬念式钩子", swept_variable="opening_hook_3s")
     await lab.attach_arm(experiment_id=exp_id, script_id=sids[1], variable_value="痛点式钩子")
-    csv = "素材名称,视频ID,完播率,曝光量\n和田宽_R1A,V1,0.4,5000\n和田宽_R1B,V2,0.3,5200\n"
-    await pl.record_ad_metrics_batch(experiment_id=exp_id, csv_text=csv, dry_run=False)
+    csv = ("素材名称,视频ID,完播率,曝光量,新增A3,A3有效用户\n"
+           "和田宽_R1A,V1,0.4,5000,40,100\n"
+           "和田宽_R1B,V2,0.3,5200,30,100\n")
+    await pl.record_ad_metrics_batch(
+        experiment_id=exp_id,
+        csv_text=csv,
+        column_map={"新增A3": "new_a3", "A3有效用户": "a3_eligible_users"},
+        dry_run=False,
+    )
 
     # 锁 A 臂（n<5 → force 旁路）
     lk = await lab.lock_winner(experiment_id=exp_id, round_no=1,
@@ -176,19 +196,25 @@ async def test_next_version_seed_and_changelog(exp_with_two_scripts):
 # ══════════════════════════════════════════════════════════════════════════════
 # 块A 焊触发器：experiment_adopt_script（采纳即自动 A/B：找/建实验 + 挂臂一步成）
 # ══════════════════════════════════════════════════════════════════════════════
-async def _mk_script(*, kind: str, intent: str | None, with_audience: bool = True) -> str:
+async def _mk_script(
+    *,
+    kind: str,
+    intent: str | None,
+    with_audience: bool = True,
+    sku_id: str = SKU_ADOPT,
+) -> str:
     """造一条 draft 脚本，返回 script_id。with_audience=True 挂个 audience_record_id。"""
     pool = get_pool()
     return await pool.fetchval(
         "INSERT INTO pipeline.scripts (sku_id, script_md, status, kind, intent, audience_record_id) "
         "VALUES ($1,'测试脚本','draft',$2,$3,$4::uuid) RETURNING id::text",
-        SKU_ADOPT, kind, intent, (str(uuid.uuid4()) if with_audience else None))
+        sku_id, kind, intent, (str(uuid.uuid4()) if with_audience else None))
 
 
 @pytest.mark.asyncio
 async def test_adopt_script_autocreates_then_reuses():
-    # 第 1 条 creative_pack（kind=video_planting、脚本无 intent → 从 kind 反推 planting，track=ai_video）
-    s1 = await _mk_script(kind="video_planting", intent=None)
+    # 正式种草 AI 臂要求脚本 intent 血缘明确为 planting。
+    s1 = await _mk_script(kind="video_planting", intent="planting")
     r1 = await lab.adopt_script_as_arm(
         script_id=s1, variable_value="悬念式钩子", swept_variable="opening_hook_3s")
     assert r1["ok"], r1
@@ -199,13 +225,15 @@ async def test_adopt_script_autocreates_then_reuses():
     exp_id = r1["experiment_id"]
     pool = get_pool()
     assert await pool.fetchval(
-        "SELECT north_star_metric FROM pipeline.experiments WHERE id=$1::uuid", exp_id) == "completion_rate"
+        "SELECT north_star_metric FROM pipeline.experiments WHERE id=$1::uuid", exp_id) == "a3_ratio"
     assert await pool.fetchval(
         "SELECT status FROM pipeline.scripts WHERE id=$1::uuid", s1) == "adopted"
 
-    # 第 2 条同 SKU×planting×ai_video → 复用同实验、追加到 open 的 round1 → 臂 B（不必再给 swept_variable）
+    # 第 2 条正式种草候选必须显式回传同一实验、同一轮、同一变量。
     s2 = await _mk_script(kind="video_planting", intent="planting")
-    r2 = await lab.adopt_script_as_arm(script_id=s2, variable_value="痛点式钩子")
+    r2 = await lab.adopt_script_as_arm(
+        script_id=s2, variable_value="痛点式钩子",
+        swept_variable="opening_hook_3s", experiment_id=exp_id, round_no=1)
     assert r2["ok"], r2
     assert r2["created_experiment"] is False
     assert r2["experiment_id"] == exp_id
@@ -233,3 +261,31 @@ async def test_adopt_script_guards():
     g3 = await lab.adopt_script_as_arm(
         script_id=s3, variable_value="y", swept_variable="opening_hook_3s")
     assert not g3["ok"] and g3["error"] == "missing_intent"
+
+
+@pytest.mark.asyncio
+async def test_soft_ad_keeps_implicit_second_arm_append():
+    first_script = await _mk_script(
+        kind="video_soft_ad", intent="soft_ad", sku_id=SKU_SOFT_AD)
+    first = await lab.adopt_script_as_arm(
+        script_id=first_script,
+        variable_value="日常反差",
+        swept_variable="opening_hook_3s",
+    )
+    assert first["ok"], first
+    pool = get_pool()
+    assert await pool.fetchval(
+        "SELECT north_star_metric FROM pipeline.experiments WHERE id=$1::uuid",
+        first["experiment_id"],
+    ) == "completion_rate"
+
+    second_script = await _mk_script(
+        kind="video_soft_ad", intent="soft_ad", sku_id=SKU_SOFT_AD)
+    second = await lab.adopt_script_as_arm(
+        script_id=second_script,
+        variable_value="轻剧情转折",
+    )
+    assert second["ok"], second
+    assert second["experiment_id"] == first["experiment_id"]
+    assert second["round_no"] == first["round_no"] == 1
+    assert second["arm"]["arm_code"] == "R1B"

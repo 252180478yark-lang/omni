@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from decimal import Decimal
 from typing import Any
 
 from app.database import get_pool
 from app.services.ad_metrics_validation import _WHITELIST
+from app.services.video_intent_profiles import get_video_intent_profile
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +26,9 @@ logger = logging.getLogger(__name__)
 # 标 suspect 不进聚合（R-4），且被预算量级干扰；收割用 cvr（转化率，跨臂公平），
 # roi/gmv 作辅助展示。
 INTENT_NORTH_STAR: dict[str, tuple[str, str, list[str]]] = {
-    "planting": ("completion_rate", "higher_better", ["like_rate", "a3_ratio"]),
+    "planting": ("a3_ratio",        "higher_better", ["cpm", "completion_rate", "play_3s_rate"]),
     "harvest":  ("cvr",             "higher_better", ["roi", "gmv"]),
-    "soft_ad":  ("completion_rate", "higher_better", ["new_followers"]),
+    "soft_ad":  ("completion_rate", "higher_better", ["play_3s_rate"]),
     "hard_ad":  ("cvr",             "higher_better", ["roi", "gmv"]),
 }
 INTENT_LABELS = {"planting": "种草", "harvest": "收割", "soft_ad": "软广", "hard_ad": "硬广"}
@@ -50,6 +52,12 @@ SWEEP_VARIABLE_POOL: list[tuple[str, str, str]] = [
 ]
 SWEEP_VARIABLE_LABELS: dict[str, str] = {k: lbl for k, lbl, _ in SWEEP_VARIABLE_POOL}
 SWEEP_VARIABLE_ORDER: list[str] = [k for k, _, _ in SWEEP_VARIABLE_POOL]
+SWEEP_VARIABLE_LABELS.update({
+    "pain_scene_bridge": "痛点场景桥",
+    "presentation_motif": "呈现母题",
+    "justification_density": "理由密度",
+    "justification_module": "理由模块",
+})
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -83,6 +91,69 @@ def var_label(key: str) -> str:
 
 def default_north_star(intent: str) -> tuple[str, str, list[str]]:
     return INTENT_NORTH_STAR.get(intent, ("completion_rate", "higher_better", []))
+
+
+_EVALUATION_POLICY_OVERRIDE_FIELDS = frozenset({
+    "play_3s_floor",
+    "completion_floor",
+    "a3_floor",
+    "cpm_ceiling",
+    "min_impressions",
+    "min_a3_eligible_users",
+})
+_RATE_POLICY_FIELDS = frozenset({"play_3s_floor", "completion_floor", "a3_floor"})
+_NONNEGATIVE_POLICY_FIELDS = _EVALUATION_POLICY_OVERRIDE_FIELDS - _RATE_POLICY_FIELDS
+
+
+def _invalid_policy_override(field: str) -> dict:
+    return {
+        "ok": False,
+        "error": "invalid_evaluation_policy_overrides",
+        "field": field,
+    }
+
+
+def _snapshot_evaluation_policy(
+    intent: str,
+    overrides: dict[str, Any] | None,
+) -> tuple[dict | None, dict | None]:
+    """Snapshot the versioned intent policy; only six business thresholds are mutable."""
+    if overrides is not None and not isinstance(overrides, dict):
+        return None, _invalid_policy_override("evaluation_policy_overrides")
+
+    try:
+        profile = get_video_intent_profile(intent)
+    except ValueError:
+        # harvest/hard_ad do not have a shared video-intent profile yet.
+        if overrides:
+            field = next(iter(overrides), "evaluation_policy_overrides")
+            return None, _invalid_policy_override(field)
+        return {}, None
+
+    policy = dict(profile.evaluation_policy)
+    policy.update({
+        "profile_version": profile.version,
+        "intent": profile.intent,
+        "north_star": profile.north_star,
+        "diagnostic_metrics": list(profile.diagnostic_metrics),
+    })
+
+    for field, value in (overrides or {}).items():
+        if field not in _EVALUATION_POLICY_OVERRIDE_FIELDS:
+            return None, _invalid_policy_override(field)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+        ):
+            return None, _invalid_policy_override(field)
+        if field in _RATE_POLICY_FIELDS and not 0 <= value <= 1:
+            return None, _invalid_policy_override(field)
+        if field in _NONNEGATIVE_POLICY_FIELDS and value < 0:
+            return None, _invalid_policy_override(field)
+        policy[field] = value
+
+    return policy, None
 
 
 # ── AI 出片链专属可扫变量（技术/保真类，投前视觉快环判；human_brief 链没有）──────
@@ -154,6 +225,7 @@ async def create_experiment(
     north_star_metric: str | None = None,
     title: str | None = None,
     track: str = "human_brief",
+    evaluation_policy_overrides: dict[str, Any] | None = None,
 ) -> dict:
     """建一个实验（SKU×人群×intent×北极星×track）。确定性。
 
@@ -175,10 +247,24 @@ async def create_experiment(
 
     ns_default, direction, _aux = default_north_star(intent)
     ns = (north_star_metric or ns_default).strip()
+    if intent == "planting" and track == "ai_video" and ns != "a3_ratio":
+        return {
+            "ok": False,
+            "error": "bad_north_star_metric",
+            "field": "north_star_metric",
+            "hint": "正式种草 AI 视频实验固定以 a3_ratio 为北极星；完播、3 秒和 CPM 仅作诊断。",
+        }
     spec = _WHITELIST.get(ns)
     if spec is None or spec[0] not in _ALLOWED_NS_KINDS:
         return {"ok": False, "error": "bad_north_star_metric",
                 "hint": f"north_star_metric 必须是 ad_metrics 白名单里的 rate/money/count 指标（roi/roas 是后端算的不可手填，收割用 cvr）。给的：{ns}"}
+
+    evaluation_policy, policy_error = _snapshot_evaluation_policy(
+        intent,
+        evaluation_policy_overrides,
+    )
+    if policy_error:
+        return policy_error
 
     pool = get_pool()
     # denorm 回填：给了 portrait_id 就从画像反查 record/run/matrix
@@ -197,19 +283,21 @@ async def create_experiment(
             """
             INSERT INTO pipeline.experiments (
                 sku_id, portrait_id, audience_record_id, audience_run_id, matrix_run_id,
-                intent, north_star_metric, north_star_direction, title, track
-            ) VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10)
+                intent, north_star_metric, north_star_direction, title, track, evaluation_policy
+            ) VALUES ($1, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7, $8, $9, $10,
+                      $11::jsonb)
             RETURNING id::text AS id, sku_id, intent, track, north_star_metric,
-                      north_star_direction, status, created_at
+                      north_star_direction, evaluation_policy, status, created_at
             """,
             sku_id, portrait_id, audience_record_id, audience_run_id, matrix_run_id,
-            intent, ns, direction, title, track,
+            intent, ns, direction, title, track, json.dumps(evaluation_policy, ensure_ascii=False),
         )
     except Exception as exc:
         logger.exception("create_experiment failed: %s", exc)
         return {"ok": False, "error": "db_error", "detail": str(exc)}
 
     d = dict(row)
+    d["evaluation_policy"] = _as_dict(d.get("evaluation_policy"))
     d["created_at"] = d["created_at"].isoformat() if d.get("created_at") else None
     return {
         "ok": True,
@@ -346,6 +434,14 @@ def arm_code(round_no: int, arm_label: str) -> str:
     return f"R{round_no}{arm_label}"
 
 
+def _arm_mismatch(field: str) -> dict:
+    return {
+        "ok": False,
+        "error": "experiment_arm_missing_or_mismatch",
+        "field": field,
+    }
+
+
 async def attach_arm(
     *,
     experiment_id: str,
@@ -364,27 +460,83 @@ async def attach_arm(
     臂标 A/B/C... 按轮内已有臂数派生；同取值不重复挂。adopt_script=True 顺手把 draft→adopted。
     """
     pool = get_pool()
-    exp = await pool.fetchrow(
-        "SELECT id::text AS id, sku_id, track, status FROM pipeline.experiments WHERE id=$1::uuid",
+    lineage = await pool.fetchrow(
+        """SELECT e.id::text AS id,
+                  e.sku_id AS experiment_sku_id,
+                  e.intent AS experiment_intent,
+                  e.track AS experiment_track,
+                  e.north_star_metric,
+                  e.status AS experiment_status,
+                  s.id::text AS script_id,
+                  s.sku_id AS script_sku_id,
+                  s.kind AS script_kind,
+                  s.intent AS script_intent,
+                  s.status AS script_status
+           FROM pipeline.experiments e
+           LEFT JOIN pipeline.scripts s ON s.id=$2::uuid
+           WHERE e.id=$1::uuid""",
         experiment_id,
+        script_id,
     )
-    if not exp:
+    if not lineage:
         return {"ok": False, "error": "experiment_not_found"}
+    if not lineage["script_id"]:
+        return {"ok": False, "error": "script_not_found", "script_id": script_id}
+
+    exp = {
+        "id": lineage["id"],
+        "sku_id": lineage["experiment_sku_id"],
+        "intent": lineage["experiment_intent"],
+        "track": lineage["experiment_track"],
+        "north_star_metric": lineage["north_star_metric"],
+        "status": lineage["experiment_status"],
+    }
+    srow = {
+        "sku_id": lineage["script_sku_id"],
+        "kind": lineage["script_kind"],
+        "intent": lineage["script_intent"],
+        "status": lineage["script_status"],
+    }
 
     value = (variable_value or "").strip()
     if not value:
         return {"ok": False, "error": "missing_variable_value",
                 "hint": "本臂的变量取值（如『悬念式钩子』）"}
 
-    # 校验 script 存在 + sku 对得上（同 register_round）
-    srow = await pool.fetchrow(
-        "SELECT sku_id, kind, status FROM pipeline.scripts WHERE id=$1::uuid", script_id,
+    script_track = _track_for_kind(srow["kind"])
+    formal_planting = (
+        (exp["intent"] == "planting" and exp["track"] == "ai_video")
+        or (srow["intent"] == "planting" and script_track == "ai_video")
     )
-    if not srow:
-        return {"ok": False, "error": "script_not_found", "script_id": script_id}
-    if srow["sku_id"] != exp["sku_id"]:
+    if formal_planting:
+        if srow["sku_id"] != exp["sku_id"]:
+            return _arm_mismatch("sku_id")
+        if exp["intent"] != "planting" or srow["intent"] != "planting":
+            return _arm_mismatch("intent")
+        if exp["track"] != "ai_video" or script_track != "ai_video":
+            return _arm_mismatch("track")
+        if exp["north_star_metric"] != "a3_ratio":
+            return _arm_mismatch("north_star_metric")
+    elif srow["sku_id"] != exp["sku_id"]:
         return {"ok": False, "error": "script_sku_mismatch", "script_id": script_id,
                 "hint": f"该 script 属于 {srow['sku_id']}，实验是 {exp['sku_id']}"}
+
+    if formal_planting:
+        open_round = await pool.fetchrow(
+            """SELECT r.id::text AS id, r.round_no, r.swept_variable, r.status,
+                      count(a.id)::int AS arm_count
+               FROM pipeline.experiment_rounds r
+               LEFT JOIN pipeline.experiment_arms a ON a.round_id=r.id
+               WHERE r.experiment_id=$1::uuid AND r.status='open'
+               GROUP BY r.id, r.round_no, r.swept_variable, r.status
+               ORDER BY r.round_no DESC LIMIT 1""",
+            experiment_id,
+        )
+        if open_round and int(open_round["arm_count"] or 0) >= 1:
+            if round_no is None or int(round_no) != int(open_round["round_no"]):
+                return _arm_mismatch("round_no")
+            if not swept_variable or swept_variable.strip() != open_round["swept_variable"]:
+                return _arm_mismatch("swept_variable")
 
     warnings: list[str] = []
     try:
@@ -432,9 +584,13 @@ async def attach_arm(
                     )
                 else:
                     if rnd["status"] != "open":
+                        if formal_planting:
+                            return _arm_mismatch("round_no")
                         return {"ok": False, "error": "round_locked",
                                 "hint": f"第 {rnd['round_no']} 轮已锁定，不能再加臂；新开一轮（传新 round_no + swept_variable）"}
                     if swept_variable and swept_variable.strip() and swept_variable.strip() != rnd["swept_variable"]:
+                        if formal_planting:
+                            return _arm_mismatch("swept_variable")
                         warnings.append(f"⚠ 第 {rnd['round_no']} 轮扫的是「{var_label(rnd['swept_variable'])}」，忽略本次传的「{var_label(swept_variable.strip())}」（一轮只扫一个变量）")
 
                 round_id = rnd["id"]
@@ -537,6 +693,8 @@ async def adopt_script_as_arm(
     新实验/新轮要 swept_variable（本轮测哪个变量）。单臂不构成对比——采纳第 2 条同轮换取值的脚本
     才凑成真 A/B（status/changelog 会提示）。
     """
+    explicit_experiment_id = experiment_id is not None
+    explicit_round_no = round_no is not None
     pool = get_pool()
     srow = await pool.fetchrow(
         "SELECT sku_id, kind, intent, status, "
@@ -562,28 +720,60 @@ async def adopt_script_as_arm(
     if eff_intent not in INTENT_NORTH_STAR:
         return {"ok": False, "error": "bad_intent",
                 "hint": f"intent 只能是 {list(INTENT_NORTH_STAR)} 之一；给的/推的：{eff_intent}"}
+    formal_planting = eff_intent == "planting" and track == "ai_video"
+    if formal_planting and srow["intent"] != "planting":
+        return _arm_mismatch("intent")
 
     # ── 定位实验：显式 experiment_id 优先；否则找同 SKU×intent×track 的 running 实验 ──
     if experiment_id:
         erow = await pool.fetchrow(
-            "SELECT id::text AS id, sku_id FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)
+            "SELECT id::text AS id, sku_id, intent, track, north_star_metric "
+            "FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)
         if not erow:
             return {"ok": False, "error": "experiment_not_found", "experiment_id": experiment_id}
-        if erow["sku_id"] != sku_id:
+        if formal_planting and erow["sku_id"] != sku_id:
+            return _arm_mismatch("sku_id")
+        if formal_planting and erow["intent"] != "planting":
+            return _arm_mismatch("intent")
+        if formal_planting and erow["track"] != "ai_video":
+            return _arm_mismatch("track")
+        if formal_planting and erow["north_star_metric"] != "a3_ratio":
+            return _arm_mismatch("north_star_metric")
+        if not formal_planting and erow["sku_id"] != sku_id:
             return {"ok": False, "error": "experiment_sku_mismatch",
                     "hint": f"实验属于 {erow['sku_id']}，脚本是 {sku_id}"}
         eid = experiment_id
     else:
         erow = await pool.fetchrow(
-            "SELECT id::text AS id FROM pipeline.experiments "
+            "SELECT id::text AS id, sku_id, intent, track, north_star_metric FROM pipeline.experiments "
             "WHERE sku_id=$1 AND intent=$2 AND track=$3 AND status='running' "
             "ORDER BY created_at DESC LIMIT 1", sku_id, eff_intent, track)
         eid = erow["id"] if erow else None
+        if formal_planting and erow and erow["north_star_metric"] != "a3_ratio":
+            return _arm_mismatch("north_star_metric")
 
     # ── 提前拦：要新开一轮却没 swept_variable（建空实验前就拦，避免留垃圾实验）──
-    has_open_round = bool(await pool.fetchval(
-        "SELECT 1 FROM pipeline.experiment_rounds WHERE experiment_id=$1::uuid AND status='open' LIMIT 1",
-        eid)) if eid else False
+    open_round = await pool.fetchrow(
+        """SELECT r.id::text AS id, r.round_no, r.swept_variable, r.status,
+                  count(a.id)::int AS arm_count
+           FROM pipeline.experiment_rounds r
+           LEFT JOIN pipeline.experiment_arms a ON a.round_id=r.id
+           WHERE r.experiment_id=$1::uuid AND r.status='open'
+           GROUP BY r.id, r.round_no, r.swept_variable, r.status
+           ORDER BY r.round_no DESC LIMIT 1""",
+        eid,
+    ) if eid else None
+    has_open_round = bool(open_round)
+    if formal_planting and open_round and int(open_round["arm_count"] or 0) >= 1:
+        if not (explicit_experiment_id and explicit_round_no):
+            return {
+                "ok": False,
+                "error": "planting_second_arm_requires_explicit_round",
+            }
+        if int(round_no) != int(open_round["round_no"]):
+            return _arm_mismatch("round_no")
+        if not swept_variable or swept_variable.strip() != open_round["swept_variable"]:
+            return _arm_mismatch("swept_variable")
     will_open_new_round = (eid is None) or (round_no is None and not has_open_round)
     if will_open_new_round and not (swept_variable or "").strip():
         return {"ok": False, "error": "missing_swept_variable",
@@ -622,6 +812,7 @@ async def adopt_script_as_arm(
     if north_star_meta:
         res["north_star"] = north_star_meta
     arm = res["arm"]
+    res["round_no"] = arm["round_no"]
     res["adopt_hint"] = (
         f"已采纳并挂成{'【新建实验】' if created_experiment else ''}第{arm['round_no']}轮·臂{arm['arm_label']}"
         f"（测{arm['swept_variable_label']}=「{value}」）。单臂还不是对比——再采纳一条同轮、"
@@ -638,12 +829,14 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
     pool = get_pool()
     exp = await pool.fetchrow(
         """SELECT id::text AS id, sku_id, intent, track, north_star_metric, north_star_direction,
-                  baseline, status, title FROM pipeline.experiments WHERE id = $1::uuid""",
+                  baseline, evaluation_policy, status, title
+           FROM pipeline.experiments WHERE id = $1::uuid""",
         experiment_id,
     )
     if not exp:
         return {"ok": False, "error": "experiment_not_found"}
     baseline = _as_dict(exp["baseline"])
+    evaluation_policy = _as_dict(exp["evaluation_policy"])
     ns_metric = exp["north_star_metric"]
     direction = exp["north_star_direction"]
     higher_better = direction != "lower_better"
@@ -747,6 +940,7 @@ async def experiment_status(experiment_id: str, round_no: int | None = None) -> 
         "status": exp["status"],
         "round_no": round_no,
         "baseline": baseline,
+        "evaluation_policy": evaluation_policy,
         "arms": arms_out,
         "ranking": [a["arm_label"] for a in ranked],
         "leader_arm_id": leader["arm_id"] if leader else None,
@@ -1004,8 +1198,8 @@ async def list_experiments(sku_id: str | None = None, status: str | None = None,
         params.append(status); where.append(f"status = ${len(params)}")
     params.append(limit)
     rows = await pool.fetch(
-        f"""SELECT e.id::text AS id, e.sku_id, e.intent, e.north_star_metric, e.status,
-                   e.title, e.baseline, e.created_at,
+        f"""SELECT e.id::text AS id, e.sku_id, e.intent, e.track, e.north_star_metric, e.status,
+                   e.title, e.baseline, e.evaluation_policy, e.created_at,
                    (SELECT COALESCE(MAX(round_no),0) FROM pipeline.experiment_rounds r WHERE r.experiment_id=e.id) AS rounds
             FROM pipeline.experiments e
             {('WHERE ' + ' AND '.join(where)) if where else ''}
@@ -1016,6 +1210,7 @@ async def list_experiments(sku_id: str | None = None, status: str | None = None,
     for row in rows:
         d = dict(row)
         d["baseline"] = _as_dict(d["baseline"])
+        d["evaluation_policy"] = _as_dict(d["evaluation_policy"])
         d["rounds"] = int(d["rounds"] or 0)
         d["intent_label"] = INTENT_LABELS.get(d["intent"], d["intent"])
         d["created_at"] = d["created_at"].isoformat() if d.get("created_at") else None
@@ -1027,9 +1222,9 @@ async def get_experiment(experiment_id: str) -> dict:
     pool = get_pool()
     exp = await pool.fetchrow(
         """SELECT id::text AS id, sku_id, portrait_id::text AS portrait_id,
-                  audience_record_id::text AS audience_record_id, intent, track,
-                  north_star_metric, north_star_direction, status, title, baseline,
-                  winning_framework_md, framework_distilled_at, created_at
+                   audience_record_id::text AS audience_record_id, intent, track,
+                   north_star_metric, north_star_direction, status, title, baseline,
+                   evaluation_policy, winning_framework_md, framework_distilled_at, created_at
            FROM pipeline.experiments WHERE id = $1::uuid""",
         experiment_id,
     )
@@ -1037,6 +1232,7 @@ async def get_experiment(experiment_id: str) -> dict:
         return {"ok": False, "error": "experiment_not_found"}
     d = dict(exp)
     d["baseline"] = _as_dict(d["baseline"])
+    d["evaluation_policy"] = _as_dict(d["evaluation_policy"])
     d["intent_label"] = INTENT_LABELS.get(d["intent"], d["intent"])
     for k in ("framework_distilled_at", "created_at"):
         if d.get(k):

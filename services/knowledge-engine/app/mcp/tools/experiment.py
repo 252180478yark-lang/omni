@@ -60,11 +60,12 @@ async def experiment_create(
     north_star_metric: str | None = None,
     title: str | None = None,
     track: str = "human_brief",
+    evaluation_policy_overrides: dict | None = None,
 ) -> dict:
     """建一个 A/B 实验（SKU×人群×投放意图×北极星×track）。确定性。
 
     一个实验 = 围绕"这个 SKU × 这个人群 × 这个 intent"长期跑的单变量迭代台账。intent 定死后
-    北极星自动选（种草→完播率 completion_rate / 收割→转化率 cvr / 软广→完播率 / 硬广→cvr）。
+    北极星自动选（种草→A3 转化率 a3_ratio / 收割→转化率 cvr / 软广→完播率 / 硬广→cvr）。
     **intent 不可中途改、不可当变量扫**（换 intent 北极星就变，没法比）；要比种草 vs 收割是
     两个独立实验。
 
@@ -79,6 +80,8 @@ async def experiment_create(
         track: 生产链 human_brief（真人编导 brief→拍，默认）/ ai_video（AI 提示词→出片，
             沉淀写 creative_pack 节点 + 可投前视觉快环）/ mixed（同实验 A/B 真人 vs AI，
             swept_variable=production_mode，只出模式偏好不写 prompt 规则）
+        evaluation_policy_overrides: 可选业务阈值覆盖；仅允许 3 秒、完播、A3、CPM、最小曝光、
+            最小 A3 有效用户六项，创建时连同意图配置版本快照进实验，后续配置变化不追写。
 
     Returns:
         {ok, experiment:{id, intent, track, north_star_metric, ...}, north_star, next_step_hint}
@@ -86,7 +89,7 @@ async def experiment_create(
     return await lab.create_experiment(
         sku_id=sku_id, intent=intent, portrait_id=portrait_id,
         audience_record_id=audience_record_id, north_star_metric=north_star_metric, title=title,
-        track=track,
+        track=track, evaluation_policy_overrides=evaluation_policy_overrides,
     )
 
 
