@@ -165,7 +165,7 @@ def _validate_evaluation_policy(policy: dict[str, Any], intent: str) -> None:
     max_exposure_ratio = policy["max_exposure_ratio"]
     if (
         not _is_finite_number(max_exposure_ratio)
-        or max_exposure_ratio <= 0
+        or max_exposure_ratio <= 1
     ):
         raise _profile_invalid(intent, "evaluation_policy:max_exposure_ratio")
     if policy["rate_scale"] != "0-1":

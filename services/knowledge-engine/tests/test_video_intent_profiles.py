@@ -140,6 +140,8 @@ def test_profile_results_do_not_expose_cached_mutable_state() -> None:
         ("min_a3_eligible_users", -1),
         ("max_exposure_ratio", False),
         ("max_exposure_ratio", 0),
+        ("max_exposure_ratio", 0.5),
+        ("max_exposure_ratio", 1.0),
         ("rate_scale", "percent"),
         ("currency", "USD"),
     ],
@@ -169,7 +171,7 @@ def test_supplied_numeric_evaluation_thresholds_are_accepted() -> None:
             "cpm_ceiling": 0,
             "min_impressions": 12.5,
             "min_a3_eligible_users": 0,
-            "max_exposure_ratio": 0.5,
+            "max_exposure_ratio": 1.01,
         }
     )
 
@@ -177,7 +179,7 @@ def test_supplied_numeric_evaluation_thresholds_are_accepted() -> None:
 
     assert parsed["completion_floor"] == 1
     assert parsed["min_impressions"] == 12.5
-    assert parsed["max_exposure_ratio"] == 0.5
+    assert parsed["max_exposure_ratio"] == 1.01
 
 
 @pytest.mark.parametrize("threshold", [0, 70.5, 100])
