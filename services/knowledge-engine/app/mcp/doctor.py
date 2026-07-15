@@ -186,6 +186,7 @@ def _wanted_tools() -> set[str]:
             # 2026-06-12 sku-pipeline step 3.5/3.6：人群生活状态画像（KB 锚+可信度分级标注）+
             # 编导 brief（V7.2 备忘录+算法信号三向量+一大段 AI 出片提示词，真人拍/AI 拍两用）
             "generate_audience_portrait", "generate_director_brief",
+            "generate_planting_pain_solution_bridge",
             # 2026-06-12 画像血缘查询入 MCP——桌面智能下拉/chat 经 catalog/exec 可达
             "pipeline_list_audience_portraits", "pipeline_get_audience_portrait",
             # 2026-06-12 竞品人群逆向分析：竞品视频 → 8 项人群信号 + 人群假设（🧠/⚠️ 标注）
@@ -290,6 +291,8 @@ def _check_prompts(report: DoctorReport) -> None:
             "experiment_distill.system", "experiment_distill.user",
             # 2026-06-15 AI 链投前视觉快环 judge prompt
             "prescreen_video.system", "prescreen_video.user",
+            "planting_pain_solution_bridge.system",
+            "planting_pain_solution_bridge.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib
 import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -11,7 +12,9 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+import yaml
 
+from app.mcp import model_config, prompts
 from app.services import pain_solution_bridge as bridge_service
 from app.services.pain_solution_bridge import (
     canonical_upstream_fact_hash,
@@ -971,3 +974,313 @@ async def test_load_context_compares_all_four_pack_lineage_fields(
     )
 
     _assert_lineage_failure(result, "pack_lineage_mismatch")
+
+
+# --- MCP tool contract -----------------------------------------------------
+
+
+def _planting_tool_module():
+    return importlib.import_module("app.mcp.tools.planting")
+
+
+def _tool_context() -> dict[str, object]:
+    bridges = _pair()
+    first = bridges[0]
+    portrait_value = first["portrait_evidence"][0]["value"]
+    product_value = first["product_evidence"][0]["value"]
+    pack_value = first["pack_calibration_evidence"][0]["value"]
+    facts = {
+        "lineage": {"sku_id": SKU_ID, "audience_record_id": RECORD_ID},
+        "sku_facts": {"id": SKU_ID, "owner_selling_points": product_value},
+        "matrix_evidence": {"matrix_md": product_value},
+        "portrait_record_evidence": {
+            "record": {"name": first["audience_segment"]},
+            "portrait": {"portrait_md": portrait_value},
+        },
+        "pack_calibration": {"pack_md": pack_value},
+        "eligible_evidence_catalog": {
+            "sku": str(product_value),
+            "matrix": str(product_value),
+            "record": str(portrait_value),
+            "portrait": str(portrait_value),
+        },
+        "pack_calibration_catalog": str(pack_value),
+    }
+    return {
+        "ok": True,
+        "facts": facts,
+        "upstream_fact_hash": canonical_upstream_fact_hash(facts),
+    }
+
+
+class _FakeAIHubClient:
+    calls: list[dict[str, object]] = []
+    response: object = None
+    failure: Exception | None = None
+    timeouts: list[float] = []
+
+    def __init__(self, timeout: float) -> None:
+        self.timeouts.append(timeout)
+
+    async def chat(self, **kwargs: object) -> object:
+        self.calls.append(copy.deepcopy(kwargs))
+        if self.failure is not None:
+            raise self.failure
+        return copy.deepcopy(self.response)
+
+
+def _install_tool_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    response: object | None = None,
+    config: dict[str, object] | None = None,
+    context: dict[str, object] | None = None,
+) -> object:
+    planting = _planting_tool_module()
+    _FakeAIHubClient.calls = []
+    _FakeAIHubClient.timeouts = []
+    _FakeAIHubClient.failure = None
+    _FakeAIHubClient.response = response
+    monkeypatch.setattr(planting, "AIHubClient", _FakeAIHubClient)
+    monkeypatch.setattr(
+        planting,
+        "get_model_for_tool",
+        lambda _name: copy.deepcopy(
+            config
+            or {
+                "provider": "gemini",
+                "model": "gemini-3.1-pro-preview",
+                "temperature": 0.2,
+                "max_tokens": 4000,
+                "prompts": {
+                    "system": "planting_pain_solution_bridge.system",
+                    "user": "planting_pain_solution_bridge.user",
+                },
+            }
+        ),
+    )
+
+    async def fake_loader(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return copy.deepcopy(context or _tool_context())
+
+    monkeypatch.setattr(planting, "load_planting_bridge_context", fake_loader)
+    return planting
+
+
+def test_bridge_tool_has_exact_base_yaml_config() -> None:
+    raw = yaml.safe_load(model_config.CONFIG_PATH.read_text(encoding="utf-8"))
+
+    assert raw["generate_planting_pain_solution_bridge"] == {
+        "provider": "gemini",
+        "model": "gemini-3.1-pro-preview",
+        "temperature": 0.2,
+        "max_tokens": 4000,
+        "prompts": {
+            "system": "planting_pain_solution_bridge.system",
+            "user": "planting_pain_solution_bridge.user",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_bridge_tool_calls_pro_once_and_returns_review_only_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pair = _pair()
+    planting = _install_tool_fakes(
+        monkeypatch,
+        response={"content": json.dumps({"bridges": pair}, ensure_ascii=False)},
+    )
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["bridges"] == pair
+    assert result["result"]["upstream_fact_hash"] == _tool_context()["upstream_fact_hash"]
+    assert result["next_step_hint"]["suggested_tool"] is None
+    human_text = result["next_step_hint"]["human_text"]
+    assert "审" in human_text
+    assert "不会自动" in human_text
+    assert _FakeAIHubClient.timeouts == [360]
+    assert len(_FakeAIHubClient.calls) == 1
+    call = _FakeAIHubClient.calls[0]
+    assert call["provider"] == "gemini"
+    assert call["model"] == "gemini-3.1-pro-preview"
+    assert call["temperature"] == 0.2
+    assert call["max_tokens"] == 4000
+    assert call["enforce_human_voice"] is False
+    assert [message["role"] for message in call["messages"]] == ["system", "user"]
+    trace = result["trace"]
+    assert trace["model_provider"] == "gemini"
+    assert trace["model"] == "gemini-3.1-pro-preview"
+    assert trace["params"]["temperature"] == 0.2
+    assert trace["params"]["max_tokens"] == 4000
+    assert trace["params"]["upstream_fact_hash"] == result["result"]["upstream_fact_hash"]
+    assert trace["cost_estimate"] == "1 Gemini Pro call"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("key", "bad_value"),
+    [
+        ("provider", "openai"),
+        ("model", "gemini-3-flash-preview"),
+        ("temperature", 0.3),
+        ("max_tokens", 3999),
+    ],
+)
+async def test_bridge_tool_rejects_every_model_config_drift_before_ai_call(
+    monkeypatch: pytest.MonkeyPatch,
+    key: str,
+    bad_value: object,
+) -> None:
+    config = {
+        "provider": "gemini",
+        "model": "gemini-3.1-pro-preview",
+        "temperature": 0.2,
+        "max_tokens": 4000,
+    }
+    config[key] = bad_value
+    planting = _install_tool_fakes(monkeypatch, config=config)
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "pain_solution_bridge_model_misconfigured"
+    assert key in result["detail"]
+    assert _FakeAIHubClient.calls == []
+    assert _FakeAIHubClient.timeouts == []
+
+
+@pytest.mark.asyncio
+async def test_bridge_tool_model_exception_is_one_call_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planting = _install_tool_fakes(monkeypatch)
+    _FakeAIHubClient.failure = RuntimeError("provider unavailable")
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "pain_solution_bridge_generation_failed"
+    assert "provider unavailable" in result["detail"]
+    assert len(_FakeAIHubClient.calls) == 1
+    assert _FakeAIHubClient.calls[0]["model"] == "gemini-3.1-pro-preview"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("response", "error_fragment"),
+    [
+        ({"content": "not json"}, "valid JSON"),
+        ({"content": '{"bridges": []}'}, "exactly 2"),
+        (
+            {
+                "content": json.dumps(
+                    {
+                        "bridges": [
+                            _bridge(
+                                portrait_evidence=[
+                                    {"source": "portrait", "field": "x", "value": "invented"}
+                                ]
+                            ),
+                            _pair()[1],
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+            },
+            "evidence_catalog",
+        ),
+        (
+            {
+                "content": json.dumps(
+                    {
+                        "bridges": [
+                            _pair()[0],
+                            {**_pair()[1], "belief_shift": "changed fixed fact"},
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+            },
+            "cross_candidate_drift",
+        ),
+    ],
+)
+async def test_bridge_tool_fails_closed_on_invalid_model_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    response: object,
+    error_fragment: str,
+) -> None:
+    planting = _install_tool_fakes(monkeypatch, response=response)
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "pain_solution_bridge_invalid"
+    assert error_fragment in json.dumps(result.get("errors"), ensure_ascii=False)
+    assert len(_FakeAIHubClient.calls) == 1
+    assert result["trace"]["params"]["upstream_fact_hash"] == _tool_context()["upstream_fact_hash"]
+
+
+def test_bridge_prompt_rendering_uses_safe_sentinels_and_all_upstream_sections() -> None:
+    planting = _planting_tool_module()
+    facts = _tool_context()["facts"]
+
+    system_prompt, user_prompt = planting._render_bridge_prompts(facts)
+
+    rendered = system_prompt + "\n" + user_prompt
+    assert "@@" not in rendered
+    assert "{" in rendered and "}" in rendered
+    assert SKU_ID in rendered
+    assert str(facts["matrix_evidence"]["matrix_md"]) in rendered
+    assert str(facts["portrait_record_evidence"]["portrait"]["portrait_md"]) in rendered
+    assert str(facts["pack_calibration"]["pack_md"]) in rendered
+    assert "SKU_FACTS_JSON" not in rendered
+    assert "MATRIX_EVIDENCE_JSON" not in rendered
+    assert "PORTRAIT_RECORD_EVIDENCE_JSON" not in rendered
+    assert "PACK_CALIBRATION_JSON" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_bridge_tool_returns_upstream_failure_without_ai_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upstream = {
+        "ok": False,
+        "error": "upstream_lineage_incomplete",
+        "reason": "portrait_not_adopted",
+    }
+    planting = _install_tool_fakes(monkeypatch, context=upstream)
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID
+    )
+
+    assert result == upstream
+    assert _FakeAIHubClient.calls == []
+    assert _FakeAIHubClient.timeouts == []
+
+
+@pytest.mark.asyncio
+async def test_bridge_tool_is_registered_in_server_doctor_and_prompt_contract() -> None:
+    planting = _planting_tool_module()
+    from app.mcp.doctor import _wanted_tools
+    from app.mcp.server import mcp
+
+    assert hasattr(planting, "generate_planting_pain_solution_bridge")
+    assert "generate_planting_pain_solution_bridge" in _wanted_tools()
+    names = {tool.name for tool in await mcp.list_tools()}
+    assert "generate_planting_pain_solution_bridge" in names
+    templates = set(prompts.list_templates())
+    assert "planting_pain_solution_bridge.system" in templates
+    assert "planting_pain_solution_bridge.user" in templates

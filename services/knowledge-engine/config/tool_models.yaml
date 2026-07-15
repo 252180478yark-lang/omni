@@ -219,6 +219,15 @@ generate_audience_portrait:
   temperature: 0.4
   max_tokens: 10000
 
+generate_planting_pain_solution_bridge:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.2
+  max_tokens: 4000
+  prompts:
+    system: planting_pain_solution_bridge.system
+    user: planting_pain_solution_bridge.user
+
 # step 3.6 编导 brief：创意任务高温+含 AI 映射段长输出，pro 级
 generate_director_brief:
   provider: gemini
