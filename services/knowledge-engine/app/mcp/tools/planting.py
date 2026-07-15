@@ -315,8 +315,57 @@ async def generate_planting_pain_solution_bridge(
     )
 
 
+@tool_with_audit(mcp, require_approval=False)
+async def register_product_reference_asset(
+    sku_id: str,
+    file_ref: str,
+) -> dict[str, Any]:
+    """Register one readable local product image as the current SKU's reference."""
+
+    from app.services import pipeline_lineage
+    from app.services.media_reference_manifest import resolve_reference_path
+
+    if not isinstance(sku_id, str) or not sku_id.strip():
+        return {"ok": False, "error": "product_ref_invalid_or_mismatch"}
+    try:
+        canonical_file = str(resolve_reference_path(file_ref))
+    except (OSError, ValueError):
+        return {"ok": False, "error": "product_ref_invalid_or_mismatch"}
+
+    existing = await pipeline_lineage.get_product_reference_by_file(canonical_file)
+    if existing:
+        if existing.get("sku_id") != sku_id:
+            return {"ok": False, "error": "product_ref_invalid_or_mismatch"}
+        return {
+            "ok": True,
+            "result": {
+                "asset_id": existing.get("id"),
+                "sku_id": sku_id,
+                "file_ref": canonical_file,
+                "reused": True,
+            },
+        }
+
+    asset_id = await pipeline_lineage.save_product_reference_asset(
+        sku_id=sku_id,
+        file_ref=canonical_file,
+    )
+    if not asset_id:
+        return {"ok": False, "error": "product_ref_invalid_or_mismatch"}
+    return {
+        "ok": True,
+        "result": {
+            "asset_id": asset_id,
+            "sku_id": sku_id,
+            "file_ref": canonical_file,
+            "reused": False,
+        },
+    }
+
+
 __all__ = [
     "_generate_planting_pain_solution_bridge_impl",
     "_render_bridge_prompts",
     "generate_planting_pain_solution_bridge",
+    "register_product_reference_asset",
 ]

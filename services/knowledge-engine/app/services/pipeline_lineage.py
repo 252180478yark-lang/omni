@@ -1618,6 +1618,74 @@ async def save_creative_pack(
 # step 6 资产落库（W4-B 切片 14.4 phase D：分镜图/视频生成挂血缘）
 # ════════════════════════════════════════════════════════════════
 
+async def get_product_reference_by_file(file_ref: str) -> dict[str, Any] | None:
+    """Return the active registered product reference for a canonical file."""
+
+    pool = get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT id::text, sku_id, asset_type, file_url, status,
+               script_id::text, experiment_arm_id::text,
+               generation_set_id::text, created_at
+        FROM pipeline.assets
+        WHERE asset_type = 'product_reference'
+          AND status <> 'discarded'
+          AND file_url = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        file_ref,
+    )
+    return dict(row) if row else None
+
+
+async def save_product_reference_asset(*, sku_id: str, file_ref: str) -> str | None:
+    """Register one SKU-owned, adopted product image with no downstream owner."""
+
+    pool = get_pool()
+    try:
+        row = await pool.fetchrow(
+            """
+            INSERT INTO pipeline.assets (
+                sku_id, asset_type, file_url, status,
+                script_id, experiment_arm_id, generation_set_id
+            ) VALUES (
+                $1, 'product_reference', $2, 'adopted',
+                NULL, NULL, NULL
+            )
+            RETURNING id::text AS id
+            """,
+            sku_id,
+            file_ref,
+        )
+        return row["id"] if row else None
+    except Exception as exc:
+        logger.exception("save_product_reference_asset failed: %s", exc)
+        return None
+
+
+async def get_product_reference_assets(asset_ids: list[str]) -> list[dict[str, Any]]:
+    """Load registered references in the exact caller-supplied ID order."""
+
+    if not asset_ids:
+        return []
+    pool = get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id::text, sku_id, asset_type, file_url, status,
+               script_id::text, experiment_arm_id::text,
+               generation_set_id::text, created_at
+        FROM pipeline.assets
+        WHERE id = ANY($1::uuid[])
+          AND asset_type = 'product_reference'
+          AND status <> 'discarded'
+        """,
+        asset_ids,
+    )
+    by_id = {str(row["id"]): dict(row) for row in rows}
+    return [by_id[asset_id] for asset_id in asset_ids if asset_id in by_id]
+
+
 async def save_storyboard_asset(
     *,
     sku_id: str,
@@ -1715,7 +1783,10 @@ async def save_storyboard_asset(
         return None
 
 
-async def list_character_sheets_for_script(script_id: str) -> list[dict[str, Any]]:
+async def list_character_sheets_for_script(
+    script_id: str,
+    experiment_arm_id: str | None = None,
+) -> list[dict[str, Any]]:
     """拉同 script_id 的所有 character_sheet asset（按 character_role 字典序）。
 
     给 step 6 用：scene.characters_in_scene=['daughter','mother'] → 找对应 url 当 face_refs。
@@ -1723,12 +1794,17 @@ async def list_character_sheets_for_script(script_id: str) -> list[dict[str, Any
     pool = get_pool()
     rows = await pool.fetch(
         """
-        SELECT id::text, character_role, file_url, status, created_at
+        SELECT id::text, sku_id, asset_type, script_id::text,
+               character_role, file_url, status,
+               experiment_arm_id::text, generation_set_id::text, created_at
         FROM pipeline.assets
-        WHERE script_id = $1::uuid AND asset_type = 'character_sheet'
+        WHERE script_id = $1::uuid
+          AND asset_type = 'character_sheet'
+          AND ($2::uuid IS NULL OR experiment_arm_id = $2::uuid)
         ORDER BY character_role, created_at DESC
         """,
         script_id,
+        experiment_arm_id,
     )
     out = []
     for r in rows:

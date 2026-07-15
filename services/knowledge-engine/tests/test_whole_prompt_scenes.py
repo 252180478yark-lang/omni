@@ -1,13 +1,15 @@
 """C1 新形态「一大段提示词块」：parse 层 + step 6/7 适配 + 后端反算（不调 LLM）。"""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
 
 import app.mcp.server  # noqa: F401  # 先完整加载 server：media 当首入口会触发既有循环导入
 
 from app.database import init_pool, close_pool
-from app.services import pipeline_lineage
+from app.services import pipeline_lineage, video_content_gate
 from app.services.video_prompt_compiler import compile_final_prompt_segment
 from app.services.pipeline_lineage import (
     parse_scenes_from_script_md,
@@ -236,7 +238,9 @@ def _formal_whole_script(
     }
 
 
-def _install_step7_fakes(monkeypatch, script: dict) -> list[dict]:
+def _install_step7_fakes(
+    monkeypatch, script: dict, product_path: Path | None = None
+) -> list[dict]:
     asset_calls: list[dict] = []
 
     async def fake_get(script_id):
@@ -246,8 +250,25 @@ def _install_step7_fakes(monkeypatch, script: dict) -> list[dict]:
         asset_calls.append(kwargs)
         return []
 
-    async def fake_sheets(script_id):
+    async def fake_sheets(script_id, experiment_arm_id=None):
         return []
+
+    async def fake_products(asset_ids):
+        if product_path is None:
+            return []
+        return [{
+            "id": "product-1",
+            "sku_id": script["sku_id"],
+            "asset_type": "product_reference",
+            "file_url": str(product_path),
+            "status": "adopted",
+            "script_id": None,
+            "experiment_arm_id": None,
+            "generation_set_id": None,
+        }]
+
+    async def fake_admission(script_row, experiment_arm_id):
+        return {"ok": True, "experiment_arm_id": experiment_arm_id}
 
     async def fake_lineage_ctx(script_row):
         return {}
@@ -257,7 +278,13 @@ def _install_step7_fakes(monkeypatch, script: dict) -> list[dict]:
     monkeypatch.setattr(
         pipeline_lineage, "list_character_sheets_for_script", fake_sheets
     )
+    monkeypatch.setattr(
+        pipeline_lineage, "get_product_reference_assets", fake_products
+    )
     monkeypatch.setattr(pipeline_lineage, "gather_lineage_context", fake_lineage_ctx)
+    monkeypatch.setattr(
+        video_content_gate, "assert_script_ready_for_media", fake_admission
+    )
     return asset_calls
 
 
@@ -322,14 +349,17 @@ def test_formal_22_second_segment_returns_duration_invalid():
 
 
 @pytest.mark.asyncio
-async def test_step7_formal_22_second_segment_fails_before_asset_reads(monkeypatch):
+async def test_step7_formal_22_second_segment_fails_before_asset_reads(monkeypatch, tmp_path):
     script = _formal_whole_script(duration_s=22)
-    asset_calls = _install_step7_fakes(monkeypatch, script)
+    product_path = tmp_path / "product.png"
+    product_path.write_bytes(b"product")
+    asset_calls = _install_step7_fakes(monkeypatch, script, product_path)
 
     out = await generate_video_segments(
         script_id=script["id"],
         dry_run=True,
-        product_refs=["http://x/product.png"],
+        product_ref_asset_ids=["product-1"],
+        experiment_arm_id="arm-1",
     )
 
     assert out["ok"] is False
@@ -340,14 +370,17 @@ async def test_step7_formal_22_second_segment_fails_before_asset_reads(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_step7_formal_whole_prompt_without_source_fails_closed(monkeypatch):
+async def test_step7_formal_whole_prompt_without_source_fails_closed(monkeypatch, tmp_path):
     script = _formal_whole_script(duration_s=15)
-    asset_calls = _install_step7_fakes(monkeypatch, script)
+    product_path = tmp_path / "product.png"
+    product_path.write_bytes(b"product")
+    asset_calls = _install_step7_fakes(monkeypatch, script, product_path)
 
     out = await generate_video_segments(
         script_id=script["id"],
         dry_run=True,
-        product_refs=["http://x/product.png"],
+        product_ref_asset_ids=["product-1"],
+        experiment_arm_id="arm-1",
     )
 
     assert out["ok"] is False
@@ -358,7 +391,7 @@ async def test_step7_formal_whole_prompt_without_source_fails_closed(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_step7_formal_three_second_prompt_is_compiled_without_clamp(monkeypatch):
+async def test_step7_formal_three_second_prompt_is_compiled_without_clamp(monkeypatch, tmp_path):
     source = _formal_prompt_source_3s()
     expected = compile_final_prompt_segment(
         source,
@@ -367,12 +400,15 @@ async def test_step7_formal_three_second_prompt_is_compiled_without_clamp(monkey
     )
     assert expected["ok"] is True
     script = _formal_whole_script(duration_s=3, prompt_source=source)
-    _install_step7_fakes(monkeypatch, script)
+    product_path = tmp_path / "product.png"
+    product_path.write_bytes(b"product")
+    _install_step7_fakes(monkeypatch, script, product_path)
 
     out = await generate_video_segments(
         script_id=script["id"],
         dry_run=True,
-        product_refs=["http://x/product.png"],
+        product_ref_asset_ids=["product-1"],
+        experiment_arm_id="arm-1",
     )
 
     assert out["ok"] is True

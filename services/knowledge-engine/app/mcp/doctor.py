@@ -192,6 +192,7 @@ def _wanted_tools() -> set[str]:
             "pipeline_list_audience_portraits", "pipeline_get_audience_portrait",
             # 2026-06-12 竞品人群逆向分析：竞品视频 → 8 项人群信号 + 人群假设（🧠/⚠️ 标注）
             # + 可选自家画像对照（对照表/人群空白四区/可借鉴打法），段二 fail-open
+            "register_product_reference_asset",
             "reverse_audience_analysis",
             # 2026-06-12 自建 SOP 存储（migration 050）：桌面拟稿→确认→入库→菜单「我的 SOP」复用
             "sop_save_custom", "sop_list_custom", "sop_archive_custom",

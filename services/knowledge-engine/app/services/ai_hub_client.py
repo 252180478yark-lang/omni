@@ -12,6 +12,7 @@ W1 仅留接口；W2 起在 generate_brief / generate_image / generate_video too
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import logging
 import mimetypes
@@ -65,6 +66,69 @@ def _localize_list(urls: Any) -> Any:
     if not isinstance(urls, list):
         return urls
     return [_localize_url(u) for u in urls]
+
+
+def decode_data_url_bytes(value: str) -> bytes:
+    """Decode only a non-empty ``data:<mime>;base64,<payload>`` reference."""
+
+    if not isinstance(value, str):
+        raise ValueError("invalid_reference_data_url")
+    head, separator, payload = value.partition(",")
+    if (
+        separator != ","
+        or not head.startswith("data:")
+        or not head.endswith(";base64")
+        or not head[len("data:") : -len(";base64")].strip()
+        or not payload
+    ):
+        raise ValueError("invalid_reference_data_url")
+    try:
+        return base64.b64decode(payload, validate=True)
+    except (ValueError, base64.binascii.Error) as exc:
+        raise ValueError("invalid_reference_data_url") from exc
+
+
+def prepare_video_reference_images(
+    face_refs: list[dict[str, Any]] | None,
+    product_refs: list[dict[str, Any]] | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Serialize local reference assets and hash the exact bytes to be sent."""
+
+    from app.services.media_reference_manifest import (
+        MANIFEST_ERROR,
+        ReferenceManifestError,
+        resolve_reference_path,
+    )
+
+    prepared: list[dict[str, Any]] = []
+    sent_items: list[dict[str, str]] = []
+    for reference_type, assets in (("face", face_refs or []), ("product", product_refs or [])):
+        for asset in assets:
+            if not isinstance(asset, dict):
+                raise ReferenceManifestError(MANIFEST_ERROR, "reference asset is not an object")
+            asset_id = asset.get("id")
+            file_ref = asset.get("file_url") or asset.get("file_ref") or asset.get("path")
+            if not isinstance(asset_id, str) or not asset_id.strip() or not isinstance(file_ref, str):
+                raise ReferenceManifestError(MANIFEST_ERROR, "reference id or file missing")
+            try:
+                path = resolve_reference_path(file_ref)
+                raw = path.read_bytes()
+            except OSError as exc:
+                raise ReferenceManifestError(MANIFEST_ERROR, str(exc)) from exc
+            mime, _ = mimetypes.guess_type(str(path))
+            if not mime or not mime.startswith("image/"):
+                raise ReferenceManifestError(MANIFEST_ERROR, "reference is not an image")
+            data_url = f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+            final_bytes = decode_data_url_bytes(data_url)
+            prepared.append({"url": data_url, "type": reference_type, "weight": 1.0})
+            sent_items.append(
+                {
+                    "id": asset_id.strip(),
+                    "type": reference_type,
+                    "sha256": hashlib.sha256(final_bytes).hexdigest(),
+                }
+            )
+    return prepared, {"items": sent_items}
 
 
 # Veo / Seedance i2v upload payload 上限实测 ~7-10MB（虽然文档写 20MB）。
@@ -369,6 +433,7 @@ class AIHubClient:
         duration_sec: int = 8,
         face_refs: list[str] | None = None,
         product_refs: list[str] | None = None,
+        prepared_reference_images: list[dict[str, Any]] | None = None,
         aspect: str = "9:16",
         model: str = "seedance-2-0",
         provider: str = "seedance",
@@ -390,14 +455,21 @@ class AIHubClient:
             body["first_frame"] = _localize_frame_for_video(first_frame)
         if last_frame:
             body["last_frame"] = _localize_frame_for_video(last_frame)
-        refs: list[dict[str, Any]] = []
-        for r in _localize_list(face_refs) or []:
-            refs.append({"url": r, "type": "face", "weight": 1.0})
-        for r in _localize_list(product_refs) or []:
-            refs.append({"url": r, "type": "product", "weight": 1.0})
-        if refs:
-            body["reference_images"] = refs
+        if prepared_reference_images is not None:
+            body["reference_images"] = prepared_reference_images
+        else:
+            refs: list[dict[str, Any]] = []
+            for r in _localize_list(face_refs) or []:
+                refs.append({"url": r, "type": "face", "weight": 1.0})
+            for r in _localize_list(product_refs) or []:
+                refs.append({"url": r, "type": "product", "weight": 1.0})
+            if refs:
+                body["reference_images"] = refs
         if extra:
             body.update(extra)
+        if prepared_reference_images is not None:
+            # The formal seam owns the final serialized reference list. Caller
+            # extras must never replace or reorder the byte-bound manifest.
+            body["reference_images"] = prepared_reference_images
         async with httpx.AsyncClient(timeout=self.timeout) as cli:
             return await _post_hub(cli, f"{self.base_url}/api/v1/ai/videos/generate", body)

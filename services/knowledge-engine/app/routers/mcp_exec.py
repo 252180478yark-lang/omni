@@ -400,6 +400,7 @@ class GenerateCharacterSheetsRequest(BaseModel):
     script_id: str
     role_ids: list[str] | None = None
     aspect_ratio: str = "1:1"
+    experiment_arm_id: str | None = None
 
 
 @router.post("/exec/generate_character_sheets")
@@ -413,6 +414,7 @@ async def exec_generate_character_sheets(
             script_id=payload.script_id,
             role_ids=payload.role_ids,
             aspect_ratio=payload.aspect_ratio,
+            experiment_arm_id=payload.experiment_arm_id,
         )
     except Exception as exc:
         logger.exception("generate_character_sheets REST 异常")
@@ -457,6 +459,7 @@ class GenerateVideoSegmentsRequest(BaseModel):
     scene_nums: list[int] | None = None
     face_refs: list[str] | None = None
     product_refs: list[str] | None = None
+    product_ref_asset_ids: list[str] | None = None
     aspect_ratio: str = "9:16"
     duration_s: int = 8
     use_last_frame: bool = False
@@ -467,6 +470,8 @@ class GenerateVideoSegmentsRequest(BaseModel):
     character_anchor: str | None = None
     model_override: str | None = None
     skip_first_frame_scene_nums: list[int] | None = None
+    experiment_arm_id: str | None = None
+    allow_no_product: bool = False
 
 
 @router.post("/exec/generate_video_segments")
@@ -485,6 +490,7 @@ async def exec_generate_video_segments(
             scene_nums=payload.scene_nums,
             face_refs=payload.face_refs,
             product_refs=payload.product_refs,
+            product_ref_asset_ids=payload.product_ref_asset_ids,
             aspect_ratio=payload.aspect_ratio,
             duration_s=payload.duration_s,
             use_last_frame=payload.use_last_frame,
@@ -495,6 +501,8 @@ async def exec_generate_video_segments(
             character_anchor=payload.character_anchor,
             model_override=payload.model_override,
             skip_first_frame_scene_nums=payload.skip_first_frame_scene_nums,
+            experiment_arm_id=payload.experiment_arm_id,
+            allow_no_product=payload.allow_no_product,
         )
     except Exception as exc:
         logger.exception("generate_video_segments REST 异常")

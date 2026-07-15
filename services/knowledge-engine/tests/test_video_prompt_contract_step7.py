@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 
 import pytest
 
 import app.mcp.server  # noqa: F401  # Load tool registry before importing media.
 import app.mcp.tools.media as media
-from app.services import pipeline_lineage
+from app.services import pipeline_lineage, video_content_gate
 from app.services.video_prompt_compiler import compile_final_prompt_segment
 
 
@@ -64,6 +65,7 @@ def _script(*, contract: object = None) -> dict[str, Any]:
 def _install_pipeline_fakes(
     monkeypatch: pytest.MonkeyPatch,
     script: dict[str, Any],
+    product_assets: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     asset_reads: list[dict[str, Any]] = []
 
@@ -74,8 +76,18 @@ def _install_pipeline_fakes(
         asset_reads.append(kwargs)
         return []
 
-    async def fake_character_sheets(script_id: str) -> list[dict[str, Any]]:
+    async def fake_character_sheets(
+        script_id: str, experiment_arm_id: str | None = None
+    ) -> list[dict[str, Any]]:
         return []
+
+    async def fake_product_assets(asset_ids: list[str]) -> list[dict[str, Any]]:
+        return list(product_assets or [])
+
+    async def fake_admission(
+        script_row: dict[str, Any], experiment_arm_id: str
+    ) -> dict[str, Any]:
+        return {"ok": True, "experiment_arm_id": experiment_arm_id}
 
     async def fake_lineage_context(script_row: dict[str, Any]) -> dict[str, Any]:
         return {}
@@ -93,12 +105,35 @@ def _install_pipeline_fakes(
         fake_character_sheets,
     )
     monkeypatch.setattr(
+        pipeline_lineage,
+        "get_product_reference_assets",
+        fake_product_assets,
+    )
+    monkeypatch.setattr(
+        video_content_gate,
+        "assert_script_ready_for_media",
+        fake_admission,
+    )
+    monkeypatch.setattr(
         pipeline_lineage, "gather_lineage_context", fake_lineage_context
     )
     monkeypatch.setattr(
         pipeline_lineage, "save_storyboard_asset", fake_save_asset
     )
     return asset_reads
+
+
+def _product_asset(path: Path) -> dict[str, Any]:
+    return {
+        "id": "product-1",
+        "sku_id": "SKU-TEST",
+        "asset_type": "product_reference",
+        "file_url": str(path),
+        "status": "adopted",
+        "script_id": None,
+        "experiment_arm_id": None,
+        "generation_set_id": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -182,6 +217,7 @@ async def test_step7_legacy_mode_cannot_override_future_contract(
 @pytest.mark.parametrize("dry_run", [True, False], ids=["dry", "provider"])
 async def test_formal_nonwhole_scene_without_prompt_source_fails_before_side_effects(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
     dry_run: bool,
 ) -> None:
     script = _script(
@@ -190,7 +226,11 @@ async def test_formal_nonwhole_scene_without_prompt_source_fails_before_side_eff
     scene = script["scenes"][0]
     scene["whole_prompt"] = False
     scene.pop("prompt_source")
-    asset_reads = _install_pipeline_fakes(monkeypatch, script)
+    product_path = tmp_path / "product.png"
+    product_path.write_bytes(b"product")
+    asset_reads = _install_pipeline_fakes(
+        monkeypatch, script, [_product_asset(product_path)]
+    )
     provider_calls: list[dict[str, Any]] = []
 
     class FakeClient:
@@ -211,7 +251,8 @@ async def test_formal_nonwhole_scene_without_prompt_source_fails_before_side_eff
 
     result = await media.generate_video_segments.__wrapped__(
         script_id=script["id"],
-        product_refs=["https://example.test/product.png"],
+        product_ref_asset_ids=["product-1"],
+        experiment_arm_id="arm-1",
         dry_run=dry_run,
     )
 
@@ -226,6 +267,7 @@ async def test_formal_nonwhole_scene_without_prompt_source_fails_before_side_eff
 @pytest.mark.asyncio
 async def test_formal_compiler_prompt_is_exact_provider_prompt(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     source = _formal_prompt_source_3s()
     expected = compile_final_prompt_segment(
@@ -237,7 +279,9 @@ async def test_formal_compiler_prompt_is_exact_provider_prompt(
     script = _script(
         contract={"version": "2026-07-15.v1", "intent": "planting"}
     )
-    _install_pipeline_fakes(monkeypatch, script)
+    product_path = tmp_path / "product.png"
+    product_path.write_bytes(b"product")
+    _install_pipeline_fakes(monkeypatch, script, [_product_asset(product_path)])
     provider_calls: list[dict[str, Any]] = []
 
     class FakeClient:
@@ -275,7 +319,8 @@ async def test_formal_compiler_prompt_is_exact_provider_prompt(
 
     result = await media.generate_video_segments.__wrapped__(
         script_id=script["id"],
-        product_refs=["https://example.test/product.png"],
+        product_ref_asset_ids=["product-1"],
+        experiment_arm_id="arm-1",
         character_anchor="MUST_NOT_PREPEND_CHARACTER_ANCHOR",
         extra_prompt_suffix="MUST_NOT_APPEND_EXTRA_SUFFIX",
     )
@@ -283,8 +328,9 @@ async def test_formal_compiler_prompt_is_exact_provider_prompt(
     assert result["ok"] is True
     assert len(provider_calls) == 1
     assert provider_calls[0]["prompt"] == expected["final_prompt"]
-    assert provider_calls[0]["product_refs"] == [
-        "https://example.test/product.png"
-    ]
+    assert provider_calls[0]["product_refs"] is None
+    assert [
+        item["type"] for item in provider_calls[0]["prepared_reference_images"]
+    ] == ["product"]
     assert "MUST_NOT_PREPEND_CHARACTER_ANCHOR" not in provider_calls[0]["prompt"]
     assert "MUST_NOT_APPEND_EXTRA_SUFFIX" not in provider_calls[0]["prompt"]

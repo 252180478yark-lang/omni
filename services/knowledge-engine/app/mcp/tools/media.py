@@ -16,6 +16,7 @@ import logging
 import os
 import re
 from collections.abc import Mapping
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -340,6 +341,7 @@ async def generate_character_sheets(
     script_id: str,
     role_ids: list[str] | None = None,
     aspect_ratio: str = "1:1",
+    experiment_arm_id: str | None = None,
 ) -> dict:
     """W4-B 切片 14.4 phase D · step 6.5：从 script.character_sheets 拉每个角色 → 自动 build 白底正面像 prompt → chatgpt-image-2 出图 → 落 pipeline.assets（asset_type='character_sheet', character_role=role_id）。
 
@@ -355,15 +357,31 @@ async def generate_character_sheets(
                       results: [{role_id, name, asset_id, file_url, prompt} | {role_id, error, prompt}]},
          trace, next_step_hint(generate_storyboard_images)}
     """
-    cap_hit = await _check_daily_media_cap("image")
-    if cap_hit:
-        return cap_hit
     from app.services.pipeline_lineage import get_creative_pack, save_storyboard_asset
 
     script = await get_creative_pack(script_id)
     if not script:
         return {"ok": False, "error": "script_not_found", "script_id": script_id,
                 "hint": "script_id 不存在或已 archived"}
+
+    content_contract = script.get("content_contract")
+    formal_contract = (
+        isinstance(content_contract, Mapping)
+        and content_contract.get("version") == "2026-07-15.v1"
+    )
+    if formal_contract:
+        from app.services.video_content_gate import assert_script_ready_for_media
+
+        admission = await assert_script_ready_for_media(
+            script,
+            experiment_arm_id or "",
+        )
+        if not admission.get("ok"):
+            return admission
+
+    cap_hit = await _check_daily_media_cap("image")
+    if cap_hit:
+        return cap_hit
 
     sheets = script.get("character_sheets") or []
     if not sheets:
@@ -447,7 +465,15 @@ async def generate_character_sheets(
                 character_role=role_id,
                 file_url=url,
                 prompt=prompt,
+                experiment_arm_id=experiment_arm_id,
             )
+            if not asset_id:
+                return {
+                    "role_id": role_id,
+                    "name": sheet.get("name"),
+                    "error": "character_sheet_asset_persist_failed",
+                    "prompt": prompt,
+                }
             return {
                 "role_id": role_id,
                 "name": sheet.get("name"),
@@ -461,13 +487,25 @@ async def generate_character_sheets(
 
     results = await asyncio.gather(*(_one(s) for s in sheets))
     success_count = sum(1 for r in results if r.get("asset_id"))
-    error_count = sum(1 for r in results if r.get("error"))
+    successful_items = [r for r in results if r.get("asset_id")]
+    failed_items = [r for r in results if not r.get("asset_id")]
+    error_count = len(failed_items)
+    partial = success_count > 0 and error_count > 0
+    retryable_role_ids = [
+        str(item.get("role_id"))
+        for item in failed_items
+        if item.get("role_id") is not None
+    ]
 
     cost_per = "¥0.5" if model_cfg.get("provider") == "openai" else "未知"
     cost_estimate = f"~{len(sheets)} × {cost_per}"
 
     out = {
-        "ok": True,
+        "ok": success_count > 0,
+        "partial": partial,
+        "successful_items": successful_items,
+        "failed_items": failed_items,
+        "retryable_role_ids": retryable_role_ids,
         "result": {
             "script_id": script_id,
             "kind": script.get("kind"),
@@ -476,6 +514,9 @@ async def generate_character_sheets(
             "success_count": success_count,
             "error_count": error_count,
             "results": results,
+            "successful_items": successful_items,
+            "failed_items": failed_items,
+            "retryable_role_ids": retryable_role_ids,
         },
         "trace": build_trace(
             provider=model_cfg.get("provider", "openai"),
@@ -484,10 +525,15 @@ async def generate_character_sheets(
             params={
                 "role_ids": role_ids,
                 "aspect_ratio": aspect_ratio,
+                "experiment_arm_id": experiment_arm_id,
             },
             cost_estimate=cost_estimate,
         ),
     }
+
+    if success_count == 0:
+        out["error"] = "character_sheet_generation_failed"
+        return out
 
     return attach_next_step(
         out,
@@ -990,6 +1036,7 @@ async def generate_video_segments(
     scene_nums: list[int] | None = None,
     face_refs: list[str] | None = None,
     product_refs: list[str] | None = None,
+    product_ref_asset_ids: list[str] | None = None,
     aspect_ratio: str = "9:16",
     duration_s: int = 8,
     use_last_frame: bool = True,
@@ -1001,6 +1048,7 @@ async def generate_video_segments(
     character_anchor: str | None = None,
     model_override: str | None = None,
     experiment_arm_id: str | None = None,
+    allow_no_product: bool = False,
 ) -> dict:
     """W4-B 切片 14.4 phase D step 7：拉 script.scenes，用 step 6 出的分镜图当
     first_frame + character_sheet 锁脸 face_refs，并发调 seedance-2-0 出每段视频。
@@ -1037,13 +1085,9 @@ async def generate_video_segments(
     - script_id 的 image asset 非空（先跑 step 6 generate_storyboard_images）；
       不够会返 missing_storyboard_images + 缺哪几段
     """
-    if not dry_run:  # dry_run 零费用，不占闸
-        cap_hit = await _check_daily_media_cap("video")
-        if cap_hit:
-            return cap_hit
     from app.services.pipeline_lineage import (
         get_creative_pack, save_storyboard_asset, list_character_sheets_for_script,
-        list_assets,
+        list_assets, get_product_reference_assets,
     )
 
     script = await get_creative_pack(script_id)
@@ -1094,6 +1138,67 @@ async def generate_video_segments(
                 "or legacy_mode=true with an empty persisted content contract."
             ),
         }
+
+    formal_product_assets: list[dict[str, Any]] = []
+    if _formal_prompt_contract:
+        from app.services.media_reference_manifest import (
+            ReferenceManifestError,
+            build_reference_manifest,
+        )
+        from app.services.video_content_gate import assert_script_ready_for_media
+
+        admission = await assert_script_ready_for_media(
+            script,
+            experiment_arm_id or "",
+        )
+        if not admission.get("ok"):
+            return admission
+
+        if kind in {"video_planting", "video_soft_ad"}:
+            if (
+                product_refs
+                or allow_no_product
+                or not product_ref_asset_ids
+            ):
+                return {
+                    "ok": False,
+                    "error": "missing_product_refs",
+                    "kind": kind,
+                    "hint": "正式种草/软广只接受已登记的 product_ref_asset_ids。",
+                }
+            if (
+                any(not isinstance(asset_id, str) or not asset_id.strip()
+                    for asset_id in product_ref_asset_ids)
+                or len(set(product_ref_asset_ids)) != len(product_ref_asset_ids)
+            ):
+                return {"ok": False, "error": "product_ref_invalid_or_mismatch"}
+            try:
+                formal_product_assets = await get_product_reference_assets(
+                    product_ref_asset_ids
+                )
+            except Exception:
+                return {"ok": False, "error": "product_ref_invalid_or_mismatch"}
+            if [asset.get("id") for asset in formal_product_assets] != product_ref_asset_ids:
+                return {"ok": False, "error": "product_ref_invalid_or_mismatch"}
+            try:
+                build_reference_manifest(
+                    sku_id=script["sku_id"],
+                    arm_id=experiment_arm_id or "",
+                    face_assets=[],
+                    product_assets=formal_product_assets,
+                    provider="",
+                    model="",
+                )
+            except ReferenceManifestError as exc:
+                return {"ok": False, "error": exc.code}
+        if force_t2v or face_refs:
+            return {"ok": False, "error": "reference_manifest_mismatch"}
+
+    if not dry_run:
+        cap_hit = await _check_daily_media_cap("video")
+        if cap_hit:
+            return cap_hit
+
     if _formal_prompt_contract:
         from app.services.video_prompt_compiler import compile_final_prompt_segment
 
@@ -1214,16 +1319,76 @@ async def generate_video_segments(
     provider = model_cfg.get("provider", "seedance")
     model = model_override or model_cfg.get("model", "seedance-2-0")
     # 视频生成 timeout 长（单段 60-180s + 排队 + 轮询，给 5min 余量）
-    client = AIHubClient(timeout=300.0)
 
     # 拉同 script 的 character_sheet asset → role → face_ref url
-    character_sheets_assets = await list_character_sheets_for_script(script_id)
+    if _formal_prompt_contract:
+        character_sheets_assets = await list_character_sheets_for_script(
+            script_id,
+            experiment_arm_id=experiment_arm_id,
+        )
+    else:
+        character_sheets_assets = await list_character_sheets_for_script(script_id)
     role_to_url: dict[str, str] = {}
     for a in character_sheets_assets:
         role = a.get("character_role")
         url = a.get("file_url")
         if role and url and role not in role_to_url:
             role_to_url[role] = url
+
+    formal_expected_manifest: dict[str, Any] | None = None
+    formal_sent_manifest: dict[str, Any] | None = None
+    formal_prepared_references: list[dict[str, Any]] | None = None
+    formal_face_assets: list[dict[str, Any]] = []
+    if _formal_prompt_contract:
+        from app.services import ai_hub_client as ai_hub_client_service
+        from app.services.media_reference_manifest import (
+            ReferenceManifestError,
+            assert_reference_manifest_matches,
+            build_reference_manifest,
+        )
+
+        supports_bound_refs = provider == "veo" or (
+            provider == "seedance" and "seedance-2-" in (model or "")
+        )
+        formal_has_i2v = any(
+            not scene.get("whole_prompt")
+            and int(scene.get("scene_no") or -1) in scene_to_first_frame
+            for scene in scenes
+        )
+        if not supports_bound_refs or formal_has_i2v:
+            return {"ok": False, "error": "reference_manifest_mismatch"}
+        formal_face_assets = [
+            asset
+            for asset in character_sheets_assets
+            if asset.get("experiment_arm_id") == experiment_arm_id
+        ]
+        try:
+            formal_expected_manifest = build_reference_manifest(
+                sku_id=script["sku_id"],
+                arm_id=experiment_arm_id or "",
+                face_assets=formal_face_assets,
+                product_assets=formal_product_assets,
+                provider=provider,
+                model=model,
+            )
+            (
+                formal_prepared_references,
+                formal_sent_manifest,
+            ) = ai_hub_client_service.prepare_video_reference_images(
+                formal_face_assets,
+                formal_product_assets,
+            )
+            assert_reference_manifest_matches(
+                formal_expected_manifest,
+                formal_sent_manifest,
+            )
+        except ReferenceManifestError as exc:
+            return {"ok": False, "error": exc.code}
+        except (OSError, ValueError):
+            return {"ok": False, "error": "reference_manifest_mismatch"}
+
+    # Video generation can queue and poll for several minutes per segment.
+    client = AIHubClient(timeout=300.0)
 
     # Lineage context for video motion/atmosphere enrichment
     from app.services.pipeline_lineage import (
@@ -1640,8 +1805,20 @@ async def generate_video_segments(
                 "duration_clamped": bool(scene.get("duration_s")) and scene_duration != scene.get("duration_s"),
             }
 
-        scene_face_refs = _resolve_face_refs(scene)
-        scene_product_refs = _resolve_product_refs(scene)
+        if _formal_prompt_contract:
+            scene_face_refs = [
+                str(asset.get("file_url"))
+                for asset in formal_face_assets
+                if asset.get("file_url")
+            ]
+            scene_product_refs = [
+                str(asset.get("file_url"))
+                for asset in formal_product_assets
+                if asset.get("file_url")
+            ]
+        else:
+            scene_face_refs = _resolve_face_refs(scene)
+            scene_product_refs = _resolve_product_refs(scene)
 
         # reference_images 互斥约束（Veo + Seedance 行为不同）：
         # - i2v 模式（first_frame 存在）：两者均不支持 reference_images（API 层互斥）
@@ -1651,7 +1828,9 @@ async def generate_video_segments(
         _is_veo = provider == "veo"
         _model_supports_r2v = "seedance-2-" in (model or "")
         _refs_blocked_reason: str | None = None
-        if first_frame and (scene_face_refs or scene_product_refs):
+        if _formal_prompt_contract:
+            pass
+        elif first_frame and (scene_face_refs or scene_product_refs):
             # i2v 模式：所有 provider 的 first_frame + reference_images 均互斥
             _refs_blocked_reason = "first_frame_i2v_excludes_refs"
             scene_face_refs = []
@@ -1686,8 +1865,11 @@ async def generate_video_segments(
                 first_frame=first_frame,
                 last_frame=last_frame,
                 duration_sec=scene_duration,
-                face_refs=scene_face_refs or None,
-                product_refs=scene_product_refs,
+                face_refs=None if _formal_prompt_contract else (scene_face_refs or None),
+                product_refs=None if _formal_prompt_contract else scene_product_refs,
+                prepared_reference_images=(
+                    formal_prepared_references if _formal_prompt_contract else None
+                ),
                 aspect=aspect_ratio,
                 model=model,
                 provider=provider,
@@ -1747,6 +1929,8 @@ async def generate_video_segments(
                 "task_id": task_id_out,
                 "whole_prompt": bool(scene.get("whole_prompt")),
                 "duration_clamped": bool(scene.get("duration_s")) and scene_duration != scene.get("duration_s"),
+                "reference_manifest_expected": formal_expected_manifest,
+                "reference_manifest_sent": formal_sent_manifest,
             }
         except HubError as he:
             # 火山方舟原始错误透传 + 分类（余额 / 内容审查 / 模型未激活 / 频率限制 / 其他）
@@ -1778,6 +1962,8 @@ async def generate_video_segments(
             "success_count": success_count,
             "error_count": error_count,
             "results": results,
+            "reference_manifest_expected": formal_expected_manifest,
+            "reference_manifest_sent": formal_sent_manifest,
         },
         "trace": build_trace(
             provider=provider,
@@ -1791,6 +1977,8 @@ async def generate_video_segments(
                 "duration_s": duration_s,
                 "use_last_frame": use_last_frame,
                 "extra_prompt_suffix": extra_prompt_suffix,
+                "product_ref_asset_ids": product_ref_asset_ids or [],
+                "experiment_arm_id": experiment_arm_id,
             },
             cost_estimate=cost_estimate,
         ),
