@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from contextlib import asynccontextmanager
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -21,6 +22,17 @@ from app.services.ad_metrics_validation import _WHITELIST
 from app.services.video_intent_profiles import get_video_intent_profile
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _reuse_or_acquire_connection(executor: Any, connection: Any | None):
+    """Reuse a caller transaction connection; otherwise borrow one from the pool."""
+    if connection is not None:
+        yield connection
+        return
+    async with executor.acquire() as acquired:
+        yield acquired
+
 
 # ── 北极星：intent → (主指标 key, 方向, 辅助展示 key) ────────────────────────
 # 主指标必须可直接回传（rate/count），**不用 roi**——roi 是 computed 型，手填会被
@@ -237,6 +249,7 @@ async def create_experiment(
     title: str | None = None,
     track: str = "human_brief",
     evaluation_policy_overrides: dict[str, Any] | None = None,
+    _connection: Any | None = None,
 ) -> dict:
     """建一个实验（SKU×人群×intent×北极星×track）。确定性。
 
@@ -277,10 +290,10 @@ async def create_experiment(
     if policy_error:
         return policy_error
 
-    pool = get_pool()
+    db = _connection or get_pool()
     # denorm 回填：给了 portrait_id 就从画像反查 record/run/matrix
     if portrait_id and not (audience_record_id and audience_run_id and matrix_run_id):
-        prow = await pool.fetchrow(
+        prow = await db.fetchrow(
             "SELECT audience_record_id, audience_run_id, matrix_run_id, sku_id "
             "FROM pipeline.audience_portraits WHERE id = $1::uuid", portrait_id,
         )
@@ -290,7 +303,7 @@ async def create_experiment(
             matrix_run_id = matrix_run_id or (str(prow["matrix_run_id"]) if prow["matrix_run_id"] else None)
 
     try:
-        row = await pool.fetchrow(
+        row = await db.fetchrow(
             """
             INSERT INTO pipeline.experiments (
                 sku_id, portrait_id, audience_record_id, audience_run_id, matrix_run_id,
@@ -461,6 +474,7 @@ async def attach_arm(
     round_no: int | None = None,
     swept_variable: str | None = None,
     adopt_script: bool = True,
+    _connection: Any | None = None,
 ) -> dict:
     """把一条已生成、老板采纳的 brief/AI 脚本挂成某轮某臂（采纳即挂臂，单条追加）。
 
@@ -470,8 +484,8 @@ async def attach_arm(
     - round_no 显式给：存在则追加（必须 open），不存在则用该号新开（要 swept_variable）
     臂标 A/B/C... 按轮内已有臂数派生；同取值不重复挂。adopt_script=True 顺手把 draft→adopted。
     """
-    pool = get_pool()
-    lineage = await pool.fetchrow(
+    db = _connection or get_pool()
+    lineage = await db.fetchrow(
         """SELECT e.id::text AS id,
                   e.sku_id AS experiment_sku_id,
                   e.intent AS experiment_intent,
@@ -533,7 +547,7 @@ async def attach_arm(
                 "hint": f"该 script 属于 {srow['sku_id']}，实验是 {exp['sku_id']}"}
 
     if formal_planting:
-        open_round = await pool.fetchrow(
+        open_round = await db.fetchrow(
             """SELECT r.id::text AS id, r.round_no, r.swept_variable, r.status,
                       count(a.id)::int AS arm_count
                FROM pipeline.experiment_rounds r
@@ -551,7 +565,7 @@ async def attach_arm(
 
     warnings: list[str] = []
     try:
-        async with pool.acquire() as conn:
+        async with _reuse_or_acquire_connection(db, _connection) as conn:
             async with conn.transaction():
                 # ── 定位/新建轮 ──
                 if round_no is not None:
@@ -695,6 +709,7 @@ async def adopt_script_as_arm(
     intent: str | None = None,
     north_star_metric: str | None = None,
     title: str | None = None,
+    _connection: Any | None = None,
 ) -> dict:
     """采纳即自动 A/B：采纳一条脚本时自动找到（或新建）它的 SKU×intent×track 实验，再把这条
     脚本挂成某轮某臂（draft→adopted）。一步打通"认可脚本 → 起有记录的 A/B 测试"。
@@ -713,8 +728,8 @@ async def adopt_script_as_arm(
         except ValueError:
             return _arm_mismatch("experiment_id")
     explicit_round_no = round_no is not None
-    pool = get_pool()
-    srow = await pool.fetchrow(
+    db = _connection or get_pool()
+    srow = await db.fetchrow(
         "SELECT sku_id, kind, intent, status, "
         "portrait_id::text AS portrait_id, audience_record_id::text AS audience_record_id "
         "FROM pipeline.scripts WHERE id=$1::uuid", script_id,
@@ -742,9 +757,31 @@ async def adopt_script_as_arm(
     if formal_planting and srow["intent"] != "planting":
         return _arm_mismatch("intent")
 
+    if formal_planting and not explicit_experiment_id and _connection is None:
+        lock_key = f"pipeline.adopt_script_as_arm:{sku_id}:{eff_intent}:{track}"
+        async with db.acquire() as conn:
+            async with conn.transaction():
+                # Transaction-scoped: commit/rollback releases the lock automatically.
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0::bigint))",
+                    lock_key,
+                )
+                # Re-read every decision input while holding the same cross-process lock.
+                return await adopt_script_as_arm(
+                    script_id=script_id,
+                    variable_value=variable_value,
+                    swept_variable=swept_variable,
+                    round_no=round_no,
+                    experiment_id=experiment_id,
+                    intent=intent,
+                    north_star_metric=north_star_metric,
+                    title=title,
+                    _connection=conn,
+                )
+
     # ── 定位实验：显式 experiment_id 优先；否则找同 SKU×intent×track 的 running 实验 ──
     if explicit_experiment_id:
-        erow = await pool.fetchrow(
+        erow = await db.fetchrow(
             "SELECT id::text AS id, sku_id, intent, track, north_star_metric "
             "FROM pipeline.experiments WHERE id=$1::uuid", experiment_id)
         if not erow:
@@ -762,7 +799,7 @@ async def adopt_script_as_arm(
                     "hint": f"实验属于 {erow['sku_id']}，脚本是 {sku_id}"}
         eid = experiment_id
     else:
-        erow = await pool.fetchrow(
+        erow = await db.fetchrow(
             "SELECT id::text AS id, sku_id, intent, track, north_star_metric FROM pipeline.experiments "
             "WHERE sku_id=$1 AND intent=$2 AND track=$3 AND status='running' "
             "ORDER BY created_at DESC LIMIT 1", sku_id, eff_intent, track)
@@ -771,7 +808,7 @@ async def adopt_script_as_arm(
             return _arm_mismatch("north_star_metric")
 
     # ── 提前拦：要新开一轮却没 swept_variable（建空实验前就拦，避免留垃圾实验）──
-    open_round = await pool.fetchrow(
+    open_round = await db.fetchrow(
         """SELECT r.id::text AS id, r.round_no, r.swept_variable, r.status,
                   count(a.id)::int AS arm_count
            FROM pipeline.experiment_rounds r
@@ -809,7 +846,8 @@ async def adopt_script_as_arm(
         cr = await create_experiment(
             sku_id=sku_id, intent=eff_intent, portrait_id=srow["portrait_id"],
             audience_record_id=srow["audience_record_id"], north_star_metric=north_star_metric,
-            title=title or f"{sku_id} {INTENT_LABELS.get(eff_intent, eff_intent)}（采纳自动建）", track=track)
+            title=title or f"{sku_id} {INTENT_LABELS.get(eff_intent, eff_intent)}（采纳自动建）", track=track,
+            _connection=_connection)
         if not cr.get("ok"):
             return cr
         eid = cr["experiment"]["id"]
@@ -819,7 +857,8 @@ async def adopt_script_as_arm(
     # ── 挂臂（采纳：draft→adopted）──
     res = await attach_arm(
         experiment_id=eid, script_id=script_id, variable_value=value,
-        round_no=round_no, swept_variable=swept_variable, adopt_script=True)
+        round_no=round_no, swept_variable=swept_variable, adopt_script=True,
+        _connection=_connection)
     res["experiment_id"] = eid
     res["created_experiment"] = created_experiment
     if not res.get("ok"):

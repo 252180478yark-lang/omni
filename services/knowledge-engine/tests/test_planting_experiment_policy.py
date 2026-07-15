@@ -1,22 +1,36 @@
 """Formal planting experiment policy and same-round arm lineage tests.
 
-These tests use small fake pools so validation order can be asserted without
-creating database side effects.
+Most tests use small fake pools so validation order can be asserted directly;
+the concurrency regression uses the real database and cleans its rows.
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
+import uuid
 from typing import Any
 
 import pytest
 
+from app.database import close_pool, get_pool, init_pool
 from app.services import experiment_lab as lab
 
 
 class _NoAcquire:
     def __call__(self):
         raise AssertionError("validation failure must happen before a transaction")
+
+
+class _AsyncContext:
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+    async def __aenter__(self):
+        return self.value
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
 
 
 class _CreatePool:
@@ -386,6 +400,16 @@ class _AdoptPool:
     async def fetchval(self, query: str, *args: Any):
         return 1
 
+    def acquire(self):
+        return _AsyncContext(self)
+
+    def transaction(self):
+        return _AsyncContext(self)
+
+    async def execute(self, query: str, *args: Any):
+        assert "pg_advisory_xact_lock" in query
+        return "SELECT 1"
+
 
 @pytest.mark.asyncio
 async def test_second_planting_candidate_requires_explicit_experiment_and_round(
@@ -491,3 +515,76 @@ def test_planting_variable_vocabulary_is_registered():
         "justification_density",
         "justification_module",
     }.issubset(lab.SWEEP_VARIABLE_LABELS)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_implicit_planting_adoption_serializes_get_or_create(monkeypatch):
+    """Two first candidates must not silently create two running experiments."""
+    await init_pool()
+    pool = get_pool()
+    sku_id = f"SKU-PLANTING-ADOPT-RACE-{uuid.uuid4().hex[:8]}"
+    audience_record_id = str(uuid.uuid4())
+    original_create = lab.create_experiment
+    unlocked_create_count = 0
+    both_unlocked_creates_ready = asyncio.Event()
+
+    async def synchronize_unlocked_creates(**kwargs):
+        nonlocal unlocked_create_count
+        if kwargs.get("_connection") is not None:
+            return await original_create(**kwargs)
+        unlocked_create_count += 1
+        if unlocked_create_count == 2:
+            both_unlocked_creates_ready.set()
+        await asyncio.wait_for(both_unlocked_creates_ready.wait(), timeout=2)
+        return await original_create(**kwargs)
+
+    monkeypatch.setattr(lab, "create_experiment", synchronize_unlocked_creates)
+
+    try:
+        script_ids = []
+        for marker in ("candidate-a", "candidate-b"):
+            script_ids.append(
+                await pool.fetchval(
+                    "INSERT INTO pipeline.scripts "
+                    "(sku_id, script_md, status, kind, intent, audience_record_id) "
+                    "VALUES ($1,$2,'draft','video_planting','planting',$3::uuid) "
+                    "RETURNING id::text",
+                    sku_id,
+                    marker,
+                    audience_record_id,
+                )
+            )
+
+        results = await asyncio.gather(
+            *(
+                lab.adopt_script_as_arm(
+                    script_id=script_id,
+                    variable_value=value,
+                    swept_variable="pain_scene_bridge",
+                )
+                for script_id, value in zip(
+                    script_ids,
+                    ("late-home hunger", "repeat seasoning"),
+                )
+            )
+        )
+
+        accepted = [result for result in results if result.get("ok")]
+        rejected = [result for result in results if not result.get("ok")]
+        assert len(accepted) == 1, results
+        assert len(rejected) == 1, results
+        assert rejected[0]["error"] == "planting_second_arm_requires_explicit_round"
+        assert await pool.fetchval(
+            "SELECT count(*) FROM pipeline.experiments "
+            "WHERE sku_id=$1 AND intent='planting' AND track='ai_video' AND status='running'",
+            sku_id,
+        ) == 1
+        assert await pool.fetchval(
+            "SELECT count(*) FROM pipeline.experiment_arms WHERE experiment_id=$1::uuid",
+            accepted[0]["experiment_id"],
+        ) == 1
+    finally:
+        await pool.execute("DELETE FROM pipeline.assets WHERE sku_id=$1", sku_id)
+        await pool.execute("DELETE FROM pipeline.experiments WHERE sku_id=$1", sku_id)
+        await pool.execute("DELETE FROM pipeline.scripts WHERE sku_id=$1", sku_id)
+        await close_pool()
