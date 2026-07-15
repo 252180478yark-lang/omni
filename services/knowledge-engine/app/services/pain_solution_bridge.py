@@ -44,6 +44,40 @@ _EVIDENCE_ENTRY_KEYS = {
     "pack_calibration_evidence": frozenset({"field", "value"}),
     "product_evidence": frozenset({"source", "field", "value"}),
 }
+_SKU_CATALOG_FIELDS = (
+    "id",
+    "name",
+    "category",
+    "price_min",
+    "price_max",
+    "specifications",
+    "owner_selling_points",
+    "owner_notes",
+    "platform_status",
+)
+_RECORD_CATALOG_FIELDS = (
+    "id",
+    "audience_run_id",
+    "matrix_run_id",
+    "sku_id",
+    "ordinal",
+    "name",
+    "kb_doc",
+    "kb_section",
+    "kb_chunk_text",
+    "match_reasons",
+    "layer_tags",
+    "raw_md_segment",
+    "status",
+    "selected_for_pack",
+)
+_LEGACY_CATALOG_FIELDS = {
+    "sku": frozenset(_SKU_CATALOG_FIELDS),
+    "matrix": frozenset({"matrix_md"}),
+    "record": frozenset(_RECORD_CATALOG_FIELDS),
+    "portrait": frozenset({"portrait_md"}),
+    "pack": frozenset({"pack_md", "dmp_tags"}),
+}
 _VARIABLE_PAIR_FIELDS = frozenset(
     ("trigger_scene", "pain_point", "pain_consequence")
 )
@@ -179,6 +213,17 @@ def _stable_json(value: Any) -> str:
     )
 
 
+def _stable_field_text(value: Any) -> str:
+    return value if isinstance(value, str) else _stable_json(value)
+
+
+def _stable_field_catalog(
+    values: Mapping[str, Any],
+    fields: Sequence[str],
+) -> dict[str, str]:
+    return {field: _stable_field_text(values.get(field)) for field in fields}
+
+
 def _lineage_failure(
     reason: str,
     *,
@@ -197,23 +242,7 @@ def _lineage_failure(
 
 
 def _stable_record(record: Mapping[str, Any]) -> dict[str, Any]:
-    fields = (
-        "id",
-        "audience_run_id",
-        "matrix_run_id",
-        "sku_id",
-        "ordinal",
-        "name",
-        "kb_doc",
-        "kb_section",
-        "kb_chunk_text",
-        "match_reasons",
-        "layer_tags",
-        "raw_md_segment",
-        "status",
-        "selected_for_pack",
-    )
-    return {field: record.get(field) for field in fields}
+    return {field: record.get(field) for field in _RECORD_CATALOG_FIELDS}
 
 
 async def load_planting_bridge_context(
@@ -476,13 +505,21 @@ async def load_planting_bridge_context(
         },
         "pack_calibration": pack_calibration,
         "eligible_evidence_catalog": {
-            "sku": _stable_json(sku_facts),
-            "matrix": matrix.get("matrix_md") or "",
-            "record": _stable_json(record_evidence),
-            "portrait": portrait.get("portrait_md") or "",
+            "sku": _stable_field_catalog(sku_facts, _SKU_CATALOG_FIELDS),
+            "matrix": {"matrix_md": matrix.get("matrix_md") or ""},
+            "record": _stable_field_catalog(
+                record_evidence,
+                _RECORD_CATALOG_FIELDS,
+            ),
+            "portrait": {"portrait_md": portrait.get("portrait_md") or ""},
         },
         "pack_calibration_catalog": (
-            _stable_json(pack_calibration) if pack_calibration is not None else ""
+            {
+                "pack_md": pack.get("pack_md") or "",
+                "dmp_tags": _stable_field_text(pack.get("dmp_tags")),
+            }
+            if pack is not None
+            else {}
         ),
     }
     return {
@@ -520,11 +557,49 @@ def _is_attribute_only_pain_point(value: str) -> bool:
     )
 
 
-def _catalog_text(evidence_catalog: Mapping[str, Any], source: str) -> str | None:
-    value = evidence_catalog.get(source)
-    if isinstance(value, str):
-        return value
-    return None
+def _normalized_meaningful_value(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFKC", value)
+        if unicodedata.category(character)[0] in {"L", "N"}
+    )
+
+
+def _catalog_has_content(
+    evidence_catalog: Mapping[str, Any],
+    source: str,
+) -> bool:
+    source_catalog = evidence_catalog.get(source)
+    if isinstance(source_catalog, str):
+        return bool(source_catalog.strip())
+    if isinstance(source_catalog, Mapping):
+        return any(
+            isinstance(value, str) and bool(value.strip())
+            for value in source_catalog.values()
+        )
+    return False
+
+
+def _catalog_field_text(
+    evidence_catalog: Mapping[str, Any],
+    source: str,
+    field: str,
+) -> tuple[str | None, bool]:
+    """Return exact field text and whether the claimed field is exposed."""
+
+    source_catalog = evidence_catalog.get(source)
+    if isinstance(source_catalog, Mapping):
+        if field not in source_catalog:
+            return None, False
+        value = source_catalog.get(field)
+        return (value if isinstance(value, str) else None), True
+    if isinstance(source_catalog, str):
+        if field not in _LEGACY_CATALOG_FIELDS.get(source, frozenset()):
+            return None, False
+        return source_catalog, True
+    return None, False
 
 
 def _allowed_source_label(allowed_sources: frozenset[str]) -> str:
@@ -588,16 +663,35 @@ def _validate_evidence_list(
                 errors.append(f"{prefix}.{key} must be non-empty evidence text")
                 missing_or_invalid.append(f"{prefix}.{key}")
 
+        evidence_field = entry.get("field")
         evidence_value = entry.get("value")
+        meaningful_value = _normalized_meaningful_value(evidence_value)
+        if _is_meaningful_text(evidence_value) and len(meaningful_value) < 2:
+            errors.append(
+                f"{prefix}.value must contain at least 2 meaningful characters"
+            )
+            missing_or_invalid.append(f"{prefix}.value")
+
         if (
             evidence_catalog is not None
             and source is not None
+            and _is_meaningful_text(evidence_field)
             and _is_meaningful_text(evidence_value)
         ):
-            source_text = _catalog_text(evidence_catalog, source)
-            if source_text is None or evidence_value not in source_text:
+            field_text, field_exists = _catalog_field_text(
+                evidence_catalog,
+                source,
+                evidence_field,
+            )
+            if not field_exists:
                 errors.append(
-                    f"{prefix}.value is not present in evidence_catalog[{source!r}]"
+                    f"{prefix}.field is not present in evidence_catalog[{source!r}]"
+                )
+                missing_or_invalid.append(f"{prefix}.field")
+            elif field_text is None or evidence_value not in field_text:
+                errors.append(
+                    f"{prefix}.value is not present in exact field "
+                    f"evidence_catalog[{source!r}][{evidence_field!r}]"
                 )
                 missing_or_invalid.append(f"{prefix}.value")
 
@@ -660,12 +754,10 @@ def validate_pain_solution_bridge(
         )
 
     if require_pack_evidence is None:
-        pack_catalog = (
-            _catalog_text(evidence_catalog, "pack")
-            if evidence_catalog is not None
-            else None
+        require_pack_evidence = bool(
+            evidence_catalog is not None
+            and _catalog_has_content(evidence_catalog, "pack")
         )
-        require_pack_evidence = bool(pack_catalog and pack_catalog.strip())
 
     errors: list[str] = []
     missing_or_invalid: list[str] = []

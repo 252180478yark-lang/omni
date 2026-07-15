@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -36,6 +37,9 @@ _SENTINELS = {
     "@@PORTRAIT_RECORD_EVIDENCE_JSON@@": "portrait_record_evidence",
     "@@PACK_CALIBRATION_JSON@@": "pack_calibration",
 }
+_SENTINEL_PATTERN = re.compile(
+    "|".join(re.escape(sentinel) for sentinel in _SENTINELS)
+)
 
 
 def _json_block(value: Any) -> str:
@@ -52,17 +56,27 @@ def _render_bridge_prompts(facts: Mapping[str, Any]) -> tuple[str, str]:
     """Load literal-brace-safe templates and replace unique sentinels."""
 
     system_prompt = prompts.load(_SYSTEM_PROMPT)
-    user_prompt = prompts.load(_USER_PROMPT)
-    for sentinel, facts_key in _SENTINELS.items():
-        user_prompt = user_prompt.replace(sentinel, _json_block(facts.get(facts_key)))
-
-    unresolved = [
-        sentinel
+    user_template = prompts.load(_USER_PROMPT)
+    system_hits = [sentinel for sentinel in _SENTINELS if sentinel in system_prompt]
+    bad_user_counts = {
+        sentinel: user_template.count(sentinel)
         for sentinel in _SENTINELS
-        if sentinel in system_prompt or sentinel in user_prompt
-    ]
-    if unresolved:
-        raise ValueError(f"unresolved prompt sentinels: {unresolved}")
+        if user_template.count(sentinel) != 1
+    }
+    if system_hits or bad_user_counts:
+        raise ValueError(
+            "prompt sentinel contract violated: "
+            f"system_hits={system_hits}, user_counts={bad_user_counts}"
+        )
+
+    replacements = {
+        sentinel: _json_block(facts.get(facts_key))
+        for sentinel, facts_key in _SENTINELS.items()
+    }
+    user_prompt = _SENTINEL_PATTERN.sub(
+        lambda match: replacements[match.group(0)],
+        user_template,
+    )
     return system_prompt, user_prompt
 
 
@@ -242,8 +256,8 @@ async def _generate_planting_pain_solution_bridge_impl(
         dict(copy.deepcopy(raw_catalog)) if isinstance(raw_catalog, Mapping) else {}
     )
     pack_catalog = facts.get("pack_calibration_catalog")
-    if isinstance(pack_catalog, str) and pack_catalog:
-        evidence_catalog["pack"] = pack_catalog
+    if isinstance(pack_catalog, Mapping) and pack_catalog:
+        evidence_catalog["pack"] = dict(copy.deepcopy(pack_catalog))
 
     validation = validate_bridge_pair(bridges, evidence_catalog=evidence_catalog)
     if not validation.get("ok"):

@@ -30,3 +30,4 @@
 7. pain_point 必须是人在具体情境里的阻碍，不能只写年龄、城市、收入、标签或产品属性。
 8. relevance_module 只能是 M1/M2；justification_module 只能是 M3-M9。
 9. 所有字符串必须具体且非空；没有证据时不要补写，必须让输出校验失败。
+10. 每条 evidence 的 field 必须逐字等于对应 source 区公开的字段键：sku 使用 SKU 字段名，matrix 只能使用 matrix_md，record 使用记录字段名，portrait 只能使用 portrait_md，pack 只能使用 pack_md 或 dmp_tags；value 必须来自该字段本身，不能跨字段借词。

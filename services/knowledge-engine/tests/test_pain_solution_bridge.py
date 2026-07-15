@@ -172,12 +172,12 @@ def _bridge(**overrides: object) -> dict[str, object]:
         "portrait_evidence": [
             {
                 "source": "portrait",
-                "field": "trigger_scenes",
+                "field": "portrait_md",
                 "value": "下班后给孩子做晚饭",
             }
         ],
         "pack_calibration_evidence": [
-            {"field": "city_tier", "value": "一二线城市"}
+            {"field": "pack_md", "value": "一二线城市"}
         ],
         "trigger_scene": "下班晚了，十分钟内要端出一盘孩子愿意吃的菜",
         "pain_point": "时间紧时，调味步骤多且味道容易失手",
@@ -313,17 +313,25 @@ def test_validate_bridge_pack_evidence_policy_tracks_real_pack_context() -> None
     assert validate_pain_solution_bridge(
         no_pack,
         evidence_catalog={
-            "portrait": no_pack["portrait_evidence"][0]["value"],
-            "sku": no_pack["product_evidence"][0]["value"],
+            "portrait": {
+                "portrait_md": no_pack["portrait_evidence"][0]["value"]
+            },
+            "sku": {
+                "owner_selling_points": no_pack["product_evidence"][0]["value"]
+            },
         },
     )["ok"] is True
 
     packed = validate_pain_solution_bridge(
         no_pack,
         evidence_catalog={
-            "portrait": no_pack["portrait_evidence"][0]["value"],
-            "sku": no_pack["product_evidence"][0]["value"],
-            "pack": "pack calibration exists",
+            "portrait": {
+                "portrait_md": no_pack["portrait_evidence"][0]["value"]
+            },
+            "sku": {
+                "owner_selling_points": no_pack["product_evidence"][0]["value"]
+            },
+            "pack": {"pack_md": "pack calibration exists"},
         },
     )
     assert packed["ok"] is False
@@ -333,8 +341,12 @@ def test_validate_bridge_pack_evidence_policy_tracks_real_pack_context() -> None
     ungrounded = validate_pain_solution_bridge(
         fabricated,
         evidence_catalog={
-            "portrait": fabricated["portrait_evidence"][0]["value"],
-            "sku": fabricated["product_evidence"][0]["value"],
+            "portrait": {
+                "portrait_md": fabricated["portrait_evidence"][0]["value"]
+            },
+            "sku": {
+                "owner_selling_points": fabricated["product_evidence"][0]["value"]
+            },
         },
     )
     assert ungrounded["ok"] is False
@@ -462,7 +474,7 @@ def test_validate_bridge_rejects_slogan_equality_after_normalization() -> None:
     assert any("product_action" in error and "visible_result" in error for error in result["errors"])
 
 
-def test_evidence_catalog_matches_values_by_source_and_pack_is_separate() -> None:
+def test_legacy_flat_evidence_catalog_matches_known_field_labels() -> None:
     catalog = {
         "portrait": "典型触发场景：下班后给孩子做晚饭。",
         "record": "补充记录。",
@@ -481,13 +493,123 @@ def test_evidence_catalog_matches_values_by_source_and_pack_is_separate() -> Non
     assert any("pack_calibration_evidence" in error and "catalog" in error for error in result["errors"])
 
 
-def test_evidence_catalog_reports_each_unmatched_source_value() -> None:
+def test_legacy_flat_evidence_catalog_reports_each_unmatched_value() -> None:
     catalog = {"portrait": "别的场景", "pack": "别的层级", "sku": "别的卖点"}
 
     result = validate_pain_solution_bridge(_bridge(), catalog)
 
     assert result["ok"] is False
     assert len([error for error in result["errors"] if "catalog" in error]) == 3
+
+
+def test_legacy_flat_catalog_rejects_unknown_claimed_field() -> None:
+    bridge = _bridge(
+        portrait_evidence=[
+            {
+                "source": "portrait",
+                "field": "invented_field",
+                "value": "weeknight dinner",
+            }
+        ]
+    )
+    result = validate_pain_solution_bridge(
+        bridge,
+        {
+            "portrait": "weeknight dinner",
+            "pack": bridge["pack_calibration_evidence"][0]["value"],
+            "sku": bridge["product_evidence"][0]["value"],
+        },
+    )
+
+    assert result["ok"] is False
+    assert any("field" in error and "not present" in error for error in result["errors"])
+
+
+@pytest.mark.parametrize("bad_value", ["a", "鲜", "!!!", "\u200b"])
+def test_evidence_value_requires_two_meaningful_characters(bad_value: str) -> None:
+    bridge = _bridge(
+        portrait_evidence=[
+            {"source": "portrait", "field": "portrait_md", "value": bad_value}
+        ]
+    )
+    result = validate_pain_solution_bridge(
+        bridge,
+        {
+            "portrait": {"portrait_md": f"prefix {bad_value} suffix"},
+            "pack": {
+                "pack_md": bridge["pack_calibration_evidence"][0]["value"]
+            },
+            "sku": {
+                "owner_selling_points": bridge["product_evidence"][0]["value"]
+            },
+        },
+    )
+
+    assert result["ok"] is False
+    assert any("meaningful" in error for error in result["errors"])
+
+
+@pytest.mark.parametrize("good_value", ["鲜味", "5度", "10ml"])
+def test_evidence_value_allows_two_plus_cjk_or_numeric_unit_text(
+    good_value: str,
+) -> None:
+    bridge = _bridge(
+        portrait_evidence=[
+            {"source": "portrait", "field": "portrait_md", "value": good_value}
+        ]
+    )
+    result = validate_pain_solution_bridge(
+        bridge,
+        {
+            "portrait": {"portrait_md": f"prefix {good_value} suffix"},
+            "pack": {
+                "pack_md": bridge["pack_calibration_evidence"][0]["value"]
+            },
+            "sku": {
+                "owner_selling_points": bridge["product_evidence"][0]["value"]
+            },
+        },
+    )
+
+    assert result["ok"] is True
+
+
+def test_evidence_field_must_exist_and_value_must_match_that_exact_field() -> None:
+    bridge = _bridge(
+        portrait_evidence=[
+            {
+                "source": "portrait",
+                "field": "missing_field",
+                "value": "weeknight dinner",
+            }
+        ]
+    )
+    base_catalog = {
+        "pack": {"pack_md": bridge["pack_calibration_evidence"][0]["value"]},
+        "sku": {
+            "owner_selling_points": bridge["product_evidence"][0]["value"]
+        },
+    }
+    missing_field = validate_pain_solution_bridge(
+        bridge,
+        {**base_catalog, "portrait": {"portrait_md": "weeknight dinner"}},
+    )
+    assert missing_field["ok"] is False
+    assert any("field" in error and "not present" in error for error in missing_field["errors"])
+
+    bridge["portrait_evidence"][0]["field"] = "portrait_md"
+    wrong_field = validate_pain_solution_bridge(
+        bridge,
+        {
+            **base_catalog,
+            "portrait": {
+                "portrait_md": "different content",
+                "other_field": "weeknight dinner",
+            },
+        },
+    )
+    assert wrong_field["ok"] is False
+    assert any("exact field" in error for error in wrong_field["errors"])
 
 
 def test_validate_pair_accepts_two_bridges_with_only_pain_path_variation() -> None:
@@ -639,6 +761,13 @@ def _stable_json(value: object) -> str:
     )
 
 
+def _expected_field_catalog(values: dict[str, object]) -> dict[str, str]:
+    return {
+        field: value if isinstance(value, str) else _stable_json(value)
+        for field, value in values.items()
+    }
+
+
 @pytest.mark.asyncio
 async def test_load_context_without_pack_returns_stable_facts_and_hash(
     monkeypatch: pytest.MonkeyPatch,
@@ -684,12 +813,16 @@ async def test_load_context_without_pack_returns_stable_facts_and_hash(
         },
         "pack_calibration": None,
         "eligible_evidence_catalog": {
-            "sku": _stable_json(expected_sku),
-            "matrix": "matrix evidence: organic brew and stable flavor",
-            "record": _stable_json(expected_record),
-            "portrait": "portrait evidence: rushed weeknight family dinner",
+            "sku": _expected_field_catalog(expected_sku),
+            "matrix": {
+                "matrix_md": "matrix evidence: organic brew and stable flavor"
+            },
+            "record": _expected_field_catalog(expected_record),
+            "portrait": {
+                "portrait_md": "portrait evidence: rushed weeknight family dinner"
+            },
         },
-        "pack_calibration_catalog": "",
+        "pack_calibration_catalog": {},
     }
     assert result == {
         "ok": True,
@@ -730,9 +863,10 @@ async def test_load_context_with_pack_keeps_calibration_outside_eligible_catalog
         "pack_md": "pack calibration: high-value city users",
         "dmp_tags": ["high consumption", "tier 1-2 city"],
     }
-    assert facts["pack_calibration_catalog"] == _stable_json(
-        facts["pack_calibration"]
-    )
+    assert facts["pack_calibration_catalog"] == {
+        "pack_md": "pack calibration: high-value city users",
+        "dmp_tags": _stable_json(["high consumption", "tier 1-2 city"]),
+    }
     assert set(facts["eligible_evidence_catalog"]) == {
         "sku",
         "matrix",
@@ -1102,12 +1236,12 @@ def _tool_context() -> dict[str, object]:
         },
         "pack_calibration": {"pack_md": pack_value},
         "eligible_evidence_catalog": {
-            "sku": str(product_value),
-            "matrix": str(product_value),
-            "record": str(portrait_value),
-            "portrait": str(portrait_value),
+            "sku": {"owner_selling_points": str(product_value)},
+            "matrix": {"matrix_md": str(product_value)},
+            "record": {"name": str(first["audience_segment"])},
+            "portrait": {"portrait_md": str(portrait_value)},
         },
-        "pack_calibration_catalog": str(pack_value),
+        "pack_calibration_catalog": {"pack_md": str(pack_value)},
     }
     return {
         "ok": True,
@@ -1120,7 +1254,7 @@ def _tool_context_without_pack() -> dict[str, object]:
     context = copy.deepcopy(_tool_context())
     facts = context["facts"]
     facts["pack_calibration"] = None
-    facts["pack_calibration_catalog"] = ""
+    facts["pack_calibration_catalog"] = {}
     context["upstream_fact_hash"] = canonical_upstream_fact_hash(facts)
     return context
 
@@ -1404,6 +1538,63 @@ async def test_bridge_tool_fails_closed_on_invalid_model_payloads(
     assert result["trace"]["params"]["upstream_fact_hash"] == _tool_context()["upstream_fact_hash"]
 
 
+def test_bridge_prompt_replacement_is_single_pass_and_preserves_injected_sentinels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    planting = _planting_tool_module()
+    sentinels = tuple(planting._SENTINELS)
+    names = tuple(planting._SENTINELS.values())
+    user_template = "\n".join(
+        f"{name}_BEGIN\n{sentinel}\n{name}_END"
+        for sentinel, name in planting._SENTINELS.items()
+    )
+
+    def fake_load(name: str) -> str:
+        if name.endswith(".system"):
+            return "system prompt with literal JSON braces: {example}"
+        return user_template
+
+    monkeypatch.setattr(planting.prompts, "load", fake_load)
+    marker_text = " | ".join(sentinels)
+    facts = {name: {"payload": f"{name}: {marker_text}"} for name in names}
+
+    _, rendered = planting._render_bridge_prompts(facts)
+
+    for name in names:
+        block = rendered.split(f"{name}_BEGIN\n", 1)[1].split(
+            f"\n{name}_END", 1
+        )[0]
+        parsed = json.loads(block)
+        assert parsed == {"payload": f"{name}: {marker_text}"}
+
+
+@pytest.mark.parametrize("case", ["missing", "duplicate", "system"])
+def test_bridge_prompt_requires_each_sentinel_exactly_once_in_user_template(
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    planting = _planting_tool_module()
+    sentinels = tuple(planting._SENTINELS)
+    user_template = "\n".join(sentinels)
+    system_template = "system"
+    if case == "missing":
+        user_template = user_template.replace(sentinels[0], "", 1)
+    elif case == "duplicate":
+        user_template += f"\n{sentinels[0]}"
+    else:
+        system_template += f"\n{sentinels[0]}"
+
+    def fake_load(name: str) -> str:
+        return system_template if name.endswith(".system") else user_template
+
+    monkeypatch.setattr(planting.prompts, "load", fake_load)
+
+    with pytest.raises(ValueError, match="sentinel"):
+        planting._render_bridge_prompts(
+            {facts_key: {"value": "grounded"} for facts_key in planting._SENTINELS.values()}
+        )
+
+
 def test_bridge_prompt_rendering_uses_safe_sentinels_and_all_upstream_sections() -> None:
     planting = _planting_tool_module()
     facts = _tool_context()["facts"]
@@ -1411,7 +1602,6 @@ def test_bridge_prompt_rendering_uses_safe_sentinels_and_all_upstream_sections()
     system_prompt, user_prompt = planting._render_bridge_prompts(facts)
 
     rendered = system_prompt + "\n" + user_prompt
-    assert "@@" not in rendered
     assert "{" in rendered and "}" in rendered
     assert SKU_ID in rendered
     assert str(facts["matrix_evidence"]["matrix_md"]) in rendered
