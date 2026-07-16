@@ -6,6 +6,7 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 
 PRODUCT_REF_ERROR = "product_ref_invalid_or_mismatch"
@@ -19,6 +20,18 @@ class ReferenceManifestError(ValueError):
         self.code = code
         self.detail = detail or code
         super().__init__(f"{code}: {self.detail}")
+
+
+def _canonical_arm_id(value: Any) -> str:
+    """Canonicalize valid UUID spellings while preserving legacy opaque IDs."""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return raw
+    try:
+        return str(UUID(raw))
+    except (AttributeError, ValueError):
+        return raw
 
 
 def resolve_reference_path(value: str | Path) -> Path:
@@ -104,11 +117,14 @@ def build_reference_manifest(
     complete request.
     """
 
+    canonical_arm_id = _canonical_arm_id(arm_id)
+    if not canonical_arm_id:
+        raise ReferenceManifestError(MANIFEST_ERROR, "experiment arm id missing")
     items: list[dict[str, str]] = []
     for asset in face_assets:
         if not isinstance(asset, Mapping):
             continue
-        if asset.get("experiment_arm_id") != arm_id:
+        if _canonical_arm_id(asset.get("experiment_arm_id")) != canonical_arm_id:
             continue
         if asset.get("asset_type") != "character_sheet" or asset.get("sku_id") != sku_id:
             raise ReferenceManifestError(MANIFEST_ERROR, "invalid character asset ownership")
@@ -136,7 +152,7 @@ def build_reference_manifest(
 
     return {
         "sku_id": sku_id,
-        "experiment_arm_id": arm_id,
+        "experiment_arm_id": canonical_arm_id,
         "provider": provider,
         "model": model,
         "items": items,

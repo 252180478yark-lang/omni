@@ -167,6 +167,25 @@ def test_character_asset_from_other_arm_is_excluded(tmp_path: Path) -> None:
     assert [item["id"] for item in manifest["items"]] == ["accepted"]
 
 
+def test_formal_manifest_rejects_missing_arm_id() -> None:
+    from app.services.media_reference_manifest import (
+        ReferenceManifestError,
+        build_reference_manifest,
+    )
+
+    with pytest.raises(ReferenceManifestError) as exc_info:
+        build_reference_manifest(
+            sku_id="SKU-A",
+            arm_id="",
+            face_assets=[],
+            product_assets=[],
+            provider="seedance",
+            model="seedance-2-0",
+        )
+
+    assert exc_info.value.code == "reference_manifest_mismatch"
+
+
 @pytest.mark.parametrize(
     "value",
     [

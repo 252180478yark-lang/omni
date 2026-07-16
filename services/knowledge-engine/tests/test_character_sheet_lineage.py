@@ -159,6 +159,8 @@ async def _seed_mixed_sheets(
             "published",
             "archived",
             "blank",
+            "tab_only",
+            "newline_only",
             "wrong_arm",
             "legacy",
         )
@@ -176,6 +178,8 @@ async def _seed_mixed_sheets(
         ("published", "published", "published", graph["arm_a"], "2026-01-02T00:00:00Z"),
         ("archived", "archived", "archived", graph["arm_a"], "2026-01-05T00:00:00Z"),
         ("blank", "   ", "draft", graph["arm_a"], "2026-01-05T00:00:00Z"),
+        ("tab_only", "\t", "draft", graph["arm_a"], "2026-01-05T00:00:00Z"),
+        ("newline_only", "\n", "draft", graph["arm_a"], "2026-01-05T00:00:00Z"),
         ("wrong_arm", "wrong-arm", "draft", graph["arm_b"], "2026-01-05T00:00:00Z"),
         ("legacy", "legacy", "draft", None, "2026-01-05T00:00:00Z"),
     ]

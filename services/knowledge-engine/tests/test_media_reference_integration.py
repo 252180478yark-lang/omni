@@ -582,6 +582,39 @@ async def test_formal_video_sends_current_sku_and_arm_bound_manifest(
 
 
 @pytest.mark.asyncio
+async def test_formal_video_keeps_face_refs_for_equivalent_uuid_arm_text(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    canonical_arm = "550e8400-e29b-41d4-a716-446655440000"
+    equivalent_input = "{550E8400-E29B-41D4-A716-446655440000}"
+    product_path = tmp_path / "product.png"
+    face_path = tmp_path / "face.png"
+    product_path.write_bytes(b"product")
+    face_path.write_bytes(b"face")
+    provider_calls = await _install_video_fakes(
+        monkeypatch,
+        _formal_script(),
+        [_product_asset("product-1", product_path)],
+        [_face_asset("face-1", face_path, arm_id=canonical_arm)],
+    )
+
+    result = await media.generate_video_segments.__wrapped__(
+        "script-a",
+        **_video_kwargs(
+            experiment_arm_id=equivalent_input,
+            product_ref_asset_ids=["product-1"],
+        ),
+    )
+
+    assert result["ok"] is True
+    assert len(provider_calls) == 1
+    assert [
+        item["type"] for item in provider_calls[0]["prepared_reference_images"]
+    ] == ["face", "product"]
+
+
+@pytest.mark.asyncio
 async def test_formal_video_manifest_mismatch_stops_before_provider(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

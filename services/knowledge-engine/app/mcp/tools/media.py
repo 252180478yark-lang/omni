@@ -1376,11 +1376,10 @@ async def generate_video_segments(
         )
         if not supports_bound_refs or formal_has_i2v:
             return {"ok": False, "error": "reference_manifest_mismatch"}
-        formal_face_assets = [
-            asset
-            for asset in character_sheets_assets
-            if asset.get("experiment_arm_id") == experiment_arm_id
-        ]
+        # The query already compares experiment_arm_id as PostgreSQL UUID.  Rechecking
+        # its returned canonical text against the caller's equivalent UUID spelling
+        # (uppercase/braced forms are valid) would incorrectly discard matching refs.
+        formal_face_assets = character_sheets_assets
         try:
             formal_expected_manifest = build_reference_manifest(
                 sku_id=script["sku_id"],
