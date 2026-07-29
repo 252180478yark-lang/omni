@@ -11,7 +11,9 @@ class GateRow(BaseModel):
     """mcp.human_gates 一行（带 join 出来的 tool_name / args 摘要）。"""
     id: str
     short_id: str  # id[:8] 给前端按钮当展示
-    tool_call_id: str
+    tool_call_id: str | None = None
+    operation_id: str | None = None
+    operation_state: str | None = None
     tool_name: str | None = None
     summary: str
     args_preview: dict[str, Any] | None = None

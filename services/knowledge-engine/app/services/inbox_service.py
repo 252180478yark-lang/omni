@@ -15,23 +15,78 @@ from typing import Any
 
 from app.database import get_pool
 from app.mcp import human_gate
+from app.schemas.approval_operations import ApprovalDecision
+from app.services.approval_operations import (
+    ApprovalOperationException,
+    decide_gate_if_operation,
+    redact_payload,
+    sanitize_text,
+    settle_expired_operations,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _missing_approval_schema(exc: Exception) -> bool:
+    return getattr(exc, "sqlstate", None) in {"42P01", "42703"}
+
+
+def _inbox_unavailable(exc: Exception) -> ApprovalOperationException:
+    logger.error(
+        "approval inbox unavailable exception_type=%s sqlstate=%s",
+        type(exc).__name__,
+        getattr(exc, "sqlstate", None),
+    )
+    return ApprovalOperationException(
+        "approval_inbox_unavailable",
+        "Approval inbox data is temporarily unavailable.",
+        status=503,
+        retryable=True,
+    )
 
 
 async def list_pending() -> dict[str, Any]:
     """列出未决定的 gate（join mcp.tool_calls 拿 tool_name / args 摘要）。"""
     pool = get_pool()
-    rows = await pool.fetch(
-        """
-        SELECT g.id, g.tool_call_id, g.summary, g.timeout_seconds, g.created_at,
-               t.tool_name, t.args
-          FROM mcp.human_gates g
-          JOIN mcp.tool_calls t ON t.id = g.tool_call_id
-         WHERE g.decision IS NULL
-         ORDER BY g.created_at ASC
-        """
-    )
+    try:
+        await settle_expired_operations()
+        rows = await pool.fetch(
+            """
+            SELECT g.id, g.tool_call_id, g.operation_id, g.summary,
+                   g.timeout_seconds, g.created_at,
+                   COALESCE(t.tool_name, o.handler) AS tool_name,
+                   COALESCE(t.args, o.redacted_payload) AS args,
+                   o.state AS operation_state
+              FROM mcp.human_gates g
+              LEFT JOIN mcp.tool_calls t ON t.id = g.tool_call_id
+              LEFT JOIN mcp.approval_operations o ON o.id = g.operation_id
+             WHERE g.decision IS NULL
+             ORDER BY g.created_at ASC
+            """
+        )
+    except Exception as exc:
+        if not _missing_approval_schema(exc):
+            raise _inbox_unavailable(exc) from exc
+        # Compatibility for a runtime that has not yet consumed migration 098.
+        # It is intentionally read-only and must not attempt startup DDL.
+        logger.warning(
+            "approval operation schema unavailable; listing legacy gates only sqlstate=%s",
+            getattr(exc, "sqlstate", None),
+        )
+        try:
+            rows = await pool.fetch(
+                """
+                SELECT g.id, g.tool_call_id, NULL::uuid AS operation_id, g.summary,
+                       g.timeout_seconds, g.created_at, t.tool_name, t.args,
+                       NULL::text AS operation_state
+                  FROM mcp.human_gates g
+                  JOIN mcp.tool_calls t ON t.id = g.tool_call_id
+                 WHERE g.decision IS NULL
+                 ORDER BY g.created_at ASC
+                """
+            )
+        except Exception as fallback_exc:
+            raise _inbox_unavailable(fallback_exc) from fallback_exc
     now = datetime.now(timezone.utc)
     data = []
     for r in rows:
@@ -44,10 +99,12 @@ async def list_pending() -> dict[str, Any]:
             {
                 "id": gate_id,
                 "short_id": gate_id[:8],
-                "tool_call_id": str(r["tool_call_id"]),
-                "tool_name": r["tool_name"],
-                "summary": r["summary"],
-                "args_preview": r["args"] if isinstance(r["args"], dict) else None,
+                "tool_call_id": str(r["tool_call_id"]) if r["tool_call_id"] else None,
+                "operation_id": str(r["operation_id"]) if r["operation_id"] else None,
+                "operation_state": r["operation_state"],
+                "tool_name": sanitize_text(str(r["tool_name"] or "unknown")),
+                "summary": sanitize_text(str(r["summary"] or "")),
+                "args_preview": redact_payload(r["args"]) if isinstance(r["args"], dict) else None,
                 "timeout_seconds": int(r["timeout_seconds"]),
                 "created_at": r["created_at"],
                 "age_seconds": age,
@@ -112,13 +169,29 @@ async def _resolve_gate_id(short_or_full: str) -> dict[str, Any]:
     }
 
 
-async def approve_gate(gate_id: str, note: str = "") -> dict[str, Any]:
+async def approve_gate(gate_id: str, note: str = "", *, actor_id: str) -> dict[str, Any]:
     """批一条 gate。返回 {ok:true, result:{id, note}} 或 {ok:false, error, hint}."""
     resolved = await _resolve_gate_id(gate_id)
     if not resolved.get("ok"):
         return resolved
     full_id = resolved["id"]
-    success = await human_gate.approve(full_id, note)
+    note = sanitize_text(note)
+    operation = await decide_gate_if_operation(
+        full_id, ApprovalDecision.APPROVED, note, actor_id=actor_id
+    )
+    if operation is not None:
+        return {
+            "ok": True,
+            "result": {
+                "id": full_id,
+                "operation_id": operation.operation_id,
+                "decision": operation.decision.value if operation.decision else None,
+                "state": operation.state.value,
+                "note": operation.decision_note,
+                "idempotent": True,
+            },
+        }
+    success = await human_gate.approve(full_id, note, actor_id=actor_id)
     if not success:
         return {
             "ok": False,
@@ -131,13 +204,29 @@ async def approve_gate(gate_id: str, note: str = "") -> dict[str, Any]:
     }
 
 
-async def reject_gate(gate_id: str, note: str = "") -> dict[str, Any]:
+async def reject_gate(gate_id: str, note: str = "", *, actor_id: str) -> dict[str, Any]:
     """驳一条 gate。同 approve_gate 错误格式。"""
     resolved = await _resolve_gate_id(gate_id)
     if not resolved.get("ok"):
         return resolved
     full_id = resolved["id"]
-    success = await human_gate.reject(full_id, note)
+    note = sanitize_text(note)
+    operation = await decide_gate_if_operation(
+        full_id, ApprovalDecision.REJECTED, note, actor_id=actor_id
+    )
+    if operation is not None:
+        return {
+            "ok": True,
+            "result": {
+                "id": full_id,
+                "operation_id": operation.operation_id,
+                "decision": operation.decision.value if operation.decision else None,
+                "state": operation.state.value,
+                "note": operation.decision_note,
+                "idempotent": True,
+            },
+        }
+    success = await human_gate.reject(full_id, note, actor_id=actor_id)
     if not success:
         return {
             "ok": False,

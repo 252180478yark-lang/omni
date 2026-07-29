@@ -12,8 +12,13 @@ RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -e .
 
 FROM python:3.11-slim AS runtime
 
+ARG OMNI_BUILD_COMMIT=unknown
+ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
+
 WORKDIR /app
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
+    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
 
 RUN useradd -m -u 10001 appuser
 COPY --from=builder /usr/local /usr/local

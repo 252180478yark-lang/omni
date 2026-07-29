@@ -10,11 +10,15 @@ authority for delivery.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Sequence
 
 try:
@@ -31,6 +35,9 @@ CRITICAL_ASSETS = (
     "scripts/check_agent_policy.py",
     "scripts/check_feature_contracts.py",
     "scripts/check_development_readiness.py",
+    "scripts/development_policy.py",
+    "scripts/generate_implementation_status.py",
+    "scripts/workspace_ownership.py",
     "config/runtime-manifest.yaml",
     "scripts/runtime_guard.py",
     ".github/workflows/ci.yml",
@@ -39,6 +46,25 @@ CRITICAL_ASSETS = (
 
 class ReadinessInputError(ValueError):
     """The checkout cannot be inspected deterministically."""
+
+
+def hook_trust_facts(root: Path) -> dict[str, Any]:
+    """Report hook configuration facts without inventing host-side user trust."""
+
+    path = root / ".codex" / "hooks.json"
+    try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+    except OSError:
+        digest = None
+    return {
+        "status": "review_required",
+        "user_confirmation": "unknown",
+        "config_present": path.is_file(),
+        "config_sha256": digest,
+        "confirmation_surface": "/hooks",
+        "reason": "repository hook configuration does not prove current-user host trust",
+        "auto_inference_allowed": False,
+    }
 
 
 @dataclass(frozen=True)
@@ -252,42 +278,25 @@ def contract_patterns_overlap(left: str, right: str) -> bool:
     child path even when their declarations are not textually identical.
     """
 
-    left_tokens = _glob_tokens(left)
-    right_tokens = _glob_tokens(right)
-    pending = [(0, 0)]
-    visited: set[tuple[int, int]] = set()
-    repeat_kinds = {"many_any", "many_segment"}
+    return bool(_load_development_policy().glob_patterns_overlap(left, right))
 
-    while pending:
-        left_index, right_index = pending.pop()
-        state = (left_index, right_index)
-        if state in visited:
-            continue
-        visited.add(state)
-        if left_index == len(left_tokens) and right_index == len(right_tokens):
-            return True
 
-        left_token = left_tokens[left_index] if left_index < len(left_tokens) else None
-        right_token = right_tokens[right_index] if right_index < len(right_tokens) else None
-        if left_token is not None and left_token[0] in repeat_kinds:
-            pending.append((left_index + 1, right_index))
-        if right_token is not None and right_token[0] in repeat_kinds:
-            pending.append((left_index, right_index + 1))
-        if (
-            left_token is None
-            or right_token is None
-            or not _tokens_can_share_character(left_token, right_token)
-        ):
-            continue
-        next_left = left_index if left_token[0] in repeat_kinds else left_index + 1
-        next_right = right_index if right_token[0] in repeat_kinds else right_index + 1
-        if (next_left, next_right) != state:
-            pending.append((next_left, next_right))
-    return False
+@lru_cache(maxsize=1)
+def _load_development_policy() -> ModuleType:
+    path = Path(__file__).resolve().with_name("development_policy.py")
+    spec = importlib.util.spec_from_file_location("omni_development_policy_readiness", path)
+    if spec is None or spec.loader is None:
+        raise ReadinessInputError(f"cannot load development policy: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def contract_facts(
     root: Path,
+    *,
+    delivered_contract_ids: Sequence[str] = (),
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str]]:
     active: list[dict[str, Any]] = []
     all_contracts: list[dict[str, Any]] = []
@@ -300,6 +309,7 @@ def contract_facts(
     if not change_root.is_dir():
         return active, all_contracts, [], errors
 
+    delivered = set(delivered_contract_ids)
     for impact_path in sorted(change_root.glob("*/impact.yaml")):
         impact, load_error = _load_impact(impact_path)
         if impact is None:
@@ -325,12 +335,13 @@ def contract_facts(
         item = {
             "change_id": change_id,
             "state": state,
+            "effective_state": "COMPLETE" if change_id in delivered else state,
             "schema_version": impact.get("schema_version"),
             "risk_level": risk_level,
             "path": impact_path.relative_to(root).as_posix(),
         }
         all_contracts.append(item)
-        if state != "COMPLETE":
+        if state != "COMPLETE" and change_id not in delivered:
             active.append(item)
             patterns: set[str] = set()
             for planned in impact.get("planned_changes") or []:
@@ -398,15 +409,63 @@ def runtime_facts(root: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def build_report(root: Path, *, include_runtime: bool = False) -> dict[str, Any]:
+def _load_workspace_ownership(root: Path) -> ModuleType:
+    path = root / "scripts" / "workspace_ownership.py"
+    if not path.is_file():
+        raise ReadinessInputError(f"workspace ownership tool does not exist: {path}")
+    spec = importlib.util.spec_from_file_location("omni_workspace_ownership_readiness", path)
+    if spec is None or spec.loader is None:
+        raise ReadinessInputError(f"cannot load workspace ownership tool: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def build_report(
+    root: Path,
+    *,
+    include_runtime: bool = False,
+    attestation_paths: Sequence[Path] = (),
+) -> dict[str, Any]:
     head = _run(["git", "rev-parse", "HEAD"], cwd=root, check=True).stdout.strip()
     branch_result = _run(["git", "branch", "--show-current"], cwd=root)
     branch = branch_result.stdout.strip() or "DETACHED"
     assets = asset_facts(root)
     status = git_status_facts(root)
-    active, contracts, overlaps, contract_errors = contract_facts(root)
+    ownership_module = _load_workspace_ownership(root)
+    ownership_error: str | None = None
+    try:
+        ownership = ownership_module.inventory_workspace(
+            root,
+            include_primary=True,
+            attestation_paths=attestation_paths,
+            secret_scope="tracked",
+        )
+    except ValueError as exc:
+        # SessionStart is an advisory surface.  Preserve a malformed ownership
+        # input as explicit unknown evidence so contract_facts can still report
+        # the precise invalid contract instead of crashing before the report.
+        ownership_error = str(exc)
+        ownership = {
+            "status": "unknown",
+            "counts": {},
+            "delivered_contracts": [],
+            "secret_scan": {"status": "unknown", "finding_count": 0},
+            "errors": [ownership_error],
+        }
+    delivered_ids = [
+        str(item.get("change_id"))
+        for item in ownership.get("delivered_contracts", [])
+        if isinstance(item, dict) and item.get("change_id")
+    ]
+    active, contracts, overlaps, contract_errors = contract_facts(
+        root,
+        delivered_contract_ids=delivered_ids,
+    )
     latest_prd = latest_ready_prd(root)
     runtime = runtime_facts(root) if include_runtime else None
+    hook_trust = hook_trust_facts(root)
 
     missing = [fact.path for fact in assets if not fact.worktree]
     not_delivered = [
@@ -421,6 +480,19 @@ def build_report(root: Path, *, include_runtime: bool = False) -> dict[str, Any]
         warnings.append("active contracts declare overlapping path scopes")
     if contract_errors:
         warnings.append("one or more contracts have unknown or invalid state")
+    if ownership_error:
+        warnings.append("workspace ownership inventory is unavailable")
+    ownership_counts = ownership.get("counts", {})
+    if any(
+        ownership_counts.get(key)
+        for key in ("conflict", "scope_conflict", "lease_conflict", "unassigned")
+    ):
+        warnings.append("dirty linked-worktree paths have conflicting or missing ownership")
+    secret_scan = ownership.get("secret_scan", {})
+    if secret_scan.get("status") != "passed":
+        warnings.append("tracked-baseline secret scan found redacted candidate(s)")
+    if hook_trust["status"] != "confirmed":
+        warnings.append("current-user hook trust requires explicit review in /hooks")
     runtime_issues: list[Any] = []
     if isinstance(runtime, dict):
         candidate = runtime.get("blocking_issues", runtime.get("issues", []))
@@ -475,6 +547,20 @@ def build_report(root: Path, *, include_runtime: bool = False) -> dict[str, Any]
             "contracts": contracts_status,
             "runtime": runtime_status,
             "prd": "ready" if latest_prd is not None else "not_found",
+            "ownership": (
+                "unknown"
+                if ownership_error
+                else "conflict"
+                if any(
+                    ownership_counts.get(key)
+                    for key in ("conflict", "scope_conflict", "lease_conflict")
+                )
+                else "unassigned"
+                if ownership_counts.get("unassigned")
+                else "clear"
+            ),
+            "secret_scan": secret_scan.get("status", "unknown"),
+            "hook_trust": hook_trust["status"],
         },
         "repository": {
             "root": str(root),
@@ -491,6 +577,8 @@ def build_report(root: Path, *, include_runtime: bool = False) -> dict[str, Any]
         "contract_errors": contract_errors,
         "latest_ready_prd": latest_prd,
         "runtime": runtime,
+        "ownership": ownership,
+        "hook_trust": hook_trust,
         "warnings": warnings,
     }
 
@@ -506,6 +594,7 @@ def render_context(report: dict[str, Any]) -> str:
         f"critical_assets={report['checks']['critical_assets']} "
         f"contracts={report['checks']['contracts']} "
         f"runtime={report['checks']['runtime']} prd={report['checks']['prd']}",
+        f"- hook_trust={report['checks']['hook_trust']}（仓库文件不等于当前用户已信任；请在 /hooks 确认）",
         "- Git: "
         f"expanded={git_status['expanded_entries']} staged={git_status['staged_entries']} "
         f"unstaged={git_status['unstaged_entries']} untracked={git_status['untracked_entries']}",
@@ -536,6 +625,19 @@ def render_context(report: dict[str, Any]) -> str:
         issues = runtime.get("blocking_issues", runtime.get("issues", []))
         if isinstance(issues, list) and issues:
             lines.append(f"- 运行资源冲突: {len(issues)} 项；先查看 runtime_guard audit。")
+    ownership = report.get("ownership") or {}
+    counts = ownership.get("counts") or {}
+    lines.append(
+        "- 路径归属: "
+        f"active={counts.get('active_change', 0)} preserved_external_user={counts.get('preserved_external_user', 0)} "
+        f"unassigned={counts.get('unassigned', 0)} conflict={counts.get('conflict', 0)} "
+        f"archive_candidate={counts.get('archive_candidate', 0)}"
+    )
+    secret_scan = ownership.get("secret_scan") or {}
+    lines.append(
+        f"- Secret scan({secret_scan.get('scope', 'changed')}): {secret_scan.get('status', 'unknown')} "
+        f"findings={secret_scan.get('finding_count', 0)}（仅 path/rule/fingerprint）"
+    )
     lines.extend(
         [
             "- 开发前先读 READY PRD 与实施进度；按 R0/R1/R2/R3 选择流程。",
@@ -551,6 +653,13 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true", help="emit the complete JSON report")
     parser.add_argument("--hook", action="store_true", help="emit SessionStart hook JSON")
     parser.add_argument("--runtime", action="store_true", help="include read-only Docker runtime audit")
+    parser.add_argument(
+        "--attestation",
+        type=Path,
+        action="append",
+        default=[],
+        help="external delivery receipt; shared Git common-dir cache is also consulted",
+    )
     parser.add_argument(
         "--strict-critical-assets",
         "--strict",
@@ -573,7 +682,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         root = repository_root(args.root)
-        report = build_report(root, include_runtime=args.runtime)
+        report = build_report(
+            root,
+            include_runtime=args.runtime,
+            attestation_paths=args.attestation,
+        )
     except ReadinessInputError as exc:
         if args.hook:
             print(

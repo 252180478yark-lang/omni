@@ -1,4 +1,4 @@
-import { serviceBase } from '../../../_shared'
+import { approvalServiceHeaders, requireApprovalActor, requireSameOrigin, ServiceFetchError, serviceBase } from '../../../_shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,26 +10,34 @@ interface Body {
 export async function POST(req: Request, ctx: { params: { id: string } }) {
   const base = serviceBase()
   const { id } = ctx.params
-  let body: Body
   try {
-    body = await req.json()
-  } catch {
-    return Response.json({ success: false, error: 'invalid_json' }, { status: 400 })
-  }
-  try {
+    requireSameOrigin(req)
+    const actor = await requireApprovalActor(req)
+    let body: Body
+    try {
+      body = await req.json()
+    } catch {
+      return Response.json({ success: false, error: 'invalid_json' }, { status: 400 })
+    }
+    const url = `${base.knowledge}/api/v1/mcp/human-gates/${encodeURIComponent(id)}/approve`
+    const upstreamBody = JSON.stringify({ note: body.note ?? '' })
     const r = await fetch(
-      `${base.knowledge}/api/v1/mcp/human-gates/${encodeURIComponent(id)}/approve`,
+      url,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: body.note ?? '' }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...approvalServiceHeaders('POST', url, actor, upstreamBody),
+        },
+        body: upstreamBody,
         cache: 'no-store',
       },
     )
     const data = await r.json().catch(() => ({}))
     return Response.json({ success: r.ok, ...data }, { status: r.status })
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    return Response.json({ success: false, error: msg }, { status: 502 })
+    const code = err instanceof ServiceFetchError ? err.code : 'approval_upstream_unavailable'
+    const status = err instanceof ServiceFetchError ? err.status : 502
+    return Response.json({ success: false, error: code }, { status })
   }
 }

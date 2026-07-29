@@ -14,8 +14,12 @@ RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
+ARG OMNI_BUILD_COMMIT=unknown
+ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT}
+ENV OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json

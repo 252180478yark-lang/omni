@@ -1,4 +1,10 @@
-import pytest
+import os
+
+os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault(
+    "JWT_SECRET_KEY", "identity-test-key-32-bytes-minimum-unique-material"
+)
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine

@@ -1,0 +1,362 @@
+schema_version: 3
+change_id: 2026-07-30-system-convergence-s0-s3-foundation
+state: VERIFYING
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  paths:
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - scripts/check_development_readiness.py
+  - scripts/generate_implementation_status.py
+  - scripts/workspace_ownership.py
+  - tests/test_development_readiness.py
+  - tests/test_implementation_status.py
+  - tests/test_workspace_ownership.py
+  summary: Added evidence-grounded readiness, delivery projection, tracked-secret scanning, and cross-worktree ownership inventory with explicit unknown and conflict states.
+- id: ACT-002
+  planned_change_id: CHG-002
+  paths:
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py
+  - scripts/check_feature_contracts.py
+  - scripts/development_policy.py
+  - tests/test_development_policy.py
+  - tests/test_feature_contracts.py
+  summary: Extended schema-v3 governance, shared path/risk policy, immutable delivery evidence, and fail-closed contract validation while retaining historical contract readers.
+- id: ACT-003
+  planned_change_id: CHG-003
+  paths:
+  - .gitignore
+  - config/runtime-manifest.yaml
+  - config/schemas/runtime-allocation.schema.json
+  - config/schemas/workspace-lease.schema.json
+  - scripts/dev_runtime_environment.py
+  - scripts/runtime_allocation.py
+  - scripts/runtime_guard.py
+  - services/knowledge-engine/app/runtime_preflight.py
+  - services/knowledge-engine/tests/test_runtime_preflight.py
+  - tests/test_dev_runtime_environment.py
+  - tests/test_runtime_allocation.py
+  - tests/test_runtime_guard.py
+  summary: Added atomic WorkspaceLease and RuntimeAllocation identities for ports, databases, schemas, volumes, Redis, scheduler and worker ownership, plus pre-side-effect source/build verification.
+- id: ACT-004
+  planned_change_id: CHG-004
+  paths:
+  - .github/workflows/ci.yml
+  - dev-start.ps1
+  - docker-compose.dev.yml
+  - docker-compose.yml
+  - frontend/Dockerfile
+  - migrations/099_identity_users_schema.sql
+  - migrations/100_news_aggregator_schema.sql
+  - scripts/apply_migrations.py
+  - services/ad-review-service/Dockerfile
+  - services/ai-provider-hub/Dockerfile
+  - services/docker-compose.sp1-sp4.yml
+  - services/identity-service/Dockerfile
+  - services/infra-core/docker-compose.infra.yml
+  - services/infra-core/migrations/Dockerfile
+  - services/infra-core/migrations/requirements.txt
+  - services/knowledge-engine/Dockerfile
+  - services/livestream-analysis/Dockerfile
+  - services/news-aggregator/Dockerfile
+  - services/scout-agent/Dockerfile
+  - services/video-analysis/Dockerfile
+  - tests/test_ci_migration_gate.py
+  - tests/test_compose_runtime_contract.py
+  - tests/test_migration_runner_contract.py
+  - tests/test_service_schema_migrations.py
+  summary: Unified development, Compose and CI on one checksum-verifying migration runner, added empty/existing/restart parity, baked build identity, and blocking convergence delivery gates.
+- id: ACT-005
+  planned_change_id: CHG-005
+  paths:
+  - .codex/hooks.json
+  - scripts/hooks/development_gate.py
+  - tests/fixtures/hooks/pretool-allow.json
+  - tests/fixtures/hooks/pretool-remediate.json
+  - tests/fixtures/hooks/pretool-risk-block.json
+  - tests/test_agents_policy.py
+  - tests/test_development_hooks.py
+  summary: Added cross-platform SessionStart, PreToolUse and Stop development gates with bounded execution, recursion protection, same-risk remediation and R2/R3 fail-closed behavior.
+- id: ACT-006
+  planned_change_id: CHG-006
+  paths:
+  - frontend/src/app/api/omni/_shared.ts
+  - frontend/src/app/api/omni/overview/route.ts
+  - frontend/src/app/page.tsx
+  - frontend/tests/system-health-overview.test.ts
+  - services/ad-review-service/app/main.py
+  - services/ai-provider-hub/app/main.py
+  - services/ai-provider-hub/tests/test_providers.py
+  - services/identity-service/app/routers/health.py
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/app/routers/system_health.py
+  - services/knowledge-engine/app/schemas/system_health.py
+  - services/knowledge-engine/app/services/health_registry.py
+  - services/knowledge-engine/tests/test_system_health.py
+  - services/knowledge-engine/tests/test_system_health_router.py
+  - services/livestream-analysis/app/main.py
+  - services/news-aggregator/app/api/health_routes.py
+  - services/scout-agent/app/routers/health.py
+  - services/video-analysis/app/main.py
+  summary: Replaced boolean/zero-filled health with healthy, degraded, unavailable, stale and unknown states, typed probe failures, feature dependencies and build identity checks.
+- id: ACT-007
+  planned_change_id: CHG-007
+  paths:
+  - frontend/server.ts
+  - frontend/src/app/api/omni/auth/session/route.ts
+  - frontend/src/app/api/omni/inbox/[id]/approve/route.ts
+  - frontend/src/app/api/omni/inbox/[id]/reject/route.ts
+  - frontend/src/app/api/omni/inbox/route.ts
+  - frontend/src/app/inbox/page.tsx
+  - frontend/src/lib/agent-chat/ws-handler.ts
+  - frontend/tests/approval-auth-session.test.ts
+  - frontend/tests/approval-ws-authorization.test.ts
+  - frontend/tests/inbox-auth-ui.test.tsx
+  - frontend/vitest.config.ts
+  - migrations/098_approval_operations.sql
+  - services/knowledge-engine/app/mcp/approval_audit.py
+  - services/knowledge-engine/app/mcp/human_gate.py
+  - services/knowledge-engine/app/mcp/tools/agent_extras.py
+  - services/knowledge-engine/app/mcp/tools/agent_meta.py
+  - services/knowledge-engine/app/mcp/tools/cost_admin.py
+  - services/knowledge-engine/app/mcp/tools/kb.py
+  - services/knowledge-engine/app/mcp/tools/video_production.py
+  - services/knowledge-engine/app/routers/approval_operations.py
+  - services/knowledge-engine/app/routers/human_gates.py
+  - services/knowledge-engine/app/schemas/approval_operations.py
+  - services/knowledge-engine/app/schemas/human_gates.py
+  - services/knowledge-engine/app/services/approval_operations.py
+  - services/knowledge-engine/app/services/inbox_service.py
+  - services/knowledge-engine/app/workers/__init__.py
+  - services/knowledge-engine/app/workers/approval_operations.py
+  - services/knowledge-engine/tests/test_approval_audit.py
+  - services/knowledge-engine/tests/test_approval_operation_worker.py
+  - services/knowledge-engine/tests/test_approval_operations.py
+  - services/knowledge-engine/tests/test_router_human_gates.py
+  - tests/test_approval_hmac_interop.py
+  summary: Added authenticated immediate-202 approval operations, frozen and redacted intent, HMAC replay defense, leased resumable workers, uncertain-effect reconciliation, and a compatibility bridge for legacy human gates.
+- id: ACT-008
+  planned_change_id: CHG-008
+  paths:
+  - services/knowledge-engine/app/schemas/system_graph.py
+  - services/knowledge-engine/app/services/system_graph/__init__.py
+  - services/knowledge-engine/app/services/system_graph/canonical.py
+  - services/knowledge-engine/app/services/system_graph/collectors/__init__.py
+  - services/knowledge-engine/app/services/system_graph/collectors/base.py
+  - services/knowledge-engine/app/services/system_graph/collectors/catalogs.py
+  - services/knowledge-engine/app/services/system_graph/collectors/frontend.py
+  - services/knowledge-engine/app/services/system_graph/collectors/health_delivery.py
+  - services/knowledge-engine/app/services/system_graph/collectors/migrations.py
+  - services/knowledge-engine/app/services/system_graph/collectors/python_graph.py
+  - services/knowledge-engine/app/services/system_graph/diff.py
+  - services/knowledge-engine/app/services/system_graph/feature_definitions.py
+  - services/knowledge-engine/app/services/system_graph/redaction.py
+  - services/knowledge-engine/app/services/system_graph/scanner.py
+  - services/knowledge-engine/app/services/system_graph/snapshots.py
+  - services/knowledge-engine/config/features/ad-review.yaml
+  - services/knowledge-engine/config/features/approval-inbox.yaml
+  - services/knowledge-engine/config/features/chat.yaml
+  - services/knowledge-engine/config/features/commerce-feedback.yaml
+  - services/knowledge-engine/config/features/content-studio.yaml
+  - services/knowledge-engine/config/features/cost-management.yaml
+  - services/knowledge-engine/config/features/feature-definition.schema.json
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - services/knowledge-engine/config/features/knowledge-harvester.yaml
+  - services/knowledge-engine/config/features/knowledge.yaml
+  - services/knowledge-engine/config/features/livestream-analysis.yaml
+  - services/knowledge-engine/config/features/news.yaml
+  - services/knowledge-engine/config/features/product-management.yaml
+  - services/knowledge-engine/config/features/reverse-engineer.yaml
+  - services/knowledge-engine/config/features/scout-monitoring.yaml
+  - services/knowledge-engine/config/features/sku-pipeline.yaml
+  - services/knowledge-engine/config/features/system-console.yaml
+  - services/knowledge-engine/config/features/video-analysis.yaml
+  - services/knowledge-engine/config/features/workspace-operations.yaml
+  - services/knowledge-engine/pyproject.toml
+  - services/knowledge-engine/scripts/system_graph.py
+  - services/knowledge-engine/tests/fixtures/system_graph/delivery-attestation.json
+  - services/knowledge-engine/tests/test_feature_definitions.py
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
+  - services/knowledge-engine/tests/test_system_graph_models.py
+  - services/knowledge-engine/tests/test_system_graph_redaction.py
+  - services/knowledge-engine/tests/test_system_graph_snapshots.py
+  summary: Added route-complete FeatureDefinitions, atomic registry generation, deterministic redacted graph collectors, content-addressed snapshots, evidence verification and stable fact diffs.
+- id: ACT-009
+  planned_change_id: CHG-009
+  paths:
+  - scripts/set_yuntu_cookies.py
+  - services/knowledge-engine/scripts/save_cookies.py
+  - tests/test_secret_hygiene.py
+  summary: Removed embedded cookie material and replaced it with validated external secret-file references that reject repository-contained secrets and never echo values.
+- id: ACT-010
+  planned_change_id: CHG-010
+  paths:
+  - services/identity-service/README.md
+  - services/identity-service/app/config.py
+  - services/identity-service/app/dependencies.py
+  - services/identity-service/app/exceptions.py
+  - services/identity-service/app/main.py
+  - services/identity-service/app/services/auth_service.py
+  - services/identity-service/app/utils/security.py
+  - services/identity-service/scripts/bootstrap_admin.py
+  - services/identity-service/tests/conftest.py
+  - services/identity-service/tests/test_auth.py
+  summary: Hardened Identity around absolute file-backed JWT secrets, HS256-only verification, inactive-user denial, real readiness, explicit migrations and an interactive bootstrap-admin command.
+contract_delta:
+- description: Added readiness fixture coverage and made every dynamically loaded governance dependency a critical immutable asset.
+  reason: Full CI regression proved the old temporary repository omitted workspace ownership and its delivery resolver dependencies.
+  effect: Session readiness reports malformed ownership as explicit unknown and clean CI fixtures exercise the real dependency chain.
+  accepted: true
+- description: Projected OMNI_BUILD_SOURCE_FINGERPRINT alongside the host allocation build commit.
+  reason: A real pre-side-effect RuntimeAllocation smoke found that dev-start could not validate the complete source/build identity pair.
+  effect: Host development validates the exact checkout while Compose containers continue to use Dockerfile-baked identity rather than runtime spoofing.
+  accepted: true
+- description: Updated the legacy human-gate integration test to use an authenticated owner and verify decided_by, while retaining an anonymous 401 assertion.
+  reason: The S2 approval boundary intentionally removed anonymous list/approve/reject access.
+  effect: Compatibility behavior is proven against a fully migrated disposable database without weakening authentication.
+  accepted: true
+- description: Removed graph-test collection-time deletion of all app modules.
+  reason: The cleanup created duplicate exception class identities and made a valid combined Knowledge Engine suite fail by collection order.
+  effect: Domain tests now pass both separately and in one process; CI still uses service working directories to avoid unrelated package-name collisions.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_feature_contracts.py tests/test_development_policy.py tests/test_workspace_ownership.py tests/test_implementation_status.py tests/test_development_readiness.py .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  status: passed
+  exit_code: 0
+  evidence: Governance selection passed; the broader root suite completed with 263 passed and 6 subtests after the readiness and historical-projection regression fixes.
+- id: VER-002
+  command: python -B scripts/check_development_readiness.py --strict-critical-assets
+  status: blocked
+  exit_code: 1
+  evidence: Critical assets are still worktree candidates rather than immutable HEAD, and current-user hook trust remains review_required until /hooks confirmation.
+- id: VER-003
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_runtime_allocation.py tests/test_dev_runtime_environment.py tests/test_runtime_guard.py tests/test_compose_runtime_contract.py services/knowledge-engine/tests/test_runtime_preflight.py
+  status: passed
+  exit_code: 0
+  evidence: Runtime allocation, host environment, guard, Compose and KE preflight tests passed; a real host allocation preflight also returned ok=true after the fingerprint fix.
+- id: VER-004
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_migration_runner_contract.py tests/test_ci_migration_gate.py tests/test_service_schema_migrations.py
+  status: passed
+  exit_code: 0
+  evidence: Static runner, CI structure and schema migration tests passed; disposable Docker applied all 91 migrations to head 100 with pending=0.
+- id: VER-005
+  command: docker compose config --quiet
+  status: passed
+  exit_code: 0
+  evidence: Compose rendered successfully under an exact noncanonical RuntimeAllocation before disposable migration execution.
+- id: VER-006
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_development_hooks.py tests/test_agents_policy.py
+  status: passed
+  exit_code: 0
+  evidence: Cross-platform hook fixtures and repository policy tests passed, including malformed input, timeout, stale lease and recursion handling.
+- id: VER-007
+  command: python -B scripts/check_agent_policy.py --require-tracked
+  status: passed
+  exit_code: 0
+  evidence: Repository policy, routed assets and hook references passed the tracked-asset check; immutable delivery still remains a separate readiness and CI fact.
+- id: VER-008
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_health.py services/knowledge-engine/tests/test_system_health_router.py services/knowledge-engine/tests/test_approval_audit.py services/knowledge-engine/tests/test_approval_operations.py services/knowledge-engine/tests/test_approval_operation_worker.py services/knowledge-engine/tests/test_router_human_gates.py tests/test_approval_hmac_interop.py
+  status: passed
+  exit_code: 0
+  evidence: Health and DB-free approval selections passed; the legacy router then passed 9 authenticated/anonymous cases against a fully migrated disposable RuntimeAllocation database.
+- id: VER-009
+  command: npm --prefix frontend run test:unit
+  status: passed
+  exit_code: 0
+  evidence: Vitest completed 10 files and 46 tests; npx tsc --noEmit also exited 0 with no diagnostics.
+- id: VER-010
+  command: python -B scripts/apply_migrations.py --dry-run --verify
+  status: passed
+  exit_code: 0
+  evidence: Repository migration verification found 91 scripts, head 100 and a stable checksum digest without opening a shared database.
+- id: VER-011
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_models.py services/knowledge-engine/tests/test_system_graph_collectors.py services/knowledge-engine/tests/test_system_graph_snapshots.py services/knowledge-engine/tests/test_system_graph_redaction.py
+  status: passed
+  exit_code: 0
+  evidence: FeatureDefinition and graph selection passed 23 tests; the combined health, approval, graph and preflight suite passed 110 tests.
+- id: VER-012
+  command: python -B services/knowledge-engine/scripts/system_graph.py verify --feature cost-management
+  status: passed
+  exit_code: 0
+  evidence: Cost management verified with 17 nodes, 15 edges, 35 evidence references and an empty diff; two static scans produced the same snapshot hash.
+- id: VER-013
+  command: git diff --check
+  status: passed
+  exit_code: 0
+  evidence: Patch integrity is clean; only line-ending normalization notices were emitted.
+- id: VER-014
+  command: python -B scripts/check_feature_contracts.py --mode worktree
+  status: blocked
+  exit_code: 1
+  evidence: Worktree delivery validation correctly rejects VERIFYING instead of GRAPH_DIFF_READY. Live-preverified ownership has zero current-path conflicts, but the global workspace still has 60 external dirty-scope conflicts; offline readiness also retains 15 conservative overlaps until provenance is refreshed.
+- id: VER-015
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_secret_hygiene.py
+  status: passed
+  exit_code: 0
+  evidence: Candidate tracked-source scan found zero findings and the cookie helpers require external local secret files without printing values.
+graph_diff:
+  status: pending
+  snapshot_before: git:7ccc84f5bbdc6c5cef58864820537025e7a96f20:system-convergence-foundation-before
+  snapshot_after: sha256:2f18e58ca0aea53a3e810da9ae66dbb282bd2ffadafee01e2357b121d992c319
+  added_nodes:
+  - service:workspace-ownership-and-progress
+  - service:runtime-allocation
+  - service:health-registry
+  - service:approval-operation-worker
+  - source:feature-definition-yaml
+  - service:system-graph-scanner
+  modified_nodes:
+  - script:migration-runner
+  - hook:codex-development-gate
+  - service:identity-service
+  removed_nodes: []
+  added_edges:
+  - from: service:runtime-allocation
+    to: workflow:compose-start
+    relation: supplies_isolated_resources
+  - from: ci:migration-parity-gate
+    to: script:migration-runner
+    relation: verifies_empty_and_existing_database
+  - from: source:feature-definition-yaml
+    to: service:health-registry
+    relation: registers_dependencies
+  - from: service:approval-operation-worker
+    to: state:approval-operation
+    relation: claims_and_resumes_once
+  - from: service:system-graph-scanner
+    to: artifact:system-graph-snapshot
+    relation: writes_content_addressed_snapshot
+  removed_edges: []
+  required_edges: []
+  orphan_nodes: []
+  unknowns:
+  - New candidate has no trusted default-branch CI attestation.
+  - Current-user hook trust still requires explicit /hooks confirmation.
+  - Existing 8003 runtime has not been owner-authorized for migration or rebuild.
+exceptions:
+- id: EXC-001
+  status: blocking
+  description: Workspace convergence is not globally clean even though trusted live provenance clears ownership for every current candidate path.
+  evidence: Live-preverified inventory reports zero current conflicts, zero unassigned paths and zero lease conflicts, but 60 dirty-scope conflicts remain across other worktrees; offline readiness conservatively retains 15 historical S0.5 overlaps until provenance is refreshed.
+  owner_action: Reconcile the external worktree conflicts and provide a durable trusted-delivery refresh before integration.
+- id: EXC-002
+  status: blocking
+  description: The current live runtime contains a legacy 8003 Knowledge Engine sharing canonical writable database, volume and scheduler resources and lacks the new source/build labels.
+  evidence: runtime_guard audit reports ok=false with 42 errors while leaving all seven pre-existing containers unchanged.
+  owner_action: Authorize the 8003 owner to adopt, migrate, rebuild or retire that runtime in a separate reversible operation.
+- id: EXC-003
+  status: blocking
+  description: Repository hook delivery cannot prove current-user host trust and the candidate is not on the default branch.
+  evidence: Hook load is testable, but /hooks confirmation and trusted default-branch CI attestation are external facts.
+  owner_action: Review and trust hooks, reconcile the branch, then run required default-branch CI gates.
+delivery:
+  status: pending
+rollback:
+  verified: true
+  evidence: All database verification used exact noncanonical disposable allocations that were released with their containers, networks, volumes and task-created images removed; source changes remain isolated to this worktree.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: S0 through S3 implementation and deterministic local verification are present, but ownership, live-runtime adoption, hook trust and default-branch CI delivery remain blocking external facts.

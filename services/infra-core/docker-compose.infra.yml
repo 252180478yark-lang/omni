@@ -1,17 +1,65 @@
-name: omni-infra
+name: ${COMPOSE_PROJECT_NAME:?RuntimeAllocation required}
+
+x-runtime-labels: &runtime-labels
+  io.omni.runtime_id: "${OMNI_RUNTIME_ID:?RuntimeAllocation required}"
+  org.opencontainers.image.revision: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  io.omni.source_fingerprint: "${OMNI_SOURCE_FINGERPRINT:?RuntimeAllocation source fingerprint required}"
+  io.omni.worktree_id: "${OMNI_WORKTREE_ID:?RuntimeAllocation worktree id required}"
+  io.omni.scheduler_role: "disabled"
+  io.omni.approval_worker_role: "${OMNI_APPROVAL_WORKER_ROLE:-disabled}"
+
+x-build-labels: &build-labels
+  io.omni.build.source_commit: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  io.omni.build.source_fingerprint: "${OMNI_SOURCE_FINGERPRINT:?RuntimeAllocation source fingerprint required}"
+
+x-build-args: &build-args
+  OMNI_BUILD_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  OMNI_BUILD_SOURCE_FINGERPRINT: "${OMNI_SOURCE_FINGERPRINT:?RuntimeAllocation source fingerprint required}"
+
+x-runtime-env: &runtime-env
+  COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:?RuntimeAllocation compose project required}"
+  OMNI_ALLOCATION_ID: "${OMNI_ALLOCATION_ID:?RuntimeAllocation id required}"
+  OMNI_RUNTIME_ID: "${OMNI_RUNTIME_ID:?RuntimeAllocation runtime id required}"
+  OMNI_WORKTREE_ID: "${OMNI_WORKTREE_ID:?RuntimeAllocation worktree id required}"
+  OMNI_SOURCE_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  OMNI_EXPECTED_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  OMNI_SOURCE_FINGERPRINT: "${OMNI_SOURCE_FINGERPRINT:?RuntimeAllocation source fingerprint required}"
+  OMNI_ALLOCATED_PORTS_SHA256: "${OMNI_ALLOCATED_PORTS_SHA256:?RuntimeAllocation port digest required}"
+  OMNI_ALLOCATED_VOLUMES_SHA256: "${OMNI_ALLOCATED_VOLUMES_SHA256:?RuntimeAllocation volume digest required}"
+  OMNI_RUNTIME_ALLOCATION_FILE: "/runtime-state/allocations.json"
+  OMNI_SCHEDULER_ENABLED: "${OMNI_SCHEDULER_ENABLED:-false}"
+  OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
+  OMNI_APPROVAL_WORKER_ROLE: "${OMNI_APPROVAL_WORKER_ROLE:-disabled}"
 
 services:
+  runtime-preflight:
+    image: "omni-migration-runner:${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+    build:
+      context: ../..
+      dockerfile: services/infra-core/migrations/Dockerfile
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
+    entrypoint: ["python", "-B", "/workspace/scripts/runtime_guard.py"]
+    command: ["allocation-preflight", "--json"]
+    environment: *runtime-env
+    volumes:
+      - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
+    restart: "no"
+
   postgres:
     build:
       context: ./postgres
       dockerfile: Dockerfile
-    container_name: omni-postgres
+      labels: *build-labels
+    labels: *runtime-labels
     environment:
+      <<: *runtime-env
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -22,13 +70,17 @@ services:
       retries: 10
     networks:
       - omni-network
+    depends_on:
+      runtime-preflight:
+        condition: service_completed_successfully
 
   redis:
     image: redis:7-alpine
-    container_name: omni-redis
+    labels: *runtime-labels
+    environment: *runtime-env
     command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD}"]
     ports:
-      - "${REDIS_PORT}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -39,18 +91,44 @@ services:
       retries: 10
     networks:
       - omni-network
+    depends_on:
+      runtime-preflight:
+        condition: service_completed_successfully
+
+  migrate:
+    image: "omni-migration-runner:${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+    build:
+      context: ../..
+      dockerfile: services/infra-core/migrations/Dockerfile
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      OMNI_DATABASE_DISPOSABLE: "${OMNI_DATABASE_DISPOSABLE:?RuntimeAllocation database mode required}"
+    command: ["--allocation-aware", "--receipt-dir", "/migration-receipts"]
+    volumes:
+      - "${OMNI_MIGRATION_RECEIPT_DIR:-../../.runtime/migration-receipts}:/migration-receipts:rw"
+      - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: "no"
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: omni-nginx
+    labels: *runtime-labels
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     ports:
-      - "${NGINX_PORT}:80"
-      - "${NGINX_SSL_PORT}:443"
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
@@ -59,9 +137,11 @@ services:
 
 volumes:
   postgres_data:
+    name: "${POSTGRES_VOLUME_NAME:-omni_postgres_data}"
   redis_data:
+    name: "${REDIS_VOLUME_NAME:-omni_redis_data}"
 
 networks:
   omni-network:
-    name: omni-network
+    name: "${OMNI_NETWORK_NAME:-omni-network}"
     driver: bridge

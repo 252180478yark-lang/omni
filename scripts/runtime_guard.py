@@ -13,12 +13,18 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
+import os
 import re
 import socket
 import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, build_opener
@@ -57,6 +63,8 @@ class ContainerFact:
     runtime_id: str
     source_commit: str
     source_fingerprint: str
+    baked_source_commit: str
+    baked_source_fingerprint: str
     scheduler_role: str
     worktree: str
     declared_worktree: str
@@ -75,6 +83,8 @@ class ContainerFact:
     def worktree_ref(self) -> str:
         if not self.worktree:
             return "unknown"
+        if re.fullmatch(r"worktree-[0-9a-f]{16}", self.worktree):
+            return self.worktree
         leaf = self.worktree.rstrip("/").split("/")[-1] or "root"
         digest = hashlib.sha256(self.worktree.encode("utf-8")).hexdigest()[:8]
         return f"{leaf}#{digest}"
@@ -90,6 +100,8 @@ class ContainerFact:
             "runtime_id": self.runtime_id or None,
             "source_commit": self.source_commit or None,
             "source_fingerprint": self.source_fingerprint or None,
+            "baked_source_commit": self.baked_source_commit or None,
+            "baked_source_fingerprint": self.baked_source_fingerprint or None,
             "scheduler_role": self.scheduler_role or None,
             "worktree_ref": self.worktree_ref,
             "ports": sorted(self.ports),
@@ -103,6 +115,81 @@ class ContainerFact:
 
 class GuardFailure(RuntimeError):
     pass
+
+
+def validate_baked_identity(
+    *,
+    source_commit: str,
+    source_fingerprint: str,
+    baked_commit: str,
+    baked_source_fingerprint: str,
+) -> dict[str, str]:
+    """Reject missing or stale image identity before any runtime side effect."""
+
+    if not baked_commit or baked_commit == "unknown":
+        raise GuardFailure("runtime image is missing baked source commit identity")
+    if not baked_source_fingerprint or baked_source_fingerprint == "unknown":
+        raise GuardFailure("runtime image is missing baked source fingerprint identity")
+    if baked_commit != source_commit:
+        raise GuardFailure("baked source commit does not match startup identity")
+    if baked_source_fingerprint != source_fingerprint:
+        raise GuardFailure("baked source fingerprint does not match startup identity")
+    return {
+        "baked_source_commit": baked_commit,
+        "baked_source_fingerprint": baked_source_fingerprint,
+    }
+
+
+@lru_cache(maxsize=1)
+def _runtime_preflight_module() -> ModuleType:
+    """Load the one canonical pure-stdlib allocation validator."""
+
+    path = ROOT / "services" / "knowledge-engine" / "app" / "runtime_preflight.py"
+    spec = importlib.util.spec_from_file_location("omni_runtime_preflight_canonical", path)
+    if spec is None or spec.loader is None:
+        raise GuardFailure("canonical runtime preflight module is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise GuardFailure("canonical runtime preflight module cannot be loaded") from exc
+    return module
+
+
+def validate_allocation_evidence(
+    allocation_file: Path,
+    *,
+    allocation_id: str,
+    runtime_id: str,
+    worktree_id: str,
+    source_commit: str,
+    source_fingerprint: str,
+    compose_project: str = "",
+    ports_sha256: str = "",
+    volumes_sha256: str = "",
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Delegate to the same validator imported by Knowledge Engine startup."""
+
+    module = _runtime_preflight_module()
+    try:
+        return dict(
+            module.validate_allocation_evidence(
+                allocation_file,
+                allocation_id=allocation_id,
+                runtime_id=runtime_id,
+                worktree_id=worktree_id,
+                source_commit=source_commit,
+                source_fingerprint=source_fingerprint,
+                compose_project=compose_project,
+                ports_sha256=ports_sha256,
+                volumes_sha256=volumes_sha256,
+                now=now,
+            )
+        )
+    except module.RuntimePreflightError as exc:
+        raise GuardFailure(str(exc)) from exc
 
 
 def _run(args: Sequence[str], *, cwd: Path | None = None) -> str:
@@ -168,6 +255,11 @@ def normalize_worktree(value: str) -> str:
         text = f"{match.group(1)}:/{match.group(2)}"
     text = re.sub(r"/+", "/", text).rstrip("/")
     return text.casefold()
+
+
+def opaque_worktree_id(value: str | Path) -> str:
+    normalized = normalize_worktree(str(value))
+    return "worktree-" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
 def connection_identity(value: str, *, kind: str = "db") -> str:
@@ -284,6 +376,8 @@ def container_from_inspect(raw: Mapping[str, Any], manifest: Mapping[str, Any]) 
         runtime_id=labels.get(identity["runtime_id"], ""),
         source_commit=labels.get(identity["source_commit"], "") or labels.get("io.omni.source_commit", ""),
         source_fingerprint=labels.get(identity["source_fingerprint"], ""),
+        baked_source_commit=labels.get("io.omni.build.source_commit", ""),
+        baked_source_fingerprint=labels.get("io.omni.build.source_fingerprint", ""),
         scheduler_role=role,
         worktree=worktree,
         declared_worktree=normalize_worktree(declared_worktree),
@@ -308,8 +402,8 @@ def primary_worktree(repo_root: Path) -> str:
     output = _run(["git", "worktree", "list", "--porcelain"], cwd=repo_root)
     for line in output.splitlines():
         if line.startswith("worktree "):
-            return normalize_worktree(line.removeprefix("worktree "))
-    return normalize_worktree(str(repo_root))
+            return opaque_worktree_id(line.removeprefix("worktree "))
+    return opaque_worktree_id(repo_root)
 
 
 def source_commit(repo_root: Path) -> str:
@@ -347,12 +441,34 @@ def expected_identity(repo_root: Path, manifest: Mapping[str, Any]) -> dict[str,
     fingerprints: dict[str, str] = {}
     for service, cfg in manifest.get("services", {}).items():
         fingerprints[service] = source_fingerprint(repo_root, cfg.get("source_paths", []))
+    checkout_fingerprint = ""
+    try:
+        allocation = _load_allocation_module(repo_root)
+        checkout_fingerprint = str(allocation.source_tree_fingerprint(repo_root))
+    except (GuardFailure, RuntimeError, ValueError):
+        pass
     return {
         "commit": source_commit(repo_root),
-        "worktree": normalize_worktree(str(repo_root.resolve())),
+        "worktree": opaque_worktree_id(repo_root.resolve()),
         "primary_worktree": primary_worktree(repo_root),
         "fingerprints": fingerprints,
+        "checkout_fingerprint": checkout_fingerprint,
     }
+
+
+def _load_allocation_module(repo_root: Path) -> ModuleType:
+    path = repo_root / "scripts" / "runtime_allocation.py"
+    if not path.is_file():
+        raise GuardFailure(f"runtime allocation module missing: {path.name}")
+    spec = importlib.util.spec_from_file_location("omni_runtime_allocation_guard", path)
+    if spec is None or spec.loader is None:
+        raise GuardFailure("runtime allocation module cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    import sys
+
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _issue(
@@ -469,6 +585,14 @@ def analyze_runtime(
             issues.append(
                 _issue("missing_source_fingerprint", f"{container.ref} has no source/build fingerprint", [container])
             )
+        if container.baked_source_commit and container.baked_source_commit != container.source_commit:
+            issues.append(
+                _issue("baked_source_commit_mismatch", f"{container.ref} image build revision differs from runtime identity", [container])
+            )
+        if container.baked_source_fingerprint and container.baked_source_fingerprint != container.source_fingerprint:
+            issues.append(
+                _issue("baked_source_fingerprint_mismatch", f"{container.ref} image build fingerprint differs from runtime identity", [container])
+            )
         if not container.declared_worktree:
             issues.append(
                 _issue("missing_worktree_identity", f"{container.ref} has no declared worktree identity", [container])
@@ -484,7 +608,12 @@ def analyze_runtime(
                     _issue("source_commit_mismatch", f"{container.ref} source revision does not match this checkout", [container])
                 )
             expected_fp = expected.get("fingerprints", {}).get(container.service, "")
-            if expected_fp and container.source_fingerprint and container.source_fingerprint != expected_fp:
+            checkout_fp = str(expected.get("checkout_fingerprint") or "")
+            if (
+                expected_fp
+                and container.source_fingerprint
+                and container.source_fingerprint not in {expected_fp, checkout_fp}
+            ):
                 issues.append(
                     _issue("source_fingerprint_mismatch", f"{container.ref} source/build fingerprint is stale", [container])
                 )
@@ -564,28 +693,45 @@ def scan_static(repo_root: Path, manifest: Mapping[str, Any]) -> list[Issue]:
                     f"{path.relative_to(repo_root).as_posix()} has {fixed_count} fixed container names",
                 )
             )
-        if path.name == "docker-compose.yml":
-            missing = [token for token in identity_tokens if token not in text]
-            if missing:
-                issues.append(
-                    Issue(
-                        "compose_identity_labels_missing",
-                        "error",
-                        f"canonical Compose omits {len(missing)} required runtime identity labels",
-                    )
+        missing = [token for token in identity_tokens if token not in text]
+        if missing:
+            issues.append(
+                Issue(
+                    "compose_identity_labels_missing",
+                    "error",
+                    f"{path.relative_to(repo_root).as_posix()} omits {len(missing)} required runtime identity labels",
                 )
+            )
+        build_tokens = ("io.omni.build.source_commit", "io.omni.build.source_fingerprint")
+        missing_build = [token for token in build_tokens if token not in text]
+        if missing_build:
+            issues.append(
+                Issue(
+                    "compose_build_identity_missing",
+                    "error",
+                    f"{path.relative_to(repo_root).as_posix()} omits baked build identity labels",
+                )
+            )
     return sorted(issues, key=lambda item: (item.severity, item.code, item.message))
 
 
 def preflight_policy_issues(
-    repo_root: Path, manifest: Mapping[str, Any], expected: Mapping[str, Any]
+    repo_root: Path,
+    manifest: Mapping[str, Any],
+    expected: Mapping[str, Any],
+    *,
+    allocation_id: str = "",
+    runtime_id: str = "",
+    state_dir: Path | None = None,
 ) -> list[Issue]:
     """Return static and worktree-policy failures that must block a start."""
     issues = scan_static(repo_root, manifest)
     policy = manifest.get("worktree_defaults", {})
+    non_primary = expected.get("worktree") != expected.get("primary_worktree")
     if (
         policy.get("long_lived_runtime") == "deny"
-        and expected.get("worktree") != expected.get("primary_worktree")
+        and non_primary
+        and not allocation_id
     ):
         issues.append(
             Issue(
@@ -594,6 +740,32 @@ def preflight_policy_issues(
                 message="a non-primary worktree may only use an explicitly isolated disposable runtime",
             )
         )
+    if allocation_id:
+        try:
+            module = _load_allocation_module(repo_root)
+            state = module.list_state(repo_root, state_dir=state_dir)
+            allocation = next(
+                (item for item in state.get("allocations", []) if item.get("allocation_id") == allocation_id),
+                None,
+            )
+        except (GuardFailure, RuntimeError, ValueError, OSError) as exc:
+            issues.append(Issue("allocation_store_unavailable", "error", str(exc)))
+            allocation = None
+        if allocation is None:
+            issues.append(Issue("allocation_missing", "error", "requested RuntimeAllocation was not found"))
+        else:
+            if allocation.get("state") != "active":
+                issues.append(Issue("allocation_not_active", "error", "requested RuntimeAllocation is not active"))
+            if allocation.get("worktree_id") != module.worktree_id(repo_root):
+                issues.append(Issue("allocation_worktree_mismatch", "error", "RuntimeAllocation belongs to another worktree"))
+            if runtime_id and allocation.get("runtime_id") != runtime_id:
+                issues.append(Issue("allocation_runtime_mismatch", "error", "RuntimeAllocation runtime identity does not match preflight"))
+            if non_primary:
+                canonical_db = str(manifest.get("canonical_runtime", {}).get("database", ""))
+                if allocation.get("canonical") or allocation.get("database") == canonical_db:
+                    issues.append(Issue("noncanonical_shared_database", "error", "non-primary allocation points at the canonical database"))
+                if allocation.get("cron_owner"):
+                    issues.append(Issue("noncanonical_scheduler_owner", "error", "non-primary allocation may not own cron/scheduler work"))
     return sorted(issues, key=lambda item: (item.severity, item.code, item.message))
 
 
@@ -673,6 +845,8 @@ def _worktree_ref(value: str) -> str:
     normalized = normalize_worktree(value)
     if not normalized:
         return "unknown"
+    if re.fullmatch(r"worktree-[0-9a-f]{16}", normalized):
+        return normalized
     leaf = normalized.rstrip("/").split("/")[-1] or "root"
     return f"{leaf}#{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:8]}"
 
@@ -705,6 +879,8 @@ def _common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--repo-root", type=Path, default=ROOT)
     parser.add_argument("--runtime-id", default="")
     parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--allocation-id", default="")
+    parser.add_argument("--state-dir", type=Path)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -717,12 +893,70 @@ def build_parser() -> argparse.ArgumentParser:
     _common_args(verify)
     verify.add_argument("--skip-health", action="store_true")
     verify.add_argument("--health-timeout", type=float, default=2.0)
+    allocation = sub.add_parser("allocation-preflight")
+    allocation.add_argument(
+        "--allocation-file",
+        type=Path,
+        default=Path(os.environ.get("OMNI_RUNTIME_ALLOCATION_FILE", "/runtime-state/allocations.json")),
+    )
+    allocation.add_argument("--allocation-id", default=os.environ.get("OMNI_ALLOCATION_ID", ""))
+    allocation.add_argument("--runtime-id", default=os.environ.get("OMNI_RUNTIME_ID", ""))
+    allocation.add_argument("--worktree-id", default=os.environ.get("OMNI_WORKTREE_ID", ""))
+    allocation.add_argument("--source-commit", default=os.environ.get("OMNI_SOURCE_COMMIT", ""))
+    allocation.add_argument("--source-fingerprint", default=os.environ.get("OMNI_SOURCE_FINGERPRINT", ""))
+    allocation.add_argument("--baked-commit", default=os.environ.get("OMNI_BUILD_COMMIT", ""))
+    allocation.add_argument(
+        "--baked-source-fingerprint",
+        default=os.environ.get("OMNI_BUILD_SOURCE_FINGERPRINT", ""),
+    )
+    allocation.add_argument("--compose-project", default=os.environ.get("COMPOSE_PROJECT_NAME", ""))
+    allocation.add_argument("--ports-sha256", default=os.environ.get("OMNI_ALLOCATED_PORTS_SHA256", ""))
+    allocation.add_argument("--volumes-sha256", default=os.environ.get("OMNI_ALLOCATED_VOLUMES_SHA256", ""))
+    allocation.add_argument("--json", action="store_true", dest="as_json")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "allocation-preflight":
+            baked_identity = validate_baked_identity(
+                source_commit=args.source_commit,
+                source_fingerprint=args.source_fingerprint,
+                baked_commit=args.baked_commit,
+                baked_source_fingerprint=args.baked_source_fingerprint,
+            )
+            allocation = validate_allocation_evidence(
+                args.allocation_file.resolve(),
+                allocation_id=args.allocation_id,
+                runtime_id=args.runtime_id,
+                worktree_id=args.worktree_id,
+                source_commit=args.source_commit,
+                source_fingerprint=args.source_fingerprint,
+                compose_project=args.compose_project,
+                ports_sha256=args.ports_sha256,
+                volumes_sha256=args.volumes_sha256,
+            )
+            report = {
+                "schema_version": 1,
+                "command": "allocation-preflight",
+                "ok": True,
+                "read_only": True,
+                "runtime_id": args.runtime_id,
+                "summary": {"containers": 0, "errors": 0, "warnings": 0},
+                "repository": None,
+                "containers": [],
+                "issues": [],
+                "allocation": {
+                    "allocation_id": allocation.get("allocation_id"),
+                    "worktree_id": allocation.get("worktree_id"),
+                    "state": allocation.get("state"),
+                    "risk_level": allocation.get("risk_level"),
+                    **baked_identity,
+                },
+            }
+            emit(report, as_json=args.as_json)
+            return 0
         manifest = load_manifest(args.manifest.resolve())
         repo_root = args.repo_root.resolve()
         runtime_id = args.runtime_id or manifest["canonical_runtime"]["runtime_id"]
@@ -743,7 +977,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             require_services=require_services,
         )
         if args.command == "preflight":
-            issues.extend(preflight_policy_issues(repo_root, manifest, expected))
+            issues.extend(
+                preflight_policy_issues(
+                    repo_root,
+                    manifest,
+                    expected,
+                    allocation_id=args.allocation_id,
+                    runtime_id=runtime_id,
+                    state_dir=args.state_dir,
+                )
+            )
             issues = sorted(issues, key=lambda item: (item.severity, item.code, item.containers))
         if args.command == "verify" and not args.skip_health:
             issues.extend(_health_issues(containers, manifest, args.health_timeout))

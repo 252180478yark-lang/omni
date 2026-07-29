@@ -18,20 +18,17 @@
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
-import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
 from app.database import get_pool
 from app.mcp.audit import tool_with_audit
+from app.mcp.approval_audit import approval_tool_with_audit
 from app.mcp.server import mcp
 from app.mcp.trace import build_trace
-from app.mcp.model_config import get_model_for_tool
 from app.services.ai_hub_client import AIHubClient
 
 logger = logging.getLogger(__name__)
@@ -121,9 +118,8 @@ def _validate_cron(expr: str) -> tuple[bool, str]:
     return True, ""
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_schedule_summary,
 )
 async def schedule_observation(
@@ -213,9 +209,8 @@ def _img_compare_summary(args: dict) -> str:
     )
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_img_compare_summary,
 )
 async def generate_image_compare(
@@ -321,9 +316,8 @@ def _load_wecom_webhooks() -> dict[str, str]:
     return out
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_wecom_summary,
 )
 async def send_wecom_message(
@@ -413,9 +407,8 @@ def _dypub_summary(args: dict) -> str:
             f"draft_id={args.get('draft_id')} (MVP stub 不真发)")
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_dypub_summary,
 )
 async def dy_publish_creative(

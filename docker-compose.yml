@@ -7,6 +7,39 @@
 #   PROXY_URL=http://host.docker.internal:12334
 # 不使用代理则留空即可。
 
+name: ${COMPOSE_PROJECT_NAME:?Run scripts/runtime_allocation.py acquire and export its environment first}
+
+x-runtime-labels: &runtime-labels
+  io.omni.runtime_id: "${OMNI_RUNTIME_ID:?RuntimeAllocation required}"
+  org.opencontainers.image.revision: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  io.omni.source_fingerprint: "${OMNI_SOURCE_FINGERPRINT:?RuntimeAllocation source fingerprint required}"
+  io.omni.worktree_id: "${OMNI_WORKTREE_ID:?RuntimeAllocation worktree id required}"
+  io.omni.scheduler_role: "disabled"
+  io.omni.approval_worker_role: "${OMNI_APPROVAL_WORKER_ROLE:-disabled}"
+
+x-build-labels: &build-labels
+  io.omni.build.source_commit: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  io.omni.build.source_fingerprint: "${OMNI_SOURCE_FINGERPRINT:?RuntimeAllocation source fingerprint required}"
+
+x-build-args: &build-args
+  OMNI_BUILD_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  OMNI_BUILD_SOURCE_FINGERPRINT: "${OMNI_SOURCE_FINGERPRINT:?RuntimeAllocation source fingerprint required}"
+
+x-runtime-env: &runtime-env
+  COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:?RuntimeAllocation compose project required}"
+  OMNI_ALLOCATION_ID: "${OMNI_ALLOCATION_ID:?RuntimeAllocation id required}"
+  OMNI_RUNTIME_ID: "${OMNI_RUNTIME_ID:?RuntimeAllocation runtime id required}"
+  OMNI_WORKTREE_ID: "${OMNI_WORKTREE_ID:?RuntimeAllocation worktree id required}"
+  OMNI_SOURCE_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  OMNI_EXPECTED_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+  OMNI_SOURCE_FINGERPRINT: "${OMNI_SOURCE_FINGERPRINT:?RuntimeAllocation source fingerprint required}"
+  OMNI_ALLOCATED_PORTS_SHA256: "${OMNI_ALLOCATED_PORTS_SHA256:?RuntimeAllocation port digest required}"
+  OMNI_ALLOCATED_VOLUMES_SHA256: "${OMNI_ALLOCATED_VOLUMES_SHA256:?RuntimeAllocation volume digest required}"
+  OMNI_RUNTIME_ALLOCATION_FILE: "/runtime-state/allocations.json"
+  OMNI_SCHEDULER_ENABLED: "${OMNI_SCHEDULER_ENABLED:-false}"
+  OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
+  OMNI_APPROVAL_WORKER_ROLE: "${OMNI_APPROVAL_WORKER_ROLE:-disabled}"
+
 # 容器内代理：优先 .env 中的 HTTP_PROXY/HTTPS_PROXY；否则用统一 PROXY_URL。
 # 切勿使用 127.0.0.1:端口 —— 在容器内指向容器自身，会导致 Connection refused (111)。
 # Clash 混合端口示例：PROXY_URL=http://host.docker.internal:12334
@@ -15,17 +48,34 @@ x-proxy-env: &proxy-env
   HTTPS_PROXY: "${HTTPS_PROXY:-${PROXY_URL:-${HTTP_PROXY:-}}}"
   http_proxy: "${HTTP_PROXY:-${PROXY_URL:-}}"
   https_proxy: "${HTTPS_PROXY:-${PROXY_URL:-${HTTP_PROXY:-}}}"
-  NO_PROXY: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,omni-ad-review,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis,scout-agent,omni-scout-agent"
-  no_proxy: "localhost,127.0.0.1,omni-postgres,omni-redis,omni-frontend,omni-knowledge-engine,omni-news-aggregator,omni-video-analysis,omni-livestream-analysis,omni-ad-review,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis,scout-agent,omni-scout-agent"
+  NO_PROXY: "localhost,127.0.0.1,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis,scout-agent"
+  no_proxy: "localhost,127.0.0.1,ai-provider-hub,knowledge-engine,news-aggregator,video-analysis,livestream-analysis,ad-review-service,frontend,postgres,redis,scout-agent"
 
 services:
+  runtime-preflight:
+    image: "omni-migration-runner:${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
+    build:
+      context: .
+      dockerfile: services/infra-core/migrations/Dockerfile
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
+    entrypoint: ["python", "-B", "/workspace/scripts/runtime_guard.py"]
+    command: ["allocation-preflight", "--json"]
+    environment: *runtime-env
+    volumes:
+      - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
+    restart: "no"
+
   # ═══ Infrastructure ═══
 
   postgres:
     build:
       context: ./services/infra-core/postgres
-    container_name: omni-postgres
+      labels: *build-labels
+    labels: *runtime-labels
     environment:
+      <<: *runtime-env
       POSTGRES_USER: ${POSTGRES_USER:-omni_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_production}
       POSTGRES_DB: ${POSTGRES_DB:-omni_vibe_db}
@@ -39,13 +89,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    restart: unless-stopped  # 宿主机重启自动拉起（Power BI 直连 + cron 落库都依赖它常驻）
+    restart: "${OMNI_RESTART_POLICY:?RuntimeAllocation restart policy required}"
     networks:
       - omni-network
+    depends_on:
+      runtime-preflight:
+        condition: service_completed_successfully
 
   redis:
     image: redis:7-alpine
-    container_name: omni-redis
+    labels: *runtime-labels
+    environment: *runtime-env
     command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD:-changeme_redis}"]
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
@@ -59,10 +113,13 @@ services:
       retries: 10
     networks:
       - omni-network
+    depends_on:
+      runtime-preflight:
+        condition: service_completed_successfully
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: omni-nginx
+    labels: *runtime-labels
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,12 +140,12 @@ services:
       ad-review-service:
         condition: service_started
       identity-service:
-        condition: service_started
+        condition: service_healthy
     ports:
       # W6 multi-device: nginx 绑 0.0.0.0 让 tailnet 内 OPPO/Mac 能访问;
       # 其他服务 (KE/Hub/Frontend) 保持 127.0.0.1, 由 nginx 反代统一出口
-      - "${NGINX_PORT:-80}:80"
-      - "${NGINX_SSL_PORT:-443}:443"
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
     volumes:
       - ./services/infra-core/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/infra-core/nginx/conf.d:/etc/nginx/conf.d:ro
@@ -100,16 +157,30 @@ services:
   identity-service:
     build:
       context: ./services/identity-service
-    container_name: omni-identity-service
-    env_file:
-      - ./services/identity-service/.env.example
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
     environment:
-      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/3"
+      <<: *runtime-env
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/3"
+      JWT_SECRET_KEY_FILE: "/run/secrets/omni_identity_jwt"
+      JWT_ALGORITHM: "HS256"
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     expose:
       - "8000"
+    volumes:
+      - "${OMNI_IDENTITY_JWT_SECRET_FILE:?Identity JWT secret file required}:/run/secrets/omni_identity_jwt:ro"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -120,12 +191,17 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: omni-frontend
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
     environment:
+      <<: *runtime-env
+      OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
       NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
       AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
+      IDENTITY_SERVICE_URL: "http://identity-service:8000"
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
       LIVESTREAM_ANALYSIS_SERVICE_URL: "http://livestream-analysis:8007"
@@ -133,23 +209,37 @@ services:
       AD_REVIEW_SERVICE_URL: "http://ad-review-service:8008"
       SCOUT_AGENT_URL: "http://scout-agent:8009"
     command: ["npm", "run", "start"]
+    volumes:
+      - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     depends_on:
-      - ai-provider-hub
-      - knowledge-engine
-      - ad-review-service
-      - scout-agent
+      migrate:
+        condition: service_completed_successfully
+      runtime-preflight:
+        condition: service_completed_successfully
+      identity-service:
+        condition: service_healthy
+      ai-provider-hub:
+        condition: service_started
+      knowledge-engine:
+        condition: service_started
+      ad-review-service:
+        condition: service_started
+      scout-agent:
+        condition: service_started
     networks:
       - omni-network
 
   ad-review-service:
     build:
       context: ./services/ad-review-service
-    container_name: omni-ad-review
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
     environment:
       <<: *proxy-env
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       AI_HUB_URL: "http://ai-provider-hub:8001"
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
       VIDEO_ANALYSIS_URL: "http://video-analysis:8006"
@@ -164,6 +254,8 @@ services:
     volumes:
       - ad_review_data:/app/data
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -180,24 +272,30 @@ services:
   ai-provider-hub:
     build:
       context: ./services/ai-provider-hub
-    container_name: omni-ai-provider-hub
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
     env_file:
       # 先读 .env.example（模板，入 git 的占位）→ 再读 .env（gitignored，真 key）
       # 后者 override 前者；老板填的 key 走 .env，不会泄密
-      - ./services/ai-provider-hub/.env.example
-      - ./services/ai-provider-hub/.env
+      - path: ./services/ai-provider-hub/.env.example
+        required: true
+      - path: ./services/ai-provider-hub/.env
+        required: false
     environment:
       <<: *proxy-env
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/0"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/0"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
     expose:
       - "8001"
     ports:
       # Dev: host 直通访问（frontend / verify scripts / 直接 curl 调试）
-      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:${AI_PROVIDER_HUB_PORT:-8001}:8001"
     volumes:
       - ai_hub_data:/app/data
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -209,16 +307,26 @@ services:
     image: omni-knowledge-engine:latest
     build:
       context: ./services/knowledge-engine
-    container_name: omni-knowledge-engine
+      labels: *build-labels
+      args: *build-args
+    labels:
+      <<: *runtime-labels
+      io.omni.scheduler_role: "${OMNI_SCHEDULER_ROLE:-disabled}"
     shm_size: '512m'
     env_file:
-      - ./services/knowledge-engine/.env.example
+      - path: ./services/knowledge-engine/.env.example
+        required: true
       # reverse_storyboard_video tool 直调 Gemini Files API,借 hub 的 .env 拿 GEMINI_API_KEY
-      - ./services/ai-provider-hub/.env
+      - path: ./services/ai-provider-hub/.env
+        required: false
     environment:
-      <<: *proxy-env
-      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/1"
+      <<: [*proxy-env, *runtime-env]
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/1"
+      OMNI_SCHEDULER_ENABLED: "${OMNI_SCHEDULER_ENABLED:-false}"
+      OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
+      OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
+      OMNI_APPROVAL_FRONTEND_PRINCIPAL: "service:frontend"
       # P0 owner-facing preflight reads this checkout only to hash the
       # migration/config baseline; it never writes to the mount.
       P0_REPOSITORY_ROOT: "/workspace"
@@ -241,14 +349,11 @@ services:
       - "8002"
     ports:
       # Dev: host 直通访问（Claude Code MCP / 直接 curl 调试）
-      - "127.0.0.1:8002:8002"
+      - "127.0.0.1:${KNOWLEDGE_ENGINE_PORT:-8002}:8002"
     volumes:
+      - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
+      - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
       - knowledge_data:/app/data
-      # Dev: bind-mount 源码 + 测试 + 配置，便于热改 / pytest 不需 docker cp
-      - ./services/knowledge-engine/app:/app/app
-      - ./services/knowledge-engine/tests:/app/tests
-      - ./services/knowledge-engine/config:/app/config
-      - ./services/knowledge-engine/scripts:/app/scripts:rw
       # The P0 baseline card must compare runtime state with the same checked
       # out migration/config sources, not a hand-copied historical branch.
       - ./:/workspace:ro
@@ -257,8 +362,10 @@ services:
       # R-22 文档体检：只读挂仓库根 CLAUDE.md，让容器内 doctor 能比对工具数
       - ./CLAUDE.md:/app/CLAUDE.md:ro
       # reverse_storyboard_video tool 测试用,挂载 host Desktop 让 KE 能访问千川视频测试文件 + 测试日志写回
-      - "C:/Users/Administrator/Desktop:/host/Desktop:rw"
+      - "${OMNI_HOST_DESKTOP_PATH:-./.runtime/host-desktop}:/host/Desktop:rw"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -269,17 +376,21 @@ services:
   news-aggregator:
     build:
       context: ./services/news-aggregator
-    container_name: omni-news-aggregator
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
     env_file:
       - ./services/news-aggregator/.env.example
     environment:
       <<: *proxy-env
-      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/2"
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/2"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
     expose:
       - "8005"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -294,7 +405,9 @@ services:
   video-analysis:
     build:
       context: ./services/video-analysis
-    container_name: omni-video-analysis
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
     env_file:
       - ./services/video-analysis/.env.example
     environment:
@@ -302,13 +415,15 @@ services:
       AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
       KNOWLEDGE_TARGET_KB_ID: "default"
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8006"]
     expose:
       - "8006"
     volumes:
       - video_analysis_data:/app/data
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       ai-provider-hub:
@@ -319,12 +434,14 @@ services:
   livestream-analysis:
     build:
       context: ./services/livestream-analysis
-    container_name: omni-livestream-analysis
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
     env_file:
       - ./services/livestream-analysis/.env.example
     environment:
       <<: *proxy-env
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8007"]
     expose:
@@ -332,6 +449,8 @@ services:
     volumes:
       - livestream_analysis_data:/app/data
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       ai-provider-hub:
@@ -340,8 +459,13 @@ services:
       - omni-network
 
   scout-agent:
-    build: ./services/scout-agent
-    container_name: omni-scout-agent
+    build:
+      context: ./services/scout-agent
+      labels: *build-labels
+      args: *build-args
+    labels:
+      <<: *runtime-labels
+      io.omni.scheduler_role: "${OMNI_SCHEDULER_ROLE:-disabled}"
     environment:
       # 不走 VPN：scout-agent 只抓国内站（淘宝/罗盘/云图/抖音）+ 内网 ai-hub。
       # 国内站要国内 IP，外国 VPN 机房出口会被淘宝搜索反爬拦 → 清空代理走直连。
@@ -351,46 +475,69 @@ services:
       https_proxy: ""
       NO_PROXY: "*"
       no_proxy: "*"
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       AI_HUB_URL: "http://ai-provider-hub:8001"
       DOUYIN_SHOP_ID: "${DOUYIN_SHOP_ID:-}"
       YUNTU_BRAND_ID: "${YUNTU_BRAND_ID:-WADAKAN_HETIANKUAN}"
       YUNTU_INDUSTRY: "${YUNTU_INDUSTRY:-food_beverage}"
       WECOM_WEBHOOK_URL: "${WECOM_WEBHOOK_URL:-}"
       PLAYWRIGHT_HEADLESS: "true"
-      ENABLE_SCHEDULER: "true"
+      ENABLE_SCHEDULER: "${OMNI_SCHEDULER_ENABLED:-false}"
     ports:
-      - "127.0.0.1:8009:8009"
+      - "127.0.0.1:${SCOUT_AGENT_PORT:-8009}:8009"
     volumes:
       # bind mount 让 host 端跑 relogin 脚本写的 cookie 容器立刻可用
       # （named volume 会让 host/容器隔离，登录态进不去容器）
       - ./services/scout-agent/sessions:/app/sessions
       - ./services/scout-agent/downloads:/app/downloads
       - ./services/scout-agent/snapshots:/app/snapshots
-      # 源码 bind-mount：调淘宝选择器时改完 docker restart omni-scout-agent 即生效，免 rebuild
-      - ./services/scout-agent/app:/app/app
-      # 三平台实时取数底座（2026-06-03 集成）：端点目录 catalog 必挂（executor 启动读它）+ 重验工具链 scripts
-      - ./services/scout-agent/catalog:/app/catalog
-      - ./services/scout-agent/scripts:/app/scripts
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       ai-provider-hub:
         condition: service_started
     networks:
       - omni-network
-    restart: unless-stopped
+    restart: "${OMNI_RESTART_POLICY:?RuntimeAllocation restart policy required}"
+
+  migrate:
+    image: "omni-migration-runner:${OMNI_SOURCE_COMMIT:-local}"
+    build:
+      context: .
+      dockerfile: services/infra-core/migrations/Dockerfile
+      labels: *build-labels
+      args: *build-args
+    labels: *runtime-labels
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
+      OMNI_DATABASE_DISPOSABLE: "${OMNI_DATABASE_DISPOSABLE:?RuntimeAllocation database mode required}"
+    command: ["--allocation-aware", "--receipt-dir", "/migration-receipts"]
+    volumes:
+      - "${OMNI_MIGRATION_RECEIPT_DIR:-./.runtime/migration-receipts}:/migration-receipts:rw"
+      - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - omni-network
+    restart: "no"
 
 volumes:
   postgres_data:
+    name: "${POSTGRES_VOLUME_NAME:-omni_postgres_data}"
   redis_data:
+    name: "${REDIS_VOLUME_NAME:-omni_redis_data}"
   ai_hub_data:
   knowledge_data:
+    name: "${KNOWLEDGE_VOLUME_NAME:-omni_knowledge_data}"
   video_analysis_data:
   livestream_analysis_data:
   ad_review_data:
 
 networks:
   omni-network:
-    name: omni-network
+    name: "${OMNI_NETWORK_NAME:-omni-network}"
     driver: bridge

@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 
 from app.mcp.audit import tool_with_audit
+from app.mcp.approval_audit import approval_tool_with_audit
 from app.mcp.server import mcp
 from app.services import ingestion, rag_chain
 from app.services.ingestion import _VALID_KB_ROLES
@@ -101,9 +102,8 @@ def _kb_upload_summary(args: dict) -> str:
     return f"上传 {base} 入 KB={kb}"
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_kb_upload_summary,
     timeout_seconds=3600,
 )
@@ -201,9 +201,8 @@ def _kb_set_role_summary(args: dict) -> str:
     return f"改 KB={kb} → role={role}"
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_kb_set_role_summary,
     timeout_seconds=3600,
 )

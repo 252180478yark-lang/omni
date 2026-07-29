@@ -1,5 +1,10 @@
 FROM python:3.11-slim
 
+ARG OMNI_BUILD_COMMIT=unknown
+ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
+ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
+    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
+
 ENV HTTP_PROXY="" HTTPS_PROXY="" http_proxy="" https_proxy=""
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
@@ -20,6 +25,8 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trus
 RUN playwright install chromium
 
 COPY app /app/app
+COPY catalog /app/catalog
+COPY scripts /app/scripts
 COPY runbooks /app/runbooks
 COPY entrypoint.sh /app/entrypoint.sh
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh

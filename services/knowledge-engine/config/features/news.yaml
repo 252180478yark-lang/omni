@@ -1,0 +1,24 @@
+schema_version: 1
+feature_id: news
+title: 资讯中心
+domain: content.news
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /news
+  visible: true
+  placements: [home, direct]
+capabilities:
+  - {capability_id: news-discovery, kind: read}
+expected_edges: []
+checks:
+  - check_id: news-service-health
+    kind: health
+    target: /api/v1/system/health/features/news
+    verifies: health_registration:service:news-aggregator
+    required: true
+aliases: []
+dependencies:
+  - {ref: health_registration:service:news-aggregator, required: true}
+  - {ref: health_registration:service:knowledge-engine, required: false}
+  - {ref: health_registration:service:ai-provider-hub, required: false}

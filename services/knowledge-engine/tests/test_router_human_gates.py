@@ -11,9 +11,13 @@ from httpx import ASGITransport, AsyncClient
 
 from app.database import close_pool, get_pool, init_pool
 from app.main import app
+from app.routers.approval_operations import get_approval_principal
+from app.services.approval_operations import ApprovalPrincipal
 
 
 pytestmark = pytest.mark.asyncio
+
+OWNER = ApprovalPrincipal("user:router-test-owner", roles=frozenset({"owner"}))
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -75,10 +79,14 @@ async def _seed_gates():
 
 @pytest_asyncio.fixture
 async def client():
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        yield ac
+    app.dependency_overrides[get_approval_principal] = lambda: OWNER
+    try:
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as ac:
+            yield ac
+    finally:
+        app.dependency_overrides.pop(get_approval_principal, None)
 
 
 # ─── list endpoint ────────────────────────────────────────────────────────
@@ -127,11 +135,12 @@ async def test_approve_with_full_uuid(client, _seed_gates):
     # 验 DB 真写
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT decision, decision_note FROM mcp.human_gates WHERE id=$1",
+        "SELECT decision, decision_note, decided_by FROM mcp.human_gates WHERE id=$1",
         uuid.UUID(target),
     )
     assert row["decision"] == "approved"
     assert row["decision_note"] == "OK"
+    assert row["decided_by"] == OWNER.principal_id
 
 
 async def test_approve_with_short_id(client, _seed_gates):
@@ -195,8 +204,19 @@ async def test_reject_with_full_uuid(client, _seed_gates):
     assert body["result"]["decision"] == "rejected"
     pool = get_pool()
     row = await pool.fetchrow(
-        "SELECT decision, decision_note FROM mcp.human_gates WHERE id=$1",
+        "SELECT decision, decision_note, decided_by FROM mcp.human_gates WHERE id=$1",
         uuid.UUID(target),
     )
     assert row["decision"] == "rejected"
     assert row["decision_note"] == "不行，参数不对"
+    assert row["decided_by"] == OWNER.principal_id
+
+
+async def test_anonymous_request_requires_authentication():
+    app.dependency_overrides.pop(get_approval_principal, None)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as anonymous:
+        response = await anonymous.get("/api/v1/mcp/human-gates")
+    assert response.status_code == 401
+    assert response.json()["detail"]["code"] == "authentication_required"

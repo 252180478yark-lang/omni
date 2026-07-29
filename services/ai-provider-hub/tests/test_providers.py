@@ -4,13 +4,19 @@ from app.main import app
 from app.runtime import bootstrap_providers, registry
 
 
-def test_health_and_provider_listing() -> None:
+def test_health_and_provider_listing(monkeypatch) -> None:
+    monkeypatch.setenv("OMNI_BUILD_COMMIT", "baked-commit")
+    monkeypatch.setenv("OMNI_BUILD_SOURCE_FINGERPRINT", "sha256:baked")
+    monkeypatch.setenv("OMNI_SOURCE_FINGERPRINT", "sha256:runtime-expected")
     bootstrap_providers()
     client = TestClient(app)
 
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["service"] == "ai-provider-hub"
+    assert health.json()["build_commit"] == "baked-commit"
+    assert health.json()["build_source_fingerprint"] == "sha256:baked"
+    assert "runtime-expected" not in str(health.json())
 
     providers = client.get("/api/v1/ai/providers")
     assert providers.status_code == 200

@@ -1,0 +1,28 @@
+schema_version: 1
+feature_id: chat
+title: 智能问答
+domain: agent
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /chat
+  visible: true
+  placements: [home, direct]
+capabilities:
+  - {capability_id: agent-chat, kind: generate}
+expected_edges: []
+checks:
+  - check_id: knowledge-health
+    kind: health
+    target: /api/v1/system/health/features/chat
+    verifies: health_registration:service:knowledge-engine
+    required: true
+  - check_id: ai-provider-health
+    kind: health
+    target: /api/v1/system/health/features/chat
+    verifies: health_registration:service:ai-provider-hub
+    required: true
+aliases: []
+dependencies:
+  - {ref: health_registration:service:knowledge-engine, required: true}
+  - {ref: health_registration:service:ai-provider-hub, required: true}

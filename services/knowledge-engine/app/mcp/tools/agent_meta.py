@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import re
-import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,6 +20,7 @@ from pathlib import Path
 from app.database import get_pool
 from app.mcp import prompts
 from app.mcp.audit import tool_with_audit
+from app.mcp.approval_audit import approval_tool_with_audit
 from app.mcp.model_config import get_model_for_tool
 from app.mcp.server import mcp
 from app.mcp.trace import build_trace
@@ -230,9 +230,8 @@ async def _codify_impl(
     }
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_codify_summary,
 )
 async def codify_pattern_to_skill(
@@ -344,9 +343,8 @@ async def _refresh_impl() -> dict:
     }
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_refresh_summary,
 )
 async def refresh_project_context() -> dict:

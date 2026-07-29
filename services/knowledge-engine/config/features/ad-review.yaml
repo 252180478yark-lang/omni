@@ -1,0 +1,24 @@
+schema_version: 1
+feature_id: ad-review
+title: 投放复盘
+domain: advertising
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /ad-review
+  visible: true
+  placements: [home, direct]
+capabilities:
+  - {capability_id: campaign-review, kind: generate}
+expected_edges: []
+checks:
+  - check_id: ad-review-service-health
+    kind: health
+    target: /api/v1/system/health/features/ad-review
+    verifies: health_registration:service:ad-review-service
+    required: true
+aliases:
+  - {href: /ad-review/flywheel, target: /ad-review}
+dependencies:
+  - {ref: health_registration:service:ad-review-service, required: true}
+  - {ref: health_registration:service:ai-provider-hub, required: false}

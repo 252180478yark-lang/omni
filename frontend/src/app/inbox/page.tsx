@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -44,13 +44,24 @@ export default function InboxPage() {
   const [rows, setRows] = useState<GateRow[]>([])
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState<string | null>(null)
+  const [authRequired, setAuthRequired] = useState(false)
+  const [authBusy, setAuthBusy] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
 
   async function load() {
     setLoading(true)
     try {
-      const resp = await fetch('/api/omni/inbox')
+      const resp = await fetch('/api/omni/inbox', { credentials: 'same-origin' })
       const data: ListResp = await resp.json()
+      if (resp.status === 401) {
+        setRows([])
+        setAuthRequired(true)
+        return
+      }
       if (data.success) {
+        setAuthRequired(false)
         setRows(data.data)
       } else {
         window.alert(data.error ?? '加载失败')
@@ -63,6 +74,45 @@ export default function InboxPage() {
   }
 
   useEffect(() => { void load() }, [])
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthBusy(true)
+    setAuthError(null)
+    try {
+      const response = await fetch('/api/omni/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok || data.success !== true) {
+        setAuthError(
+          response.status === 403
+            ? '该账号没有审批权限，请使用管理员或所有者账号。'
+            : '登录失败，请检查账号、密码和身份服务。',
+        )
+        return
+      }
+      setPassword('')
+      setAuthRequired(false)
+      await load()
+    } catch {
+      setAuthError('登录服务暂时不可用，请稍后重试。')
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  async function logout() {
+    await fetch('/api/omni/auth/session', {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    }).catch(() => undefined)
+    setRows([])
+    setAuthRequired(true)
+  }
 
   async function actOn(id: string, kind: 'approve' | 'reject') {
     const note =
@@ -78,9 +128,14 @@ export default function InboxPage() {
       const resp = await fetch(`/api/omni/inbox/${id}/${kind}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ note }),
       })
       const data = await resp.json()
+      if (resp.status === 401) {
+        setAuthRequired(true)
+        return
+      }
       if (data.success && data.ok) {
         // 从列表删掉这一条，避免双批
         setRows((prev) => prev.filter((r) => r.id !== id))
@@ -92,6 +147,53 @@ export default function InboxPage() {
     } finally {
       setActing(null)
     }
+  }
+
+  if (authRequired) {
+    return (
+      <div className="px-6 py-12 max-w-md mx-auto">
+        <Card>
+          <CardContent className="p-6">
+            <h1 className="text-xl font-semibold text-gray-900 mb-2">审批登录</h1>
+            <p className="text-sm text-gray-500 mb-5">
+              审批属于高风险操作，请使用管理员或所有者账号登录。
+            </p>
+            <form className="space-y-4" onSubmit={login}>
+              <label className="block text-sm text-gray-700">
+                邮箱
+                <input
+                  type="email"
+                  autoComplete="username"
+                  required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm text-gray-700">
+                密码
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+                />
+              </label>
+              {authError && <p className="text-sm text-rose-700">{authError}</p>}
+              <Button type="submit" className="w-full" disabled={authBusy}>
+                {authBusy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                登录并进入待审批
+              </Button>
+            </form>
+            <p className="text-xs text-gray-400 mt-4">
+              登录令牌仅保存在 HttpOnly 会话 Cookie 中，不会暴露给页面脚本。
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -107,6 +209,7 @@ export default function InboxPage() {
             omni 要做的事得你点头 / 不点超时自动驳
           </p>
         </div>
+        <Button variant="ghost" size="sm" onClick={logout}>退出审批登录</Button>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
           刷新

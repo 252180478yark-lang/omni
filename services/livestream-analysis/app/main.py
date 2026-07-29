@@ -21,7 +21,7 @@ import psycopg2.extras
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 
 from app.config import Settings
 from app.models import AnalysisResult
@@ -260,10 +260,20 @@ def _run_analysis(task_id: str, video_path: str, output_dir: str):
 
 
 # ── Routes ──────────────────────────────────────────────────────────
+def _baked_identity(name: str) -> str | None:
+    value = os.getenv(name, "").strip()
+    return None if not value or value.lower() in {"unknown", "unset", "none"} else value
+
+
 @app.get("/health")
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "livestream-analysis"}
+    return {
+        "status": "ok",
+        "service": "livestream-analysis",
+        "build_commit": _baked_identity("OMNI_BUILD_COMMIT"),
+        "build_source_fingerprint": _baked_identity("OMNI_BUILD_SOURCE_FINGERPRINT"),
+    }
 
 
 @app.get(f"{BASE_PREFIX}/settings/gemini/status")

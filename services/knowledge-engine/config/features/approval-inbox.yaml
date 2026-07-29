@@ -1,0 +1,29 @@
+schema_version: 1
+feature_id: approval-inbox
+title: 待批
+domain: operations.approval
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /inbox
+  visible: true
+  placements: [sidebar, direct]
+capabilities:
+  - {capability_id: approval-inbox, kind: admin}
+expected_edges: []
+checks:
+  - check_id: identity-readiness
+    kind: health
+    target: /api/v1/system/health/features/approval-inbox
+    verifies: health_registration:service:identity-service
+    required: true
+  - check_id: approval-worker-readiness
+    kind: health
+    target: /api/v1/system/health/features/approval-inbox
+    verifies: health_registration:service:approval-worker
+    required: true
+aliases: []
+dependencies:
+  - {ref: health_registration:service:knowledge-engine, required: true}
+  - {ref: health_registration:service:identity-service, required: true}
+  - {ref: health_registration:service:approval-worker, required: true}

@@ -299,10 +299,19 @@ def _process_job(job: dict[str, Any]) -> None:
             mark_video_failed(video_id, error)
 
 
+def _baked_identity(name: str) -> str | None:
+    value = os.getenv(name, "").strip()
+    return None if not value or value.lower() in {"unknown", "unset", "none"} else value
+
+
 @app.get("/health")
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, str | None]:
+    return {
+        "status": "ok",
+        "build_commit": _baked_identity("OMNI_BUILD_COMMIT"),
+        "build_source_fingerprint": _baked_identity("OMNI_BUILD_SOURCE_FINGERPRINT"),
+    }
 
 
 @app.get("/api/settings/gemini/status")

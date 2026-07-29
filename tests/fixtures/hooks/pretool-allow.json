@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "change_id": "fixture-change",
+  "tool_input": {
+    "file_path": "src/owned.py"
+  }
+}

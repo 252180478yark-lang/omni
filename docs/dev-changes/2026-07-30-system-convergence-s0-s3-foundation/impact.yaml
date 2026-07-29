@@ -1,0 +1,536 @@
+schema_version: 3
+change_id: 2026-07-30-system-convergence-s0-s3-foundation
+title: System convergence foundation S0 through S3
+state: VERIFYING
+created_at: '2026-07-29T17:34:17Z'
+updated_at: '2026-07-29T19:57:43Z'
+feature_refs:
+- feature_id: system-convergence-foundation
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S0-S3
+before_snapshot:
+  ref: git:7ccc84f5bbdc6c5cef58864820537025e7a96f20:system-convergence-foundation-before
+delivery:
+  authority: ci_attestation
+  base_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
+risk:
+  level: R2
+  reasons:
+  - The change spans repository governance, local hooks, runtime allocation, migration orchestration, backend APIs, frontend health semantics, and deterministic graph artifacts.
+  - An incorrect ownership, migration, health, or approval transition could block development or misrepresent an unavailable or unapproved operation as safe.
+  - Database changes are additive migration files only; this contract does not authorize applying them to a shared or production database.
+  external_effects: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: PRD v1.2 currently has an externally delivered S0.5 governance candidate, but S0 ownership projection, proportional S1 contracts, S1.5 runtime isolation, S2 local process gates, S2.5 truthful health and recoverable approval, and S3 deterministic feature graph are absent or partial.
+  expected_outcome: Deliver one coherent, backward-compatible S0 through S3 foundation in an isolated branch, with deterministic local verification and an immutable candidate that remains verified-not-delivered until trusted default-branch CI emits its external attestation.
+  user_visible_behavior:
+  - New development tasks classify risk and path ownership before writes, remediate same-risk scope drift, and block only risk escalation, active lease conflict, or deterministic broken evidence.
+  - Parallel worktrees obtain isolated ports, database, writable volumes, Redis namespace, build identity, and scheduler ownership before starting a writable runtime.
+  - Development, Docker, and CI use the same checksum-verifying migration runner and can emit a redacted MigrationReceipt.
+  - The overview reports healthy, degraded, unavailable, stale, or unknown with failed-source reasons instead of converting errors to zeros or a false 100 percent.
+  - A new approval operation returns pending immediately, resumes through a leased worker, and never blindly replays an uncertain external side effect.
+  - The cost-management sample FeatureDefinition generates an atomic registry and graph-expectation bundle and stable, redacted fact snapshots with evidence.
+current_chain:
+  nodes:
+  - prd:system-convergence-master:v1.2
+  - artifact:delivery-attestation
+  - script:development-readiness
+  - script:feature-contract-gate
+  - script:runtime-guard
+  - script:migration-runner
+  - hook:codex-session-start
+  - api:GET:/api/omni/overview
+  - api:GET:/health
+  - workflow:human-gate-blocking-poll
+  edges:
+  - from: hook:codex-session-start
+    to: script:development-readiness
+    relation: invokes
+  - from: script:feature-contract-gate
+    to: artifact:delivery-attestation
+    relation: emits_after_commit_validation
+  - from: api:GET:/api/omni/overview
+    to: api:GET:/health
+    relation: probes_boolean_status
+  - from: workflow:human-gate-blocking-poll
+    to: state:human-gate-decision
+    relation: waits_for
+  evidence:
+  - 'GitHub Actions run 30472602904: trusted main push for 7ccc84f5bbdc6c5cef58864820537025e7a96f20 completed successfully and uploaded the S0.5 delivery attestation.'
+  - scripts/runtime_guard.py verify currently reports cross-worktree writable database, volume, scheduler, and build-identity conflicts and has no allocation store.
+  - .codex/hooks.json currently contains advisory SessionStart handlers only.
+  - frontend/src/app/api/omni/overview/route.ts currently reduces two HTTP probes to healthy/down and folds failed data reads into zero metrics.
+  - services/knowledge-engine/app/mcp/human_gate.py currently polls inside the caller request, and no ApprovalOperation worker or recovery model exists.
+  - No FeatureDefinition schema, deterministic system graph scanner, immutable snapshot writer, or fact-snapshot diff exists at the base commit.
+  - Two tracked cookie helper scripts contain embedded session-like material; S0 source hygiene must replace literals with local secret-file references without printing or exporting any value.
+scope:
+  pages:
+  - page:/
+  apis:
+  - api:GET:/health
+  - api:GET:/api/v1/system/health
+  - api:POST:/api/v1/approval-operations
+  - api:GET:/api/v1/approval-operations/{operation_id}
+  - api:POST:/api/v1/approval-operations/{operation_id}/revoke
+  - api:GET:/api/omni/overview
+  mcp_tools:
+  - mcp:human-gate-compatibility-wrapper
+  services:
+  - service:development-policy
+  - service:workspace-ownership
+  - service:runtime-allocation
+  - service:migration-runner
+  - service:health-registry
+  - service:approval-operation-worker
+  - service:system-graph-scanner
+  database:
+  - table:mcp.approval_operations
+  - table:mcp.human_gates
+  data_sources:
+  - source:feature-definition-yaml
+  - source:external-delivery-attestation
+  - source:runtime-allocation-store
+  - source:git-blob-evidence
+  states_workflows:
+  - state:development-contract
+  - state:workspace-lease
+  - state:runtime-allocation
+  - state:migration-receipt
+  - state:feature-health
+  - state:approval-operation
+  - state:system-graph-snapshot
+  tests:
+  - test:governance-and-hooks
+  - test:runtime-allocation-and-migration
+  - test:health-and-approval
+  - test:feature-definition-and-system-graph
+  docs:
+  - docs/dev-changes/2026-07-30-system-convergence-s0-s3-foundation
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+planned_changes:
+- id: CHG-001
+  action: add
+  kind: governance
+  node_id: service:workspace-ownership-and-progress
+  paths:
+  - scripts/workspace_ownership.py
+  - scripts/generate_implementation_status.py
+  - scripts/check_development_readiness.py
+  - tests/test_workspace_ownership.py
+  - tests/test_implementation_status.py
+  - tests/test_development_readiness.py
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  upstream:
+  - artifact:delivery-attestation
+  downstream:
+  - hook:codex-session-start
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+- id: CHG-002
+  action: modify
+  kind: governance
+  node_id: service:development-policy
+  paths:
+  - scripts/development_policy.py
+  - scripts/check_feature_contracts.py
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py
+  - .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  - tests/test_development_policy.py
+  - tests/test_feature_contracts.py
+  upstream:
+  - state:development-contract
+  downstream:
+  - hook:codex-pre-tool-use
+  - hook:codex-stop
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-003
+  action: add
+  kind: runtime-governance
+  node_id: service:runtime-allocation
+  paths:
+  - config/runtime-manifest.yaml
+  - config/schemas/**
+  - scripts/runtime_allocation.py
+  - scripts/dev_runtime_environment.py
+  - scripts/runtime_guard.py
+  - services/knowledge-engine/app/runtime_preflight.py
+  - services/knowledge-engine/tests/test_runtime_preflight.py
+  - .gitignore
+  - tests/test_runtime_allocation.py
+  - tests/test_dev_runtime_environment.py
+  - tests/test_runtime_guard.py
+  upstream:
+  - state:workspace-lease
+  downstream:
+  - workflow:compose-start
+  - script:migration-runner
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+- id: CHG-004
+  action: modify
+  kind: migration-runtime
+  node_id: script:migration-runner
+  paths:
+  - scripts/apply_migrations.py
+  - docker-compose.yml
+  - docker-compose.dev.yml
+  - services/docker-compose.sp1-sp4.yml
+  - services/infra-core/docker-compose.infra.yml
+  - services/infra-core/migrations/**
+  - frontend/Dockerfile
+  - services/*/Dockerfile
+  - migrations/099_*.sql
+  - migrations/100_*.sql
+  - dev-start.ps1
+  - .github/workflows/ci.yml
+  - tests/test_migration_runner_contract.py
+  - tests/test_compose_runtime_contract.py
+  - tests/test_ci_migration_gate.py
+  - tests/test_service_schema_migrations.py
+  upstream:
+  - service:runtime-allocation
+  downstream:
+  - artifact:migration-receipt
+  - ci:migration-parity-gate
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+  - VER-004
+  - VER-005
+- id: CHG-005
+  action: add
+  kind: local-hook
+  node_id: hook:codex-development-gate
+  paths:
+  - .codex/hooks.json
+  - scripts/hooks/**
+  - tests/test_development_hooks.py
+  - tests/fixtures/hooks/**
+  - tests/test_agents_policy.py
+  upstream:
+  - service:development-policy
+  - service:runtime-allocation
+  downstream:
+  - state:development-contract
+  contract_change: compatible
+  verification_ids:
+  - VER-006
+  - VER-007
+- id: CHG-006
+  action: add
+  kind: health-api
+  node_id: service:health-registry
+  paths:
+  - services/knowledge-engine/app/schemas/system_health.py
+  - services/knowledge-engine/app/services/health_registry.py
+  - services/knowledge-engine/app/routers/system_health.py
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/tests/test_system_health.py
+  - services/knowledge-engine/tests/test_system_health_router.py
+  - services/ai-provider-hub/app/main.py
+  - services/video-analysis/app/main.py
+  - services/livestream-analysis/app/main.py
+  - services/ad-review-service/app/main.py
+  - services/news-aggregator/app/api/health_routes.py
+  - services/scout-agent/app/routers/health.py
+  - services/identity-service/app/routers/health.py
+  - frontend/src/app/api/omni/_shared.ts
+  - frontend/src/app/api/omni/overview/route.ts
+  - frontend/src/app/page.tsx
+  - frontend/tests/**/system-health*.test.*
+  - services/ai-provider-hub/tests/test_providers.py
+  upstream:
+  - source:feature-definition-yaml
+  - state:runtime-allocation
+  downstream:
+  - api:GET:/api/omni/overview
+  - page:/
+  contract_change: compatible
+  verification_ids:
+  - VER-008
+  - VER-009
+- id: CHG-007
+  action: add
+  kind: approval-workflow
+  node_id: service:approval-operation-worker
+  paths:
+  - migrations/098_approval_operations.sql
+  - services/knowledge-engine/app/schemas/approval_operations.py
+  - services/knowledge-engine/app/services/approval_operations.py
+  - services/knowledge-engine/app/workers/**
+  - services/knowledge-engine/app/routers/approval_operations.py
+  - services/knowledge-engine/app/routers/human_gates.py
+  - services/knowledge-engine/app/schemas/human_gates.py
+  - services/knowledge-engine/app/services/inbox_service.py
+  - services/knowledge-engine/app/mcp/approval_audit.py
+  - services/knowledge-engine/app/mcp/human_gate.py
+  - services/knowledge-engine/app/mcp/tools/agent_extras.py
+  - services/knowledge-engine/app/mcp/tools/agent_meta.py
+  - services/knowledge-engine/app/mcp/tools/cost_admin.py
+  - services/knowledge-engine/app/mcp/tools/kb.py
+  - services/knowledge-engine/app/mcp/tools/video_production.py
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/tests/test_approval_audit.py
+  - services/knowledge-engine/tests/test_approval_operations.py
+  - services/knowledge-engine/tests/test_approval_operation_worker.py
+  - services/knowledge-engine/tests/test_router_human_gates.py
+  - frontend/server.ts
+  - frontend/src/lib/agent-chat/ws-handler.ts
+  - frontend/src/app/api/omni/auth/**
+  - frontend/src/app/api/omni/inbox/**
+  - frontend/src/app/inbox/page.tsx
+  - frontend/vitest.config.ts
+  - frontend/tests/**/approval*.test.*
+  - frontend/tests/inbox*.test.*
+  - tests/test_approval_hmac_interop.py
+  upstream:
+  - state:human-gate-decision
+  downstream:
+  - state:approval-operation
+  - artifact:approval-operation-result
+  contract_change: compatible
+  verification_ids:
+  - VER-008
+  - VER-010
+- id: CHG-008
+  action: add
+  kind: feature-definition
+  node_id: source:feature-definition-yaml
+  paths:
+  - services/knowledge-engine/config/features/**
+  - services/knowledge-engine/pyproject.toml
+  - services/knowledge-engine/app/schemas/system_graph.py
+  - services/knowledge-engine/app/services/system_graph/**
+  - services/knowledge-engine/scripts/system_graph.py
+  - services/knowledge-engine/tests/test_feature_definitions.py
+  - services/knowledge-engine/tests/test_system_graph_models.py
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
+  - services/knowledge-engine/tests/test_system_graph_snapshots.py
+  - services/knowledge-engine/tests/test_system_graph_redaction.py
+  - services/knowledge-engine/tests/fixtures/system_graph/**
+  upstream:
+  - prd:system-convergence-master:v1.2
+  downstream:
+  - artifact:feature-registry-bundle
+  - artifact:system-graph-snapshot
+  contract_change: compatible
+  verification_ids:
+  - VER-011
+  - VER-012
+- id: CHG-009
+  action: modify
+  kind: security-hygiene
+  node_id: security:cookie-secret-reference
+  paths:
+  - services/knowledge-engine/scripts/save_cookies.py
+  - scripts/set_yuntu_cookies.py
+  - tests/test_secret_hygiene.py
+  upstream:
+  - state:s0-secret-scan
+  downstream:
+  - workflow:harvester-auth-import
+  contract_change: compatible
+  verification_ids:
+  - VER-015
+- id: CHG-010
+  action: modify
+  kind: identity-security
+  node_id: service:identity-service
+  paths:
+  - services/identity-service/**
+  - docker-compose.yml
+  - services/docker-compose.sp1-sp4.yml
+  - scripts/runtime_allocation.py
+  - tests/test_runtime_allocation.py
+  - tests/test_compose_runtime_contract.py
+  upstream:
+  - state:runtime-allocation
+  downstream:
+  - service:approval-operation-worker
+  - frontend/src/app/api/omni/auth/session/route.ts
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+  - VER-008
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Add versioned health and approval-operation routes, enrich the existing health response, and retain current human-gate and overview response fields during the compatibility window.
+  database:
+    status: compatible
+    strategy: Add only a forward migration for approval-operation state and references; do not apply it to a shared database in this task, and verify the unique runner against disposable databases.
+  workflow:
+    status: compatible
+    strategy: Keep historical contract schemas readable and legacy human-gate endpoints available while routing new R3 registrations through immediate pending operations and recoverable workers.
+  data_source:
+    status: compatible
+    strategy: FeatureDefinition becomes the hand-authored feature/dependency source, while delivery remains external-attestation-only and failed collectors retain prior facts as unknown instead of deleting them.
+graph_acceptance:
+  required_edges:
+  - from: artifact:delivery-attestation
+    to: artifact:implementation-status-projection
+    relation: projects_verified_delivery
+  - from: hook:codex-pre-tool-use
+    to: service:development-policy
+    relation: classifies_path_risk_and_lease
+  - from: hook:codex-stop
+    to: state:development-contract
+    relation: validates_required_evidence
+  - from: service:runtime-allocation
+    to: workflow:compose-start
+    relation: supplies_isolated_resources
+  - from: workflow:compose-start
+    to: script:migration-runner
+    relation: invokes_one_shot
+  - from: ci:migration-parity-gate
+    to: script:migration-runner
+    relation: verifies_empty_and_existing_database
+  - from: source:feature-definition-yaml
+    to: artifact:feature-registry-bundle
+    relation: generates_atomically
+  - from: source:feature-definition-yaml
+    to: service:health-registry
+    relation: registers_dependencies
+  - from: service:health-registry
+    to: api:GET:/api/omni/overview
+    relation: supplies_five_state_health
+  - from: api:POST:/api/v1/approval-operations
+    to: state:approval-operation
+    relation: creates_pending_immediately
+  - from: service:approval-operation-worker
+    to: state:approval-operation
+    relation: claims_and_resumes_once
+  - from: service:system-graph-scanner
+    to: artifact:system-graph-snapshot
+    relation: writes_content_addressed_snapshot
+  allowed_unknowns:
+  - External CI delivery attestation for the new candidate does not exist until an explicitly authorized default-branch integration push completes.
+  - Existing unrelated live containers and the shared main database remain observational inputs and are not mutated by this isolated implementation task.
+  forbidden_orphans:
+  - service:development-policy
+  - service:runtime-allocation
+  - script:migration-runner
+  - service:health-registry
+  - service:approval-operation-worker
+  - source:feature-definition-yaml
+  - service:system-graph-scanner
+risks:
+- id: RSK-001
+  description: Parallel agents could touch the same shared bootstrap or policy file and silently overwrite each other.
+  mitigation: Assign disjoint path domains, reserve shared files to one owner, inspect the combined diff, and run contract ownership validation before verification.
+- id: RSK-002
+  description: Runtime isolation code could alter the canonical main runtime or reveal credentials while inspecting allocations.
+  mitigation: Keep allocation state local and ignored, redact DSNs and secrets, preserve canonical defaults, and test with fixtures without stopping or rebuilding current containers.
+- id: RSK-003
+  description: A migration change could be mistaken for authorization to change a shared database.
+  mitigation: Restrict this contract to migration source and disposable-database verification; shared or production execution remains an explicit R3 gate.
+- id: RSK-004
+  description: A worker crash after an external side effect but before result persistence could cause a duplicate replay.
+  mitigation: Require handler idempotency strategy, persist effect-started state, and move uncertain outcomes to manual reconciliation instead of automatic replay.
+- id: RSK-005
+  description: Health aggregation could report false success when probes fail or build identity is stale.
+  mitigation: Preserve typed source failures, make unknown non-green, compare build identity, and exercise unavailable, degraded, stale, unknown, and partial fixtures.
+- id: RSK-006
+  description: Dynamic graph collection could leak source content or erase facts when one source times out.
+  mitigation: Store evidence coordinates rather than snippets, redact secret patterns, isolate dynamic collectors with timeouts, and prohibit removed edges from failed sources.
+- id: RSK-007
+  description: Tracked cookie helper scripts contain session-like literals that could remain usable even after their source representation is removed.
+  mitigation: Replace literals with validated external secret-file references, scan tracked source without returning matched values, and report external credential rotation as a separate owner-authorized action.
+out_of_scope:
+- No default-branch merge or push, external CI mutation, release, deployment, or external-system write is authorized by this contract.
+- No shared, canonical, staging, or production database migration is executed; database verification uses disposable isolated resources only.
+- No running container, user worktree, branch, volume, credential, client application, or business data is stopped, deleted, rewritten, or retired.
+- S4 planned-versus-fact issue cards and blocking CI graph gate, S5 candidate co-design, S7 graph API/UI persistence, S8 trace spine, and later PRD slices are not included.
+- No arbitrary external side-effect handler is claimed exactly-once unless it declares and proves a transaction, provider idempotency key, or manual-reconciliation boundary.
+- No external account session or cookie is rotated, revoked, exported, or replayed; those provider-side actions require explicit target confirmation and fresh R3 authorization.
+rollback:
+  strategy: Revert the isolated candidate commit; retain schema-v1/v2 contract readers and legacy human-gate endpoints, remove generated graph/status artifacts, and release only allocations owned by this change ID.
+  data_recovery: The implementation does not mutate shared business data. Disposable database fixtures can be dropped after verification; an un-applied additive migration requires no data recovery.
+verification_plan:
+- id: VER-001
+  layer: governance
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_feature_contracts.py tests/test_development_policy.py tests/test_workspace_ownership.py tests/test_implementation_status.py tests/test_development_readiness.py .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  proves: Risk classification, schema compatibility, ownership inventory, same-risk contract delta, delivery projection, and immutable-delivery semantics are deterministic.
+  required: true
+- id: VER-002
+  layer: readiness
+  command: python -B scripts/check_development_readiness.py --strict-critical-assets
+  proves: Critical assets are committed, the active change is visible, and repository readiness distinguishes candidate from delivered state.
+  required: true
+- id: VER-003
+  layer: runtime-allocation
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_runtime_allocation.py tests/test_dev_runtime_environment.py tests/test_runtime_guard.py tests/test_compose_runtime_contract.py services/knowledge-engine/tests/test_runtime_preflight.py
+  proves: Lease allocation is atomic, conflicts fail before start, resources are isolated, identities are injected, and secrets are redacted.
+  required: true
+- id: VER-004
+  layer: migration-runner
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_migration_runner_contract.py tests/test_ci_migration_gate.py tests/test_service_schema_migrations.py
+  proves: The single runner detects checksum drift, verifies head parity, and emits a redacted MigrationReceipt for empty, existing, and restart fixtures.
+  required: true
+- id: VER-005
+  layer: compose
+  command: docker compose config --quiet
+  proves: Canonical compose remains valid after allocation variables, build labels, scheduler ownership, and the one-shot migration service are introduced.
+  required: true
+- id: VER-006
+  layer: hooks
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_development_hooks.py tests/test_agents_policy.py
+  proves: Windows and POSIX SessionStart, PreToolUse, and Stop gates handle allowed, remediation, blocked, malformed, timeout, stale lease, and recursion cases.
+  required: true
+- id: VER-007
+  layer: codex-policy
+  command: python -B scripts/check_agent_policy.py --require-tracked
+  proves: Hook commands, Skill references, and repository instructions resolve from committed assets.
+  required: true
+- id: VER-008
+  layer: backend-health-approval
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_health.py services/knowledge-engine/tests/test_system_health_router.py services/knowledge-engine/tests/test_approval_audit.py services/knowledge-engine/tests/test_approval_operations.py services/knowledge-engine/tests/test_approval_operation_worker.py services/knowledge-engine/tests/test_router_human_gates.py tests/test_approval_hmac_interop.py
+  proves: Five-state health, typed errors, immediate pending responses, CAS claim, expiry, revoke, restart, and uncertain-side-effect reconciliation behave correctly.
+  required: true
+- id: VER-009
+  layer: frontend
+  command: npm --prefix frontend run test:unit
+  proves: Overview and homepage preserve typed partial health and expose user-readable degraded, stale, unavailable, and unknown states.
+  required: true
+- id: VER-010
+  layer: migration-source
+  command: python -B scripts/apply_migrations.py --dry-run --verify
+  proves: The approval-operation migration participates in the same ordered runner without connecting to a shared database.
+  required: true
+- id: VER-011
+  layer: system-graph
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_models.py services/knowledge-engine/tests/test_system_graph_collectors.py services/knowledge-engine/tests/test_system_graph_snapshots.py services/knowledge-engine/tests/test_system_graph_redaction.py
+  proves: Definition validation, atomic generation, collector evidence, deterministic IDs/hash, timeout preservation, diff, and secret redaction satisfy S3.
+  required: true
+- id: VER-012
+  layer: system-graph-cli
+  command: python -B services/knowledge-engine/scripts/system_graph.py verify --feature cost-management
+  proves: The real sample feature can be regenerated, scanned twice with a stable hash, and every evidence coordinate resolves to the expected Git blob.
+  required: true
+- id: VER-013
+  layer: repository
+  command: git diff --check
+  proves: The complete candidate contains no whitespace or patch-integrity errors.
+  required: true
+- id: VER-014
+  layer: contract
+  command: python -B scripts/check_feature_contracts.py --mode worktree
+  proves: Every protected changed path has one active owner and matches the locked R2 impact contract.
+  required: true
+- id: VER-015
+  layer: security-hygiene
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_secret_hygiene.py
+  proves: Cookie import helpers contain no embedded credential material, require an external local secret-file reference, reject repository-contained secret files, and never echo secret values.
+  required: true
+lock:
+  locked_at: '2026-07-29T17:36:13Z'
+  locked_by: codex
+  rationale: Locked after live Git/CI, runtime, governance, health, approval and system-graph audit on delivered base 7ccc84f; external delivery and shared database mutation remain outside scope.

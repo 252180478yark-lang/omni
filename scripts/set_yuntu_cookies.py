@@ -1,32 +1,139 @@
-"""Save existing yuntu cookies to harvester auth via API."""
+#!/usr/bin/env python3
+"""Import Yuntu cookies into the local Knowledge Engine from a secret file.
+
+Only an absolute file path outside the repository is accepted.  Cookie values
+are never accepted as CLI arguments and never appear in command output.
+"""
+
+from __future__ import annotations
+
+import argparse
 import asyncio
+import json
+import os
+import re
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+from urllib.parse import urlsplit
+
 import httpx
 
-KE = "http://localhost:8002/api/v1/knowledge"
 
-COOKIE_STR = """tt_utm_url=https://yuntu.oceanengine.com/support/content/root?graphId=610&pageId=445&spaceId=221&timestamp=1773837751729; tt_utm=yuntu.oceanengine.com; s_v_web_id=verify_mmw9olsj_70hGGJ7t_uQXq_4Lou_9zqx_YKe9Km2MAuIG; ttwid=1%7CfpCEAJ6mHArTqzOJ5NtdwvE8oUwOsW-7_vZlEJ5DcOU%7C1769344116%7C014ba944a17c875ae8b8702eee04eedcb4ccb921dd98ed99bfe4e364589e8525; passport_csrf_token=ba5a5c91f3506fc5c93cbeae5c03e2ce; passport_csrf_token_default=ba5a5c91f3506fc5c93cbeae5c03e2ce; loginType=mobile; passport_mfa_token=Cjf%2BzS92tT0QL0NdGkBtz7QGvaKemIp%2B9CA16FajLV%2F7xKDRKWsFcOwU%2B2OdXZe4m49leYm0GbPhGkoKPAAAAAAAAAAAAABQMohn%2BLQ%2Fozmb8Wec8dJ8b5NQqYFZls0zC4%2FmCSXGOUG75FqjHV72acsaC9AEUqrumRCWuIwOGPax0WwgAiIBA4arwhc%3D; d_ticket=a97fc4a1b027894d877ad6de1fd91193b7fc9; n_mh=TqyOolUZrShvCL8D5j3TlAZ9KQkcVvPs02rjsUEDX48; sso_auth_status=117f3643878104b25091f6e1eef271ef; sso_auth_status_ss=117f3643878104b25091f6e1eef271ef; sso_uid_tt=58970fad25f2a01ca64ce10fbe5041cb; sso_uid_tt_ss=58970fad25f2a01ca64ce10fbe5041cb; toutiao_sso_user=2ba273ea8d3e1d16167c405f3a9c2a3a; toutiao_sso_user_ss=2ba273ea8d3e1d16167c405f3a9c2a3a; sid_ucp_sso_v1=1.0.0-KDgyYTMwMmM5Y2Y2M2Y5Y2M3NWI4OTgxMjdhNzRhZmVmMDg3Y2FkMDcKHwjAs6CG8838ARCAq-vNBhjkDiAMMLuazKcGOAJA8QcaAmxmIiAyYmEyNzNlYThkM2UxZDE2MTY3YzQwNWYzYTljMmEzYQ; ssid_ucp_sso_v1=1.0.0-KDgyYTMwMmM5Y2Y2M2Y5Y2M3NWI4OTgxMjdhNzRhZmVmMDg3Y2FkMDcKHwjAs6CG8838ARCAq-vNBhjkDiAMMLuazKcGOAJA8QcaAmxmIiAyYmEyNzNlYThkM2UxZDE2MTY3YzQwNWYzYTljMmEzYQ; odin_tt=d24f7eeed8c9e38e701704ccb40efb39979a00ace837ce9625574171c49aff78bfec5ab34105314004d8e098b0d2f192b01a0c5ed12d2049d96b84dbecc77304; passport_auth_status=b15d139d3b22d24f8bd10dfd1b196fce%2C2d79f09300d0c6c3619e0834502c9fda; passport_auth_status_ss=b15d139d3b22d24f8bd10dfd1b196fce%2C2d79f09300d0c6c3619e0834502c9fda; sid_guard=f838dfe443a7c7f705d7215ce3e2d11c%7C1773852033%7C5184001%7CSun%2C+17-May-2026+16%3A40%3A34+GMT; uid_tt=4de9af789eb5949f82876d5136b5aa51; uid_tt_ss=4de9af789eb5949f82876d5136b5aa51; sid_tt=f838dfe443a7c7f705d7215ce3e2d11c; sessionid=f838dfe443a7c7f705d7215ce3e2d11c; sessionid_ss=f838dfe443a7c7f705d7215ce3e2d11c; session_tlb_tag=sttt%7C15%7C-Djf5EOnx_cF1yFc4-LRHP_________0Iwf2nrEsIejBU0eRG1JwKBCbdbfLf1QMeLmUsqBrRmU%3D; is_staff_user=false; sid_ucp_v1=1.0.0-KDliYzNkYzAyNWFlYWZhZGFjMmExMjM2NDU2NjQyZmM3YTY2N2E1NTEKGQjAs6CG8838ARCBq-vNBhjkDiAMOAJA8QcaAmxmIiBmODM4ZGZlNDQzYTdjN2Y3MDVkNzIxNWNlM2UyZDExYw; ssid_ucp_v1=1.0.0-KDliYzNkYzAyNWFlYWZhZGFjMmExMjM2NDU2NjQyZmM3YTY2N2E1NTEKGQjAs6CG8838ARCBq-vNBhjkDiAMOAJA8QcaAmxmIiBmODM4ZGZlNDQzYTdjN2Y3MDVkNzIxNWNlM2UyZDExYw; gd_random=eyJtYXRjaCI6dHJ1ZSwicGVyY2VudCI6MC44MzI0Mzg1MDEzOTUwNzQxfQ==.rsEGwcB0PIZcjyZimMe2sXLDmyu0wosakuvTiF+0vSU=; yuntu_brand_industry-version=10005; csrftoken=f8psPVUck3N31QX_6iPzeH3b; advertiser_id=1805203190148185; tt_scid=TiDfEaDaAZ5VCBfzgKBN5Srkl7y-B2ba519CMgjsslJn9XP8EL-UJIefPERrbVwUd8ff; _tea_utm_cache_1229=undefined; msToken=SiH7VLn5JPPdNyXjxcdhbd9WKPP9kprUAsoeu3ClKV9zEl1fa6Os9idckVhtmGezZgTiNyYj9jeC8-6QZzxz7wM6Fm_9MyFUSqhjVRpRdnIcwq5Axjlvdt0="""
+COOKIE_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,256}$")
+DEFAULT_BASE_URL = "http://localhost:8002/api/v1/knowledge"
 
 
-async def main():
+class CookieImportError(ValueError):
+    """Cookie import input is unsafe or invalid."""
+
+
+def repository_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def external_secret_file(value: str | os.PathLike[str]) -> Path:
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        raise CookieImportError("secret-file path must be absolute")
+    resolved = candidate.resolve(strict=False)
+    try:
+        resolved.relative_to(repository_root())
+    except ValueError:
+        pass
+    else:
+        raise CookieImportError("secret-file path must be outside the repository")
+    if not resolved.is_file() or resolved.stat().st_size > 1_000_000:
+        raise CookieImportError("secret-file is missing or exceeds the size limit")
+    return resolved
+
+
+def local_base_url(value: str) -> str:
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise CookieImportError("Knowledge Engine URL must resolve to the local host")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise CookieImportError("Knowledge Engine URL must not contain credentials or query data")
+    return value.rstrip("/")
+
+
+def _cookie(name: str, value: str, domain: str = ".oceanengine.com", path: str = "/") -> dict[str, str]:
+    if not COOKIE_NAME.fullmatch(name) or not value or any(char in value for char in "\r\n"):
+        raise CookieImportError("secret-file contains an invalid cookie")
+    if not domain.startswith(".") or any(char in domain for char in "\r\n/\\"):
+        raise CookieImportError("secret-file contains an invalid cookie domain")
+    if not path.startswith("/") or any(char in path for char in "\r\n"):
+        raise CookieImportError("secret-file contains an invalid cookie path")
+    return {"name": name, "value": value, "domain": domain, "path": path}
+
+
+def parse_cookie_secret(text: str) -> list[dict[str, str]]:
+    stripped = text.strip()
+    if not stripped:
+        raise CookieImportError("secret-file is empty")
+    try:
+        decoded: Any = json.loads(stripped)
+    except json.JSONDecodeError:
+        decoded = None
+    if isinstance(decoded, Mapping):
+        decoded = decoded.get("cookies")
+    if isinstance(decoded, Sequence) and not isinstance(decoded, (str, bytes)):
+        cookies = [
+            _cookie(
+                str(item.get("name") or ""),
+                str(item.get("value") or ""),
+                str(item.get("domain") or ".oceanengine.com"),
+                str(item.get("path") or "/"),
+            )
+            for item in decoded
+            if isinstance(item, Mapping)
+        ]
+        if len(cookies) != len(decoded) or not cookies:
+            raise CookieImportError("cookie JSON must contain cookie objects")
+        return cookies
     cookies = []
-    for pair in COOKIE_STR.strip().split("; "):
-        eq = pair.find("=")
-        if eq < 0:
+    for pair in stripped.split(";"):
+        if not pair.strip():
             continue
-        name = pair[:eq].strip()
-        value = pair[eq + 1:].strip()
-        cookies.append({"name": name, "value": value, "domain": ".oceanengine.com", "path": "/"})
+        if "=" not in pair:
+            raise CookieImportError("cookie header contains a malformed pair")
+        name, value = pair.split("=", 1)
+        cookies.append(_cookie(name.strip(), value.strip()))
+    if not cookies:
+        raise CookieImportError("cookie header contains no cookies")
+    return cookies
 
-    print(f"Parsed {len(cookies)} cookies")
 
-    async with httpx.AsyncClient(timeout=10.0) as c:
-        r = await c.post(f"{KE}/harvester/save-auth", json={"cookies": cookies})
-        print(f"Status: {r.status_code}")
-        print(f"Response: {r.text}")
+async def send_cookie_reference(secret_file: Path, base_url: str, *, timeout_seconds: float = 10.0) -> int:
+    cookies = parse_cookie_secret(secret_file.read_text(encoding="utf-8"))
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds)) as client:
+        response = await client.post(f"{base_url}/harvester/save-auth", json={"cookies": cookies})
+        response.raise_for_status()
+    return len(cookies)
 
-        r = await c.get(f"{KE}/harvester/auth-status")
-        print(f"Auth: {r.json()}")
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--secret-file", default=os.getenv("OMNI_COOKIE_SECRET_FILE"))
+    parser.add_argument("--base-url", default=os.getenv("KNOWLEDGE_ENGINE_URL", DEFAULT_BASE_URL))
+    parser.add_argument("--timeout-seconds", type=float, default=10.0)
+    return parser
+
+
+async def async_main() -> int:
+    args = build_parser().parse_args()
+    if not args.secret_file:
+        raise SystemExit("cookie secret-file reference is required")
+    if not 0 < args.timeout_seconds <= 30:
+        raise SystemExit("timeout-seconds must be between 0 and 30")
+    try:
+        secret_file = external_secret_file(args.secret_file)
+        base_url = local_base_url(args.base_url)
+        count = await send_cookie_reference(secret_file, base_url, timeout_seconds=args.timeout_seconds)
+    except (CookieImportError, OSError, UnicodeError, httpx.HTTPError) as exc:
+        raise SystemExit(f"cookie import refused: {type(exc).__name__}") from None
+    print(f"Imported {count} cookies from an external secret reference.")
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(async_main()))

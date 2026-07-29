@@ -4,6 +4,25 @@ Identity service based on FastAPI + SQLAlchemy Async + PostgreSQL.
 
 基于 FastAPI + SQLAlchemy Async + PostgreSQL 的身份认证服务，提供注册、登录、刷新令牌、当前用户与 JWT 验证能力。
 
+## Explicit first administrator
+
+The canonical root migration creates only the Identity schema. It never adds a
+default user or credential. After migrations, an operator can create the first
+administrator interactively:
+
+```text
+python scripts/bootstrap_admin.py --email admin@example.com --display-name "Operator"
+```
+
+For automation, pass the password through stdin (never argv or an environment
+variable):
+
+```text
+<secret-provider> | python scripts/bootstrap_admin.py --password-stdin --email admin@example.com --display-name "Operator"
+```
+
+Promoting an existing account additionally requires `--promote-existing`.
+
 ## Features / 功能
 
 - Async database stack (`sqlalchemy[asyncio]` + `asyncpg`)

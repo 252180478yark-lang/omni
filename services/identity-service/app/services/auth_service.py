@@ -27,7 +27,7 @@ async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
 
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> User:
     user = await db.scalar(select(User).where(User.email == email))
-    if not user or not verify_password(password, user.hashed_password):
+    if not user or not user.is_active or not verify_password(password, user.hashed_password):
         raise AppException(code=401, message="invalid credentials", detail="")
     return user
 
@@ -46,6 +46,6 @@ async def refresh_tokens(db: AsyncSession, refresh_token: str) -> TokenResponse:
     if not isinstance(email, str):
         raise AppException(code=401, message="invalid refresh token", detail="")
     user = await db.scalar(select(User).where(User.email == email))
-    if not user:
+    if not user or not user.is_active:
         raise AppException(code=401, message="invalid refresh token", detail="")
     return issue_tokens(user)

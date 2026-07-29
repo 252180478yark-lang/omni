@@ -25,7 +25,23 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-type HealthState = 'healthy' | 'down'
+type HealthState = 'healthy' | 'degraded' | 'unavailable' | 'stale' | 'unknown'
+
+interface HealthError {
+  code: string
+  message: string
+  source: string
+  status: number
+  retryable: boolean
+}
+
+interface FeatureHealth {
+  feature_id: string
+  title: string
+  href: string | null
+  state: HealthState
+  reason_codes: string[]
+}
 
 interface ActivityItem {
   id: string
@@ -39,94 +55,138 @@ interface OverviewData {
   health: {
     aiHub: HealthState
     knowledge: HealthState
+    summary: HealthState
+    partial: boolean
+    generatedAt: string
+    buildIdentity: Record<string, string | null>
+    frontendBuild: {
+      state: HealthState
+      reasonCodes: string[]
+      buildIdentity: Record<string, string | null>
+    }
+    features: FeatureHealth[]
+    errors: HealthError[]
   }
   metrics: {
-    aiTokenToday: number
-    knowledgeDocuments: number
-    infraUptime: number
-    knowledgeBases: number
-    runningTasks: number
+    aiTokenToday: number | null
+    knowledgeDocuments: number | null
+    infraUptime: number | null
+    knowledgeBases: number | null
+    runningTasks: number | null
   }
 }
 
-interface ToolCard {
-  href: string
+interface ToolPresentation {
+  featureId: string
   icon: LucideIcon
-  label: string
   desc: string
   scene: string
   color: string
   badge: string | null
 }
 
-const QUICK_TOOLS: ToolCard[] = [
+interface ToolCard extends ToolPresentation {
+  href: string
+  label: string
+}
+
+const HEALTH_REASON_LABELS: Record<string, string> = {
+  availability_failed: '服务当前无法访问',
+  availability_unknown: '尚未确认服务是否可访问',
+  authentication_failed: '服务鉴权失败',
+  authentication_unknown: '尚未验证服务权限',
+  read_failed: '真实数据读取失败',
+  read_probe_failed: '真实数据读取探针失败',
+  read_unknown: '尚未完成真实数据读取验证',
+  probe_timeout: '健康探针超时',
+  probe_failed: '健康探针执行失败',
+  dependency_not_registered: '依赖尚未登记健康探针',
+  build_identity_unknown: '运行版本尚未验证',
+  build_identity_mismatch: '运行版本与交付版本不一致',
+  build_source_fingerprint_unknown: '运行镜像缺少构建指纹',
+  build_source_fingerprint_mismatch: '运行镜像与目标源码指纹不一致',
+  frontend_build_identity_unknown: '前端运行版本尚未验证',
+  frontend_build_identity_mismatch: '前端运行版本与目标版本不一致',
+  frontend_build_source_fingerprint_unknown: '前端镜像缺少构建指纹',
+  frontend_build_source_fingerprint_mismatch: '前端镜像与目标源码指纹不一致',
+  freshness_unknown: '无法确认数据更新时间',
+  timestamp_timezone_unknown: '数据时间缺少时区，无法判断新鲜度',
+  freshness_in_future: '数据时间超出允许的时钟偏差',
+  data_stale: '数据已超过新鲜度阈值',
+  read_response_invalid_json: '读取接口没有返回可验证的数据',
+  read_response_invalid_schema: '读取接口返回的数据结构不兼容',
+  read_response_error_envelope: '读取接口返回了业务错误',
+  upstream_timeout: '后台健康查询超时',
+  upstream_schema_invalid: '后台健康数据结构不兼容',
+  visible_feature_definition_missing: '可见入口缺少功能定义',
+}
+
+function healthReason(reason: string): string {
+  if (HEALTH_REASON_LABELS[reason]) return HEALTH_REASON_LABELS[reason]
+  const match = Object.entries(HEALTH_REASON_LABELS).find(([code]) => reason.includes(code))
+  return match?.[1] || '存在尚未分类的健康异常'
+}
+
+const QUICK_TOOL_PRESENTATION: ToolPresentation[] = [
   {
-    href: '/chat',
+    featureId: 'chat',
     icon: MessageSquare,
-    label: '智能问答',
     desc: '像微信一样和 AI 聊天',
     scene: '问问题、写文案、总结资料都能用',
     color: 'from-violet-500 to-purple-600',
     badge: '最常用',
   },
   {
-    href: '/knowledge',
+    featureId: 'knowledge',
     icon: Database,
-    label: '知识库',
     desc: '把你的资料存进来给 AI 看',
     scene: '存 PDF、Word、网页，AI 就能基于这些回答',
     color: 'from-emerald-500 to-teal-600',
     badge: null,
   },
   {
-    href: '/knowledge/harvester',
+    featureId: 'knowledge-harvester',
     icon: Download,
-    label: '知识采集',
     desc: '丢一个网址，自动抓回来存库',
     scene: '看到好文章，复制链接进去就行',
     color: 'from-blue-500 to-cyan-600',
     badge: null,
   },
   {
-    href: '/video-analysis',
+    featureId: 'video-analysis',
     icon: Clapperboard,
-    label: '短视频分析',
     desc: '上传视频，AI 给你写报告',
     scene: '抖音爆款拖进去看为什么火',
     color: 'from-pink-500 to-rose-600',
     badge: null,
   },
   {
-    href: '/livestream-analysis',
+    featureId: 'livestream-analysis',
     icon: Radio,
-    label: '直播分析',
     desc: '上传直播录屏自动复盘',
     scene: '看哪段话术效果好，输出 Excel',
     color: 'from-orange-500 to-amber-600',
     badge: null,
   },
   {
-    href: '/ad-review',
+    featureId: 'ad-review',
     icon: LineChart,
-    label: '投放复盘',
     desc: '分析广告数据钱花得值不值',
     scene: '巨量千川 CSV 拖进来即可',
     color: 'from-indigo-500 to-blue-600',
     badge: null,
   },
   {
-    href: '/content-studio',
+    featureId: 'content-studio',
     icon: Palette,
-    label: '内容工坊',
     desc: '一句话生成视频脚本+成片',
     scene: '"写条 30 秒口播"自动出片',
     color: 'from-fuchsia-500 to-pink-600',
     badge: '新',
   },
   {
-    href: '/news',
+    featureId: 'news',
     icon: Newspaper,
-    label: '资讯中心',
     desc: '帮你抓全网行业新闻',
     scene: '每天 3 分钟刷完今天的事',
     color: 'from-sky-500 to-blue-600',
@@ -199,9 +259,12 @@ export default function Home() {
           fetch('/api/omni/overview', { cache: 'no-store' }),
           fetch('/api/omni/activity', { cache: 'no-store' }),
         ])
-        const overviewJson = (await overviewRes.json()) as { success: boolean; data?: OverviewData; error?: string }
+        const overviewJson = (await overviewRes.json()) as { success: boolean; data?: OverviewData; error?: string | HealthError }
         if (!overviewJson.success || !overviewJson.data) {
-          throw new Error(overviewJson.error || '加载失败')
+          const message = typeof overviewJson.error === 'string'
+            ? overviewJson.error
+            : overviewJson.error?.message
+          throw new Error(message || '加载失败')
         }
         setOverview(overviewJson.data)
         const activityJson = (await activityRes.json()) as { success: boolean; data?: ActivityItem[] }
@@ -224,37 +287,61 @@ export default function Home() {
     }
   }
 
+  const quickTools = useMemo<ToolCard[]>(() => {
+    const registry = new Map(
+      (overview?.health.features || []).map((feature) => [feature.feature_id, feature]),
+    )
+    return QUICK_TOOL_PRESENTATION.flatMap((presentation) => {
+      const definition = registry.get(presentation.featureId)
+      return definition?.href
+        ? [{ ...presentation, href: definition.href, label: definition.title }]
+        : []
+    })
+  }, [overview])
+
   const friendlyStats = useMemo(() => {
     const m = overview?.metrics
     return [
       {
         title: '今天用 AI 的字数',
-        value: m?.aiTokenToday ? formatBig(m.aiTokenToday) : '0',
+        value: m?.aiTokenToday == null ? '未知' : formatBig(m.aiTokenToday),
         hint: '把 AI 当成员工，今天它帮你处理的字数',
         color: 'bg-violet-50 ring-violet-100 text-violet-600',
       },
       {
         title: '知识库里的资料',
-        value: `${m?.knowledgeDocuments ?? 0} 份`,
+        value: m?.knowledgeDocuments == null ? '未知' : `${m.knowledgeDocuments} 份`,
         hint: '你已经"喂"给 AI 多少份文件',
         color: 'bg-emerald-50 ring-emerald-100 text-emerald-600',
       },
       {
         title: '系统健康度',
-        value: `${m?.infraUptime ?? 0}%`,
+        value: m?.infraUptime == null ? '未知' : `${m.infraUptime}%`,
         hint: '后台各项服务是不是正常工作',
         color: 'bg-amber-50 ring-amber-100 text-amber-600',
       },
       {
         title: '正在干的活',
-        value: `${m?.runningTasks ?? 0} 个`,
+        value: m?.runningTasks == null ? '未知' : `${m.runningTasks} 个`,
         hint: '后台正在跑的任务（抓网页 / 分析视频等）',
         color: 'bg-blue-50 ring-blue-100 text-blue-600',
       },
     ]
   }, [overview])
 
-  const healthy = overview?.health && Object.values(overview.health).every((s) => s === 'healthy')
+  const healthState = overview?.health.summary || 'unknown'
+  const healthIncomplete = Boolean(overview?.health.partial || overview?.health.errors.length)
+  const healthy = healthState === 'healthy' && !healthIncomplete
+  const healthLabels: Record<HealthState, string> = {
+    healthy: '系统就绪，可以开始用了',
+    degraded: '部分非关键能力降级',
+    unavailable: '必要依赖不可用',
+    stale: '数据或运行版本已过期',
+    unknown: '健康状态尚未验证',
+  }
+  const healthLabel = healthState === 'healthy' && healthIncomplete
+    ? '部分健康信息不可用'
+    : healthLabels[healthState]
 
   return (
     <div className="min-h-screen pb-20">
@@ -267,10 +354,16 @@ export default function Home() {
               <Badge className="bg-white text-gray-700 border-gray-200 hover:bg-white rounded-full px-3 py-1 text-xs font-medium shadow-sm">
                 <div
                   className={`w-2 h-2 rounded-full mr-2 ${
-                    healthy ? 'bg-emerald-500 animate-pulse' : loading ? 'bg-amber-400 animate-pulse' : 'bg-red-500'
+                    loading
+                      ? 'bg-amber-400 animate-pulse'
+                      : healthy
+                        ? 'bg-emerald-500 animate-pulse'
+                        : healthState === 'unavailable'
+                          ? 'bg-red-500'
+                          : 'bg-amber-500'
                   }`}
                 />
-                {healthy ? '系统就绪，可以开始用了' : loading ? '正在检查系统...' : '部分功能可能用不了，请看下方提示'}
+                {loading ? '正在检查系统...' : healthLabel}
               </Badge>
               <div className="flex items-center gap-2">
                 <Link href="/models">
@@ -287,6 +380,50 @@ export default function Home() {
                 </Link>
               </div>
             </div>
+
+            {!loading && overview && !healthy && (
+              <div
+                data-testid="system-health-details"
+                className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950"
+              >
+                <p className="font-semibold">系统没有假装全绿：{healthLabel}</p>
+                {overview.health.features.filter((feature) => feature.state !== 'healthy').map((feature) => (
+                  <p key={feature.feature_id} className="mt-1">
+                    {feature.title}：{healthLabels[feature.state]}
+                    {feature.reason_codes.length ? `（${feature.reason_codes.map(healthReason).join('、')}）` : ''}
+                  </p>
+                ))}
+                {overview.health.frontendBuild.state !== 'healthy' && (
+                  <p className="mt-1">
+                    前端运行版本：{healthLabels[overview.health.frontendBuild.state]}
+                    {overview.health.frontendBuild.reasonCodes.length
+                      ? `（${overview.health.frontendBuild.reasonCodes.map(healthReason).join('、')}）`
+                      : ''}
+                  </p>
+                )}
+                {overview.health.errors.map((item) => (
+                  <p key={`${item.source}:${item.code}`} className="mt-1">
+                    {item.source}：{healthReason(item.code)}
+                  </p>
+                ))}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.location.reload()}
+                  >
+                    刷新重试
+                  </Button>
+                  <Link href="/models">
+                    <Button type="button" size="sm" variant="outline">检查系统设置</Button>
+                  </Link>
+                  <Link href="/tasks">
+                    <Button type="button" size="sm" variant="outline">查看后台任务</Button>
+                  </Link>
+                </div>
+              </div>
+            )}
 
             {/* Hero content */}
             <div className="flex flex-col lg:flex-row items-start gap-8 lg:gap-12">
@@ -426,11 +563,11 @@ export default function Home() {
               <p className="text-xs text-gray-500 mt-0.5">点开任意卡片即可开始使用，每张卡都有"做什么用"和"什么场景适合"</p>
             </div>
             <Badge variant="outline" className="text-[10px] rounded-full px-2 py-0.5 border-violet-200 text-violet-600 bg-violet-50">
-              共 {QUICK_TOOLS.length} 个功能
+              共 {quickTools.length} 个功能
             </Badge>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {QUICK_TOOLS.map((tool) => (
+            {quickTools.map((tool) => (
               <Link key={tool.href} href={tool.href}>
                 <Card className="border-none shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group cursor-pointer overflow-hidden h-full">
                   <CardContent className="p-5 flex flex-col h-full">

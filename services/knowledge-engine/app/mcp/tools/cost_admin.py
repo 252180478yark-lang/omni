@@ -15,7 +15,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from app.database import get_pool
-from app.mcp.audit import tool_with_audit
+from app.mcp.approval_audit import approval_tool_with_audit
 from app.mcp.server import mcp
 
 
@@ -43,9 +43,8 @@ def _disable_cost_summary(args: dict) -> str:
     return f"停用 cost_item {args.get('cost_item_id', '?')[:8]}（{args.get('reason', '无 reason')}）"
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_record_cost_summary,
     timeout_seconds=3600,
 )
@@ -140,9 +139,8 @@ async def record_cost(
     }
 
 
-@tool_with_audit(
+@approval_tool_with_audit(
     mcp,
-    require_approval=True,
     summary_fn=_disable_cost_summary,
     timeout_seconds=3600,
 )

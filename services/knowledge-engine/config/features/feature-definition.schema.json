@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "omni.feature-definition.v1",
+  "title": "Omni FeatureDefinition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "feature_id",
+    "title",
+    "domain",
+    "owner",
+    "lifecycle",
+    "routes",
+    "capabilities",
+    "expected_edges",
+    "checks",
+    "aliases",
+    "dependencies"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "feature_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$"},
+    "title": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {"enum": ["team", "service", "person"]},
+        "id": {"type": "string", "minLength": 1}
+      }
+    },
+    "lifecycle": {"enum": ["active", "deprecated", "archived"]},
+    "routes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical", "visible", "placements"],
+      "properties": {
+        "canonical": {"$ref": "#/$defs/href"},
+        "visible": {"type": "boolean"},
+        "placements": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"enum": ["sidebar", "home", "onboarding", "direct"]}
+        }
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["capability_id", "kind"],
+        "properties": {
+          "capability_id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"},
+          "kind": {"enum": ["read", "write", "generate", "admin"]}
+        }
+      }
+    },
+    "expected_edges": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/edge"}
+    },
+    "checks": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/check"}
+    },
+    "aliases": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/alias"}
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/dependency"}
+    }
+  },
+  "$defs": {
+    "href": {"type": "string", "pattern": "^/[^?#]*$"},
+    "node_ref": {"type": "string", "pattern": "^[a-z_]+:.+$"},
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "relation", "required"],
+      "properties": {
+        "from": {"$ref": "#/$defs/node_ref"},
+        "to": {"$ref": "#/$defs/node_ref"},
+        "relation": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "required": {"type": "boolean"}
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "kind", "target", "verifies", "required"],
+      "properties": {
+        "check_id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"},
+        "kind": {"enum": ["pytest", "command", "schema", "health"]},
+        "target": {"type": "string", "minLength": 1},
+        "verifies": {"$ref": "#/$defs/node_ref"},
+        "required": {"type": "boolean"}
+      }
+    },
+    "alias": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["href", "target"],
+      "properties": {
+        "href": {"$ref": "#/$defs/href"},
+        "target": {"$ref": "#/$defs/href"}
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "required"],
+      "properties": {
+        "ref": {"$ref": "#/$defs/node_ref"},
+        "required": {"type": "boolean"}
+      }
+    }
+  }
+}

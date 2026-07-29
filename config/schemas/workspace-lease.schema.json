@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omni.local/schemas/workspace-lease.schema.json",
+  "title": "Omni WorkspaceLease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lease_id", "repository_id", "worktree_id", "change_id", "owner", "path_globs", "mode", "risk_level", "created_at", "expires_at", "state", "revision"],
+  "properties": {
+    "lease_id": {"type": "string", "pattern": "^lease-[0-9a-f]{32}$"},
+    "repository_id": {"type": "string", "pattern": "^repo-[0-9a-f]{16}$"},
+    "worktree_id": {"type": "string", "pattern": "^worktree-[0-9a-f]{16}$"},
+    "change_id": {"type": "string", "minLength": 1},
+    "owner": {"type": "string", "minLength": 1},
+    "path_globs": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "mode": {"enum": ["read", "write"]},
+    "risk_level": {"enum": ["R0", "R1", "R2", "R3"]},
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "state": {"enum": ["active", "stale", "released"]},
+    "revision": {"type": "integer", "minimum": 1},
+    "released_at": {"type": "string", "format": "date-time"}
+  }
+}

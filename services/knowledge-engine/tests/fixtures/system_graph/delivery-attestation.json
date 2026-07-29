@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "authority": "ci_attestation",
+  "status": "COMPLETE",
+  "generated_at": "2026-07-30T00:00:00Z",
+  "attestor": "fixture",
+  "run_id": "fixture-run",
+  "delivered_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "delivered_tree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "contracts": [
+    {
+      "change_id": "fixture-change",
+      "base_commit": "cccccccccccccccccccccccccccccccccccccccc",
+      "risk_level": "R2",
+      "actual_paths": [],
+      "changed_paths_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "impact_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "completion_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ]
+}

@@ -10,10 +10,12 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from app.schemas.human_gates import ApproveRequest
+from app.routers.approval_operations import get_approval_principal
+from app.services.approval_operations import ApprovalOperationException, ApprovalPrincipal
 from app.services.inbox_service import (
     approve_gate,
     list_pending,
@@ -24,13 +26,27 @@ router = APIRouter(prefix="/api/v1/mcp", tags=["mcp-human-gates"])
 
 
 @router.get("/human-gates")
-async def list_gates() -> dict:
-    return await list_pending()
+async def list_gates(principal: ApprovalPrincipal = Depends(get_approval_principal)):
+    if not principal.can("approval:read:any"):
+        raise HTTPException(status_code=403, detail={"code": "approval_read_forbidden"})
+    try:
+        return await list_pending()
+    except ApprovalOperationException as exc:
+        return JSONResponse(
+            status_code=exc.status,
+            content={"ok": False, "error": exc.code, "retryable": exc.retryable},
+        )
 
 
 @router.post("/human-gates/{gate_id}/approve")
-async def approve_endpoint(gate_id: str, payload: ApproveRequest):
-    result = await approve_gate(gate_id, payload.note)
+async def approve_endpoint(
+    gate_id: str,
+    payload: ApproveRequest,
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+):
+    if not principal.can("approval:decide"):
+        raise HTTPException(status_code=403, detail={"code": "approval_decide_forbidden"})
+    result = await approve_gate(gate_id, payload.note, actor_id=principal.principal_id)
     if not result.get("ok"):
         code = _error_to_status(result.get("error"))
         return JSONResponse(content=result, status_code=code)
@@ -39,8 +55,14 @@ async def approve_endpoint(gate_id: str, payload: ApproveRequest):
 
 # W5-B 切片 1.10: /approved alias（前端 ws-handler 用 POST .../approved）
 @router.post("/human-gates/{gate_id}/approved")
-async def approved_endpoint(gate_id: str, payload: ApproveRequest):
-    result = await approve_gate(gate_id, payload.note)
+async def approved_endpoint(
+    gate_id: str,
+    payload: ApproveRequest,
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+):
+    if not principal.can("approval:decide"):
+        raise HTTPException(status_code=403, detail={"code": "approval_decide_forbidden"})
+    result = await approve_gate(gate_id, payload.note, actor_id=principal.principal_id)
     if not result.get("ok"):
         code = _error_to_status(result.get("error"))
         return JSONResponse(content=result, status_code=code)
@@ -48,8 +70,14 @@ async def approved_endpoint(gate_id: str, payload: ApproveRequest):
 
 
 @router.post("/human-gates/{gate_id}/reject")
-async def reject_endpoint(gate_id: str, payload: ApproveRequest):
-    result = await reject_gate(gate_id, payload.note)
+async def reject_endpoint(
+    gate_id: str,
+    payload: ApproveRequest,
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+):
+    if not principal.can("approval:decide"):
+        raise HTTPException(status_code=403, detail={"code": "approval_decide_forbidden"})
+    result = await reject_gate(gate_id, payload.note, actor_id=principal.principal_id)
     if not result.get("ok"):
         code = _error_to_status(result.get("error"))
         return JSONResponse(content=result, status_code=code)
@@ -58,8 +86,14 @@ async def reject_endpoint(gate_id: str, payload: ApproveRequest):
 
 # W5-B 切片 1.10: /rejected alias（前端 ws-handler 用 POST .../rejected）
 @router.post("/human-gates/{gate_id}/rejected")
-async def rejected_endpoint(gate_id: str, payload: ApproveRequest):
-    result = await reject_gate(gate_id, payload.note)
+async def rejected_endpoint(
+    gate_id: str,
+    payload: ApproveRequest,
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+):
+    if not principal.can("approval:decide"):
+        raise HTTPException(status_code=403, detail={"code": "approval_decide_forbidden"})
+    result = await reject_gate(gate_id, payload.note, actor_id=principal.principal_id)
     if not result.get("ok"):
         code = _error_to_status(result.get("error"))
         return JSONResponse(content=result, status_code=code)

@@ -1,0 +1,28 @@
+schema_version: 1
+feature_id: system-console
+title: 系统控制台
+domain: system
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /
+  visible: true
+  placements: [sidebar, direct]
+capabilities:
+  - {capability_id: system-configuration, kind: admin}
+expected_edges: []
+checks:
+  - check_id: knowledge-health
+    kind: health
+    target: /api/v1/system/health/features/system-console
+    verifies: health_registration:service:knowledge-engine
+    required: true
+aliases:
+  - {href: /models, target: /}
+  - {href: /tasks, target: /}
+  - {href: /prompt-lab, target: /}
+  - {href: /playground, target: /}
+  - {href: /playground/reverse-storyboard, target: /}
+dependencies:
+  - {ref: health_registration:service:knowledge-engine, required: true}
+  - {ref: health_registration:service:ai-provider-hub, required: false}

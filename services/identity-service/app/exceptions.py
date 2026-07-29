@@ -14,7 +14,8 @@ class AppException(Exception):
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppException)
     async def app_exception_handler(_: Request, exc: AppException) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"code": exc.code, "message": exc.message, "detail": exc.detail})
+        status_code = exc.code if 400 <= exc.code <= 599 else 400
+        return JSONResponse(status_code=status_code, content={"code": exc.code, "message": exc.message, "detail": exc.detail})
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:

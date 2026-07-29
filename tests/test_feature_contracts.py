@@ -69,7 +69,13 @@ def _write_complete_contract(
         impact["risk"] = {
             "level": risk_level,
             "reasons": ["The candidate changes protected repository behavior."],
-            "external_effects": ["External irreversible effect."] if risk_level == "R3" else [],
+            "external_effects": [
+                {
+                    "kind": "external_publish",
+                    "target": "fixture-platform",
+                    "operation": "publish fixture payload",
+                }
+            ] if risk_level == "R3" else [],
             "approval": {
                 "required": risk_level == "R3",
                 "gate_ref": "human-gate:test-approval" if risk_level == "R3" else "",
@@ -870,12 +876,12 @@ def test_v3_declared_risk_cannot_be_below_derived_floor(tmp_path: Path) -> None:
 
 
 def test_risk_floor_covers_r0_through_r3() -> None:
-    assert gate.derive_risk_floor(["docs/guide.md", "tests/test_guide.py"]) == "R0"
+    assert gate.derive_risk_floor(["docs/guide.md", "tests/test_guide.py"]) == "R1"
     assert gate.derive_risk_floor(["services/example/app.py"]) == "R1"
     assert gate.derive_risk_floor(["frontend/src/app/page.tsx", "services/example/app.py"]) == "R2"
     assert gate.derive_risk_floor(["migrations/099_example.sql"]) == "R2"
     breaking = {"compatibility": {"api": {"status": "breaking"}}}
-    assert gate.derive_risk_floor(["services/example/app.py"], breaking) == "R3"
+    assert gate.derive_risk_floor(["services/example/app.py"], breaking) == "R2"
 
 
 def test_v3_commit_mode_binds_delivery_and_builds_external_attestation(
@@ -918,6 +924,10 @@ def test_v3_commit_mode_binds_delivery_and_builds_external_attestation(
         head,
         attestor="github-actions",
         run_id="123",
+        repository="fixture/repo",
+        required_checks={"contract": "passed", "tests": "success"},
+        evidence_artifact_name=f"delivery-evidence-{head}",
+        evidence_artifact_digest="sha256:" + "a" * 64,
     )
     assert payload["authority"] == "ci_attestation"
     assert payload["status"] == "COMPLETE"
@@ -1112,12 +1122,23 @@ def test_ci_complete_seal_is_restricted_to_default_branch_push() -> None:
         step for step in seal["steps"] if "精确验证默认分支引用" in step.get("name", "")
     )
     assert '[ "$ACTUAL_REF" != "refs/heads/$DEFAULT_BRANCH" ]' in exact_ref["run"]
-    upload = next(
+    uploads = [
         step
         for step in seal["steps"]
         if step.get("uses") == "actions/upload-artifact@v4"
+    ]
+    upload = next(
+        step
+        for step in uploads
+        if str(step.get("with", {}).get("name", "")).startswith("delivery-attestation-")
     )
     assert upload["with"]["name"] == "delivery-attestation-${{ steps.refs.outputs.head_sha }}"
+    evidence = next(
+        step
+        for step in uploads
+        if str(step.get("with", {}).get("name", "")).startswith("delivery-evidence-")
+    )
+    assert evidence["with"]["name"] == "delivery-evidence-${{ steps.refs.outputs.head_sha }}"
 
 
 def test_ci_feature_push_uses_default_branch_merge_base() -> None:

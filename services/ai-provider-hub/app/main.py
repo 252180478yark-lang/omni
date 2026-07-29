@@ -18,11 +18,21 @@ app.include_router(v1_router)
 app.include_router(ai_router)
 
 
+def _baked_identity(name: str) -> str | None:
+    value = os.getenv(name, "").strip()
+    return None if not value or value.lower() in {"unknown", "unset", "none"} else value
+
+
 @app.on_event("startup")
 async def startup() -> None:
     bootstrap_providers()
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "healthy", "service": settings.service_name}
+async def health() -> dict[str, str | None]:
+    return {
+        "status": "healthy",
+        "service": settings.service_name,
+        "build_commit": _baked_identity("OMNI_BUILD_COMMIT"),
+        "build_source_fingerprint": _baked_identity("OMNI_BUILD_SOURCE_FINGERPRINT"),
+    }

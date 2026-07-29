@@ -1,5 +1,12 @@
 FROM python:3.11-slim
 
+ARG OMNI_BUILD_COMMIT=unknown
+ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
+ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
+    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT} \
+    OMNI_BAKED_SOURCE_COMMIT=${OMNI_BUILD_COMMIT} \
+    OMNI_BAKED_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
+
 WORKDIR /app
 
 # System deps for PyMuPDF and the P0 video QA/composition path.  P0 uses
@@ -32,6 +39,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY app /app/app
+COPY config /app/config
+COPY scripts /app/scripts
 RUN mkdir -p /app/data
 
 EXPOSE 8002

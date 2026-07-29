@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -8,6 +9,7 @@ import time
 import uuid
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 if sys.platform == "win32":
@@ -37,7 +39,9 @@ from app.routers.agent_state import router as agent_state_router
 from app.routers.analytics import router as analytics_router, mcp_analysis_router
 from app.routers.transcribe import transcribe_router
 from app.routers.mcp_catalog import router as mcp_catalog_router
-from contextlib import AsyncExitStack
+from app.routers.system_health import router as system_health_router
+from app.routers.approval_operations import router as approval_operations_router
+from app.runtime_preflight import validate_runtime_environment
 from app.mcp.server import mcp_http_app
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -46,6 +50,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # This is deliberately the first runtime action. No DB connection,
+    # scheduler, worker, or writable directory exists before allocation proof.
+    allocation = validate_runtime_environment()
+    Path(UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
     logger.info("Starting %s — connecting to PostgreSQL...", settings.service_name)
     await init_pool()
     logger.info("PostgreSQL connection pool ready")
@@ -56,13 +64,6 @@ async def lifespan(app: FastAPI):
         await mark_orphans(threshold_minutes=5)
     except Exception:
         logger.exception("startup orphan cleanup failed (continuing)")
-
-    # Migrate tsv column from GENERATED to regular for Chinese search support
-    from app.database import get_pool
-    try:
-        await _migrate_tsv_column(get_pool())
-    except Exception:
-        logger.warning("tsv column migration skipped", exc_info=True)
 
     from app.services.ingestion import recover_stuck_tasks
     try:
@@ -87,12 +88,29 @@ async def lifespan(app: FastAPI):
             feedback_digest_loop,
             weekly_self_review_loop,
         )
-        cron_tasks = [
-            asyncio.create_task(weekly_self_review_loop()),
-            asyncio.create_task(daily_pulse_loop()),
-            asyncio.create_task(dynamic_block_refresh_loop()),
-            asyncio.create_task(feedback_digest_loop()),
-        ]
+        scheduler_requested = os.getenv("OMNI_SCHEDULER_ENABLED", "false").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
+        scheduler_enabled = bool(allocation.get("cron_owner")) and scheduler_requested
+        cron_tasks = []
+        if scheduler_enabled:
+            cron_tasks = [
+                asyncio.create_task(weekly_self_review_loop()),
+                asyncio.create_task(daily_pulse_loop()),
+                asyncio.create_task(dynamic_block_refresh_loop()),
+                asyncio.create_task(feedback_digest_loop()),
+            ]
+        else:
+            logger.info("Background schedulers disabled by allocation ownership or explicit setting")
+
+        # Approval execution is not a cron job. A canonical database requires
+        # its owner; every noncanonical allocation owns its isolated database.
+        from app.workers.approval_operations import (
+            approval_operation_loop,
+            approval_worker_enabled,
+        )
+        if approval_worker_enabled(allocation):
+            cron_tasks.append(asyncio.create_task(approval_operation_loop()))
 
         try:
             yield
@@ -133,6 +151,8 @@ app.include_router(transcribe_router)
 app.include_router(analytics_router)
 app.include_router(mcp_analysis_router)  # 桌面契约 POST /api/v1/mcp/analysis/*
 app.include_router(mcp_catalog_router)   # 工具目录 + 通用按名执行
+app.include_router(system_health_router)
+app.include_router(approval_operations_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)
@@ -140,7 +160,6 @@ app.mount("/mcp", mcp_http_app)
 # W5-B 切片 1.9：agent chat 附件 static mount（必须在 /static 宽路径之前注册）
 import os as _os
 UPLOAD_DIR = _os.environ.get("OMNI_UPLOAD_DIR", "/app/data/uploads")
-_os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount(
     "/api/v1/knowledge/static/uploads",
     StaticFiles(directory=UPLOAD_DIR, check_dir=False),
@@ -177,9 +196,37 @@ async def upload_product_ref(file: UploadFile = File(...)):
     return {"url": f"/api/v1/knowledge/static/product_refs/{fname}"}
 
 
+@app.get("/live")
+async def live() -> dict[str, str]:
+    """Process liveness only.  It must not be used as feature readiness."""
+    return {"status": "live", "service": settings.service_name}
+
+
 @app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "healthy", "service": settings.service_name}
+async def health():
+    """Trusted readiness: DB read plus expected/observed build comparison."""
+    from app.schemas.system_health import HealthState, OperationError
+    from app.services.health_registry import service_readiness
+
+    state, reason, identity = await service_readiness()
+    payload = {
+        "status": state.value,
+        "service": settings.service_name,
+        "build_commit": identity.observed_commit,
+        "build_identity": identity.model_dump(mode="json"),
+    }
+    if state is HealthState.HEALTHY:
+        return payload
+    error = OperationError(
+        code=reason,
+        message=f"{settings.service_name} readiness is {state.value}: {reason}",
+        source="knowledge-engine-readiness",
+        status=503,
+        retryable=state in {HealthState.UNAVAILABLE, HealthState.UNKNOWN},
+        details={"state": state.value},
+    )
+    payload["error"] = error.model_dump(mode="json")
+    return JSONResponse(status_code=503, content=payload)
 
 
 # ═══ One-time migration: tsv GENERATED → regular column ═══

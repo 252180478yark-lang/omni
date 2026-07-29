@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.mcp.audit import tool_with_audit
+from app.mcp.approval_audit import approval_tool_with_audit
 from app.mcp.server import mcp
 from app.services.video_production_baseline import run_video_production_preflight
 from app.services.video_production_orders import (
@@ -223,7 +224,7 @@ def _generation_summary(args: dict[str, Any]) -> str:
     )
 
 
-@tool_with_audit(mcp, require_approval=True, summary_fn=_generation_summary)
+@approval_tool_with_audit(mcp, summary_fn=_generation_summary)
 async def p0_start_video_generation(
     production_order_id: str,
     approval_hash: str,
@@ -295,7 +296,7 @@ def _release_summary(args: dict[str, Any]) -> str:
     return f"P0 release package: order={args.get('production_order_id')}"
 
 
-@tool_with_audit(mcp, require_approval=True, summary_fn=_release_summary)
+@approval_tool_with_audit(mcp, summary_fn=_release_summary)
 async def p0_release_video_package(production_order_id: str) -> dict[str, Any]:
     """Create the immutable release package after final QA and owner approval."""
 

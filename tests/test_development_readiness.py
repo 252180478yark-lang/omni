@@ -47,8 +47,16 @@ def _seed_repository(tmp_path: Path) -> Path:
     _git(tmp_path, "init", "-b", "main")
     _git(tmp_path, "config", "user.email", "codex@example.invalid")
     _git(tmp_path, "config", "user.name", "Codex Test")
+    executable_fixtures = {
+        "scripts/development_policy.py",
+        "scripts/generate_implementation_status.py",
+        "scripts/workspace_ownership.py",
+    }
     for relative in readiness.CRITICAL_ASSETS:
-        _write(tmp_path, relative)
+        if relative in executable_fixtures:
+            _write(tmp_path, relative, (ROOT / relative).read_text(encoding="utf-8"))
+        else:
+            _write(tmp_path, relative)
     _git(tmp_path, "add", "--all")
     _git(tmp_path, "commit", "-m", "seed")
     return tmp_path
@@ -235,8 +243,13 @@ def test_hook_reinjects_readiness_after_clear_and_compact() -> None:
     readiness_handler = next(
         handler
         for handler in handlers
-        if "check_development_readiness.py" in handler["hooks"][0]["command"]
+        if "scripts/hooks/development_gate.py" in handler["hooks"][0]["command"]
+        and "--event SessionStart" in handler["hooks"][0]["command"]
     )
 
     assert readiness_handler["matcher"] == "startup|resume|clear|compact"
-    assert readiness_handler["hooks"][0]["timeout"] == 40
+    assert readiness_handler["hooks"][0]["timeout"] == 45
+    gate_source = (ROOT / "scripts" / "hooks" / "development_gate.py").read_text(
+        encoding="utf-8"
+    )
+    assert "scripts\" / \"check_development_readiness.py" in gate_source

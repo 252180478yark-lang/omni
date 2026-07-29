@@ -1,0 +1,22 @@
+schema_version: 1
+feature_id: scout-monitoring
+title: 巡店监控
+domain: commerce.scout
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /scout
+  visible: true
+  placements: [sidebar, direct]
+capabilities:
+  - {capability_id: store-monitoring, kind: read}
+expected_edges: []
+checks:
+  - check_id: scout-health
+    kind: health
+    target: /api/v1/system/health/features/scout-monitoring
+    verifies: health_registration:service:scout-agent
+    required: true
+aliases: []
+dependencies:
+  - {ref: health_registration:service:scout-agent, required: true}

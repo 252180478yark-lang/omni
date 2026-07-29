@@ -6,6 +6,11 @@ import { readSessionHistory, encodeProjectDir } from './history-reader'
 import path from 'node:path'
 import os from 'node:os'
 import { Pool } from 'pg'
+import {
+  approvalServiceHeaders,
+  ServiceFetchError,
+  verifyApprovalActor,
+} from '../../app/api/omni/_shared'
 import type {
   WsClientMessage,
   WsServerMessage,
@@ -31,10 +36,10 @@ function getPool(): Pool {
   return _pool
 }
 
-// W5-B 切片 3.2: Redis 订阅 mcp.human_gates.new + 广播到所有连接的 ws
+// W5-B 切片 3.2: Redis 订阅 mcp.human_gates.new，只广播给已验证审批身份的 ws
 const REDIS_URL = process.env.REDIS_URL || 'redis://:changeme_redis@localhost:6379/1'
 let _redisSubscriber: Redis | null = null
-const _activeConnections = new Set<WebSocket>()
+const _approvalConnections = new Set<WebSocket>()
 
 function _initRedisSubscriber(): void {
   if (_redisSubscriber) return
@@ -52,8 +57,7 @@ function _initRedisSubscriber(): void {
       } catch {
         return
       }
-      // 广播给所有连接（个人单用户场景，session 级路由后续优化）
-      Array.from(_activeConnections).forEach((ws) => {
+      Array.from(_approvalConnections).forEach((ws) => {
         try {
           ws.send(JSON.stringify({
             kind: 'human_gate_new',
@@ -166,11 +170,22 @@ function extractAttachmentsFromResult(content: unknown): ChatAttachment[] {
   return out
 }
 
-export function attachWsHandler(ws: WebSocket): void {
+export function attachWsHandler(ws: WebSocket, approvalAuthorization: string | null = null): void {
   _initRedisSubscriber()
-  _activeConnections.add(ws)
+  let closed = false
+  if (approvalAuthorization) {
+    void verifyApprovalActor(approvalAuthorization)
+      .then(() => {
+        if (!closed && ws.readyState === 1) _approvalConnections.add(ws)
+      })
+      .catch(() => {
+        // Chat compatibility remains available, but this connection is never
+        // admitted to the approval notification/decision channel.
+      })
+  }
   ws.on('close', () => {
-    _activeConnections.delete(ws)
+    closed = true
+    _approvalConnections.delete(ws)
   })
 
   ws.on('message', async (raw) => {
@@ -181,15 +196,19 @@ export function attachWsHandler(ws: WebSocket): void {
       return send(ws, { kind: 'error', error: 'bad_json' })
     }
     try {
-      await handleClientMessage(ws, msg)
+      await handleClientMessage(ws, msg, approvalAuthorization)
     } catch (err) {
-      const e = err as Error
-      send(ws, { kind: 'error', error: 'handler_failed', detail: e.message })
+      const code = err instanceof ServiceFetchError ? err.code : 'handler_failed'
+      send(ws, { kind: 'error', error: code })
     }
   })
 }
 
-async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise<void> {
+async function handleClientMessage(
+  ws: WebSocket,
+  msg: WsClientMessage,
+  approvalAuthorization: string | null,
+): Promise<void> {
   const mgr = getSessionManager()
 
   if (msg.kind === 'open_session') {
@@ -331,7 +350,8 @@ async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise
       console.error(`[claude-stderr ${msg.session_id}]`, data)
     })
     runner.on('error', (err: Error) => {
-      send(ws, { kind: 'error', session_id: msg.session_id, error: 'runner_error', detail: err.message })
+      console.error(`[runner ${msg.session_id}]`, err.name)
+      send(ws, { kind: 'error', session_id: msg.session_id, error: 'runner_error' })
     })
     return
   }
@@ -348,15 +368,20 @@ async function handleClientMessage(ws: WebSocket, msg: WsClientMessage): Promise
   }
 
   if (msg.kind === 'human_gate_decide') {
+    const actor = await verifyApprovalActor(approvalAuthorization)
     const base = process.env.OMNI_KE_URL || 'http://localhost:8002'
-    const resp = await fetch(`${base}/api/v1/mcp/human-gates/${msg.short_id}/${msg.decision}`, {
+    const url = `${base}/api/v1/mcp/human-gates/${msg.short_id}/${msg.decision}`
+    const body = JSON.stringify({ note: msg.note || '' })
+    const resp = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ note: msg.note || '' }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...approvalServiceHeaders('POST', url, actor, body),
+      },
+      body,
     })
     if (!resp.ok) {
-      const text = await resp.text()
-      return send(ws, { kind: 'error', error: 'gate_decide_failed', detail: text })
+      return send(ws, { kind: 'error', error: 'gate_decide_failed', detail: `status_${resp.status}` })
     }
     return
   }

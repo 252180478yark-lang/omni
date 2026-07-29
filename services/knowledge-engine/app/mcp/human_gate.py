@@ -50,10 +50,18 @@ async def _get_redis_pub() -> "aioredis.Redis | None":
     return _redis_pub
 
 
-async def _notify_human_gate(short_id: str, tool_name: str, summary: str) -> None:
+async def _notify_human_gate(
+    short_id: str,
+    tool_name: str,
+    summary: str,
+    *,
+    required: bool = False,
+) -> None:
     """W5-B: 新 human_gate 写入时通知前端 ws-handler 订阅 channel `mcp.human_gates.new`"""
     r = await _get_redis_pub()
     if r is None:
+        if required:
+            raise RuntimeError("human_gate_notification_unavailable")
         return
     try:
         await r.publish(
@@ -61,8 +69,44 @@ async def _notify_human_gate(short_id: str, tool_name: str, summary: str) -> Non
             json.dumps({"short_id": short_id, "tool_name": tool_name, "summary": summary}),
         )
         logger.debug("published human_gate short_id=%s to mcp.human_gates.new", short_id)
-    except Exception as e:
-        logger.warning("publish mcp.human_gates.new 失败: %s", e)
+    except Exception as exc:
+        logger.warning(
+            "publish mcp.human_gates.new failed exception_type=%s",
+            type(exc).__name__,
+        )
+        if required:
+            raise RuntimeError("human_gate_notification_failed") from exc
+
+
+async def _settle_legacy_gate(
+    gate_id: str, decision: str, note: str, actor_id: str
+) -> bool:
+    """Write actor evidence when 098 exists; safely bridge older schemas."""
+
+    pool = get_pool()
+    try:
+        rec = await pool.fetchrow(
+            "UPDATE mcp.human_gates SET decision=$1, decision_note=$2, decided_by=$3, decided_at=NOW() "
+            "WHERE id=$4 AND decision IS NULL RETURNING id",
+            decision,
+            note,
+            actor_id,
+            uuid.UUID(gate_id),
+        )
+    except Exception as exc:
+        if getattr(exc, "sqlstate", None) != "42703":
+            raise
+        logger.warning(
+            "legacy human_gates schema lacks decided_by; compatibility update used"
+        )
+        rec = await pool.fetchrow(
+            "UPDATE mcp.human_gates SET decision=$1, decision_note=$2, decided_at=NOW() "
+            "WHERE id=$3 AND decision IS NULL RETURNING id",
+            decision,
+            note,
+            uuid.UUID(gate_id),
+        )
+    return rec is not None
 
 
 class GateDecision(TypedDict):
@@ -151,22 +195,26 @@ async def list_pending() -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def approve(gate_id: str, note: str = "") -> bool:
+async def approve(gate_id: str, note: str = "", *, actor_id: str = "local:cli") -> bool:
     """批一条 gate。返回是否成功（False = gate 不存在或已决定）。"""
-    pool = get_pool()
-    rec = await pool.fetchrow(
-        "UPDATE mcp.human_gates SET decision='approved', decision_note=$1, decided_at=NOW() "
-        "WHERE id=$2 AND decision IS NULL RETURNING id",
-        note, uuid.UUID(gate_id),
+    from app.schemas.approval_operations import ApprovalDecision
+    from app.services.approval_operations import decide_gate_if_operation
+
+    operation = await decide_gate_if_operation(
+        gate_id, ApprovalDecision.APPROVED, note, actor_id=actor_id
     )
-    return rec is not None
+    if operation is not None:
+        return operation.decision is ApprovalDecision.APPROVED
+    return await _settle_legacy_gate(gate_id, "approved", note, actor_id)
 
 
-async def reject(gate_id: str, note: str = "") -> bool:
-    pool = get_pool()
-    rec = await pool.fetchrow(
-        "UPDATE mcp.human_gates SET decision='rejected', decision_note=$1, decided_at=NOW() "
-        "WHERE id=$2 AND decision IS NULL RETURNING id",
-        note, uuid.UUID(gate_id),
+async def reject(gate_id: str, note: str = "", *, actor_id: str = "local:cli") -> bool:
+    from app.schemas.approval_operations import ApprovalDecision
+    from app.services.approval_operations import decide_gate_if_operation
+
+    operation = await decide_gate_if_operation(
+        gate_id, ApprovalDecision.REJECTED, note, actor_id=actor_id
     )
-    return rec is not None
+    if operation is not None:
+        return operation.decision is ApprovalDecision.REJECTED
+    return await _settle_legacy_gate(gate_id, "rejected", note, actor_id)

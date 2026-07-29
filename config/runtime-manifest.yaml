@@ -1,5 +1,14 @@
 {
   "schema_version": 1,
+  "allocation": {
+    "state_location": "git-common-dir/omni-runtime/allocations.json",
+    "workspace_lease_schema": "config/schemas/workspace-lease.schema.json",
+    "runtime_allocation_schema": "config/schemas/runtime-allocation.schema.json",
+    "default_ttl_seconds": 28800,
+    "expired_state": "stale",
+    "automatic_reclaim": false,
+    "noncanonical_database_disposable": true
+  },
   "canonical_runtime": {
     "runtime_id": "omni-main",
     "compose_project": "omni",
@@ -11,14 +20,18 @@
     "runtime_id": "io.omni.runtime_id",
     "source_commit": "org.opencontainers.image.revision",
     "source_fingerprint": "io.omni.source_fingerprint",
-    "worktree": "io.omni.worktree_root",
-    "scheduler_role": "io.omni.scheduler_role"
+    "worktree": "io.omni.worktree_id",
+    "scheduler_role": "io.omni.scheduler_role",
+    "approval_worker_role": "io.omni.approval_worker_role"
   },
   "worktree_defaults": {
     "long_lived_runtime": "deny",
     "scheduler_enabled": false,
     "database_pattern": "omni_verify_{change_id}_{sha8}",
-    "shared_writable_volumes": "deny"
+    "shared_writable_volumes": "deny",
+    "state_scope": "git_common_dir",
+    "redis_namespace_isolated": true,
+    "compose_project_isolated": true
   },
   "database": {
     "connection_env": [
@@ -27,6 +40,8 @@
     "read_only_env": "OMNI_DB_READ_ONLY"
   },
   "scheduler": {
+    "default_enabled": false,
+    "canonical_enablement": "explicit_runtime_allocation_only",
     "implicit_services": [
       "knowledge-engine"
     ],
@@ -36,6 +51,12 @@
       "SCHEDULER_ENABLED",
       "CRON_ENABLED"
     ]
+  },
+  "approval_worker": {
+    "ownership": "per_writable_database_allocation",
+    "canonical_owner_enabled": true,
+    "disposable_write_owner_enabled": true,
+    "read_only_owner_enabled": false
   },
   "writable_mount_targets": [
     "app/data",
@@ -92,7 +113,7 @@
       "required": true,
       "published_ports": [8002],
       "health": {"kind": "http", "path": "health"},
-      "scheduler_default": true,
+      "scheduler_default": false,
       "source_paths": [
         "services/knowledge-engine/Dockerfile",
         "services/knowledge-engine/pyproject.toml",
@@ -116,24 +137,28 @@
     },
     "identity-service": {
       "required": false,
+      "published_ports": [8000],
       "source_paths": [
         "services/identity-service"
       ]
     },
     "news-aggregator": {
       "required": false,
+      "published_ports": [8005],
       "source_paths": [
         "services/news-aggregator"
       ]
     },
     "video-analysis": {
       "required": false,
+      "published_ports": [8006],
       "source_paths": [
         "services/video-analysis"
       ]
     },
     "livestream-analysis": {
       "required": false,
+      "published_ports": [8007],
       "source_paths": [
         "services/livestream-analysis"
       ]

@@ -295,14 +295,16 @@ class HooksConfigTests(unittest.TestCase):
     def test_documented_public_entrypoint_exists(self):
         self.assertTrue((ROOT / "scripts" / "check_agent_policy.py").is_file())
 
-    def test_repo_hook_is_session_start_advisory_only(self):
+    def test_repo_hooks_cover_session_pretool_and_stop(self):
         config = json.loads((ROOT / ".codex" / "hooks.json").read_text(encoding="utf-8"))
 
-        self.assertEqual(set(config["hooks"]), {"SessionStart"})
-        handlers = config["hooks"]["SessionStart"][0]["hooks"]
-        self.assertEqual(len(handlers), 1)
-        self.assertIn("--hook", handlers[0]["command"])
-        self.assertIn("--hook", handlers[0]["commandWindows"])
+        self.assertEqual(set(config["hooks"]), {"SessionStart", "PreToolUse", "Stop"})
+        for event in ("SessionStart", "PreToolUse", "Stop"):
+            handlers = config["hooks"][event][0]["hooks"]
+            self.assertEqual(len(handlers), 1)
+            self.assertIn("scripts/hooks/development_gate.py", handlers[0]["command"])
+            self.assertIn("development_gate.py", handlers[0]["commandWindows"])
+            self.assertIn(f"--event','{event}", handlers[0]["commandWindows"])
 
     def test_windows_hook_command_runs_from_a_repository_subdirectory(self):
         config = json.loads((ROOT / ".codex" / "hooks.json").read_text(encoding="utf-8"))

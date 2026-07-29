@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -38,6 +39,15 @@ app.include_router(review.router)
 app.include_router(analytics.router)
 
 
+def _baked_identity(name: str) -> str | None:
+    value = os.getenv(name, "").strip()
+    return None if not value or value.lower() in {"unknown", "unset", "none"} else value
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "build_commit": _baked_identity("OMNI_BUILD_COMMIT"),
+        "build_source_fingerprint": _baked_identity("OMNI_BUILD_SOURCE_FINGERPRINT"),
+    }

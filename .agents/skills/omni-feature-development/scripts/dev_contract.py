@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import re
 import sys
 from copy import deepcopy
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,22 @@ CONTRACT_CHANGES = {"none", "compatible", "breaking"}
 FINAL_GRAPH_STATUSES = {"clean", "accepted"}
 SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3}
 RISK_LEVELS = ("R0", "R1", "R2", "R3")
+EXTERNAL_EFFECT_KINDS = {
+    "external_publish",
+    "external_message",
+    "paid_generation",
+    "credential_access",
+    "shared_database_migration",
+    "production_database_migration",
+    "hard_delete_user_data",
+    "physical_client_retirement",
+}
+CONTRACT_PROFILES = {
+    "R0": "none",
+    "R1": "light",
+    "R2": "full",
+    "R3": "full_with_approval",
+}
 DELIVERY_AUTHORITY = "ci_attestation"
 DELIVERY_READY_STATUS = "ready_for_ci"
 
@@ -157,6 +175,43 @@ def validate_risk_contract(
         errors.append(f"impact.risk.level must be one of: {', '.join(RISK_LEVELS)}")
     for field in ("reasons", "external_effects"):
         require_list(errors, risk.get(field), f"impact.risk.{field}")
+    external_effects = risk.get("external_effects")
+    if isinstance(external_effects, list):
+        for index, effect in enumerate(external_effects):
+            prefix = f"impact.risk.external_effects[{index}]"
+            if not isinstance(effect, dict):
+                errors.append(f"{prefix} must be a structured mapping")
+                continue
+            if effect.get("kind") not in EXTERNAL_EFFECT_KINDS:
+                errors.append(
+                    f"{prefix}.kind must be one of: {', '.join(sorted(EXTERNAL_EFFECT_KINDS))}"
+                )
+            require_text(errors, effect.get("target"), f"{prefix}.target")
+            require_text(errors, effect.get("operation"), f"{prefix}.operation")
+    contract_profile = risk.get("contract_profile")
+    if contract_profile is not None:
+        expected_profile = CONTRACT_PROFILES.get(str(level))
+        if contract_profile != expected_profile:
+            errors.append(
+                "impact.risk.contract_profile must match the declared risk level "
+                f"({level} -> {expected_profile})"
+            )
+    scope_deltas = risk.get("scope_deltas")
+    if scope_deltas is not None:
+        if not isinstance(scope_deltas, list):
+            errors.append("impact.risk.scope_deltas must be a list")
+        else:
+            for index, delta in enumerate(scope_deltas):
+                prefix = f"impact.risk.scope_deltas[{index}]"
+                if not isinstance(delta, dict):
+                    errors.append(f"{prefix} must be a mapping")
+                    continue
+                require_list(errors, delta.get("added_paths"), f"{prefix}.added_paths")
+                require_text(errors, delta.get("reason"), f"{prefix}.reason")
+                if delta.get("required_level") not in RISK_LEVELS:
+                    errors.append(f"{prefix}.required_level must be one of: {', '.join(RISK_LEVELS)}")
+                elif level in RISK_LEVELS and RISK_LEVELS.index(delta["required_level"]) > RISK_LEVELS.index(level):
+                    errors.append(f"{prefix}.required_level must not exceed impact.risk.level")
     approval = risk.get("approval")
     if not isinstance(approval, dict):
         errors.append("impact.risk.approval must be a mapping")
@@ -174,6 +229,8 @@ def validate_risk_contract(
         if approval.get("required") is not True:
             errors.append("impact.risk.approval.required must be true for R3")
         require_text(errors, approval.get("gate_ref"), "impact.risk.approval.gate_ref")
+    if required and level in {"R0", "R1", "R2"} and risk.get("external_effects"):
+        errors.append("impact.risk.level must be R3 when external_effects are declared")
 
 
 def validate_delivery_intent(
@@ -207,33 +264,25 @@ def normalized_path(value: str) -> str:
     return normalized
 
 
+@lru_cache(maxsize=1)
+def _development_policy() -> Any:
+    path = Path(__file__).resolve().parents[4] / "scripts" / "development_policy.py"
+    spec = importlib.util.spec_from_file_location("omni_development_policy_contract", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load shared development policy: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def glob_pattern_to_regex(pattern: str) -> str:
     """Translate contract globs with segment-safe * and recursive ** semantics."""
-    pattern = normalized_path(pattern)
-    pieces: list[str] = []
-    index = 0
-    while index < len(pattern):
-        char = pattern[index]
-        if char == "*":
-            if index + 1 < len(pattern) and pattern[index + 1] == "*":
-                index += 2
-                if index < len(pattern) and pattern[index] == "/":
-                    pieces.append("(?:.*/)?")
-                    index += 1
-                else:
-                    pieces.append(".*")
-                continue
-            pieces.append("[^/]*")
-        elif char == "?":
-            pieces.append("[^/]")
-        else:
-            pieces.append(re.escape(char))
-        index += 1
-    return "^" + "".join(pieces) + "$"
+    return str(_development_policy().glob_pattern_to_regex(pattern))
 
 
 def path_matches(path: str, pattern: str) -> bool:
-    return re.fullmatch(glob_pattern_to_regex(pattern), normalized_path(path)) is not None
+    return bool(_development_policy().path_matches(path, pattern))
 
 
 def validate_contract_pattern(pattern: Any, field: str) -> list[str]:
@@ -701,7 +750,9 @@ def validate_changed_files(impact: dict[str, Any], changed_file_path: Path) -> l
     return [f"changed file is outside locked impact scope: {path}" for path in uncovered]
 
 
-def impact_template(change_id: str, title: str) -> dict[str, Any]:
+def impact_template(change_id: str, title: str, risk_level: str = "R1") -> dict[str, Any]:
+    if risk_level not in RISK_LEVELS:
+        raise ValueError(f"risk_level must be one of: {', '.join(RISK_LEVELS)}")
     now = utc_now()
     return {
         "schema_version": 3,
@@ -714,10 +765,12 @@ def impact_template(change_id: str, title: str) -> dict[str, Any]:
         "before_snapshot": {"ref": ""},
         "delivery": {"authority": DELIVERY_AUTHORITY, "base_commit": ""},
         "risk": {
-            "level": "R1",
+            "level": risk_level,
+            "contract_profile": CONTRACT_PROFILES[risk_level],
             "reasons": [],
             "external_effects": [],
-            "approval": {"required": False, "gate_ref": ""},
+            "scope_deltas": [],
+            "approval": {"required": risk_level == "R3", "gate_ref": ""},
         },
         "intent": {"problem": "", "expected_outcome": "", "user_visible_behavior": []},
         "current_chain": {"nodes": [], "edges": [], "evidence": []},
@@ -775,7 +828,7 @@ def command_init(args: argparse.Namespace) -> int:
         for path in existing:
             print(f"  {path}", file=sys.stderr)
         return 2
-    write_yaml(impact_path, impact_template(args.change_id, args.title))
+    write_yaml(impact_path, impact_template(args.change_id, args.title, args.risk_level))
     write_yaml(completion_path, completion_template(args.change_id))
     print(f"Created {impact_path}")
     print(f"Created {completion_path}")
@@ -901,6 +954,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--change-dir", required=True)
     init_parser.add_argument("--change-id", required=True)
     init_parser.add_argument("--title", required=True)
+    init_parser.add_argument("--risk-level", choices=RISK_LEVELS, default="R1")
     init_parser.add_argument("--force", action="store_true")
     init_parser.set_defaults(func=command_init)
 

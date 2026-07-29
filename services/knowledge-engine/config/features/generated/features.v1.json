@@ -1,0 +1,927 @@
+{
+  "definition_revision": "sha256:018c848d8713565cfbb250c5b5e46d95663cae2f52e843b875c9ab628dbeb0d9",
+  "frontend_registry": [
+    {
+      "aliases": [
+        {
+          "href": "/ad-review/flywheel",
+          "target": "/ad-review"
+        }
+      ],
+      "capabilities": [
+        {
+          "capability_id": "campaign-review",
+          "kind": "generate"
+        }
+      ],
+      "domain": "advertising",
+      "feature_id": "ad-review",
+      "href": "/ad-review",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "home"
+      ],
+      "title": "投放复盘",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "approval-inbox",
+          "kind": "admin"
+        }
+      ],
+      "domain": "operations.approval",
+      "feature_id": "approval-inbox",
+      "href": "/inbox",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "待批",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "agent-chat",
+          "kind": "generate"
+        }
+      ],
+      "domain": "agent",
+      "feature_id": "chat",
+      "href": "/chat",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "home"
+      ],
+      "title": "智能问答",
+      "visible": true
+    },
+    {
+      "aliases": [
+        {
+          "href": "/content-leaderboard",
+          "target": "/ad-metrics"
+        }
+      ],
+      "capabilities": [
+        {
+          "capability_id": "commerce-feedback",
+          "kind": "write"
+        }
+      ],
+      "domain": "commerce.analytics",
+      "feature_id": "commerce-feedback",
+      "href": "/ad-metrics",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "投后回传与带货榜",
+      "visible": true
+    },
+    {
+      "aliases": [
+        {
+          "href": "/content-studio/avatars",
+          "target": "/content-studio"
+        },
+        {
+          "href": "/content-studio/briefs",
+          "target": "/content-studio"
+        },
+        {
+          "href": "/content-studio/guide",
+          "target": "/content-studio"
+        },
+        {
+          "href": "/content-studio/new",
+          "target": "/content-studio"
+        }
+      ],
+      "capabilities": [
+        {
+          "capability_id": "content-pipeline",
+          "kind": "generate"
+        }
+      ],
+      "domain": "content.generation",
+      "feature_id": "content-studio",
+      "href": "/content-studio",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "home"
+      ],
+      "title": "内容工坊",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "cost-margin",
+          "kind": "read"
+        },
+        {
+          "capability_id": "cost-query",
+          "kind": "read"
+        }
+      ],
+      "domain": "accounting",
+      "feature_id": "cost-management",
+      "href": "/cost",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "成本管理",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "web-harvest",
+          "kind": "write"
+        }
+      ],
+      "domain": "knowledge",
+      "feature_id": "knowledge-harvester",
+      "href": "/knowledge/harvester",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "home"
+      ],
+      "title": "知识采集",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "knowledge-library",
+          "kind": "write"
+        }
+      ],
+      "domain": "knowledge",
+      "feature_id": "knowledge",
+      "href": "/knowledge",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "home"
+      ],
+      "title": "知识库",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "livestream-analysis",
+          "kind": "generate"
+        }
+      ],
+      "domain": "content.analysis",
+      "feature_id": "livestream-analysis",
+      "href": "/livestream-analysis",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "home"
+      ],
+      "title": "直播分析",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "news-discovery",
+          "kind": "read"
+        }
+      ],
+      "domain": "content.news",
+      "feature_id": "news",
+      "href": "/news",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "home"
+      ],
+      "title": "资讯中心",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "product-overview",
+          "kind": "read"
+        }
+      ],
+      "domain": "commerce.product",
+      "feature_id": "product-management",
+      "href": "/products",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "我的产品",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "reverse-storyboard",
+          "kind": "generate"
+        }
+      ],
+      "domain": "content.analysis",
+      "feature_id": "reverse-engineer",
+      "href": "/reverse-engineer",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "反向拆解",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "store-monitoring",
+          "kind": "read"
+        }
+      ],
+      "domain": "commerce.scout",
+      "feature_id": "scout-monitoring",
+      "href": "/scout",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "巡店监控",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "sku-pipeline",
+          "kind": "generate"
+        }
+      ],
+      "domain": "commerce.pipeline",
+      "feature_id": "sku-pipeline",
+      "href": "/sku-pipeline",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "SKU Pipeline",
+      "visible": true
+    },
+    {
+      "aliases": [
+        {
+          "href": "/models",
+          "target": "/"
+        },
+        {
+          "href": "/playground",
+          "target": "/"
+        },
+        {
+          "href": "/playground/reverse-storyboard",
+          "target": "/"
+        },
+        {
+          "href": "/prompt-lab",
+          "target": "/"
+        },
+        {
+          "href": "/tasks",
+          "target": "/"
+        }
+      ],
+      "capabilities": [
+        {
+          "capability_id": "system-configuration",
+          "kind": "admin"
+        }
+      ],
+      "domain": "system",
+      "feature_id": "system-console",
+      "href": "/",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "系统控制台",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "video-analysis",
+          "kind": "generate"
+        }
+      ],
+      "domain": "content.analysis",
+      "feature_id": "video-analysis",
+      "href": "/video-analysis",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "home"
+      ],
+      "title": "短视频分析",
+      "visible": true
+    },
+    {
+      "aliases": [
+        {
+          "href": "/agent-log",
+          "target": "/workspace"
+        },
+        {
+          "href": "/decisions",
+          "target": "/workspace"
+        },
+        {
+          "href": "/insights",
+          "target": "/workspace"
+        },
+        {
+          "href": "/review",
+          "target": "/workspace"
+        }
+      ],
+      "capabilities": [
+        {
+          "capability_id": "operations-workspace",
+          "kind": "read"
+        }
+      ],
+      "domain": "operations",
+      "feature_id": "workspace-operations",
+      "href": "/workspace",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct",
+        "sidebar"
+      ],
+      "title": "工作台与运营闭环",
+      "visible": true
+    }
+  ],
+  "graph_expectations": [
+    {
+      "checks": [
+        {
+          "check_id": "ad-review-service-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/ad-review",
+          "verifies": "health_registration:service:ad-review-service"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ad-review-service",
+          "required": true
+        },
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "ad-review"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "approval-worker-readiness",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/approval-inbox",
+          "verifies": "health_registration:service:approval-worker"
+        },
+        {
+          "check_id": "identity-readiness",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/approval-inbox",
+          "verifies": "health_registration:service:identity-service"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:approval-worker",
+          "required": true
+        },
+        {
+          "ref": "health_registration:service:identity-service",
+          "required": true
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "approval-inbox"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "ai-provider-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/chat",
+          "verifies": "health_registration:service:ai-provider-hub"
+        },
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/chat",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": true
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "chat"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/commerce-feedback",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ad-review-service",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "commerce-feedback"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "ai-provider-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/content-studio",
+          "verifies": "health_registration:service:ai-provider-hub"
+        },
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/content-studio",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": true
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "content-studio"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "margin-core-unit",
+          "kind": "pytest",
+          "required": true,
+          "target": "services/knowledge-engine/tests/test_margin_core.py::test_basic_margin_no_fee",
+          "verifies": "service_symbol:app.services.accounting_tool._margin_core"
+        },
+        {
+          "check_id": "query-costs-smoke",
+          "kind": "pytest",
+          "required": true,
+          "target": "services/knowledge-engine/tests/test_mcp_accounting.py::test_smoke_query_costs_returns_sku_and_shared",
+          "verifies": "mcp_tool:query_costs"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [
+        {
+          "from": "bff_operation:GET:/api/omni/cost/cost-items",
+          "relation": "proxies_to",
+          "required": true,
+          "to": "rest_operation:GET:/api/v1/accounting/cost-items"
+        },
+        {
+          "from": "mcp_tool:query_costs",
+          "relation": "reads",
+          "required": true,
+          "to": "table:accounting.cost_items"
+        },
+        {
+          "from": "migration:015_cost_items",
+          "relation": "creates",
+          "required": true,
+          "to": "table:accounting.cost_items"
+        },
+        {
+          "from": "rest_operation:GET:/api/v1/accounting/cost-items",
+          "relation": "invokes",
+          "required": true,
+          "to": "service_symbol:app.services.accounting_tool.query_costs"
+        },
+        {
+          "from": "service_symbol:app.services.accounting_tool.query_costs",
+          "relation": "reads",
+          "required": true,
+          "to": "table:accounting.cost_items"
+        },
+        {
+          "from": "test:services/knowledge-engine/tests/test_mcp_accounting.py::test_smoke_query_costs_returns_sku_and_shared",
+          "relation": "verifies",
+          "required": true,
+          "to": "mcp_tool:query_costs"
+        },
+        {
+          "from": "ui_route:/cost",
+          "relation": "calls",
+          "required": true,
+          "to": "bff_operation:GET:/api/omni/cost/cost-items"
+        }
+      ],
+      "feature_id": "cost-management"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/knowledge-harvester",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "knowledge-harvester"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/knowledge",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "knowledge"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "livestream-service-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/livestream-analysis",
+          "verifies": "health_registration:service:livestream-analysis"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:livestream-analysis",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "livestream-analysis"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "news-service-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/news",
+          "verifies": "health_registration:service:news-aggregator"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:news-aggregator",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "news"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/product-management",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        },
+        {
+          "ref": "health_registration:service:scout-agent",
+          "required": false
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "product-management"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/reverse-engineer",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": true
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "reverse-engineer"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "scout-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/scout-monitoring",
+          "verifies": "health_registration:service:scout-agent"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:scout-agent",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "scout-monitoring"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/sku-pipeline",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": true
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "sku-pipeline"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/system-console",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "system-console"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "video-service-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/video-analysis",
+          "verifies": "health_registration:service:video-analysis"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:video-analysis",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "video-analysis"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/workspace-operations",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "workspace-operations"
+    }
+  ],
+  "schema_id": "omni.feature-projections.v1",
+  "schema_version": 1
+}

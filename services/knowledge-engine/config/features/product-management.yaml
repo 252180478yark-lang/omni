@@ -1,0 +1,23 @@
+schema_version: 1
+feature_id: product-management
+title: 我的产品
+domain: commerce.product
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /products
+  visible: true
+  placements: [sidebar, direct]
+capabilities:
+  - {capability_id: product-overview, kind: read}
+expected_edges: []
+checks:
+  - check_id: knowledge-health
+    kind: health
+    target: /api/v1/system/health/features/product-management
+    verifies: health_registration:service:knowledge-engine
+    required: true
+aliases: []
+dependencies:
+  - {ref: health_registration:service:knowledge-engine, required: true}
+  - {ref: health_registration:service:scout-agent, required: false}

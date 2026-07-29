@@ -9,10 +9,12 @@
 #      保证门禁稳定为绿。这是 L0-7 的最小达标线。
 #   2) ke-bootstrap-gate（**阻断合并**）：在干净环境安装全部 KE 依赖并收集全套测试，
 #      防止开发机依赖或可写目录掩盖 Linux runner 的启动问题。
-#   3) full-suite（**不阻断 · 信息性**）：起 Postgres + 装全部 KE 依赖，尝试跑整套
-#      pytest。很多测试依赖 app.database / 全量 schema，CI 里需先 bootstrap migration
-#      （属另一阶段0切片：DB schema/口径）。在那之前本 job 用 continue-on-error 收集
-#      真实通过率，不让它红掉挡合并。等 migration 自举接好，再把它提级为阻断 job。
+#   3) migration-parity-gate（**阻断合并**）：同一 runner 验证空库及 015 存量库
+#      replay 016 后达到完整 head/checksum parity。
+#   4) convergence-foundation-gate（**阻断合并**）：在干净安装后实际运行
+#      S2/S2.5/S3 的 hooks、health、approval、graph、runtime preflight 与 identity auth。
+#   5) full-suite（**不阻断 · 信息性**）：保留全量业务测试真实通过率；migration
+#      正确性由独立阻断 gate 负责，不把信息性测试伪装成 migration 证明。
 #
 # 默认分支 run 不允许被后续 push 取消；每个被交付的不可变提交都必须有自己的封印。
 
@@ -132,6 +134,212 @@ jobs:
           python -B scripts/check_feature_contracts.py --mode commit --base "$BASE_SHA" --head "$HEAD_SHA"
 
   # ---------------------------------------------------------------------------
+  # 阻断门禁：同一 canonical runner 必须在空库和存量库（先到 015，再 replay 016）
+  # 达到完整 repository head/checksum parity。所有数据库均为本 job 临时 disposable DB。
+  # ---------------------------------------------------------------------------
+  migration-parity-gate:
+    name: Migration 空库与存量库 parity（门禁）
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: omni_user
+          POSTGRES_PASSWORD: ci-disposable-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U omni_user -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      POSTGRES_USER: omni_user
+      POSTGRES_PASSWORD: ci-disposable-only
+      OMNI_DATABASE_DISPOSABLE: "true"
+      OMNI_WORKTREE_ID: worktree-1111111111111111
+      OMNI_RUNTIME_ID: ci-migration-parity
+      OMNI_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      OMNI_BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      OMNI_SOURCE_FINGERPRINT: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      OMNI_BUILD_SOURCE_FINGERPRINT: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 装 migration gate 依赖
+        run: pip install "psycopg2-binary>=2.9,<3" "pytest>=8,<9"
+
+      - name: 跑 runner 合同与仓库静态 parity
+        run: |
+          python -B -m pytest -q -p no:cacheprovider tests/test_migration_runner_contract.py
+          python -B scripts/apply_migrations.py --dry-run --verify
+
+      - name: 创建两个临时数据库与精确 RuntimeAllocation evidence
+        run: |
+          python - <<'PY'
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+
+          import psycopg2
+
+          connection = psycopg2.connect(
+              host="127.0.0.1",
+              port=5432,
+              user=os.environ["POSTGRES_USER"],
+              password=os.environ["POSTGRES_PASSWORD"],
+              dbname="postgres",
+          )
+          connection.autocommit = True
+          with connection.cursor() as cursor:
+              for database in ("omni_ci_empty", "omni_ci_existing"):
+                  cursor.execute(f'CREATE DATABASE "{database}"')
+          connection.close()
+
+          now = datetime.datetime.now(datetime.timezone.utc)
+          expires = (now + datetime.timedelta(hours=2)).isoformat()
+          for index, database in enumerate(("omni_ci_empty", "omni_ci_existing"), 1):
+              allocation_id = f"allocation-{index:032x}"
+              lease_id = f"lease-{index:032x}"
+              state = {
+                  "schema_version": 1,
+                  "generation": index,
+                  "leases": [{
+                      "lease_id": lease_id,
+                      "change_id": "ci-migration-parity",
+                      "worktree_id": os.environ["OMNI_WORKTREE_ID"],
+                      "state": "active",
+                      "expires_at": expires,
+                  }],
+                  "allocations": [{
+                      "allocation_id": allocation_id,
+                      "lease_id": lease_id,
+                      "change_id": "ci-migration-parity",
+                      "worktree_id": os.environ["OMNI_WORKTREE_ID"],
+                      "source_fingerprint": os.environ["OMNI_SOURCE_FINGERPRINT"],
+                      "runtime_id": os.environ["OMNI_RUNTIME_ID"],
+                      "database": database,
+                      "canonical": False,
+                      "state": "active",
+                      "expires_at": expires,
+                  }],
+              }
+              Path(f"{database}-allocation.json").write_text(
+                  json.dumps(state), encoding="utf-8"
+              )
+          PY
+
+      - name: 空库运行到完整 head/checksum parity
+        env:
+          MIGRATION_DATABASE: omni_ci_empty
+          OMNI_ALLOCATION_ID: allocation-00000000000000000000000000000001
+          OMNI_RUNTIME_ALLOCATION_FILE: omni_ci_empty-allocation.json
+        run: |
+          export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${MIGRATION_DATABASE}"
+          python -B scripts/apply_migrations.py --allocation-aware \
+            --receipt-dir "$RUNNER_TEMP/empty-receipts"
+
+      - name: 构造存量 015 ledger（仍使用同一 runner）
+        env:
+          MIGRATION_DATABASE: omni_ci_existing
+          OMNI_ALLOCATION_ID: allocation-00000000000000000000000000000002
+          OMNI_RUNTIME_ALLOCATION_FILE: omni_ci_existing-allocation.json
+        run: |
+          export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${MIGRATION_DATABASE}"
+          SELECTORS="$(python - <<'PY'
+          from pathlib import Path
+          print(",".join(
+              path.name for path in sorted(Path("migrations").glob("*.sql"))
+              if int(path.name.split("_", 1)[0]) <= 15
+          ))
+          PY
+          )"
+          python -B scripts/apply_migrations.py --only "$SELECTORS" \
+            --receipt-dir "$RUNNER_TEMP/existing-receipts"
+
+      - name: 验证 016 尚未应用后 replay 到 head，再验证幂等 restart
+        env:
+          MIGRATION_DATABASE: omni_ci_existing
+          OMNI_ALLOCATION_ID: allocation-00000000000000000000000000000002
+          OMNI_RUNTIME_ALLOCATION_FILE: omni_ci_existing-allocation.json
+        run: |
+          export DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${MIGRATION_DATABASE}"
+          python - <<'PY'
+          import os
+          import psycopg2
+          connection = psycopg2.connect(os.environ["DATABASE_URL"])
+          with connection, connection.cursor() as cursor:
+              cursor.execute("SELECT filename FROM schema_migrations ORDER BY filename")
+              names = [row[0] for row in cursor.fetchall()]
+          connection.close()
+          assert names and names[-1].startswith("015_"), names[-1:]
+          assert not any(name.startswith("016_") for name in names)
+          PY
+          python -B scripts/apply_migrations.py --allocation-aware \
+            --receipt-dir "$RUNNER_TEMP/existing-receipts"
+          python -B scripts/apply_migrations.py --allocation-aware \
+            --receipt-dir "$RUNNER_TEMP/existing-receipts"
+
+      - name: 核验两个数据库与 receipt 均为完整 parity
+        env:
+          EMPTY_MIGRATION_DATABASE: omni_ci_empty
+          EXISTING_MIGRATION_DATABASE: omni_ci_existing
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          import psycopg2
+
+          repository = {
+              path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+              for path in sorted(Path("migrations").glob("*.sql"))
+          }
+          for env_name in ("EMPTY_MIGRATION_DATABASE", "EXISTING_MIGRATION_DATABASE"):
+              connection = psycopg2.connect(
+                  host="127.0.0.1",
+                  port=5432,
+                  user=os.environ["POSTGRES_USER"],
+                  password=os.environ["POSTGRES_PASSWORD"],
+                  dbname=os.environ[env_name],
+              )
+              with connection, connection.cursor() as cursor:
+                  cursor.execute(
+                      "SELECT filename, checksum FROM schema_migrations ORDER BY filename"
+                  )
+                  ledger = dict(cursor.fetchall())
+              connection.close()
+              assert ledger == repository
+              assert "016_mcp_audit.sql" in ledger
+
+          empty_dir = Path(os.environ["RUNNER_TEMP"]) / "empty-receipts"
+          existing_dir = Path(os.environ["RUNNER_TEMP"]) / "existing-receipts"
+          empty_index = json.loads((empty_dir / "index.json").read_text(encoding="utf-8"))
+          existing_index = json.loads((existing_dir / "index.json").read_text(encoding="utf-8"))
+          empty_receipt = json.loads((empty_dir / empty_index[-1]["filename"]).read_text(encoding="utf-8"))
+          existing_receipts = [
+              json.loads((existing_dir / item["filename"]).read_text(encoding="utf-8"))
+              for item in existing_index
+          ]
+          assert empty_receipt["database_fixture"]["empty_database"] is True
+          assert any("016_mcp_audit.sql" in item["applied"] for item in existing_receipts)
+          assert existing_receipts[-1]["applied"] == []
+          assert existing_receipts[-1]["after"]["pending"] == []
+          PY
+
+  # ---------------------------------------------------------------------------
   # 阻断门禁：Omni 内置 Codex runner 必须能安全解析 CLI、固定项目 cwd 并通过类型检查。
   # ---------------------------------------------------------------------------
   codex-runner-gate:
@@ -239,7 +447,76 @@ jobs:
         run: python -B -m pytest --collect-only -q -p no:cacheprovider tests
 
   # ---------------------------------------------------------------------------
-  # 信息性全量：起 DB + 装全依赖跑整套。当前不阻断（migration 自举接好后提级）。
+  # 阻断门禁：bootstrap 只证明可收集；本 job 在独立干净 runner 上真实执行
+  # convergence foundation 的确定性 S2/S2.5/S3 测试。各领域分进程运行，避免两个
+  # service 都使用顶层 `app` 包时产生测试顺序污染；不连接外部服务或共享数据库。
+  # ---------------------------------------------------------------------------
+  convergence-foundation-gate:
+    name: S2-S3 Convergence Foundation（门禁）
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 干净安装 KE 与 Identity 全部依赖（含 dev）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "services/knowledge-engine[dev]" -e "services/identity-service[dev]"
+
+      - name: 实跑 S2 风险策略与 Hooks
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_development_policy.py
+          tests/test_development_hooks.py
+
+      - name: 实跑 S2.5 五态健康
+        working-directory: services/knowledge-engine
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_system_health.py
+          tests/test_system_health_router.py
+
+      - name: 实跑 S2.5 非阻塞审批与恢复 worker
+        working-directory: services/knowledge-engine
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_approval_operations.py
+          tests/test_approval_operation_worker.py
+          tests/test_approval_audit.py
+
+      - name: 实跑 S3 FeatureDefinition 与确定性图谱
+        working-directory: services/knowledge-engine
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_feature_definitions.py
+          tests/test_system_graph_models.py
+          tests/test_system_graph_collectors.py
+          tests/test_system_graph_snapshots.py
+          tests/test_system_graph_redaction.py
+
+      - name: 实跑 RuntimeAllocation 启动前预检
+        working-directory: services/knowledge-engine
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_runtime_preflight.py
+
+      - name: 实跑 Identity 认证与失活用户拒绝
+        working-directory: services/identity-service
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_auth.py
+
+  # ---------------------------------------------------------------------------
+  # 信息性全量：起 DB + 装全依赖跑整套。migration parity 由独立阻断 gate 证明。
   # ---------------------------------------------------------------------------
   full-suite:
     name: KE 全量 pytest（信息性 · 暂不阻断）
@@ -249,9 +526,7 @@ jobs:
         working-directory: services/knowledge-engine
     services:
       postgres:
-        # 注意：业务库用的是带 pgvector 的自定义镜像（services/infra-core/postgres）。
-        # 这里先挂官方 pgvector 镜像占位，schema/migration 自举属另一阶段0切片，
-        # 接好前本 job 用 continue-on-error 不阻断。
+        # 与 blocking migration parity gate 使用同系列 pgvector PostgreSQL。
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: omni_user
@@ -280,8 +555,7 @@ jobs:
           pip install -e ".[dev]"
 
       - name: 跑全套 pytest（信息性，不阻断合并）
-        # 全套很多测试依赖 schema/migration 自举，CI 里尚未 bootstrap。
-        # 先收集真实通过情况，红了不挡合并；接好后删掉 continue-on-error 提级为门禁。
+        # 该 job 收集广泛业务依赖的真实通过情况；不替代独立 migration 门禁。
         continue-on-error: true
         env:
           DATABASE_URL: "postgresql+asyncpg://omni_user:changeme_in_production@localhost:5432/omni_vibe_db"
@@ -292,8 +566,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # 交付封印：PR、功能分支 push 与手动任务只验证候选；只有默认分支 post-merge
   # push 在所有确定性阻断 job 通过后，才能为同一不可变 commit/tree 生成 COMPLETE。
-  # full-suite 仍为信息性；在 S1.5 blocking migration gate 建成前，attestation
-  # 构造器会 fail-closed 拒绝任何 database/migration 路径。
+  # full-suite 仍为信息性；delivery attestation 必须依赖 blocking migration gate。
   # ---------------------------------------------------------------------------
   delivery-seal:
     name: 不可变提交交付封印
@@ -304,6 +577,8 @@ jobs:
       - codex-runner-gate
       - unit-gate
       - ke-bootstrap-gate
+      - migration-parity-gate
+      - convergence-foundation-gate
     runs-on: ubuntu-latest
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -380,11 +655,56 @@ jobs:
               output.write(f"required={'true' if required else 'false'}\n")
           PY
 
+      - name: 生成不可变 delivery evidence
+        if: steps.seal.outputs.required == 'true'
+        env:
+          BASE_SHA: ${{ steps.refs.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.refs.outputs.head_sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = {
+              "schema_version": 1,
+              "kind": "omni_delivery_evidence",
+              "base_sha": os.environ["BASE_SHA"],
+              "head_sha": os.environ["HEAD_SHA"],
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "required_checks": {
+                  "agents-policy-gate": "passed",
+                  "feature-contract-gate": "passed",
+                  "codex-runner-gate": "passed",
+                  "unit-gate": "passed",
+                  "ke-bootstrap-gate": "passed",
+                  "migration-parity-gate": "passed",
+                  "convergence-foundation-gate": "passed",
+              },
+              "migration_gate_verified": True,
+          }
+          Path(os.environ["RUNNER_TEMP"], "delivery-evidence.json").write_text(
+              json.dumps(evidence, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: 上传不可变 delivery evidence
+        if: steps.seal.outputs.required == 'true'
+        id: evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: delivery-evidence-${{ steps.refs.outputs.head_sha }}
+          path: ${{ runner.temp }}/delivery-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: 生成 CI 外部 delivery attestation
         if: steps.seal.outputs.required == 'true'
         env:
           BASE_SHA: ${{ steps.refs.outputs.base_sha }}
           HEAD_SHA: ${{ steps.refs.outputs.head_sha }}
+          EVIDENCE_DIGEST: ${{ steps.evidence.outputs.artifact-digest }}
         run: >-
           python -B scripts/check_feature_contracts.py
           --mode commit
@@ -392,6 +712,18 @@ jobs:
           --head "$HEAD_SHA"
           --attestation-out "$RUNNER_TEMP/delivery-attestation.json"
           --attestor github-actions-required-gates
+          --target-ref "$GITHUB_REF"
+          --repository "$GITHUB_REPOSITORY"
+          --required-check agents-policy-gate=passed
+          --required-check feature-contract-gate=passed
+          --required-check codex-runner-gate=passed
+          --required-check unit-gate=passed
+          --required-check ke-bootstrap-gate=passed
+          --required-check migration-parity-gate=passed
+          --required-check convergence-foundation-gate=passed
+          --evidence-artifact-name "delivery-evidence-$HEAD_SHA"
+          --evidence-artifact-digest "$EVIDENCE_DIGEST"
+          --migration-gate-verified
           --ci-run-id "${{ github.run_id }}"
 
       - name: 上传交付封印

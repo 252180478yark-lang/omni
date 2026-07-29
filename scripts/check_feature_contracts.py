@@ -11,11 +11,12 @@ import os
 import re
 import subprocess
 import sys
+from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 
 CONTRACT_FILE_RE = re.compile(
@@ -40,6 +41,22 @@ GOVERNANCE_PREFIXES = (
     ".codex/",
     ".github/",
 )
+
+
+@lru_cache(maxsize=1)
+def load_development_policy() -> ModuleType:
+    """Load the one risk-policy implementation used by hooks and CI."""
+
+    script_path = Path(__file__).resolve().with_name("development_policy.py")
+    if not script_path.is_file():
+        raise GateInputError(f"development policy does not exist: {script_path}")
+    spec = importlib.util.spec_from_file_location("omni_development_policy", script_path)
+    if spec is None or spec.loader is None:
+        raise GateInputError(f"cannot load development policy: {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 class GateInputError(ValueError):
@@ -82,23 +99,10 @@ class EvaluationInputs:
 
 
 def normalize_changed_path(value: str) -> str:
-    path = value.strip().replace("\\", "/")
-    while path.startswith("./"):
-        path = path[2:]
-    if not path:
-        raise GateInputError("changed-file list contains an empty path")
-    if path.startswith("/") or re.match(r"^[A-Za-z]:/", path):
-        raise GateInputError(f"changed path must be repository-relative: {value!r}")
-    if "\x00" in path:
-        raise GateInputError("changed path contains a NUL byte")
-
-    parts = [part for part in path.split("/") if part not in {"", "."}]
-    if any(part == ".." for part in parts):
-        raise GateInputError(f"changed path escapes the repository: {value!r}")
-    normalized = "/".join(parts)
-    if not normalized:
-        raise GateInputError(f"changed path is not a file: {value!r}")
-    return normalized
+    try:
+        return str(load_development_policy().normalize_path(value))
+    except ValueError as exc:
+        raise GateInputError(str(exc)) from exc
 
 
 def normalize_changed_files(values: Iterable[str]) -> tuple[str, ...]:
@@ -402,50 +406,28 @@ def _sha256_text(value: str) -> str:
 
 
 def _path_boundary(path: str) -> str:
-    normalized = normalize_changed_path(path)
-    folded = normalized.casefold()
-    if folded == "agents.md" or folded.startswith(GOVERNANCE_PREFIXES):
-        return "governance"
-    if "migration" in folded or folded.endswith(".sql") or "/postgres/" in folded:
-        return "database"
-    if folded.startswith("frontend/src/app/api/") or "/api/" in folded:
-        return "api"
-    if "/mcp/" in folded:
-        return "mcp"
-    if folded.startswith("frontend/"):
-        return "frontend"
-    if folded.startswith("services/"):
-        return "service"
-    if folded.startswith("scripts/"):
-        return "script"
-    return "code"
+    return str(load_development_policy().path_boundary(path))
 
 
 def derive_risk_floor(paths: Iterable[str], impact: dict | None = None) -> str:
-    """Derive a conservative, machine-checkable minimum risk level."""
+    """Derive the minimum risk through the shared development policy."""
 
-    protected = [path for path in paths if requires_feature_contract(path)]
-    if not protected:
-        floor = "R0"
-    else:
-        boundaries = {_path_boundary(path) for path in protected}
-        sensitive = {"governance", "database", "api", "mcp"}
-        floor = "R2" if boundaries & sensitive or len(boundaries) > 1 else "R1"
+    return str(load_development_policy().derive_risk_floor(paths, impact))
 
-    if impact is not None:
-        compatibility = impact.get("compatibility") or {}
-        if any(
-            isinstance(value, dict) and value.get("status") == "breaking"
-            for value in compatibility.values()
-        ):
-            floor = "R3"
-        for change in impact.get("planned_changes") or []:
-            if not isinstance(change, dict) or change.get("action") != "remove":
-                continue
-            kind = str(change.get("kind", "")).casefold()
-            if kind in {"database", "data_source", "security", "permission", "external_write"}:
-                floor = "R3"
-    return floor
+
+def evaluate_debt_ratchet(
+    baseline: Iterable[object],
+    current: Iterable[object],
+    *,
+    changed_paths: Iterable[str] = (),
+) -> object:
+    """Compatibility entry point for CI callers using the feature gate module."""
+
+    return load_development_policy().evaluate_debt_ratchet(
+        baseline,
+        current,
+        changed_paths=changed_paths,
+    )
 
 
 def _risk_at_least(declared: str, required: str) -> bool:
@@ -784,6 +766,12 @@ def build_delivery_attestation(
     *,
     attestor: str = "ci",
     run_id: str = "",
+    target_ref: str = "refs/heads/main",
+    repository: str = "",
+    required_checks: Mapping[str, str] | None = None,
+    evidence_artifact_name: str = "",
+    evidence_artifact_digest: str = "",
+    migration_gate_verified: bool = False,
 ) -> dict[str, object]:
     """Build an external seal for one immutable commit after commit-mode validation."""
 
@@ -817,10 +805,10 @@ def build_delivery_attestation(
             if _path_boundary(path) == "database"
         }
     )
-    if database_paths:
+    if database_paths and not migration_gate_verified:
         raise GateInputError(
-            "database/migration delivery attestation is fail-closed until the S1.5 "
-            "blocking migration gate is available: "
+            "database/migration delivery attestation requires the S1.5 blocking "
+            "migration gate (parity): "
             + ", ".join(database_paths)
         )
 
@@ -843,8 +831,20 @@ def build_delivery_attestation(
             }
         )
 
+    if target_ref != "refs/heads/main":
+        raise GateInputError("delivery attestation target_ref must be refs/heads/main")
+    repository = repository.strip() or git_repository_identity(root)
+    if not repository:
+        raise GateInputError("delivery attestation requires repository identity")
+    if not run_id or not str(run_id).isdigit():
+        raise GateInputError("delivery attestation requires a numeric CI workflow run id")
+    checks = dict(required_checks or {})
+    if not checks or not all(str(value).casefold() in {"passed", "success"} for value in checks.values()):
+        raise GateInputError("delivery attestation requires explicit passed required checks")
+    if not evidence_artifact_name or not evidence_artifact_digest.startswith("sha256:"):
+        raise GateInputError("delivery attestation requires a content-addressed evidence artifact")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "authority": "ci_attestation",
         "status": "COMPLETE",
         "generated_at": datetime.now(timezone.utc)
@@ -852,7 +852,18 @@ def build_delivery_attestation(
         .isoformat()
         .replace("+00:00", "Z"),
         "attestor": attestor,
-        "run_id": run_id,
+        "workflow_run_id": str(run_id),
+        "repository": repository,
+        "target_ref": target_ref,
+        "head_sha": delivered_commit,
+        "reachable": True,
+        "required_checks": checks,
+        "attestation_artifact_name": f"delivery-attestation-{delivered_commit}",
+        "evidence_artifact": {
+            "name": evidence_artifact_name,
+            "digest": evidence_artifact_digest,
+        },
+        "subject_commit": delivered_commit,
         "delivered_commit": delivered_commit,
         "delivered_tree": git_tree_hash(root, delivered_commit),
         "contracts": contracts,
@@ -861,10 +872,48 @@ def build_delivery_attestation(
 
 def write_delivery_attestation(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
+    content = (json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except FileExistsError as exc:
+        raise GateInputError(f"refusing to overwrite immutable delivery attestation: {path}") from exc
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        try:
+            path.unlink(missing_ok=True)
+        finally:
+            raise
+
+
+def git_repository_identity(root: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), "remote", "get-url", "origin"],
+        check=False,
+        capture_output=True,
+        text=True,
     )
+    if result.returncode != 0:
+        return ""
+    value = result.stdout.strip().removesuffix(".git")
+    match = re.search(r"(?:github\.com[:/])([^/]+)/([^/]+)$", value, re.IGNORECASE)
+    return f"{match.group(1)}/{match.group(2)}" if match else ""
+
+
+def _parse_required_checks(values: Iterable[str]) -> dict[str, str]:
+    checks: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            raise GateInputError(f"required check must use name=status: {value!r}")
+        name, status = value.split("=", 1)
+        if not name or status.casefold() not in {"passed", "success"}:
+            raise GateInputError(f"required check is not passed: {value!r}")
+        checks[name] = status.casefold()
+    return checks
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -893,6 +942,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="write an external delivery attestation (commit mode only)",
     )
     parser.add_argument("--attestor", default="ci", help="attestation issuer label")
+    parser.add_argument("--target-ref", default=os.environ.get("GITHUB_REF", "refs/heads/main"))
+    parser.add_argument("--repository", default=os.environ.get("GITHUB_REPOSITORY", ""))
+    parser.add_argument("--required-check", action="append", default=[])
+    parser.add_argument("--evidence-artifact-name", default="")
+    parser.add_argument("--evidence-artifact-digest", default="")
+    parser.add_argument("--migration-gate-verified", action="store_true")
     parser.add_argument(
         "--ci-run-id",
         default=os.environ.get("GITHUB_RUN_ID", ""),
@@ -999,6 +1054,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 inputs.head_ref,
                 attestor=args.attestor,
                 run_id=args.ci_run_id,
+                target_ref=args.target_ref,
+                repository=args.repository,
+                required_checks=_parse_required_checks(args.required_check),
+                evidence_artifact_name=args.evidence_artifact_name,
+                evidence_artifact_digest=args.evidence_artifact_digest,
+                migration_gate_verified=args.migration_gate_verified,
             )
             output_path = args.attestation_out
             if not output_path.is_absolute():

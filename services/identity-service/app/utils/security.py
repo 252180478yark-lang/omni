@@ -28,7 +28,7 @@ def _create_token(subject: str, expires_at: datetime, token_type: str, extra: di
     }
     if extra:
         payload.update(extra)
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(payload, settings.jwt_signing_key, algorithm=settings.jwt_algorithm)
 
 
 def create_access_token(subject: str, extra: dict[str, Any] | None = None) -> str:
@@ -43,6 +43,6 @@ def create_refresh_token(subject: str, extra: dict[str, Any] | None = None) -> s
 
 def decode_token(token: str) -> dict[str, Any]:
     try:
-        return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        return jwt.decode(token, settings.jwt_signing_key, algorithms=[settings.jwt_algorithm])
     except JWTError as exc:
         raise AppException(code=401, message="invalid token", detail="token decode failed") from exc

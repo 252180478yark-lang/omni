@@ -1,0 +1,63 @@
+schema_version: 1
+feature_id: cost-management
+title: 成本管理
+domain: accounting
+owner:
+  kind: team
+  id: omni
+lifecycle: active
+routes:
+  canonical: /cost
+  visible: true
+  placements:
+    - sidebar
+    - direct
+capabilities:
+  - capability_id: cost-query
+    kind: read
+  - capability_id: cost-margin
+    kind: read
+expected_edges:
+  - from: ui_route:/cost
+    to: bff_operation:GET:/api/omni/cost/cost-items
+    relation: calls
+    required: true
+  - from: bff_operation:GET:/api/omni/cost/cost-items
+    to: rest_operation:GET:/api/v1/accounting/cost-items
+    relation: proxies_to
+    required: true
+  - from: rest_operation:GET:/api/v1/accounting/cost-items
+    to: service_symbol:app.services.accounting_tool.query_costs
+    relation: invokes
+    required: true
+  - from: service_symbol:app.services.accounting_tool.query_costs
+    to: table:accounting.cost_items
+    relation: reads
+    required: true
+  - from: mcp_tool:query_costs
+    to: table:accounting.cost_items
+    relation: reads
+    required: true
+  - from: migration:015_cost_items
+    to: table:accounting.cost_items
+    relation: creates
+    required: true
+  - from: test:services/knowledge-engine/tests/test_mcp_accounting.py::test_smoke_query_costs_returns_sku_and_shared
+    to: mcp_tool:query_costs
+    relation: verifies
+    required: true
+checks:
+  - check_id: query-costs-smoke
+    kind: pytest
+    target: services/knowledge-engine/tests/test_mcp_accounting.py::test_smoke_query_costs_returns_sku_and_shared
+    verifies: mcp_tool:query_costs
+    required: true
+  - check_id: margin-core-unit
+    kind: pytest
+    target: services/knowledge-engine/tests/test_margin_core.py::test_basic_margin_no_fee
+    verifies: service_symbol:app.services.accounting_tool._margin_core
+    required: true
+aliases: []
+dependencies:
+  - ref: health_registration:service:knowledge-engine
+    required: true

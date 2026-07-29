@@ -3,8 +3,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +37,8 @@ def _raw_container(
     runtime_id: str = "omni-main",
     source_commit: str = "a" * 40,
     source_fingerprint: str = "b" * 64,
+    baked_source_commit: str | None = None,
+    baked_source_fingerprint: str | None = None,
     port: int | None = None,
     database_url: str = "postgresql+asyncpg://omni_user:top-secret@omni-postgres:5432/omni_vibe_db",
     volume: str | None = "omni_knowledge_data",
@@ -45,8 +50,10 @@ def _raw_container(
         "io.omni.runtime_id": runtime_id,
         "org.opencontainers.image.revision": source_commit,
         "io.omni.source_fingerprint": source_fingerprint,
-        "io.omni.worktree_root": worktree,
+        "io.omni.worktree_id": guard.opaque_worktree_id(worktree),
         "io.omni.scheduler_role": scheduler_role,
+        "io.omni.build.source_commit": baked_source_commit or source_commit,
+        "io.omni.build.source_fingerprint": baked_source_fingerprint or source_fingerprint,
     }
     mounts = [
         {
@@ -84,8 +91,8 @@ def _raw_container(
 def _expected(manifest: dict, worktree: str = "e:/agent/omni") -> dict:
     return {
         "commit": "a" * 40,
-        "worktree": guard.normalize_worktree(worktree),
-        "primary_worktree": guard.normalize_worktree(worktree),
+        "worktree": guard.opaque_worktree_id(worktree),
+        "primary_worktree": guard.opaque_worktree_id(worktree),
         "fingerprints": {service: "b" * 64 for service in manifest["services"]},
     }
 
@@ -201,7 +208,7 @@ def test_missing_and_mismatched_build_identity_are_detected() -> None:
         source_fingerprint="d" * 64,
     )
     del raw["Config"]["Labels"]["io.omni.runtime_id"]
-    del raw["Config"]["Labels"]["io.omni.worktree_root"]
+    del raw["Config"]["Labels"]["io.omni.worktree_id"]
     container = guard.container_from_inspect(raw, manifest)
     issues = guard.analyze_runtime(
         [container],
@@ -215,7 +222,7 @@ def test_missing_and_mismatched_build_identity_are_detected() -> None:
     assert "missing_worktree_identity" in codes
 
     raw["Config"]["Labels"]["io.omni.runtime_id"] = "omni-main"
-    raw["Config"]["Labels"]["io.omni.worktree_root"] = "E:/agent/omni"
+    raw["Config"]["Labels"]["io.omni.worktree_id"] = guard.opaque_worktree_id("E:/agent/omni")
     mismatch = guard.container_from_inspect(raw, manifest)
     issues = guard.analyze_runtime(
         [mismatch],
@@ -225,6 +232,35 @@ def test_missing_and_mismatched_build_identity_are_detected() -> None:
         check_unknown_listeners=False,
     )
     assert {"source_commit_mismatch", "source_fingerprint_mismatch"} <= _codes(issues)
+
+
+def test_old_baked_image_with_new_runtime_expectation_is_stale() -> None:
+    manifest = _manifest()
+    raw = _raw_container(
+        "ke-old-image",
+        service="knowledge-engine",
+        worktree="E:/agent/omni",
+        source_commit="b" * 40,
+        source_fingerprint="c" * 64,
+        baked_source_commit="a" * 40,
+        baked_source_fingerprint="d" * 64,
+    )
+    container = guard.container_from_inspect(raw, manifest)
+    issues = guard.analyze_runtime(
+        [container],
+        manifest,
+        {
+            **_expected(manifest),
+            "commit": "b" * 40,
+            "checkout_fingerprint": "c" * 64,
+        },
+        runtime_id="omni-main",
+        check_unknown_listeners=False,
+    )
+    assert {
+        "baked_source_commit_mismatch",
+        "baked_source_fingerprint_mismatch",
+    } <= _codes(issues)
 
 
 def test_safe_report_never_contains_connection_secrets() -> None:
@@ -241,6 +277,9 @@ def test_safe_report_never_contains_connection_secrets() -> None:
     serialized = json.dumps(report, ensure_ascii=False)
     assert secret not in serialized
     assert "postgresql://" not in serialized
+    assert "E:/agent/omni" not in serialized
+    assert "e:/agent/omni" not in serialized
+    assert container.safe_dict()["worktree_ref"].startswith("worktree-")
 
 
 def test_static_scan_reports_fixed_names_and_missing_identity_labels(tmp_path: Path) -> None:
@@ -281,6 +320,117 @@ def test_preflight_blocks_non_primary_long_lived_runtime(tmp_path: Path) -> None
     manifest = _manifest()
     manifest["compose_files"] = []
     expected = _expected(manifest, worktree="E:/agent/omni/.worktrees/feature-a")
-    expected["primary_worktree"] = guard.normalize_worktree("E:/agent/omni")
+    expected["primary_worktree"] = guard.opaque_worktree_id("E:/agent/omni")
     issues = guard.preflight_policy_issues(tmp_path, manifest, expected)
     assert "non_primary_long_lived_runtime" in _codes(issues)
+
+
+def test_allocation_evidence_preflight_rejects_missing_stale_and_wrong_identity(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "allocations.json"
+    allocation_id = "allocation-" + "a" * 32
+    worktree_id = "worktree-" + "b" * 16
+    with pytest.raises(guard.GuardFailure, match="missing"):
+        guard.validate_allocation_evidence(
+            path,
+            allocation_id=allocation_id,
+            runtime_id="runtime-a",
+            worktree_id=worktree_id,
+            source_commit="a" * 40,
+            source_fingerprint="b" * 64,
+        )
+    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    allocation = {
+        "allocation_id": allocation_id,
+        "lease_id": "lease-a",
+        "repository_id": "repo-a",
+        "change_id": "change-a",
+        "owner": "agent-a",
+        "runtime_id": "runtime-a",
+        "worktree_id": worktree_id,
+        "build_sha": "a" * 40,
+        "source_fingerprint": "b" * 64,
+        "compose_project": "omni-a",
+        "ports": {"postgres": 15432},
+        "volumes": ["omni-a-postgres"],
+        "risk_level": "R2",
+        "canonical": False,
+        "cron_owner": False,
+        "approval_worker_owner": True,
+        "state": "active",
+        "expires_at": expires,
+    }
+    state = {
+        "schema_version": 1,
+        "allocations": [allocation],
+        "leases": [
+            {
+                "lease_id": "lease-a",
+                "repository_id": "repo-a",
+                "change_id": "change-a",
+                "owner": "agent-a",
+                "worktree_id": worktree_id,
+                "risk_level": "R2",
+                "mode": "write",
+                "state": "active",
+                "expires_at": expires,
+            }
+        ],
+    }
+    path.write_text(json.dumps(state), encoding="utf-8")
+    verified = guard.validate_allocation_evidence(
+        path,
+        allocation_id=allocation_id,
+        runtime_id="runtime-a",
+        worktree_id=worktree_id,
+        source_commit="a" * 40,
+        source_fingerprint="b" * 64,
+        compose_project="omni-a",
+    )
+    assert verified["allocation_id"] == allocation_id
+
+    with pytest.raises(guard.GuardFailure, match="source_fingerprint"):
+        guard.validate_allocation_evidence(
+            path,
+            allocation_id=allocation_id,
+            runtime_id="runtime-a",
+            worktree_id=worktree_id,
+            source_commit="a" * 40,
+            source_fingerprint="c" * 64,
+        )
+    allocation["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    path.write_text(json.dumps(state), encoding="utf-8")
+    with pytest.raises(guard.GuardFailure, match="not active"):
+        guard.validate_allocation_evidence(
+            path,
+            allocation_id=allocation_id,
+            runtime_id="runtime-a",
+            worktree_id=worktree_id,
+            source_commit="a" * 40,
+            source_fingerprint="b" * 64,
+        )
+
+
+def test_allocation_preflight_rejects_old_migration_image_for_new_expected_source() -> None:
+    verified = guard.validate_baked_identity(
+        source_commit="a" * 40,
+        source_fingerprint="b" * 64,
+        baked_commit="a" * 40,
+        baked_source_fingerprint="b" * 64,
+    )
+    assert verified["baked_source_commit"] == "a" * 40
+    with pytest.raises(guard.GuardFailure, match="baked source commit"):
+        guard.validate_baked_identity(
+            source_commit="c" * 40,
+            source_fingerprint="d" * 64,
+            baked_commit="a" * 40,
+            baked_source_fingerprint="b" * 64,
+        )
+    with pytest.raises(guard.GuardFailure, match="baked source fingerprint"):
+        guard.validate_baked_identity(
+            source_commit="a" * 40,
+            source_fingerprint="d" * 64,
+            baked_commit="a" * 40,
+            baked_source_fingerprint="b" * 64,
+        )

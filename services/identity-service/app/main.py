@@ -2,12 +2,12 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from sqlalchemy import text
 
 from app.config import settings
 from app.database import engine
 from app.exceptions import register_exception_handlers
 from app.middleware import RequestLoggingMiddleware, configure_cors
-from app.models import Base
 from app.routers import auth_router, health_router
 
 
@@ -25,8 +25,11 @@ def setup_logging() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     setup_logging()
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Fail before serving if the allocator-owned signing key or DB is absent.
+    # Schema DDL belongs exclusively to the canonical migration runner.
+    _ = settings.jwt_signing_key
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
     yield
     await engine.dispose()
 
