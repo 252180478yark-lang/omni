@@ -1,0 +1,438 @@
+schema_version: 2
+change_id: p0-v4-canonical-deployment
+title: P0 v4 canonical source and scoped deployment
+state: COMPLETE
+created_at: '2026-07-29T11:49:42Z'
+updated_at: '2026-07-29T12:42:15Z'
+feature_refs:
+- feature_id: p0-planting-video-v4
+  feature_ref: git:2cf161f812866a2706975c312522c60a2753bcde:p0-planting-video-v4
+before_snapshot:
+  ref: git:2cf161f812866a2706975c312522c60a2753bcde
+intent:
+  problem: P0 v4 code is already running and its runtime-compatible migration 097 is ready, but the source is Git-untracked. P0 baseline preflight also blocks because the already-applied, checksum-matched migration 096 has no canonical repository source. Therefore no reproducible v4 order can be created for the adopted 烟火寻味家 lineage.
+  expected_outcome: Canonicalize migration 096, the audited P0 planting-video atom, and only the already-applied SQL sources required by the active migration ledger; apply only migration 097, then create one v4 order for the explicitly adopted 烟火寻味家 record/portrait/pack/reference and stop at two bridge candidates for human selection.
+  user_visible_behavior:
+  - P0 preflight becomes ready without rerunning or editing migration 096.
+  - A new order freezes the adopted portrait and adopted audience-pack evidence together.
+  - The workflow stops at BRIDGE_REVIEW; no script or paid video is generated.
+current_chain:
+  nodes:
+  - migration:096_creator_homepage_first30_rank.sql
+  - migration:active_runtime_ledger_source_set
+  - migration:083_p0_video_production_atom.sql
+  - migration:084_migration_checksum_ledger.sql
+  - migration:085_p0_generation_attempt_retry.sql
+  - migration:086_p0_execution_content_match.sql
+  - migration:090_p0_truth_snapshot_reuse_scope.sql
+  - migration:091_p0_execution_vector_match.sql
+  - migration:092_p0_content_spec_reuse_scope.sql
+  - migration:097_p0_v4_adopted_pack_lineage.sql
+  - mcp:server.video_production_registration
+  - service:video_production_baseline.run_video_production_preflight
+  - mcp:p0_preflight_video_production
+  - mcp:p0_create_video_production_order
+  - mcp:p0_generate_planting_bridge_candidates
+  - service:video_production_orders.create_or_reuse_production_order
+  - service:pain_solution_bridge.load_planting_bridge_context
+  - db:pipeline.audience_packs
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  - state:planting.BRIDGE_REVIEW
+  edges:
+  - from: mcp:server.video_production_registration
+    to: mcp:p0_create_video_production_order
+    relation: registers
+  - from: mcp:p0_preflight_video_production
+    to: service:video_production_baseline.run_video_production_preflight
+    relation: calls
+  - from: mcp:p0_create_video_production_order
+    to: service:video_production_orders.create_or_reuse_production_order
+    relation: calls
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: db:pipeline.production_orders
+    relation: writes
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: db:pipeline.order_truth_snapshots
+    relation: writes
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: service:pain_solution_bridge.load_planting_bridge_context
+    relation: freezes_adopted_pack_context
+  - from: mcp:p0_generate_planting_bridge_candidates
+    to: state:planting.BRIDGE_REVIEW
+    relation: advances_to_review
+  evidence:
+  - 'Runtime preflight: 096 is ledger-applied and checksum-matched; it blocks only as canonical_source_untracked.'
+  - 'Runtime preflight: 097 is repository-untracked and not recorded in the runtime migration ledger.'
+  - 'Runtime inputs: adopted record 71f9cd4b-735f-4862-834d-9320f8b721a3, portrait 62205f57-28cd-481e-8ab7-56a2a205cfa1, pack 4c725656-8c37-43c1-a496-1523d6b9b85d, reference 3db8abb7-42ca-4e90-82cf-b44a0e2b2b35.'
+  - migrations/096_creator_homepage_first30_rank.sql is additive and already applied; it must not be rerun or reconciled.
+  - migrations/097_p0_v4_adopted_pack_lineage.sql adds a nullable FK/index so legacy v2/v3 audit rows remain readable.
+  - Runtime preflight compares every active non-frozen/non-excluded runtime migration to canonical SQL source; source-only ledger rows must therefore exist without importing their feature code.
+scope:
+  pages:
+  - page:/sku-pipeline#p0-video
+  - page:/sku-pipeline
+  apis:
+  - api:POST:/api/omni/sku-pipeline/p0-video/preflight
+  - api:POST:/api/omni/sku-pipeline/p0-video/create
+  - api:POST:/api/omni/sku-pipeline/p0-video/bridgeReview
+  mcp_tools:
+  - mcp:p0_preflight_video_production
+  - mcp:p0_create_video_production_order
+  - mcp:p0_generate_planting_bridge_candidates
+  services:
+  - service:video_production_orders.create_or_reuse_production_order
+  - service:video_production_contract.validate_truth_snapshot
+  - service:video_production_workflow._frozen_strong_lineage_planting_context
+  - service:video_production_workflow._raw_asset_product_identity_hard_failures
+  database:
+  - db:content_studio.seed_materials
+  - db:pipeline.audience_packs
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  - db:pipeline.production_qa_reports
+  data_sources:
+  - source:repository.migrations
+  - db:pipeline.audience_records
+  - db:pipeline.audience_portraits
+  - db:mvp_sku
+  states_workflows:
+  - state:p0.v4.baseline_ready-to-truth_ready
+  - state:planting.BRIDGE_REVIEW
+  - state:p0.raw_asset_identity_latched
+  tests:
+  - test:services/knowledge-engine/tests/test_migration_baseline.py
+  - test:services/knowledge-engine/tests/test_p0_content_spec_reuse_scope.py
+  - test:services/knowledge-engine/tests/test_p0_pack_lineage_migration.py
+  - test:services/knowledge-engine/tests/test_p0_pack_lineage_v4.py
+  - test:services/knowledge-engine/tests/test_video_production_contract.py
+  - test:services/knowledge-engine/tests/test_video_production_match.py
+  - test:services/knowledge-engine/tests/test_video_production_raw_semantic_qa.py
+  docs:
+  - docs/dev-changes/p0-pack-lineage-v4/impact.yaml
+  - docs/dev-changes/p0-pack-lineage-v4/completion.yaml
+  - docs/dev-changes/p0-planting-upstream-contract-v3/impact.yaml
+  - docs/dev-changes/p0-planting-upstream-contract-v3/completion.yaml
+  - docs/dev-changes/p0-planting-upstream-contract-v3/changed-files.txt
+  - docs/dev-changes/p0-v4-canonical-deployment/impact.yaml
+  - docs/dev-changes/p0-v4-canonical-deployment/completion.yaml
+planned_changes:
+- id: CHG-001
+  action: add
+  kind: canonical_migration_source
+  node_id: migration:096_creator_homepage_first30_rank.sql
+  paths:
+  - migrations/096_creator_homepage_first30_rank.sql
+  upstream:
+  - db:content_studio.seed_materials
+  downstream:
+  - service:video_production_baseline.run_video_production_preflight
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-004
+- id: CHG-002
+  action: add
+  kind: p0_v4_canonical_source
+  node_id: mcp:p0_create_video_production_order
+  paths:
+  - frontend/src/app/sku-pipeline/P0VideoProductionPanel.tsx
+  - services/knowledge-engine/app/mcp/tools/video_production.py
+  - services/knowledge-engine/app/services/video_production_contract.py
+  - services/knowledge-engine/app/services/video_production_orders.py
+  - services/knowledge-engine/app/services/video_production_vector_match.py
+  - services/knowledge-engine/app/services/video_production_workflow.py
+  - migrations/097_p0_v4_adopted_pack_lineage.sql
+  - services/knowledge-engine/tests/test_video_production_contract.py
+  - services/knowledge-engine/tests/test_p0_pack_lineage_v4.py
+  - services/knowledge-engine/tests/test_p0_pack_lineage_migration.py
+  - services/knowledge-engine/tests/test_p0_generation_approval_v3_gate.py
+  - services/knowledge-engine/tests/test_video_production_vector_match.py
+  - docs/dev-changes/p0-pack-lineage-v4/impact.yaml
+  - docs/dev-changes/p0-pack-lineage-v4/completion.yaml
+  upstream:
+  - db:pipeline.audience_packs
+  - db:pipeline.audience_portraits
+  downstream:
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  - state:planting.BRIDGE_REVIEW
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-004
+  - VER-005
+- id: CHG-003
+  action: add
+  kind: deployment_audit
+  node_id: state:p0.v4.canonical_deployed
+  paths:
+  - docs/dev-changes/p0-v4-canonical-deployment/impact.yaml
+  - docs/dev-changes/p0-v4-canonical-deployment/completion.yaml
+  upstream:
+  - migration:096_creator_homepage_first30_rank.sql
+  - migration:097_p0_v4_adopted_pack_lineage.sql
+  downstream:
+  - state:planting.BRIDGE_REVIEW
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+  - VER-004
+  - VER-006
+  - VER-007
+- id: CHG-004
+  action: add
+  kind: p0_planting_atom_dependency_closure
+  node_id: mcp:server.video_production_registration
+  paths:
+  - services/knowledge-engine/app/services/migration_baseline.py
+  - services/knowledge-engine/app/services/video_production_baseline.py
+  - services/knowledge-engine/app/services/video_production_match.py
+  - services/knowledge-engine/app/services/video_prompt_source.py
+  - services/knowledge-engine/app/services/video_vector_gates.py
+  - migrations/083_p0_video_production_atom.sql
+  - migrations/084_migration_checksum_ledger.sql
+  - migrations/085_p0_generation_attempt_retry.sql
+  - migrations/086_p0_execution_content_match.sql
+  - migrations/090_p0_truth_snapshot_reuse_scope.sql
+  - migrations/091_p0_execution_vector_match.sql
+  - migrations/092_p0_content_spec_reuse_scope.sql
+  - migrations/p0_track_manifest.json
+  - scripts/apply_migrations.py
+  - services/knowledge-engine/scripts/p0_baseline_preflight.py
+  - services/knowledge-engine/scripts/reconcile_p0_migration_ledger.py
+  - services/knowledge-engine/Dockerfile
+  - docker-compose.yml
+  - services/knowledge-engine/app/mcp/server.py
+  - services/knowledge-engine/app/mcp/doctor.py
+  - services/knowledge-engine/config/tool_models.yaml
+  - services/knowledge-engine/config/prompts/p0_product_reference_qa.system.md
+  - services/knowledge-engine/config/prompts/p0_product_reference_qa.user.md
+  - services/knowledge-engine/config/prompts/p0_video_critic.system.md
+  - services/knowledge-engine/config/prompts/p0_video_critic.user.md
+  - services/knowledge-engine/config/prompts/p0_video_qa.system.md
+  - services/knowledge-engine/config/prompts/p0_video_qa.user.md
+  - services/knowledge-engine/config/prompts/p0_video_writer.system.md
+  - services/knowledge-engine/config/prompts/p0_video_writer.user.md
+  - services/knowledge-engine/app/services/gemini_video_client.py
+  - frontend/src/app/api/omni/sku-pipeline/p0-video/[operation]/route.ts
+  - frontend/src/app/sku-pipeline/page.tsx
+  - services/knowledge-engine/tests/test_migration_baseline.py
+  - services/knowledge-engine/tests/test_p0_content_spec_reuse_scope.py
+  - services/knowledge-engine/tests/test_video_production_match.py
+  - services/knowledge-engine/tests/test_video_production_raw_semantic_qa.py
+  - docs/dev-changes/p0-planting-upstream-contract-v3/impact.yaml
+  - docs/dev-changes/p0-planting-upstream-contract-v3/completion.yaml
+  - docs/dev-changes/p0-planting-upstream-contract-v3/changed-files.txt
+  upstream:
+  - migration:083_p0_video_production_atom.sql
+  - migration:084_migration_checksum_ledger.sql
+  - mcp:server.video_production_registration
+  downstream:
+  - mcp:p0_preflight_video_production
+  - mcp:p0_create_video_production_order
+  - state:planting.BRIDGE_REVIEW
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-004
+  - VER-005
+- id: CHG-005
+  action: add
+  kind: active_migration_ledger_source_only
+  node_id: migration:active_runtime_ledger_source_set
+  paths:
+  - migrations/000_content_studio_pipelines_bootstrap.sql
+  - migrations/058_message_feedback_to_rules.sql
+  - migrations/070_video_generation_set_hardening.sql
+  - migrations/071_planting_effective_metric_pooling.sql
+  - migrations/072_video_generation_scene_claims.sql
+  - migrations/073_soft_ad_completion_pooling.sql
+  - migrations/074_completion_pair_feasibility_views.sql
+  - migrations/088_creator_learning_persistence.sql
+  - migrations/089_creator_learning_integrity_followups.sql
+  - migrations/093_creator_transcript_archive_gated_learning.sql
+  - migrations/094_creator_knowledge_recovery.sql
+  - migrations/095_creator_video_analysis_idempotency.sql
+  upstream:
+  - db:public.schema_migrations
+  downstream:
+  - service:video_production_baseline.run_video_production_preflight
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-004
+- id: CHG-006
+  action: modify
+  kind: bridge_claim_grounding_gate
+  node_id: service:pain_solution_bridge.validate_bridge_pair
+  paths:
+  - services/knowledge-engine/app/mcp/tools/planting.py
+  - services/knowledge-engine/app/services/pain_solution_bridge.py
+  - services/knowledge-engine/app/services/video_production_contract.py
+  - services/knowledge-engine/app/services/video_production_workflow.py
+  - services/knowledge-engine/config/prompts/planting_pain_solution_bridge.system.md
+  - services/knowledge-engine/tests/test_pain_solution_bridge.py
+  - services/knowledge-engine/tests/test_p0_pack_lineage_v4.py
+  - services/knowledge-engine/tests/test_video_production_contract.py
+  upstream:
+  - service:pain_solution_bridge.load_planting_bridge_context
+  - db:pipeline.audience_portraits
+  - db:mvp_sku
+  downstream:
+  - mcp:p0_generate_planting_bridge_candidates
+  - state:planting.BRIDGE_REVIEW
+  contract_change: compatible
+  verification_ids:
+  - VER-005
+  - VER-008
+- id: CHG-007
+  action: modify
+  kind: p0_product_label_hard_failure_latch
+  node_id: service:video_production_workflow._raw_asset_product_identity_hard_failures
+  paths:
+  - services/knowledge-engine/app/services/video_production_workflow.py
+  - services/knowledge-engine/tests/test_video_production_contract.py
+  upstream:
+  - db:pipeline.production_qa_reports
+  - state:p0.raw_qa
+  downstream:
+  - state:p0.raw_asset_identity_latched
+  - state:p0.raw_passed
+  - state:p0.final_qa
+  contract_change: compatible
+  verification_ids:
+  - VER-005
+  - VER-009
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Existing P0 operations and payload names stay stable; v4 requires the explicit adopted audience_pack_id already implemented in the canonical source.
+  database:
+    status: compatible
+    strategy: Apply only 097. It adds a nullable FK/index; v2/v3 rows are not updated, and 096 is not rerun.
+  workflow:
+    status: compatible
+    strategy: The new v4 order is created from exactly one adopted record, portrait, pack and reference, then stops at bridge review before script or provider work.
+  data_source:
+    status: compatible
+    strategy: Reuse adopted database lineage only; no recollection, Yuntu operation, or new external video provider configuration.
+graph_acceptance:
+  required_edges:
+  - from: mcp:server.video_production_registration
+    to: mcp:p0_create_video_production_order
+    relation: registers
+  - from: migration:096_creator_homepage_first30_rank.sql
+    to: service:video_production_baseline.run_video_production_preflight
+    relation: canonical_source_unblocks
+  - from: migration:097_p0_v4_adopted_pack_lineage.sql
+    to: db:pipeline.production_orders
+    relation: migrates
+  - from: mcp:p0_preflight_video_production
+    to: service:video_production_baseline.run_video_production_preflight
+    relation: calls
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: db:pipeline.order_truth_snapshots
+    relation: writes
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: service:pain_solution_bridge.load_planting_bridge_context
+    relation: freezes_adopted_pack_context
+  - from: mcp:p0_generate_planting_bridge_candidates
+    to: state:planting.BRIDGE_REVIEW
+    relation: advances_to_review
+  - from: db:pipeline.production_qa_reports
+    to: service:video_production_workflow._raw_asset_product_identity_hard_failures
+    relation: reads_same_asset_identity_failures
+  - from: service:video_production_workflow._raw_asset_product_identity_hard_failures
+    to: state:p0.raw_asset_identity_latched
+    relation: blocks_same_asset_reapproval
+  allowed_unknowns: []
+  forbidden_orphans:
+  - migration:097_p0_v4_adopted_pack_lineage.sql
+  - mcp:p0_create_video_production_order
+risks:
+- id: RISK-001
+  description: The shared worktree has a user-staged .gitignore and many unrelated historical files.
+  mitigation: Use a temporary Git index and stage only exact paths declared in CHG-001 to CHG-003.
+- id: RISK-002
+  description: Rerunning 096 could change a live creator-history migration outside P0 scope.
+  mitigation: Canonicalize its exact source only; do not invoke --rerun or the ledger reconciliation tool for 096.
+- id: RISK-003
+  description: Applying 097 changes runtime schema and a bridge call invokes the text model.
+  mitigation: Apply only 097 after source verification; run no script/video provider request and stop after bridge candidates.
+- id: RISK-004
+  description: Historical v3 order 88f04565-b9b0-4a11-bf75-261728b90163 lacks pack lineage.
+  mitigation: Leave it immutable and auditable; create a separate v4 order instead of reusing or repairing it.
+- id: RISK-005
+  description: The v4 overlay imports P0 foundation modules absent from HEAD; canonicalizing only the overlay would fail in a clean checkout.
+  mitigation: Add the audited P0-only dependency closure, including registration, baseline, migrations, prompts, frontend integration, and focused tests; stage mixed files as P0-only hunks.
+- id: RISK-006
+  description: The runtime ledger contains active non-P0 feature migrations whose SQL sources are absent from HEAD, causing P0 baseline to fail even though P0 does not execute those features.
+  mitigation: Canonicalize only the exact already-applied SQL source files. Do not add their services, UI, providers, or rerun any migration.
+- id: RISK-007
+  description: A structurally valid bridge can still turn a person concern or a product-evidence snippet into an unsupported comparative or food-result claim.
+  mitigation: Require each pain/product claim to carry its corresponding exact upstream evidence text, constrain pain to a user concern, and reject the bridge before it reaches human selection when the deterministic claim gate fails.
+- id: RISK-008
+  description: A raw video with changed product packaging or label text could be re-QAed into raw_passed and then reach final QA merely because an earlier raw report passed.
+  mitigation: Permanently latch packaging_different or label_text_different against that exact raw asset; raw and final gates require a passing report bound to the same raw asset and reject any latched identity mismatch.
+out_of_scope:
+- Any AI 插镜 or 电商视觉 source import, migration, deployment, or code rewrite.
+- Creator-learning source code, UI, runtime service, provider, and deployment changes; only the exact applied migration SQL source is admitted for ledger reproducibility.
+- Unrelated staged or untracked work, including .gitignore and all non-P0 hunks in mixed registration, model, container, and page files.
+- Rerunning, editing, reconciling, cancelling, or deleting migration 096 and the historical v3 production order.
+- Script generation, script selection, paid video generation, release, publishing, or any Yuntu action.
+rollback:
+  strategy: Revert only the two exact canonical-source commits if source tracking must be undone; disable v4 order creation in code if necessary. Do not drop the additive 097 column or touch 096 during rollback.
+  data_recovery: The nullable 097 field preserves legacy rows. A created v4 order is immutable audit data and can be cancelled only through the supported P0 workflow if later required.
+verification_plan:
+- id: VER-001
+  layer: repository
+  command: git ls-files --error-unmatch migrations/096_creator_homepage_first30_rank.sql migrations/097_p0_v4_adopted_pack_lineage.sql
+  proves: Both exact migration sources are canonical Git paths after the scoped commits.
+  required: true
+- id: VER-002
+  layer: migration_contract
+  command: python -m pytest -q services/knowledge-engine/tests/test_p0_pack_lineage_migration.py
+  proves: Migration 097 retains legacy audit compatibility while adding the P0 v4 pack FK and index.
+  required: true
+- id: VER-003
+  layer: migration_apply
+  command: python scripts/apply_migrations.py --only 097
+  proves: Only the explicit additive 097 migration is applied to the runtime ledger.
+  required: true
+- id: VER-004
+  layer: runtime_preflight
+  command: Invoke-RestMethod -Uri 'http://localhost:3000/api/omni/sku-pipeline/p0-video/preflight' -Method Post -ContentType 'application/json; charset=utf-8' -Body '{}'
+  proves: Runtime P0 baseline is reproducible and ready after canonical source tracking and scoped migration.
+  required: true
+- id: VER-005
+  layer: p0_contract
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_video_production_contract.py tests/test_pain_solution_bridge.py tests/test_p0_generation_approval_v3_gate.py tests/test_video_production_vector_match.py tests/test_p0_pack_lineage_v4.py"
+  proves: V4 pack-required truth, bridge, vector and legacy-audit contracts remain valid in the runtime service.
+  required: true
+- id: VER-006
+  layer: runtime_input
+  command: Invoke-RestMethod -Uri 'http://localhost:3000/api/omni/sku-pipeline/p0-video/inputs' -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{sku_id='SKU-367991-0002'} | ConvertTo-Json)
+  proves: Runtime BFF exposes the adopted 烟火寻味家 record, portrait, pack and product reference selection inputs.
+  required: true
+- id: VER-007
+  layer: runtime_order_and_bridge
+  command: $r=Invoke-RestMethod -Uri 'http://localhost:3000/api/omni/sku-pipeline/p0-video/order' -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{production_order_id='371434e5-ab99-41b8-a06f-543c176f3c72'}|ConvertTo-Json); if(-not $r.success -or $r.data.order.contract_version -ne '2026-07-29.p0.v4' -or $r.data.order.audience_pack_id -ne '4c725656-8c37-43c1-a496-1523d6b9b85d' -or @($r.data.script_reviews).Count -ne 0 -or @($r.data.generation_attempts).Count -ne 0 -or $r.data.next_action -ne 'p0_generate_planting_bridge_candidates'){throw 'v4_order_lineage_or_gate_invalid'}; 'v4-order-read-ok'
+  proves: The already-created fresh v4 truth snapshot still freezes the selected adopted pack and has no script or video attempt; its only safe next action is bridge review.
+  required: true
+- id: VER-008
+  layer: bridge_quality_gate
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_pain_solution_bridge.py"
+  proves: Bridge candidates fail closed when a pain/product-result claim omits its exact upstream evidence or turns a concern into a comparative product fact.
+  required: true
+- id: VER-009
+  layer: p0_product_identity_latch
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_video_production_contract.py -k 'product_reference or raw_identity_latch'"
+  proves: A raw asset with packaging_different or label_text_different cannot be re-approved, composed, or final-QAed even if a later QA report would otherwise pass.
+  required: true
+lock:
+  locked_at: '2026-07-29T11:52:20Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.
