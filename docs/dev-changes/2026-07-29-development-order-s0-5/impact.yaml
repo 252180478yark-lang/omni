@@ -1,0 +1,401 @@
+schema_version: 3
+change_id: 2026-07-29-development-order-s0-5
+title: Development order S0.5 and PRD v1.2
+state: GRAPH_DIFF_READY
+created_at: '2026-07-29T14:47:25Z'
+updated_at: '2026-07-29T16:44:30Z'
+feature_refs:
+- feature_id: omni-development-order
+  feature_ref: repo:omni:development-order@e534655124387655d6528960c67616269f68771c
+before_snapshot:
+  ref: git:e534655124387655d6528960c67616269f68771c+worktree:20260729T144725Z
+delivery:
+  authority: ci_attestation
+  base_commit: e534655124387655d6528960c67616269f68771c
+risk:
+  level: R2
+  reasons:
+  - Changes repository-wide development governance, Codex hooks, CI evaluation semantics, runtime ownership checks, and the canonical master PRD.
+  - A defect could either over-block ordinary development or allow an uncommitted cross-layer candidate to be mistaken for delivery.
+  external_effects: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The repository currently treats worktree/index YAML consistency as completion even when governance assets are absent from HEAD, changed-path input can be incomplete, CI does not bind a delivery result to one immutable tree, and ordinary single-layer changes are over-gated while real cross-layer/runtime drift can escape.
+  expected_outcome: Introduce a backward-compatible schema-v3 delivery candidate, Git-derived worktree/index/commit evaluation modes, risk-derived contract enforcement, and a CI-generated external delivery attestation; expose the state at Codex session start and publish PRD v1.2 with the remaining runtime-isolation, health, migration, Human Gate, and retirement work.
+  user_visible_behavior:
+  - A new Codex task reports whether it is reading a worktree candidate, staged candidate, or immutable delivered commit before development starts.
+  - Local reversible single-layer work is advisory or light-weight, while cross-layer, governance, schema, runtime, external, paid, secret, and irreversible changes receive proportionate deterministic gates.
+  - A YAML contract cannot by itself prove delivery; only CI validation of an immutable commit can emit a delivery attestation.
+  - The bundled Codex runner adapter resolves the Omni repository root so a later Host Bridge activation loads the same AGENTS, Skill, Hook, and PRD rules; S0.5 does not expose the adapter through the Web UI.
+  - The blocking CI bootstrap is reproducible in empty Python environments, and unit runners no longer mix frontend Playwright E2E with Vitest.
+  - Every required S0.5 verification is a dependency of the delivery seal; default-branch runs cannot be cancelled by a later push, and neither tags nor case-variant branch names can impersonate the exact default branch ref.
+current_chain:
+  nodes:
+  - instruction:AGENTS.md
+  - skill:omni-feature-development
+  - script:dev-contract-validator
+  - script:feature-contract-gate
+  - hook:codex-session-start
+  - ci:feature-contract-gate
+  - prd:system-convergence-master
+  - runner:frontend-agent-chat-codex
+  edges:
+  - from: instruction:AGENTS.md
+    to: skill:omni-feature-development
+    relation: routes
+  - from: skill:omni-feature-development
+    to: script:dev-contract-validator
+    relation: invokes
+  - from: ci:feature-contract-gate
+    to: script:feature-contract-gate
+    relation: invokes
+  - from: runner:frontend-agent-chat-codex
+    to: instruction:AGENTS.md
+    relation: loads_from_cwd
+  evidence:
+  - 'git:e534655124387655d6528960c67616269f68771c: AGENTS.md, .codex/hooks.json, the feature-development Skill, and contract gate are absent from HEAD but present in the shared index/worktree.'
+  - scripts/check_feature_contracts.py:493-513 maps any changed-files-file evaluation to the Git index and can therefore describe a staged candidate as if it were a delivered tree.
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py:460-480 validates self-recorded verification results but does not execute the commands.
+  - .github/workflows/ci.yml:59-106 validates a commit diff, while the full KE suite remains informational at lines 173-214.
+  - 'Current audit: 448 expanded worktree entries, 107 staged entries, 231 untracked entries, 35 worktrees, and governance assets missing from HEAD.'
+  - 'GitHub Actions run 30470080606: the first real historical-baseline push exposed missing minimal unit dependencies and ambiguous editable package discovery; CHG-008 owns the package/test-runner corrections in this superseding S0.5 candidate while CHG-004 retains the CI workflow.'
+  - 'GitHub Actions run 30471467914: four original blocking jobs passed, but the information-only full suite exposed an eager /app asset-directory write and proved that required install/collection/frontend-unit evidence was not yet attached to delivery-seal.'
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - runner:frontend-agent-chat-codex
+  - service:knowledge-engine-app-bootstrap
+  database: []
+  data_sources: []
+  states_workflows:
+  - state:development-contract
+  - state:delivery-candidate
+  - state:delivery-attested
+  - state:codex-session-start
+  - state:runtime-allocation
+  - state:noncancellable-default-delivery
+  tests:
+  - test:feature-contract-gate
+  - test:development-readiness
+  - test:dev-contract-schema
+  - test:prd-validation
+  - test:runtime-guard
+  - test:ci-bootstrap
+  - test:knowledge-engine-full-collection
+  - test:frontend-unit-discovery
+  docs:
+  - docs/dev-changes/2026-07-29-development-order-s0-5
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: contract
+  node_id: script:dev-contract-validator
+  paths:
+  - .agents/skills/omni-feature-development/SKILL.md
+  - .agents/skills/omni-feature-development/references/contract-spec.md
+  - .agents/skills/omni-feature-development/references/impact-template.yaml
+  - .agents/skills/omni-feature-development/references/completion-template.yaml
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py
+  - .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  upstream:
+  - instruction:AGENTS.md
+  downstream:
+  - script:feature-contract-gate
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-002
+  action: modify
+  kind: governance
+  node_id: script:feature-contract-gate
+  paths:
+  - scripts/check_feature_contracts.py
+  - tests/test_feature_contracts.py
+  upstream:
+  - ci:feature-contract-gate
+  downstream:
+  - artifact:delivery-attestation
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-003
+  action: add
+  kind: governance
+  node_id: script:development-readiness
+  paths:
+  - scripts/check_development_readiness.py
+  - tests/test_development_readiness.py
+  upstream:
+  - hook:codex-session-start
+  downstream:
+  - script:feature-contract-gate
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+- id: CHG-004
+  action: modify
+  kind: workflow
+  node_id: workflow:codex-and-ci-development-entry
+  paths:
+  - AGENTS.md
+  - .codex/hooks.json
+  - .github/workflows/ci.yml
+  upstream:
+  - instruction:AGENTS.md
+  downstream:
+  - hook:codex-session-start
+  - ci:feature-contract-gate
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-003
+  - VER-010
+  - VER-011
+  - VER-012
+- id: CHG-005
+  action: add
+  kind: documentation
+  node_id: prd:system-convergence-master:v1.2
+  paths:
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.pdf
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - docs/prds/catalog.json
+  - docs/prds/README.md
+  - .gitattributes
+  upstream:
+  - prd:system-convergence-master
+  downstream:
+  - workflow:system-convergence-implementation
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+  - VER-005
+  - VER-006
+- id: CHG-006
+  action: add
+  kind: runtime-governance
+  node_id: script:runtime-guard
+  paths:
+  - config/runtime-manifest.yaml
+  - scripts/runtime_guard.py
+  - tests/test_runtime_guard.py
+  - .gitignore
+  upstream:
+  - state:runtime-allocation
+  downstream:
+  - hook:codex-session-start
+  - workflow:system-convergence-implementation
+  contract_change: compatible
+  verification_ids:
+  - VER-007
+  - VER-003
+- id: CHG-007
+  action: modify
+  kind: host-runner
+  node_id: runner:frontend-agent-chat-codex
+  paths:
+  - frontend/src/lib/agent-chat/claude-runner.ts
+  - frontend/src/lib/agent-chat/codex-runner.ts
+  - frontend/src/lib/agent-chat/session-manager.ts
+  - frontend/src/lib/agent-chat/types.ts
+  - frontend/tests/agent-chat/unit/claude-runner.test.ts
+  - frontend/tests/agent-chat/unit/codex-runner.test.ts
+  upstream:
+  - workflow:codex-and-ci-development-entry
+  downstream:
+  - instruction:AGENTS.md
+  contract_change: compatible
+  verification_ids:
+  - VER-008
+  - VER-009
+- id: CHG-008
+  action: modify
+  kind: ci-bootstrap
+  node_id: workflow:clean-ci-bootstrap
+  paths:
+  - services/knowledge-engine/pyproject.toml
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/tests/test_mcp_exec_video_segments.py
+  - frontend/vitest.config.ts
+  upstream:
+  - ci:unit-gate
+  - ci:ke-bootstrap-gate
+  - ci:full-suite
+  - ci:codex-runner-gate
+  downstream:
+  - test:ci-bootstrap
+  - test:knowledge-engine-full-collection
+  - test:frontend-unit-discovery
+  contract_change: compatible
+  verification_ids:
+  - VER-010
+  - VER-011
+  - VER-012
+  - VER-013
+  - VER-009
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: S0.5 delivers only the runner adapter and does not wire it into Agent Chat UI, WebSocket, REST, MCP, or any external API.
+  database:
+    status: not_applicable
+    strategy: No database schema, migration execution, shared data, or volume change in this slice.
+  workflow:
+    status: compatible
+    strategy: Historical schema-v1/v2 contracts retain their validation rules; schema v3 adds a delivery-candidate/CI-attestation path and risk floors without rewriting history.
+  data_source:
+    status: not_applicable
+    strategy: No external source is read or written; source freshness and health registration are specified for S2.5 in PRD v1.2.
+graph_acceptance:
+  required_edges:
+  - from: hook:codex-session-start
+    to: script:development-readiness
+    relation: invokes
+  - from: ci:feature-contract-gate
+    to: script:feature-contract-gate
+    relation: invokes
+  - from: script:feature-contract-gate
+    to: artifact:delivery-attestation
+    relation: emits_after_commit_validation
+  - from: instruction:AGENTS.md
+    to: skill:omni-feature-development
+    relation: routes
+  - from: runner:frontend-agent-chat-codex
+    to: instruction:AGENTS.md
+    relation: loads_from_cwd
+  - from: ci:unit-gate
+    to: test:ci-bootstrap
+    relation: executes
+  - from: ci:ke-bootstrap-gate
+    to: package:knowledge-engine
+    relation: installs
+  - from: ci:ke-bootstrap-gate
+    to: test:knowledge-engine-full-collection
+    relation: collects
+  - from: ci:codex-runner-gate
+    to: test:frontend-unit-discovery
+    relation: executes
+  allowed_unknowns: []
+  forbidden_orphans:
+  - script:development-readiness
+  - artifact:delivery-attestation
+risks:
+- id: RSK-001
+  description: A new hard local gate could deadlock the already dirty shared worktree.
+  mitigation: S0.5 keeps SessionStart advisory and makes immutable commit/CI the authority; PreToolUse and Stop blocking remain deferred until active-change identity exists.
+- id: RSK-002
+  description: Schema v3 could invalidate historical completed contracts.
+  mitigation: Preserve schema v1/v2 semantics and exercise explicit compatibility fixtures.
+- id: RSK-003
+  description: A self-authored delivered_commit field would be self-referential and unverifiable in the same commit.
+  mitigation: Store only base/risk/candidate intent in-repo and generate the delivered SHA/tree/path digests as an external CI attestation.
+- id: RSK-004
+  description: Broad CI refactoring could hide existing integration failures.
+  mitigation: Keep existing blocking jobs, bind checkout and evaluation SHA, and do not include the informational full suite in a COMPLETE attestation.
+- id: RSK-005
+  description: Runtime inspection could expose connection strings or mutate containers while diagnosing ownership.
+  mitigation: Redact all environment values, keep S0.5 commands read-only, and defer stop/rebuild/migration execution to an explicit later slice.
+- id: RSK-006
+  description: A bundled Codex runner launched from the wrong cwd could silently skip the project AGENTS and the new development contract.
+  mitigation: Deliver the existing fail-closed cwd resolver and its unit/type checks with the governance bootstrap so every launched task resolves E:/agent/omni and loads AGENTS.md.
+- id: RSK-007
+  description: PDF artifacts can be misclassified as text and make a clean candidate fail whitespace validation on binary byte streams.
+  mitigation: Track a deterministic .gitattributes rule marking PDF files binary while keeping source line-ending rules explicit.
+- id: RSK-008
+  description: The clean base frontend fails full TypeScript validation when iterating SessionManager's Map under the repository's default compiler target.
+  mitigation: Include only the behavior-neutral Map.forEach compatibility rewrite in the immutable candidate; do not include the broader worktree provider-selection activation.
+- id: RSK-009
+  description: Developer-machine dependencies can make the historical CI bootstrap appear green locally while a clean Linux runner fails before executing tests.
+  mitigation: Reproduce both dependency layers locally, make editable installation/full collection/frontend unit discovery blocking delivery-seal dependencies, and require a remote integration run before advancing main to the S0.5 subject.
+- id: RSK-010
+  description: A module import can write a container-only /app path, and an information-only job can look green even when its continued step failed.
+  mitigation: Remove the unnecessary eager asset-root creation, keep upload storage configurable, inspect step conclusions rather than only job conclusions, and bind clean Linux collection to a blocking gate.
+- id: RSK-011
+  description: GitHub expression string equality is case-insensitive, so a case-variant branch name can satisfy a ref_name-only default-branch job condition.
+  mitigation: Keep the lightweight job condition but fail closed inside the trusted job unless Bash confirms the exact case-sensitive refs/heads/default-branch ref before checkout or attestation.
+out_of_scope:
+- No system-graph page, runtime animation, FeatureDefinition, trace spine, health registry, Host Bridge, Human Gate worker, or client retirement is implemented in S0.5.
+- No container is stopped, rebuilt, renamed, or moved; no worktree, branch, staged user path, database row, migration, volume, or user data is deleted or rewritten.
+- Existing lint debt and stopped optional services are recorded in PRD v1.2 but are not falsely declared repaired by this governance slice.
+rollback:
+  strategy: Revert the S0.5 governance files and CI job while retaining v1.2 as historical documentation; schema v1/v2 remain executable throughout rollback.
+  data_recovery: Not applicable because the slice changes no business data, schema, runtime container, or external system.
+verification_plan:
+- id: VER-001
+  layer: governance-tests
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_feature_contracts.py tests/test_development_readiness.py .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  proves: Schema compatibility, Git-derived evaluation modes, risk floors, unique ownership, delivery attestation binding, and readiness output behave deterministically.
+  required: true
+- id: VER-002
+  layer: codex-policy
+  command: python -B scripts/check_agent_policy.py
+  proves: Root instructions remain within the project byte limit and all routed Skill/Hook assets exist.
+  required: true
+- id: VER-003
+  layer: repository
+  command: git diff --check
+  proves: The governance and documentation diff is structurally clean.
+  required: true
+- id: VER-004
+  layer: prd
+  command: python -X utf8 .agents/skills/omni-fde-prd/scripts/validate_prd.py docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md --strict
+  proves: PRD v1.2 remains implementation-ready with FR/AC traceability and no P0 readiness gap.
+  required: true
+- id: VER-005
+  layer: prd-catalog
+  command: python -X utf8 .agents/skills/omni-fde-prd/scripts/publish_prd.py check --root docs/prds
+  proves: Markdown/PDF pairing, hashes, versions, and the canonical PRD catalog are consistent.
+  required: true
+- id: VER-006
+  layer: pdf
+  command: python -X utf8 -c "from pathlib import Path; from pypdf import PdfReader; p=Path(r'docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.pdf'); r=PdfReader(str(p)); assert len(r.pages)>0; assert all((page.extract_text() or '').strip() for page in r.pages); print(f'PDF_OK pages={len(r.pages)}')"
+  proves: The published PDF opens, contains pages, and every page exposes non-empty text.
+  required: true
+- id: VER-007
+  layer: runtime-governance
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_runtime_guard.py
+  proves: Runtime ownership, shared-write-resource conflicts, scheduler duplication, port ownership, build identity, and redaction are detected without mutating Docker or databases.
+  required: true
+- id: VER-008
+  layer: codex-runner
+  command: npm --prefix frontend run test:unit -- tests/agent-chat/unit/claude-runner.test.ts tests/agent-chat/unit/codex-runner.test.ts
+  proves: The bundled runner adapters accept model/effort settings; Codex resolves a real executable, pins the Omni project cwd, loads AGENTS.md, and keeps prompts out of the shell without activating a Web execution path.
+  required: true
+- id: VER-009
+  layer: frontend-types
+  command: npx --prefix frontend tsc --noEmit -p frontend/tsconfig.json
+  proves: The runner integration remains valid under the frontend TypeScript contract.
+  required: true
+- id: VER-010
+  layer: ci-unit-bootstrap
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_streamjson_contract.py services/knowledge-engine/tests/test_mcp_config.py services/knowledge-engine/tests/test_mcp_prompts.py services/knowledge-engine/tests/test_mcp_trace.py services/knowledge-engine/tests/test_mcp_utils.py services/knowledge-engine/tests/test_mcp_pattern_lib.py services/knowledge-engine/tests/test_harvester_parser.py
+  proves: The exact blocking Knowledge Engine selection passes in an empty environment with only its declared import closure.
+  required: true
+- id: VER-011
+  layer: ci-package-bootstrap
+  command: python -m pip install -e "services/knowledge-engine[dev]"
+  proves: A clean environment can build and install the Knowledge Engine editable package without ambiguous top-level discovery.
+  required: true
+- id: VER-012
+  layer: ci-ke-collection
+  command: python -B -m pytest --collect-only -q -p no:cacheprovider services/knowledge-engine/tests
+  proves: The installed Knowledge Engine suite imports and collects under current clean dependencies.
+  required: true
+- id: VER-013
+  layer: frontend-unit-discovery
+  command: npm --prefix frontend run test:unit
+  proves: Vitest runs unit files only and leaves Playwright specifications to the E2E command.
+  required: true
+lock:
+  locked_at: '2026-07-29T14:55:02Z'
+  locked_by: codex
+  rationale: Locked after current Git/CI/contract/runtime audit; S0.5 is governance and PRD only, with runtime/product work explicitly deferred.

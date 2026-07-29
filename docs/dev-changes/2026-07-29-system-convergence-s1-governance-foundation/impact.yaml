@@ -1,0 +1,248 @@
+schema_version: 1
+change_id: 2026-07-29-system-convergence-s1-governance-foundation
+title: S1 governance foundation versioning
+state: COMPLETE
+created_at: '2026-07-29T11:04:09Z'
+updated_at: '2026-07-29T11:35:47Z'
+intent:
+  problem: Governance assets load in the current Windows worktree but are not yet a portable, versioned S1 baseline; 11 of 18 AGENTS-routed Skills are Windows junctions, the documented PRD validator lacks a repository-root entrypoint, and the contract format cannot yet bind future work to a feature and before snapshot without invalidating historical v1 evidence.
+  expected_outcome: A clean clone loads all 18 Skills explicitly routed by AGENTS as ordinary tracked files, validates repository instruction hygiene and archive integrity, exposes a stable root PRD-validator command, and validates both historical v1 and new v2 feature contracts.
+  user_visible_behavior:
+  - A new Codex task can load the versioned contract-first workflow without local junctions or a repeated setup prompt.
+  - The documented PRD validator can be invoked from the repository root.
+  - Existing v1 S0 contracts remain strict-valid, while newly initialized contracts carry feature references and a before-snapshot reference.
+current_chain:
+  nodes:
+  - codex:project-agents
+  - skill:business-routing
+  - skill:omni-fde-prd
+  - skill:omni-feature-development
+  - validator:prd-root
+  - validator:dev-contract-v1
+  - ci:agents-policy-gate
+  - ci:feature-contract-gate
+  edges:
+  - from: codex:project-agents
+    to: skill:business-routing
+    relation: routes
+  - from: skill:omni-fde-prd
+    to: validator:prd-root
+    relation: documents
+  - from: ci:agents-policy-gate
+    to: skill:business-routing
+    relation: validates
+  - from: ci:feature-contract-gate
+    to: validator:dev-contract-v1
+    relation: invokes
+  evidence:
+  - AGENTS.md explicitly references 18 .agents/skills paths; git ls-files .agents/skills/** returned 0 paths on 2026-07-29.
+  - The 18 routed Skill roots contain 53 intended non-cache files; 11 roots are Windows junctions into in-repository .claude/skills targets and 7 are ordinary directories.
+  - .agents/skills/omni-fde-prd/SKILL.md documents a Skill-internal validator, while scripts/validate_prd.py does not exist.
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py accepts only schema_version 1 and has no feature reference or before-snapshot binding.
+  - .codex/hooks.json contains only an advisory SessionStart policy check; S2 owns future PreToolUse and Stop enforcement.
+  - The current frontend Codex runner candidate reaches SessionManager but lacks provider-session persistence and a trusted host execution boundary; canonical PRD assigns those conditions to S10.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - validator:prd-root
+  - validator:dev-contract-v1-v2
+  - ci:agents-policy-gate
+  - ci:feature-contract-gate
+  database: []
+  data_sources: []
+  states_workflows:
+  - workflow:codex-instruction-loading
+  - workflow:feature-contract-versioning
+  tests:
+  - test:agents-policy
+  - test:portable-skill-clean-clone
+  - test:prd-validator-root-entrypoint
+  - test:contract-schema-v1-v2-compatibility
+  docs:
+  - doc:AGENTS.md
+  - doc:governance-skill-tree
+  - doc:agent-archive
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: governance
+  node_id: ci:agents-policy-gate
+  paths:
+  - AGENTS.md
+  - .codex/hooks.json
+  - .github/workflows/ci.yml
+  - docs/archive/agents/AGENTS.pre-slim-2026-07-28.md
+  - scripts/check_agent_policy.py
+  - scripts/check_agents_policy.py
+  - scripts/verify_agent_archives.py
+  - tests/test_agents_policy.py
+  - tests/test_agent_skill_portability.py
+  upstream:
+  - codex:project-agents
+  downstream:
+  - skill:business-routing
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-003
+  - VER-008
+- id: CHG-002
+  action: add
+  kind: skill_tree
+  node_id: skill:business-routing
+  paths:
+  - .agents/skills/ai-planting-video/**
+  - .agents/skills/ai-soft-ad-video/**
+  - .agents/skills/audience-pack-diagnosis/**
+  - .agents/skills/audience-pack-sizing/**
+  - .agents/skills/competitor-product-research/**
+  - .agents/skills/cost-luru/**
+  - .agents/skills/crowd-sop/**
+  - .agents/skills/daily-store-pulse/**
+  - .agents/skills/platform-data/**
+  - .agents/skills/product-analysis/**
+  - .agents/skills/script-writer/**
+  - .agents/skills/selling-point-finder/**
+  - .agents/skills/short-video-director-brief/**
+  - .agents/skills/sku-pipeline/**
+  - .agents/skills/video-reverse/**
+  - .agents/skills/yuntu-audience-automation/**
+  upstream:
+  - codex:project-agents
+  downstream:
+  - skill:business-routing
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-008
+- id: CHG-003
+  action: modify
+  kind: validator
+  node_id: validator:prd-root
+  paths:
+  - .agents/skills/omni-fde-prd/**
+  - scripts/validate_prd.py
+  - tests/test_prd_validator_entrypoint.py
+  upstream:
+  - skill:omni-fde-prd
+  downstream:
+  - validator:prd-root
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+  - VER-005
+  - VER-008
+- id: CHG-004
+  action: modify
+  kind: contract_validator
+  node_id: validator:dev-contract-v1-v2
+  paths:
+  - .agents/skills/omni-feature-development/**
+  - scripts/check_feature_contracts.py
+  - tests/test_feature_contracts.py
+  upstream:
+  - ci:feature-contract-gate
+  downstream:
+  - validator:dev-contract-v1-v2
+  contract_change: compatible
+  verification_ids:
+  - VER-006
+  - VER-007
+  - VER-008
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: S1 introduces no HTTP, MCP, IPC, or browser execution contract; it only validates repository-local governance assets.
+  database:
+    status: not_applicable
+    strategy: S1 does not alter persistent data, migrations, or provider session tables.
+  workflow:
+    status: compatible
+    strategy: Preserve AGENTS routing, the advisory SessionStart hook, and strict validation of completed v1 contracts; new contract initialization emits v2 without requiring a FeatureDefinition parser before S3.
+  data_source:
+    status: not_applicable
+    strategy: No external source is needed; clean-clone verification operates only on Git content.
+graph_acceptance:
+  required_edges:
+  - from: codex:project-agents
+    to: skill:business-routing
+    relation: routes
+  - from: skill:omni-fde-prd
+    to: validator:prd-root
+    relation: documents
+  - from: ci:agents-policy-gate
+    to: skill:business-routing
+    relation: validates
+  - from: ci:feature-contract-gate
+    to: validator:dev-contract-v1-v2
+    relation: invokes
+  allowed_unknowns: []
+  forbidden_orphans:
+  - validator:prd-root
+  - validator:dev-contract-v1-v2
+risks:
+- Materializing Skill junctions incorrectly could remove their source targets or include a host-only link; each junction must first resolve inside this repository, be copied to a temporary ordinary directory, and only then replace the link while preserving the .claude target.
+- Requiring v2 fields in schema v1 would invalidate completed S0 contracts; compatibility must be centralized in dev_contract.py and covered by both v1 and v2 strict tests.
+- Checking only the current Windows worktree would hide junction dependence; a clean clone with the staged S1 patch must prove that all 18 Skills load as ordinary tracked files.
+- The frontend Codex runner has no provider-neutral session persistence or trusted host execution boundary; treating it as S1-ready would expose an unsafe, non-resumable browser-to-host path.
+- .codex/config.toml contains a machine-local MCP address and must remain outside the portable S1 asset set.
+out_of_scope:
+- S2 PreToolUse/Stop hooks, warning logs, and process enforcement beyond the existing advisory SessionStart hook.
+- The current frontend Codex runner candidate, its default-provider behavior, Docker runtime, provider-session migration, history/resume behavior, Host Bridge authentication, and any browser-to-host execution path; these remain S10 work under a separate contract.
+- S0 migration source, P0 prompt, or isolated-verifier changes, including the four prompt files modified after the S0 staging snapshot.
+- S3 FeatureDefinition, graph schema, collectors, UI, external platform writes, and all unrelated dirty worktree paths.
+rollback:
+  strategy: Revert or path-scope unstage only the declared governance files. For a materialized junction, remove only its new ordinary directory and recreate the link from its unchanged, validated in-repository .claude/skills source; never remove the source target. The existing frontend runner remains untouched.
+  data_recovery: No database, provider session, external system, credential, or production artifact is changed.
+verification_plan:
+- id: VER-001
+  layer: policy
+  command: python -B scripts/check_agent_policy.py --require-tracked
+  proves: AGENTS is UTF-8 and size-bounded, every routed Skill exists as a tracked ordinary-file tree, and no routed Skill reference is missing.
+  required: true
+- id: VER-002
+  layer: unit
+  command: python -B -m unittest discover -s tests -p "test_agents_policy.py" -v
+  proves: The policy gate rejects malformed instructions, missing/reparse or untracked routed Skill assets, while the SessionStart hook remains advisory.
+  required: true
+- id: VER-003
+  layer: archive
+  command: python -B scripts/verify_agent_archives.py
+  proves: The compact AGENTS file and its immutable rollback archive have the expected size and content hash.
+  required: true
+- id: VER-004
+  layer: cli
+  command: python -X utf8 scripts/validate_prd.py docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.md --strict
+  proves: The stable repository-root PRD validator executes the canonical READY PRD.
+  required: true
+- id: VER-005
+  layer: unit
+  command: python -B -m unittest discover -s tests -p "test_prd_validator_entrypoint.py" -v
+  proves: The root PRD validator preserves arguments and reports missing inputs instead of relying on a Skill-relative working directory.
+  required: true
+- id: VER-006
+  layer: contract
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_feature_contracts.py .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  proves: Legacy v1 contracts remain strict-valid, generated v2 contracts require feature/snapshot identity at lock, and v2 graph snapshots bind to the declared before reference.
+  required: true
+- id: VER-007
+  layer: diff_hygiene
+  command: git diff --cached --check
+  proves: The staged S1 patch has no whitespace errors; the feature-contract gate is run as a post-COMPLETE assertion because it intentionally requires this contract to already be COMPLETE.
+  required: true
+- id: VER-008
+  layer: clean_clone
+  command: python -B -m unittest discover -s tests -p "test_agent_skill_portability.py" -v
+  proves: A clean clone plus the staged S1 patch has all 18 routed Skills, no reparse-point dependency, and a passing tracked-assets policy gate.
+  required: true
+lock:
+  locked_at: '2026-07-29T11:21:52Z'
+  locked_by: codex
+  rationale: Audited all 18 routed Skills, their Windows junction sources, the stable validator gap, v1-to-v2 compatibility boundaries, CI gates, and the unsafe frontend runner boundary; user authorized portable governance assets while runner completion remains S10.
+discovery:
+  recommended_direction: Materialize the 18 AGENTS-routed Skills as ordinary tracked files under .agents/skills, preserve routing semantics, add a repository-root PRD validator wrapper, and introduce schema v2 for newly initialized feature contracts while preserving v1 validation.
+  unresolved_scope_items: []

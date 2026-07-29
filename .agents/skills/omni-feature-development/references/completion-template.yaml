@@ -1,0 +1,29 @@
+schema_version: 3
+change_id: "replace-me"
+state: "DISCOVERED"
+actual_changes: []
+contract_delta: []
+verification_results: []
+graph_diff:
+  status: "pending"
+  snapshot_before: ""
+  snapshot_after: ""
+  added_nodes: []
+  modified_nodes: []
+  removed_nodes: []
+  added_edges: []
+  removed_edges: []
+  required_edges: []
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: "pending"
+rollback:
+  verified: false
+  evidence: ""
+final:
+  status: "pending"
+  completed_at: null
+  completed_by: null
+  summary: ""

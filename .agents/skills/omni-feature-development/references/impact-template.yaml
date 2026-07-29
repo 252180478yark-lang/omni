@@ -1,0 +1,87 @@
+schema_version: 3
+change_id: "replace-me"
+title: "Replace with a short feature title"
+state: "DISCOVERED"
+created_at: "2026-01-01T00:00:00Z"
+updated_at: "2026-01-01T00:00:00Z"
+feature_refs: []
+before_snapshot:
+  ref: ""
+delivery:
+  authority: "ci_attestation"
+  base_commit: ""
+risk:
+  level: "R1"
+  reasons: []
+  external_effects: []
+  approval:
+    required: false
+    gate_ref: ""
+intent:
+  problem: "Describe the user-visible problem."
+  expected_outcome: "Describe the observable outcome."
+  user_visible_behavior: []
+current_chain:
+  nodes: []
+  edges: []
+  evidence: []
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services: []
+  database: []
+  data_sources: []
+  states_workflows: []
+  tests: []
+  docs: []
+planned_changes:
+  - id: "CHG-001"
+    action: "modify"
+    kind: "service"
+    node_id: "service:module.function"
+    paths:
+      - "services/example.py"
+    upstream: []
+    downstream: []
+    contract_change: "compatible"
+    verification_ids:
+      - "VER-001"
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: "not_applicable"
+    strategy: "No API contract changes."
+  database:
+    status: "not_applicable"
+    strategy: "No persistent schema changes."
+  workflow:
+    status: "compatible"
+    strategy: "Existing states remain valid."
+  data_source:
+    status: "not_applicable"
+    strategy: "No external source changes."
+graph_acceptance:
+  required_edges:
+    - from: "page:/example"
+      to: "api:GET:/api/v1/example"
+      relation: "calls"
+  allowed_unknowns: []
+  forbidden_orphans:
+    - "service:module.function"
+risks: []
+out_of_scope:
+  - "Name at least one deliberate boundary."
+rollback:
+  strategy: "Describe how to reverse code, schema, and state safely."
+  data_recovery: "Describe recovery or state not applicable with a reason."
+verification_plan:
+  - id: "VER-001"
+    layer: "service"
+    command: "python -m pytest path/to/test.py"
+    proves: "Describe the boundary this verifies."
+    required: true
+lock:
+  locked_at: null
+  locked_by: null
+  rationale: ""

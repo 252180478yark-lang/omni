@@ -1,0 +1,135 @@
+schema_version: 2
+change_id: 2026-07-29-feature-contract-gate-archival-compatibility
+title: Permit verified historical actual paths in feature-contract gate
+state: COMPLETE
+created_at: '2026-07-29T13:19:19Z'
+updated_at: '2026-07-29T13:24:43Z'
+feature_refs:
+- feature_id: s1-governance-foundation
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master#S1-governance
+before_snapshot:
+  ref: git:e534655124387655d6528960c67616269f68771c
+intent:
+  problem: The feature-contract gate currently rejects a valid staged batch when a changed COMPLETE contract records actual files that were already committed to HEAD by the owning delivery before the contract artifacts were staged.
+  expected_outcome: The gate accepts an actual path outside the current diff only when Git proves that exact path is already tracked at the evaluation head; it retains bidirectional coverage for current protected changes, validates contract-only archival diffs, and rejects non-diff paths that are untracked or unavailable from the evaluation head.
+  user_visible_behavior:
+  - Contract-only archival delivery can coexist with unrelated protected changes in a staged batch without falsely failing the global contract gate.
+  - A completion contract cannot use a merely on-disk or missing path to bypass current-diff accountability, and CI evaluates the supplied --head rather than the checkout's unrelated local HEAD.
+current_chain:
+  nodes:
+  - ci:feature-contract-gate
+  - service:feature-contract-gate
+  - source:git-head-tree
+  - state:contract-gate-report
+  edges:
+  - ci:feature-contract-gate -> service:feature-contract-gate
+  - service:feature-contract-gate -> source:git-head-tree
+  - service:feature-contract-gate -> state:contract-gate-report
+  evidence:
+  - scripts/check_feature_contracts.py:check_feature_contracts currently compares every completion.actual_changes path only with the current changed-file set.
+  - Current staged diff contains 51 actual paths that are absent from the diff and all 51 are already tracked in e534655, the current evaluation head for this staged check.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - service:feature-contract-gate
+  database: []
+  data_sources:
+  - source:git-head-tree
+  states_workflows:
+  - state:contract-gate-report
+  tests:
+  - test:tests/test_feature_contracts.py
+  docs:
+  - doc:docs/dev-changes/2026-07-29-feature-contract-gate-archival-compatibility
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: service
+  node_id: service:feature-contract-gate
+  paths:
+  - scripts/check_feature_contracts.py
+  upstream:
+  - ci:feature-contract-gate
+  - source:git-head-tree
+  downstream:
+  - state:contract-gate-report
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-003
+- id: CHG-002
+  action: modify
+  kind: test
+  node_id: test:tests/test_feature_contracts.py
+  paths:
+  - tests/test_feature_contracts.py
+  upstream:
+  - service:feature-contract-gate
+  downstream:
+  - ci:feature-contract-gate
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: No HTTP, API, MCP, or browser behavior is changed.
+  database:
+    status: not_applicable
+    strategy: No database, migration, or persistent data behavior is changed.
+  workflow:
+    status: compatible
+    strategy: Current-diff coverage remains mandatory. Only a concrete path already recorded in the immutable evaluation-head tree may satisfy the archival exception; a missing or untracked path remains a failure. The gate also applies this proof to contract-only archival diffs.
+  data_source:
+    status: compatible
+    strategy: The gate reads only the Git tree for the supplied evaluation head (or HEAD for a changed-files-file check). If that tree cannot be inspected, the archival exception is unavailable and the strict current-diff failure remains.
+graph_acceptance:
+  required_edges:
+  - from: ci:feature-contract-gate
+    to: service:feature-contract-gate
+    relation: invokes
+  - from: service:feature-contract-gate
+    to: source:git-head-tree
+    relation: reads
+  - from: service:feature-contract-gate
+    to: state:contract-gate-report
+    relation: emits
+  allowed_unknowns: []
+  forbidden_orphans:
+  - service:feature-contract-gate
+  - source:git-head-tree
+  - state:contract-gate-report
+risks:
+- Treating a worktree file as historical delivery would permit an untracked path to evade the current-diff check. The implementation must inspect the Git HEAD tree, not filesystem existence or the index.
+- Failing open when Git is unavailable would weaken contract enforcement in non-repository environments. The implementation must keep the present current-diff requirement unless HEAD proves the path.
+- This shared worktree has independently staged S0, S1, and P0 artifacts. Only the two gate files and this contract directory are in this change scope.
+out_of_scope:
+- Editing, restaging, deleting, or completing any historical S0, S1, P0, 096, or 097 owner contract.
+- Committing, pushing, applying migrations, rotating credentials, or changing runtime services.
+rollback:
+  strategy: Revert scripts/check_feature_contracts.py, tests/test_feature_contracts.py, and this change directory together; the prior rule then requires every actual path to be in the current diff.
+  data_recovery: No persistent data is written. The only additional read is Git metadata from the local HEAD tree.
+verification_plan:
+- id: VER-001
+  layer: unit
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_feature_contracts.py
+  proves: The gate accepts a HEAD-tracked archival actual path and still rejects a missing or untracked actual path.
+  required: true
+- id: VER-002
+  layer: contract
+  command: python -B -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-07-29-feature-contract-gate-archival-compatibility/impact.yaml --completion docs/dev-changes/2026-07-29-feature-contract-gate-archival-compatibility/completion.yaml
+  proves: The remediation contract is valid through its graph-ready verification state and remains path-scoped.
+  required: true
+- id: VER-003
+  layer: post_completion_integration
+  command: python -B scripts/check_feature_contracts.py --changed-files-file <current-staged-file-list>
+  proves: After the contract reaches COMPLETE, the current staged batch remains fully contract-covered while historical actual paths are accepted only when tracked at the evaluation head.
+  required: false
+lock:
+  locked_at: '2026-07-29T13:20:03Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.

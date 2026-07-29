@@ -1,0 +1,198 @@
+schema_version: 1
+change_id: 2026-07-29-system-convergence-s1-governance-foundation
+state: COMPLETE
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  paths:
+  - AGENTS.md
+  - .codex/hooks.json
+  - .github/workflows/ci.yml
+  - docs/archive/agents/AGENTS.pre-slim-2026-07-28.md
+  - scripts/check_agent_policy.py
+  - scripts/check_agents_policy.py
+  - scripts/verify_agent_archives.py
+  - tests/test_agents_policy.py
+  - tests/test_agent_skill_portability.py
+  summary: Versioned the compact instruction chain, advisory hook, archive verifier, policy gate, CI gates, and portable-clone tests.
+- id: ACT-002
+  planned_change_id: CHG-002
+  paths:
+  - .agents/skills/ai-planting-video/SKILL.md
+  - .agents/skills/ai-planting-video/agents/openai.yaml
+  - .agents/skills/ai-planting-video/evals/evals.json
+  - .agents/skills/ai-planting-video/references/content-contract-schema.md
+  - .agents/skills/ai-planting-video/references/experiment-state-machine.md
+  - .agents/skills/ai-planting-video/references/planting-method-library.md
+  - .agents/skills/ai-soft-ad-video/SKILL.md
+  - .agents/skills/ai-soft-ad-video/agents/openai.yaml
+  - .agents/skills/ai-soft-ad-video/references/state-machine.md
+  - .agents/skills/audience-pack-diagnosis/SKILL.md
+  - .agents/skills/audience-pack-sizing/SKILL.md
+  - .agents/skills/competitor-product-research/SKILL.md
+  - .agents/skills/cost-luru/SKILL.md
+  - .agents/skills/cost-luru/examples.md
+  - .agents/skills/crowd-sop/SKILL.md
+  - .agents/skills/daily-store-pulse/SKILL.md
+  - .agents/skills/platform-data/SKILL.md
+  - .agents/skills/product-analysis/SKILL.md
+  - .agents/skills/script-writer/SKILL.md
+  - .agents/skills/selling-point-finder/SKILL.md
+  - .agents/skills/short-video-director-brief/SKILL.md
+  - .agents/skills/short-video-director-brief/assets/brief-manifest.template.json
+  - .agents/skills/short-video-director-brief/assets/director-brief-template.md
+  - .agents/skills/short-video-director-brief/evals/evals.json
+  - .agents/skills/short-video-director-brief/evals/files/audience_pack_100w.json
+  - .agents/skills/short-video-director-brief/evals/files/audience_portrait.md
+  - .agents/skills/short-video-director-brief/evals/files/audience_record_without_portrait.json
+  - .agents/skills/short-video-director-brief/evals/files/kb_approved_claims.md
+  - .agents/skills/short-video-director-brief/evals/files/kb_without_certificates.md
+  - .agents/skills/short-video-director-brief/evals/files/sku002_facts.json
+  - .agents/skills/short-video-director-brief/evals/files/sku002_minimal_facts.json
+  - .agents/skills/short-video-director-brief/references/content-types.md
+  - .agents/skills/short-video-director-brief/references/fact-boundaries.md
+  - .agents/skills/short-video-director-brief/scripts/validate_brief.py
+  - .agents/skills/sku-pipeline/SKILL.md
+  - .agents/skills/video-reverse/SKILL.md
+  - .agents/skills/yuntu-audience-automation/SKILL.md
+  summary: Materialized the 16 non-FDE routed Skill trees as ordinary Git files and removed fixed host-path assumptions from their affected instructions.
+- id: ACT-003
+  planned_change_id: CHG-003
+  paths:
+  - .agents/skills/omni-fde-prd/SKILL.md
+  - .agents/skills/omni-fde-prd/agents/openai.yaml
+  - .agents/skills/omni-fde-prd/assets/implementation-prd-template.md
+  - .agents/skills/omni-fde-prd/evals/evals.json
+  - .agents/skills/omni-fde-prd/references/prd-contract.md
+  - .agents/skills/omni-fde-prd/references/system-discovery.md
+  - .agents/skills/omni-fde-prd/scripts/publish_prd.py
+  - .agents/skills/omni-fde-prd/scripts/validate_prd.py
+  - .agents/skills/omni-fde-prd/tests/test_publish_prd.py
+  - scripts/validate_prd.py
+  - tests/test_prd_validator_entrypoint.py
+  summary: Materialized the FDE PRD Skill, documented the root validator command, and added a stable wrapper with argument-preservation coverage.
+- id: ACT-004
+  planned_change_id: CHG-004
+  paths:
+  - .agents/skills/omni-feature-development/SKILL.md
+  - .agents/skills/omni-feature-development/agents/openai.yaml
+  - .agents/skills/omni-feature-development/references/completion-template.yaml
+  - .agents/skills/omni-feature-development/references/contract-spec.md
+  - .agents/skills/omni-feature-development/references/impact-template.yaml
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py
+  - .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  - scripts/check_feature_contracts.py
+  - tests/test_feature_contracts.py
+  summary: Materialized the feature-development Skill and added schema-v2 feature/before-snapshot compatibility while retaining v1 strict validation.
+contract_delta:
+- description: Added the existing feature-contract gate script to the locked S1 file list.
+  reason: The staged CI feature-contract job invokes scripts/check_feature_contracts.py, so a clean clone requires the script alongside the v2 validator and its tests.
+  effect: The script is versioned under CHG-004; no API, database, or workflow behavior expanded.
+  accepted: true
+- description: Moved the feature-contract gate assertion after the COMPLETE transition.
+  reason: The gate deliberately rejects a changed contract until that same contract is COMPLETE, so it cannot be a pre-GRAPH_DIFF required verification without creating a circular state dependency.
+  effect: VER-007 proves staged diff hygiene before completion; the unchanged gate is executed immediately after COMPLETE and recorded as final evidence.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: python -B scripts/check_agent_policy.py --require-tracked
+  status: passed
+  exit_code: 0
+  evidence: AGENTS.md measured 12291/16384 bytes; all 18 routed Skill roots resolved to 53 tracked regular Git files.
+- id: VER-002
+  command: python -B -m unittest discover -s tests -p "test_agents_policy.py" -v
+  status: passed
+  exit_code: 0
+  evidence: 19 tests passed, including missing/untracked/reparse Skill negative paths and advisory Windows SessionStart execution.
+- id: VER-003
+  command: python -B scripts/verify_agent_archives.py
+  status: passed
+  exit_code: 0
+  evidence: Project compact AGENTS file and immutable rollback archive passed size and SHA-256 verification.
+- id: VER-004
+  command: python -X utf8 scripts/validate_prd.py docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.md --strict
+  status: passed
+  exit_code: 0
+  evidence: The stable root command returned READY with errors=0 and warnings=0 for the canonical master PRD.
+- id: VER-005
+  command: python -B -m unittest discover -s tests -p "test_prd_validator_entrypoint.py" -v
+  status: passed
+  exit_code: 0
+  evidence: 2 tests passed for a subdirectory invocation with preserved arguments and a missing-input failure path.
+- id: VER-006
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_feature_contracts.py .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  status: passed
+  exit_code: 0
+  evidence: 52 tests passed, covering legacy v1 strict validation, v2 feature/snapshot requirements, schema mismatch, snapshot mismatch, and the feature-contract gate.
+- id: VER-007
+  command: git diff --cached --check
+  status: passed
+  exit_code: 0
+  evidence: The staged S1 diff has no whitespace or patch-format errors after normalizing four imported Skill assets.
+- id: VER-008
+  command: python -B -m unittest discover -s tests -p "test_agent_skill_portability.py" -v
+  status: passed
+  exit_code: 0
+  evidence: A clean clone plus staged S1 patch passed the tracked-assets policy, exposed all 18 SKILL.md files, and contained no reparse points.
+graph_diff:
+  status: clean
+  snapshot_before: git:2cf161f812866a2706975c312522c60a2753bcde
+  snapshot_after: git-index-tree:2bee6b68f2c390fb6a4f97d0bbbc1fd418bf2417
+  added_nodes:
+  - skill-tree:agents-routed-18
+  - validator:prd-root
+  - validator:dev-contract-v2
+  - ci:agents-policy-gate
+  - ci:feature-contract-gate
+  modified_nodes:
+  - codex:project-agents
+  - skill:omni-fde-prd
+  - skill:omni-feature-development
+  - validator:dev-contract-v1
+  removed_nodes: []
+  added_edges:
+  - from: codex:project-agents
+    to: skill:business-routing
+    relation: routes
+  - from: skill:omni-fde-prd
+    to: validator:prd-root
+    relation: documents
+  - from: ci:agents-policy-gate
+    to: skill:business-routing
+    relation: validates
+  - from: ci:feature-contract-gate
+    to: validator:dev-contract-v1-v2
+    relation: invokes
+  removed_edges: []
+  required_edges:
+  - from: codex:project-agents
+    to: skill:business-routing
+    relation: routes
+    status: present
+    evidence: AGENTS.md routes all 18 Skill references from the project instruction entrypoint.
+  - from: skill:omni-fde-prd
+    to: validator:prd-root
+    relation: documents
+    status: present
+    evidence: omni-fde-prd/SKILL.md documents python -X utf8 scripts/validate_prd.py and the root wrapper test passes.
+  - from: ci:agents-policy-gate
+    to: skill:business-routing
+    relation: validates
+    status: present
+    evidence: .github/workflows/ci.yml invokes the tracked-assets policy and agent portability tests.
+  - from: ci:feature-contract-gate
+    to: validator:dev-contract-v1-v2
+    relation: invokes
+    status: present
+    evidence: .github/workflows/ci.yml invokes scripts/check_feature_contracts.py, which loads the versioned validator.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+rollback:
+  verified: true
+  evidence: The clean-clone test proved the staged patch is self-contained; rollback is path-scoped unstage/revert of declared files, while the existing local junction source targets and frontend runner worktree changes remain untouched.
+final:
+  status: complete
+  completed_at: '2026-07-29T11:35:47Z'
+  completed_by: codex
+  summary: S1 versioned the portable governance instruction tree, stable PRD validator, v1-to-v2 contract compatibility, and deterministic CI policy gates; the browser Codex runner remains intentionally deferred to its provider-session and Host Bridge contract.

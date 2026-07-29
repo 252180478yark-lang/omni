@@ -82,9 +82,16 @@ export interface SessionState {
 }
 
 // === WebSocket 消息协议（前后端互通）===
+export type BrainProvider = 'codex' | 'claude'
+export type BrainEffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
 export interface PlaygroundSpawnConfig {
-  /** 'sonnet' / 'opus' / 'haiku' / 'claude-opus-4-7' 等 */
+  /** 主大脑 provider；不传时后端按环境默认处理 */
+  brain_provider?: BrainProvider
+  /** Codex/Claude 模型名；Codex 映射 --model，Claude 映射 --model */
   model?: string
+  /** Codex 映射 model_reasoning_effort，Claude 映射 --effort */
+  effort?: BrainEffortLevel
   /** 空数组或不传 = 全开;非空 = 限定为这几个 */
   allowed_tools?: string[]
   /** --append-system-prompt 内容 */

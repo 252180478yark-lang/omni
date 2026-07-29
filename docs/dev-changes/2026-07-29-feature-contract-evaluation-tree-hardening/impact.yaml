@@ -1,0 +1,158 @@
+schema_version: 2
+change_id: 2026-07-29-feature-contract-evaluation-tree-hardening
+title: Feature contract evaluation-tree hardening
+state: COMPLETE
+created_at: '2026-07-29T13:57:13Z'
+updated_at: '2026-07-29T14:02:14Z'
+feature_refs:
+- feature_id: s1-feature-contract-evaluation-tree
+  feature_ref: git:e534655124387655d6528960c67616269f68771c:s1-feature-contract-evaluation-tree
+before_snapshot:
+  ref: git:e534655124387655d6528960c67616269f68771c
+intent:
+  problem: The feature-contract gate detects changed contract paths from a Git diff but reads their YAML from the mutable worktree. A staged deletion can therefore pass when an untracked worktree copy remains, so the gate does not prove the actual evaluated Git snapshot.
+  expected_outcome: 'Bind contract parsing and archival-path checks to the same evaluation source as the changed-file list: HEAD tree for CI ref mode, index for local changed-files-file mode, and worktree only for direct unit-test callers.'
+  user_visible_behavior:
+  - A deleted indexed contract cannot pass because of a worktree copy.
+  - Local staged validation evaluates the index without absorbing unstaged edits.
+  - CI base/head validation evaluates the declared head tree, not checkout drift.
+current_chain:
+  nodes:
+  - service:feature_contracts.check_feature_contracts
+  - service:dev_contract.read_yaml
+  - state:git.worktree
+  - state:git.index
+  - state:git.evaluation-head
+  edges:
+  - from: ci:feature-contract-gate
+    to: service:feature_contracts.check_feature_contracts
+    relation: calls
+  - from: service:feature_contracts.check_feature_contracts
+    to: state:git.worktree
+    relation: reads
+  evidence:
+  - scripts/check_feature_contracts.py:_changed_contract_files identifies the changed contract pair from the diff.
+  - scripts/check_feature_contracts.py:check_feature_contracts currently uses Path.is_file and contract_validator.read_yaml against the worktree.
+  - The P0 audit reproduced a staged contract deletion that passed solely because an untracked worktree copy existed.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - service:feature_contracts.check_feature_contracts
+  - service:dev_contract.read_yaml_text
+  database: []
+  data_sources: []
+  states_workflows:
+  - state:git.index.contract-evaluation
+  - state:git.evaluation-head.contract-evaluation
+  tests:
+  - test:tests/test_feature_contracts.py
+  - test:.agents/skills/omni-feature-development/tests/test_dev_contract.py
+  docs:
+  - docs/dev-changes/2026-07-29-feature-contract-evaluation-tree-hardening/impact.yaml
+  - docs/dev-changes/2026-07-29-feature-contract-evaluation-tree-hardening/completion.yaml
+planned_changes:
+- id: CHG-001
+  action: add
+  kind: contract_yaml_text_reader
+  node_id: service:dev_contract.read_yaml_text
+  paths:
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py
+  upstream:
+  - state:git.index
+  - state:git.evaluation-head
+  downstream:
+  - service:feature_contracts.check_feature_contracts
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+- id: CHG-002
+  action: modify
+  kind: feature_contract_gate
+  node_id: service:feature_contracts.check_feature_contracts
+  paths:
+  - scripts/check_feature_contracts.py
+  upstream:
+  - ci:feature-contract-gate
+  - state:git.index
+  - state:git.evaluation-head
+  downstream:
+  - service:dev_contract.read_yaml_text
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-003
+  action: modify
+  kind: regression_tests
+  node_id: test:feature-contract-evaluation-tree
+  paths:
+  - tests/test_feature_contracts.py
+  - .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  upstream:
+  - service:feature_contracts.check_feature_contracts
+  - service:dev_contract.read_yaml_text
+  downstream: []
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: No API request or response changes.
+  database:
+    status: not_applicable
+    strategy: No database or migration changes.
+  workflow:
+    status: compatible
+    strategy: Direct Python callers retain worktree evaluation by default; CLI ref and index modes become deterministic against their declared Git source.
+  data_source:
+    status: not_applicable
+    strategy: No external source or credential access.
+graph_acceptance:
+  required_edges:
+  - from: ci:feature-contract-gate
+    to: service:feature_contracts.check_feature_contracts
+    relation: calls
+  - from: service:feature_contracts.check_feature_contracts
+    to: state:git.index.contract-evaluation
+    relation: reads
+  - from: service:feature_contracts.check_feature_contracts
+    to: state:git.evaluation-head.contract-evaluation
+    relation: reads
+  - from: service:feature_contracts.check_feature_contracts
+    to: service:dev_contract.read_yaml_text
+    relation: parses
+  allowed_unknowns: []
+  forbidden_orphans:
+  - state:git.worktree.contract-override
+risks:
+- risk: Changing the default direct-call behavior could break existing unit tests that intentionally write contracts without Git staging.
+  mitigation: Keep worktree evaluation as the explicit default for direct function calls; only CLI modes select index or a named head tree.
+- risk: An index source could accidentally be used for CI ref mode.
+  mitigation: Bind --base/--head to the provided head ref and cover it with a regression test.
+out_of_scope:
+- Repairing or committing unrelated S0, P0, Creator, or Live candidate paths.
+- Rewriting the historical p0-v4-canonical-deployment contract.
+- Credential rotation, runtime deployment, or external Human Gate operations.
+rollback:
+  strategy: Revert the gate and validator helper together; direct callers retain their existing worktree behavior throughout the change.
+  data_recovery: Not applicable because no persistent data or external state changes.
+verification_plan:
+- id: VER-001
+  layer: unit
+  command: python -B -X utf8 -m pytest -q tests/test_feature_contracts.py .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  proves: The evaluation-tree selection, deleted-contract rejection, and YAML text reader all pass their deterministic regression tests.
+  required: true
+- id: VER-002
+  layer: unit
+  command: python -B -X utf8 -m pytest -q tests/test_feature_contracts.py -k "index_evaluation or evaluation_head"
+  proves: Index and named-head paths reject worktree drift while preserving valid snapshots.
+  required: true
+lock:
+  locked_at: '2026-07-29T13:58:45Z'
+  locked_by: codex
+  rationale: Bind contract content, changed paths, and archival checks to one immutable evaluated Git source.

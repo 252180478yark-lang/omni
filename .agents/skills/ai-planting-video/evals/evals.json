@@ -1,0 +1,58 @@
+{
+  "skill_name": "ai-planting-video",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "给这个 SKU 做两条按 A3 优化、解决画像具体痛点的种草短视频",
+      "expected_output": "select ai-planting-video; stop at lineage review",
+      "files": [],
+      "expectations": [
+        "selected_skill is ai-planting-video",
+        "kind is video_planting and intent is planting",
+        "north_star is a3_ratio",
+        "first_stop is LINEAGE_REVIEW and no business tool is called"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "做一条 O/A1 软广，重点看前三秒和完播",
+      "expected_output": "select ai-soft-ad-video",
+      "files": [],
+      "expectations": [
+        "selected_skill is ai-soft-ad-video",
+        "intent is soft_ad and north_star is completion_rate",
+        "first_stop is LINEAGE_REVIEW and no business tool is called"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "只给这个 SKU 写一版种草脚本，不出片",
+      "expected_output": "select script-writer",
+      "files": [],
+      "expectations": [
+        "selected_skill is script-writer",
+        "no video provider or generation set action is proposed"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "给真人编导下一个种草拍摄 brief",
+      "expected_output": "select short-video-director-brief",
+      "files": [],
+      "expectations": [
+        "selected_skill is short-video-director-brief",
+        "the response does not select pure-AI planting generation"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "跑 SKU 前链路到圈包就停",
+      "expected_output": "select sku-pipeline and stop at audience_pack_id",
+      "files": [],
+      "expectations": [
+        "selected_skill is sku-pipeline",
+        "first terminal handoff is audience_pack_id and no content generation is proposed"
+      ]
+    }
+  ]
+}

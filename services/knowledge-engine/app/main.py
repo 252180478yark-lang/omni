@@ -150,7 +150,8 @@ app.mount(
 # W4-B 切片 14.4 phase D 候选 D：资产磁盘存储（cdn url 24h 过期 → 落本地）
 # 挂载点跟 asset_storage.PUBLIC_URL_PREFIX 必须严格一致
 _assets_root = Path("/app/data/assets")
-_assets_root.mkdir(parents=True, exist_ok=True)
+# StaticFiles(check_dir=False) and every asset writer create their own target
+# lazily. Avoid writing the container-only /app path merely by importing app.
 app.mount(
     "/api/v1/knowledge/static",
     StaticFiles(directory=str(_assets_root), check_dir=False),

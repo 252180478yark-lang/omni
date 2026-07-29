@@ -1,0 +1,77 @@
+{
+  "skill_name": "short-video-director-brief",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "给 SKU-367991-0002 的‘舒适休闲’100万人群包下一份真人短视频编导 Brief。这个包规模已经适合种草，不要再提纯。先把生活状态、购买顾虑、痛点和场景讲明白，再给至少10种真正不同的内容类型，每种至少一条能直接试拍的完整脚本。人群数据、商品事实、创意假设分开标；不要摄影参数，也不要2.7、2.8。",
+      "expected_output": "生成包含人群理解和至少10种内容类型、10条五段脚本的真人编导Brief；保留100万人群包，不提纯；所有事实可追溯。",
+      "files": [
+        "evals/files/sku002_facts.json",
+        "evals/files/audience_pack_100w.json",
+        "evals/files/audience_portrait.md",
+        "evals/files/kb_approved_claims.md"
+      ],
+      "expectations": [
+        "输出包含第一部分人群理解和第二部分内容类型与脚本",
+        "明确100万人群包本轮不提纯，不给收窄建议",
+        "至少10个不同内容类型，家庭/单人/厨房等场景词不计为类型",
+        "至少10条完整脚本且每条严格五段",
+        "脚本包含痛点、场景、前3秒事件、台词或字幕、产品动作和表达边界",
+        "人群数据、商品事实和创意假设分开标注",
+        "不出现2.7、2.8或摄影施工参数"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "SKU和已采纳的100万人群包都在系统里，但生活状态画像还没跑。沿现有血缘把画像补齐，再生成短视频编导Brief。不要凭常识编画像；如果画像工具失败，就把缺口说清楚并停止。",
+      "expected_output": "先生成或取得有血缘的人群画像，再生成Brief；画像失败时安全停止且不写脚本。",
+      "files": [
+        "evals/files/sku002_facts.json",
+        "evals/files/audience_record_without_portrait.json",
+        "evals/files/kb_approved_claims.md"
+      ],
+      "expectations": [
+        "脚本前先调用generate_audience_portrait并使用给定audience_record_id",
+        "成功结果记录sku_id、audience_record_id和portrait_id",
+        "画像推演标为创意假设",
+        "画像失败时返回blocked_missing_portrait且脚本数为0",
+        "不用通用男性画像冒充当前人群"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "我赶时间，正式Brief只给我3条就行，而且全写家庭厨房小剧情，换三个开头就可以。",
+      "expected_output": "守住正式交付至少10种类型、至少10条脚本的项目规则；若用户只想先看3条，明确降级为非正式方向预览。",
+      "files": [
+        "evals/files/sku002_facts.json",
+        "evals/files/audience_pack_100w.json",
+        "evals/files/audience_portrait.md"
+      ],
+      "expectations": [
+        "不把3条同类脚本称为正式交付",
+        "正式模式仍至少10条、10种类型",
+        "如只输出3条则明确标为方向预览",
+        "不通过换人物、场景或开头重复计数",
+        "每个类型写明独立核心观看价值"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "给这款做10条种草脚本，重点讲‘有机所以更健康’‘零糖’‘儿童也能放心吃’‘180天所以更鲜’。现在附件只有商品名称、SKU和500ml×2＋200ml×2规格，证书和当前瓶身资料还没找到。先直接写，后面再补证据。",
+      "expected_output": "识别证据不足，阻断不合规主张；使用已验证的SKU与规格生成安全替代类型和脚本。",
+      "files": [
+        "evals/files/sku002_minimal_facts.json",
+        "evals/files/audience_pack_100w.json",
+        "evals/files/audience_portrait.md",
+        "evals/files/kb_without_certificates.md"
+      ],
+      "expectations": [
+        "把更健康、零糖、儿童放心吃、180天更鲜列为blocked_claims",
+        "正式脚本台词和字幕不使用上述主张",
+        "不把商品名中的有机推导成健康、安全或无农残",
+        "仍基于已验证SKU和规格输出至少10种内容类型的安全替代版本",
+        "证据不足时取消证据结论，不预留虚构字幕"
+      ]
+    }
+  ]
+}

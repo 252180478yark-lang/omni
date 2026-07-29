@@ -1,0 +1,187 @@
+schema_version: 1
+change_id: 2026-07-29-prd-canonical-archive
+title: 固定 PRD Markdown/PDF 归档目录与索引
+state: COMPLETE
+created_at: '2026-07-28T19:25:09Z'
+updated_at: '2026-07-28T19:35:04Z'
+intent:
+  problem: PRD Markdown 分散在 docs/plans，PDF 分散在 output/pdf，缺少固定的成对目录、版本规则和统一索引。
+  expected_outcome: 以后每份文件型 PRD 都以同 basename、同版本的 Markdown/PDF 成对发布到 docs/prds/<prd-id>/，并自动登记到统一目录。
+  user_visible_behavior:
+  - 用户只需打开 docs/prds/README.md，就能定位每份 PRD 的 Markdown 和 PDF。
+  - 新 Codex 任务自动遵守固定归档、成对交付、不可覆盖旧版本的规则。
+  - 发布器拒绝缺件、同版本内容冲突、哈希漂移和未登记文件。
+current_chain:
+  nodes:
+  - codex:project-agents
+  - skill:omni-fde-prd
+  - doc-root:docs-plans
+  - artifact-root:output-pdf
+  - prd:omni-fde-system-convergence-v1.1
+  edges:
+  - from: codex:project-agents
+    to: skill:omni-fde-prd
+    relation: routes
+  - from: skill:omni-fde-prd
+    to: doc-root:docs-plans
+    relation: writes-markdown
+  - from: skill:omni-fde-prd
+    to: artifact-root:output-pdf
+    relation: writes-pdf
+  evidence:
+  - AGENTS.md:22 routes FDE PRD work to omni-fde-prd.
+  - AGENTS.md:113 currently names docs/plans as the PRD location.
+  - .agents/skills/omni-fde-prd/SKILL.md:130 currently saves Markdown under docs/plans.
+  - docs/plans and output/pdf currently contain mismatched PRD names and incomplete pairs.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services: []
+  database: []
+  data_sources: []
+  states_workflows:
+  - workflow:prd-publication
+  tests:
+  - test:.agents/skills/omni-fde-prd/tests/test_publish_prd.py
+  docs:
+  - doc:AGENTS.md
+  - doc:.agents/skills/omni-fde-prd/SKILL.md
+  - doc:docs/prds/README.md
+  - doc:docs/prds/2026-07-29-omni-fde-system-convergence-master-prd
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: policy
+  node_id: codex:project-agents
+  paths:
+  - AGENTS.md
+  upstream: []
+  downstream:
+  - skill:omni-fde-prd
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-002
+  action: modify
+  kind: skill
+  node_id: skill:omni-fde-prd
+  paths:
+  - .agents/skills/omni-fde-prd/SKILL.md
+  - .agents/skills/omni-fde-prd/evals/evals.json
+  upstream:
+  - codex:project-agents
+  downstream:
+  - workflow:prd-publication
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+  - VER-003
+- id: CHG-003
+  action: add
+  kind: workflow
+  node_id: workflow:prd-publication
+  paths:
+  - .agents/skills/omni-fde-prd/scripts/publish_prd.py
+  - .agents/skills/omni-fde-prd/tests/test_publish_prd.py
+  upstream:
+  - skill:omni-fde-prd
+  downstream:
+  - catalog:docs-prds
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+  - VER-004
+- id: CHG-004
+  action: add
+  kind: artifact
+  node_id: catalog:docs-prds
+  paths:
+  - docs/prds/**
+  upstream:
+  - workflow:prd-publication
+  downstream:
+  - prd:omni-fde-system-convergence-v1.1
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+  - VER-005
+  - VER-006
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: 不修改产品 API 或 MCP Tool。
+  database:
+    status: not_applicable
+    strategy: 不修改数据库 schema 或业务数据。
+  workflow:
+    status: compatible
+    strategy: 保留 docs/plans 与 output/pdf 的历史文件和链接；仅把未来发布入口切到 docs/prds。
+  data_source:
+    status: not_applicable
+    strategy: 不修改任何外部数据源。
+graph_acceptance:
+  required_edges:
+  - from: codex:project-agents
+    to: skill:omni-fde-prd
+    relation: routes
+  - from: skill:omni-fde-prd
+    to: workflow:prd-publication
+    relation: invokes
+  - from: workflow:prd-publication
+    to: catalog:docs-prds
+    relation: updates
+  - from: catalog:docs-prds
+    to: prd:omni-fde-system-convergence-v1.1
+    relation: indexes-pair
+  allowed_unknowns: []
+  forbidden_orphans:
+  - workflow:prd-publication
+  - catalog:docs-prds
+risks:
+- PDF 文件进入 docs 会增加仓库体积；以版本不可变和显式目录控制增长。
+- 自动索引若允许手工编辑会漂移；README 与 catalog 仅由发布器生成。
+- 旧 PRD 命名不一致；本次不批量迁移，避免破坏硬引用。
+out_of_scope:
+- 批量重建所有历史 PRD 的 PDF。
+- 删除、移动或重命名 docs/plans 与 output/pdf 的历史文件。
+- 修改产品前端、后端、数据库或运行时链路。
+rollback:
+  strategy: 回退 AGENTS.md 与 Skill 的规则，并删除本 change 新增的发布器、测试和 docs/prds 目录；历史源文件保持原位。
+  data_recovery: 无业务数据写入；当前总 PRD 的原 Markdown/PDF 始终保留在旧路径，可直接恢复引用。
+verification_plan:
+- id: VER-001
+  layer: policy
+  command: python -X utf8 scripts/check_agent_policy.py
+  proves: AGENTS.md 仍满足精简策略、路由和大小约束。
+  required: true
+- id: VER-002
+  layer: skill
+  command: python -X utf8 E:/agent/omni-system/brain/codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/omni-fde-prd
+  proves: 修改后的 Skill 元数据和结构有效。
+  required: true
+- id: VER-003
+  layer: workflow
+  command: python -B -m pytest -q -p no:cacheprovider .agents/skills/omni-fde-prd/tests/test_publish_prd.py
+  proves: 发布、幂等、不可覆盖和漂移检查均有自动化覆盖。
+  required: true
+- id: VER-004
+  layer: archive
+  command: python -X utf8 .agents/skills/omni-fde-prd/scripts/publish_prd.py check --root docs/prds
+  proves: 目录中每份 PRD 都已配对、登记且哈希一致。
+  required: true
+- id: VER-005
+  layer: prd
+  command: python -X utf8 .agents/skills/omni-fde-prd/scripts/validate_prd.py docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.md --strict
+  proves: 第一份标准归档 Markdown 仍通过实施级 PRD 严格校验。
+  required: true
+- id: VER-006
+  layer: pdf
+  command: C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe -c "from pypdf import PdfReader; p=PdfReader(r'docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.pdf'); assert len(p.pages)==35; assert all((x.extract_text() or '').strip() for x in p.pages); print('35 nonblank pages')"
+  proves: 第一份标准归档 PDF 可读取、页数正确且无空白页。
+  required: true
+lock:
+  locked_at: '2026-07-28T19:28:18Z'
+  locked_by: codex
+  rationale: Current PRD paths, skill routing, legacy references, compatibility, rollback, and required checks were reviewed.

@@ -1,0 +1,32 @@
+{
+  "description": "Advisory instruction, delivery-truth, contract, PRD, and runtime-readiness checks for Codex sessions.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -B \"$(git rev-parse --show-toplevel)/scripts/check_agent_policy.py\" --hook",
+            "commandWindows": "python -B -c \"import pathlib,runpy,subprocess,sys; r=pathlib.Path(subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip()); p=str(r/'scripts'/'check_agent_policy.py'); sys.argv=[p,'--hook']; runpy.run_path(p,run_name='__main__')\"",
+            "timeout": 10,
+            "statusMessage": "Checking repository AGENTS policy"
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -B \"$(git rev-parse --show-toplevel)/scripts/check_development_readiness.py\" --hook --runtime",
+            "commandWindows": "python -B -c \"import pathlib,runpy,subprocess,sys; r=pathlib.Path(subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip()); p=str(r/'scripts'/'check_development_readiness.py'); sys.argv=[p,'--hook','--runtime']; runpy.run_path(p,run_name='__main__')\"",
+            "timeout": 40,
+            "statusMessage": "Checking advisory development context and critical assets",
+            "additionalContextLimit": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

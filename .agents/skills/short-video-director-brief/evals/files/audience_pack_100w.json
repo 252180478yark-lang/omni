@@ -1,0 +1,15 @@
+{
+  "audience_pack_id": "pack-eval-100w",
+  "audience_record_id": "record-eval-comfort",
+  "sku_id": "SKU-367991-0002",
+  "estimated_size": 1000000,
+  "project_confirmation": "规模适合当前种草计划，本轮不提纯",
+  "signals": {
+    "male_pct": 99.96,
+    "age_31_35_pct": 96.03,
+    "small_town_youth_pct": 74.59,
+    "urban_blue_collar_pct": 24.81,
+    "family_with_children_pct": 70.11,
+    "single_pct": 22.56
+  }
+}

@@ -6,7 +6,11 @@ from typing import Any
 import warnings
 
 import pytest
-from starlette.exceptions import StarletteDeprecationWarning
+
+try:
+    from starlette.exceptions import StarletteDeprecationWarning
+except ImportError:  # Starlette 1.0 removed the compatibility warning class.
+    StarletteDeprecationWarning = DeprecationWarning
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", StarletteDeprecationWarning)

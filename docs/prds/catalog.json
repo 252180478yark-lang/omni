@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "prd_id": "2026-07-29-omni-fde-system-convergence-master-prd",
+      "title": "Omni FDE 活体图谱、单一前端与全链路收敛总实施方案",
+      "status": "READY",
+      "version": "v1.1",
+      "date": "2026-07-29",
+      "markdown": "2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.md",
+      "pdf": "2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.pdf",
+      "sha256": {
+        "markdown": "fddfe0b3e0c2651cbd7b41ccf6714c01be78c5df9e9a4af3bebd7ac7d5196921",
+        "pdf": "1577cf84e9f5aaddb2f0fcc2b582abebb8e3896164820d1d7ed08c256915eef3"
+      }
+    },
+    {
+      "prd_id": "2026-07-29-omni-fde-system-convergence-master-prd",
+      "title": "Omni FDE 活体图谱、单一前端与全链路收敛总实施方案",
+      "status": "READY",
+      "version": "v1.2",
+      "date": "2026-07-29",
+      "markdown": "2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md",
+      "pdf": "2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.pdf",
+      "sha256": {
+        "markdown": "d34c5975e08d82bae86efa9b3b7ea3d626405c63ccf8c089945f56c2163501f3",
+        "pdf": "7e63ee1f98e9f810293ae60239b09b2fba6b729640467267b73b7b984dd31f72"
+      }
+    }
+  ]
+}

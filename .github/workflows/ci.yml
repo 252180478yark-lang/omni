@@ -4,30 +4,163 @@
 # 不追求一上来覆盖全套——分两层，先有一条**永远能绿的快门**，再挂一条**信息性全量**。
 #
 # job 分层：
-#   1) unit-gate（**阻断合并**）：只装 pytest，跑「零外部依赖」的纯单元测试
+#   1) unit-gate（**阻断合并**）：装最小 import closure，跑纯单元测试
 #      （含本切片新增的 stream-json 契约测试）。秒级、不需 DB/网络/重依赖，
 #      保证门禁稳定为绿。这是 L0-7 的最小达标线。
-#   2) full-suite（**不阻断 · 信息性**）：起 Postgres + 装全部 KE 依赖，尝试跑整套
+#   2) ke-bootstrap-gate（**阻断合并**）：在干净环境安装全部 KE 依赖并收集全套测试，
+#      防止开发机依赖或可写目录掩盖 Linux runner 的启动问题。
+#   3) full-suite（**不阻断 · 信息性**）：起 Postgres + 装全部 KE 依赖，尝试跑整套
 #      pytest。很多测试依赖 app.database / 全量 schema，CI 里需先 bootstrap migration
 #      （属另一阶段0切片：DB schema/口径）。在那之前本 job 用 continue-on-error 收集
 #      真实通过率，不让它红掉挡合并。等 migration 自举接好，再把它提级为阻断 job。
 #
-# 注意：纯加法。本文件只新增 CI，不改任何业务代码 / 测试 / 现有脚本。
+# 默认分支 run 不允许被后续 push 取消；每个被交付的不可变提交都必须有自己的封印。
 
 name: ci
 
 on:
   push:
-    branches: [main]
+    branches:
+      - "**"
   pull_request:
   workflow_dispatch:
 
 # 同一分支新 push 取消旧 run，省 CI 额度
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.run_id || 'cancelable' }}
   cancel-in-progress: true
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # 阻断门禁：根 AGENTS 必须保持精简，动态事实只能从运行时目录读取。
+  # 本地 Codex Hook 只提醒；这条 CI 才是不可绕过的确定性边界。
+  # ---------------------------------------------------------------------------
+  agents-policy-gate:
+    name: AGENTS 精简与 Skill 引用（门禁）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 装治理检查最小依赖
+        run: pip install "pyyaml>=6.0,<7" "pytest>=8.0,<9"
+
+      - name: 校验根 AGENTS 策略
+        run: python -B scripts/check_agent_policy.py --require-tracked
+
+      - name: 校验关键开发资产已存在于不可变提交（非全面 readiness）
+        run: python -B scripts/check_development_readiness.py --strict-critical-assets
+
+      - name: 验证运行 Guard 规则与脱敏
+        run: python -B -m pytest -q -p no:cacheprovider tests/test_runtime_guard.py tests/test_development_readiness.py
+
+      - name: 生成运行基线静态报告（S1.5 前不阻断）
+        continue-on-error: true
+        run: python -B scripts/runtime_guard.py static --json
+
+      - name: 跑 AGENTS 策略与可移植性测试
+        run: python -B -m unittest discover -s tests -p "test_agent*.py" -v
+
+      - name: 验证 PRD 根入口
+        run: python -B -m unittest discover -s tests -p "test_prd_validator_entrypoint.py" -v
+
+  # ---------------------------------------------------------------------------
+  # 阻断门禁：产品/基础设施 diff 必须由本次 diff 中的有效合同覆盖。
+  # v1/v2 兼容历史 COMPLETE；v3 必须为 GRAPH_DIFF_READY，最终 COMPLETE 由外部封印给出。
+  # ---------------------------------------------------------------------------
+  feature-contract-gate:
+    name: 功能合同与变更范围（门禁）
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 装合同门禁最小依赖
+        run: pip install "pyyaml>=6.0,<7" "pytest>=8.0,<9"
+
+      - name: 跑功能合同与门禁测试
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_feature_contracts.py
+          .agents/skills/omni-feature-development/tests/test_dev_contract.py
+
+      - name: 计算 diff 并校验功能合同
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          EVENT_HEAD_SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE_SHA="$PR_BASE_SHA"
+            HEAD_SHA="$PR_HEAD_SHA"
+          elif [ "$EVENT_NAME" = "push" ] && [ "$REF_TYPE" = "branch" ] && [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            BASE_SHA="$PUSH_BEFORE_SHA"
+            HEAD_SHA="$EVENT_HEAD_SHA"
+          else
+            BASE_SHA=""
+            HEAD_SHA="$EVENT_HEAD_SHA"
+          fi
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            git fetch --no-tags origin "$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"
+            BASE_SHA="$(git merge-base "$HEAD_SHA" "origin/$DEFAULT_BRANCH" 2>/dev/null || true)"
+            if [ -z "$BASE_SHA" ]; then
+              echo "cannot resolve merge-base against origin/$DEFAULT_BRANCH" >&2
+              exit 2
+            fi
+          fi
+          python -B scripts/check_feature_contracts.py --mode commit --base "$BASE_SHA" --head "$HEAD_SHA"
+
+  # ---------------------------------------------------------------------------
+  # 阻断门禁：Omni 内置 Codex runner 必须能安全解析 CLI、固定项目 cwd 并通过类型检查。
+  # ---------------------------------------------------------------------------
+  codex-runner-gate:
+    name: Codex runner 启动与类型（门禁）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 装 Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 装前端依赖
+        run: npm ci
+
+      - name: 验证前端单测与 Codex runner
+        run: npm run test:unit
+
+      - name: 前端类型检查
+        run: npx tsc --noEmit
+
   # ---------------------------------------------------------------------------
   # 阻断门禁：零外部依赖纯单元测试（含 stream-json 契约）。必须绿才能合并。
   # ---------------------------------------------------------------------------
@@ -39,6 +172,8 @@ jobs:
         working-directory: services/knowledge-engine
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: 装 Python 3.11
         uses: actions/setup-python@v5
@@ -49,7 +184,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # 仅 pytest 栈；下面挑的测试不 import fastmcp/asyncpg/langgraph 等重依赖。
-          pip install "pytest>=8.0.0" "pytest-asyncio>=0.23.0"
+          pip install \
+            "pytest>=8.0.0" \
+            "pytest-asyncio>=0.23.0" \
+            "httpx>=0.27.0" \
+            "pyyaml>=6.0,<7" \
+            "pydantic-settings>=2.6.0" \
+            "asyncpg>=0.30.0" \
+            "pgvector>=0.3.6"
 
       - name: 跑零依赖纯单元测试（含契约测试）
         run: |
@@ -63,6 +205,38 @@ jobs:
             tests/test_mcp_utils.py \
             tests/test_mcp_pattern_lib.py \
             tests/test_harvester_parser.py
+
+  # ---------------------------------------------------------------------------
+  # 阻断门禁：干净 Linux 环境必须能安装 KE 并收集全套测试。
+  # 这里只验证 packaging/import/collection，不把尚未完成 migration 自举的执行结果伪装成绿。
+  # ---------------------------------------------------------------------------
+  ke-bootstrap-gate:
+    name: KE 干净安装与测试收集（门禁）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/knowledge-engine
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 干净安装 KE 全部依赖（含 dev）
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: 收集全套 KE 测试
+        env:
+          OMNI_UPLOAD_DIR: ${{ runner.temp }}/omni/uploads
+        run: python -B -m pytest --collect-only -q -p no:cacheprovider tests
 
   # ---------------------------------------------------------------------------
   # 信息性全量：起 DB + 装全依赖跑整套。当前不阻断（migration 自举接好后提级）。
@@ -92,6 +266,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: 装 Python 3.11
         uses: actions/setup-python@v5
@@ -109,5 +285,120 @@ jobs:
         continue-on-error: true
         env:
           DATABASE_URL: "postgresql+asyncpg://omni_user:changeme_in_production@localhost:5432/omni_vibe_db"
+          OMNI_UPLOAD_DIR: ${{ runner.temp }}/omni/uploads
         run: |
           python -m pytest -q tests
+
+  # ---------------------------------------------------------------------------
+  # 交付封印：PR、功能分支 push 与手动任务只验证候选；只有默认分支 post-merge
+  # push 在所有确定性阻断 job 通过后，才能为同一不可变 commit/tree 生成 COMPLETE。
+  # full-suite 仍为信息性；在 S1.5 blocking migration gate 建成前，attestation
+  # 构造器会 fail-closed 拒绝任何 database/migration 路径。
+  # ---------------------------------------------------------------------------
+  delivery-seal:
+    name: 不可变提交交付封印
+    if: github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch
+    needs:
+      - agents-policy-gate
+      - feature-contract-gate
+      - codex-runner-gate
+      - unit-gate
+      - ke-bootstrap-gate
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      EVALUATION_SHA: ${{ github.sha }}
+      ACTUAL_REF: ${{ github.ref }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - name: 精确验证默认分支引用
+        run: |
+          set -euo pipefail
+          if [ "$ACTUAL_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "delivery seal requires exact default branch ref" >&2
+            exit 2
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 装封印最小依赖
+        run: pip install "pyyaml>=6.0,<7"
+
+      - name: 解析同一不可变 base/head
+        id: refs
+        env:
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse "$EVALUATION_SHA^{commit}")"
+          BASE_SHA="$PUSH_BEFORE_SHA"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "default-branch delivery push is missing github.event.before" >&2
+            exit 2
+          fi
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: 判断本次是否包含 schema v3 交付候选
+        id: seal
+        env:
+          BASE_SHA: ${{ steps.refs.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.refs.outputs.head_sha }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import subprocess
+          import yaml
+
+          base = os.environ["BASE_SHA"]
+          head = os.environ["HEAD_SHA"]
+          names = subprocess.check_output(
+              ["git", "diff", "--name-only", f"{base}...{head}", "--"],
+              text=True,
+          ).splitlines()
+          required = False
+          for name in names:
+              if not name.startswith("docs/dev-changes/") or not name.endswith("/impact.yaml"):
+                  continue
+              path = pathlib.Path(name)
+              if not path.is_file():
+                  continue
+              data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+              if data.get("schema_version") == 3:
+                  required = True
+                  break
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"required={'true' if required else 'false'}\n")
+          PY
+
+      - name: 生成 CI 外部 delivery attestation
+        if: steps.seal.outputs.required == 'true'
+        env:
+          BASE_SHA: ${{ steps.refs.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.refs.outputs.head_sha }}
+        run: >-
+          python -B scripts/check_feature_contracts.py
+          --mode commit
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --attestation-out "$RUNNER_TEMP/delivery-attestation.json"
+          --attestor github-actions-required-gates
+          --ci-run-id "${{ github.run_id }}"
+
+      - name: 上传交付封印
+        if: steps.seal.outputs.required == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: delivery-attestation-${{ steps.refs.outputs.head_sha }}
+          path: ${{ runner.temp }}/delivery-attestation.json
+          if-no-files-found: error
+          retention-days: 90

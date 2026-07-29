@@ -1,0 +1,283 @@
+schema_version: 3
+change_id: 2026-07-29-development-order-s0-5
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  paths:
+  - .agents/skills/omni-feature-development/SKILL.md
+  - .agents/skills/omni-feature-development/references/contract-spec.md
+  - .agents/skills/omni-feature-development/references/impact-template.yaml
+  - .agents/skills/omni-feature-development/references/completion-template.yaml
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py
+  - .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  summary: Added backward-compatible schema v3 delivery intent, R0-R3 risk fields, Git worktree/index/commit truth modes, unique v3 path ownership, and GRAPH_DIFF_READY as the highest repository-authored state.
+- id: ACT-002
+  planned_change_id: CHG-002
+  paths:
+  - scripts/check_feature_contracts.py
+  - tests/test_feature_contracts.py
+  summary: Bound contract evaluation to Git objects, added immutable attestation hashes, failed closed for R3 and database/migration delivery, prevented PR/feature/tag checks from being confused with default-branch delivery, and regression-tested non-cancellable seal dependencies.
+- id: ACT-003
+  planned_change_id: CHG-003
+  paths:
+  - scripts/check_development_readiness.py
+  - tests/test_development_readiness.py
+  summary: Added a read-only session readiness report that distinguishes HEAD, index, and worktree assets; surfaces PRD, malformed contracts, true glob overlap, runtime conflicts, and missing critical delivery assets without turning advisory startup into a deadlock.
+- id: ACT-004
+  planned_change_id: CHG-004
+  paths:
+  - AGENTS.md
+  - .codex/hooks.json
+  - .github/workflows/ci.yml
+  summary: Installed the compact R0-R3 development rules, advisory startup/resume/clear/compact context, immutable-SHA CI evaluation, candidate-only PR/feature checks, non-cancellable exact-ref default delivery sealing, and blocking clean-runner install/collection/unit discovery.
+- id: ACT-005
+  planned_change_id: CHG-005
+  paths:
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.pdf
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - docs/prds/catalog.json
+  - docs/prds/README.md
+  - .gitattributes
+  summary: Published the implementation-ready v1.2 Markdown/PDF pair and status snapshot, including delivery truth, risk tiers, runtime isolation, health/freshness, non-blocking Human Gate, client retirement, and the 326-commit default-branch divergence finding.
+- id: ACT-006
+  planned_change_id: CHG-006
+  paths:
+  - config/runtime-manifest.yaml
+  - scripts/runtime_guard.py
+  - tests/test_runtime_guard.py
+  - .gitignore
+  summary: Added a read-only runtime ownership manifest and guard for cross-worktree database, volume, scheduler, port, source/build identity, and secret-redacted inspection; local runtime receipts and generated artifacts stay outside source truth.
+- id: ACT-007
+  planned_change_id: CHG-007
+  paths:
+  - frontend/src/lib/agent-chat/claude-runner.ts
+  - frontend/src/lib/agent-chat/codex-runner.ts
+  - frontend/src/lib/agent-chat/session-manager.ts
+  - frontend/src/lib/agent-chat/types.ts
+  - frontend/tests/agent-chat/unit/claude-runner.test.ts
+  - frontend/tests/agent-chat/unit/codex-runner.test.ts
+  summary: Delivered the tested Codex/Claude runner adapter types needed by the CI bootstrap and a behavior-neutral SessionManager Map.forEach compatibility fix; Codex resolves the Omni cwd and shell-free executable, while provider selection and Web activation remain deferred to the Host Bridge slice.
+- id: ACT-008
+  planned_change_id: CHG-008
+  paths:
+  - services/knowledge-engine/pyproject.toml
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/tests/test_mcp_exec_video_segments.py
+  - frontend/vitest.config.ts
+  summary: Made the Knowledge Engine editable package unambiguous on a clean runner, removed an eager container-only asset-directory write during app import, retained compatibility with Starlette 1.x during full-suite collection, and separated Vitest unit discovery from Playwright E2E specifications.
+contract_delta:
+- description: Upgraded this locked contract from schema v2 to schema v3 and changed repository-authored completion into GRAPH_DIFF_READY plus external CI attestation.
+  reason: The audit proved a completion YAML in the same uncommitted tree cannot independently prove that its own implementation is delivered in an immutable reachable commit.
+  effect: Historical v1/v2 contracts remain compatible; every new v3 change can be verified locally but only trusted default-branch CI can project effective COMPLETE.
+  accepted: true
+- description: Added CHG-006 for a read-only runtime manifest/guard after the locked repository audit.
+  reason: Docker inspection found another worktree sharing the canonical database, knowledge volume, and cron responsibilities, which is a deterministic source of apparently random development failures.
+  effect: S0.5 now detects and explains the conflict without stopping containers or changing databases; resource isolation and migration execution remain S1.5 work.
+  accepted: true
+- description: Added CHG-007 and VER-008/VER-009 for the runner adapter bootstrap, but explicitly excluded Web UI and session-manager activation.
+  reason: The blocking runner CI gate and clean candidate need Codex runner, effort types, and matching Claude compatibility, while activating danger-full-access from the Web UI would be a materially larger Host Bridge/security slice.
+  effect: The adapter is compile- and unit-tested in the delivery candidate; user-facing provider selection remains deferred and no new Web execution path is enabled by S0.5.
+  accepted: true
+- description: Restricted delivery-seal to trusted default-branch post-merge pushes and denied all database/migration attestations until a blocking S1.5 migration gate exists.
+  reason: Red-team integration found that PR/feature pushes and R2 migration files could otherwise receive a false COMPLETE artifact despite not being delivered or database-verified.
+  effect: PRs, feature branches, and manual runs only validate candidates; migration work remains verified_not_delivered until its real blocking gate is installed.
+  accepted: true
+- description: Added the current branch versus origin/main tracking-ref divergence to PRD v1.2 and the implementation status snapshot.
+  reason: The branch is ahead by 326 commits, so default-branch merge-base evaluation would mix long-lived historical work into this small governance candidate.
+  effect: S0.5 creates an immutable candidate from the audited HEAD, while historical target-ref convergence is treated as a separate integration task and cannot be hidden inside a new feature receipt.
+  accepted: true
+- description: Added an explicit PDF binary rule to the repository attributes and CHG-005 scope during immutable candidate construction.
+  reason: Git diff --check correctly exposed that the archived PDFs were being parsed as text byte streams and reported meaningless trailing-whitespace failures.
+  effect: Source line-ending rules remain deterministic, PDF content is no longer text-normalized or whitespace-scanned, and the clean candidate can prove patch integrity without suppressing real source errors.
+  accepted: true
+- description: Added SessionManager to CHG-007 with only a Map iteration compatibility rewrite in the immutable candidate.
+  reason: Full TypeScript validation of the clean base exposed TS2802 because the repository tsconfig has no ES2015 target and the base file used for-of over Map; the shared worktree contains broader provider-selection edits that are intentionally not part of S0.5.
+  effect: The clean candidate passes the existing full typecheck without enabling Codex through the Web/session path; the broader shared-worktree changes remain uncommitted and outside this delivery.
+  accepted: true
+- description: Stabilized the S0.5 CI bootstrap after the first real default-branch baseline run and added CHG-008 for the Knowledge Engine packaging/test and Vitest configuration files before delivery.
+  reason: GitHub Actions run 30470080606 proved that the blocking unit job omitted httpx and that the informational full-suite install could not resolve the app/config flat layout; clean frontend verification also proved Vitest was collecting a Playwright E2E spec.
+  effect: CHG-004 retains ownership of .github/workflows/ci.yml, CHG-008 owns the newly touched package and test-runner paths in this same contract, the original local 9042a9b8 and first 8a9b717 integration candidates are superseded before default delivery, and main cannot advance until the corrected remote integration run passes.
+  accepted: true
+- description: Promoted every required clean-runner verification into the delivery-seal dependency graph and removed eager creation of the container-only asset root.
+  reason: Integration run 30471467914 passed the original four blocking jobs while its continued full-suite step failed during collection on PermissionError /app; review also proved editable install, full collection, and full Vitest discovery could regress without blocking an attestation.
+  effect: A dedicated KE bootstrap gate now installs and collects on Linux, the Codex runner gate runs all frontend unit tests, app import does not create the asset root, and delivery cannot seal if any of those checks fail.
+  accepted: true
+- description: Restricted delivery to branch refs and made default-branch CI runs non-cancellable.
+  reason: A tag or case-variant branch named like the default branch could satisfy Actions expression matching, and cancelling default run A after push B could leave A permanently without an attestation because B validates only A..B.
+  effect: Push triggers exclude tags, the seal fails closed on a Bash case-sensitive exact branch ref, and each default-branch commit receives a unique concurrency group while feature-branch runs remain replaceable.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_feature_contracts.py tests/test_development_readiness.py .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  status: passed
+  exit_code: 0
+  evidence: 91 governance, readiness, schema, Git truth, risk, candidate/delivery, migration denial, CI delivery-semantics, malformed YAML and overlap tests passed in 29.56 seconds.
+- id: VER-002
+  command: python -B scripts/check_agent_policy.py
+  status: passed
+  exit_code: 0
+  evidence: AGENTS policy passed at 13116 of 16384 bytes with valid dynamic-total and Skill references.
+- id: VER-003
+  command: git diff --check
+  status: passed
+  exit_code: 0
+  evidence: Git found no whitespace or patch-integrity errors; only existing line-ending normalization notices were emitted.
+- id: VER-004
+  command: python -X utf8 .agents/skills/omni-fde-prd/scripts/validate_prd.py docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md --strict
+  status: passed
+  exit_code: 0
+  evidence: PRD v1.2 reported READY with errors=0 and warnings=0 after the branch-divergence and delivery-boundary additions.
+- id: VER-005
+  command: python -X utf8 .agents/skills/omni-fde-prd/scripts/publish_prd.py check --root docs/prds
+  status: passed
+  exit_code: 0
+  evidence: Catalog check found 2 immutable versions, 2 Markdown files and 2 PDF files with matching names and SHA-256 hashes.
+- id: VER-006
+  command: python -X utf8 -c "from pathlib import Path; from pypdf import PdfReader; p=Path(r'docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.pdf'); r=PdfReader(str(p)); assert len(r.pages)>0; assert all((page.extract_text() or '').strip() for page in r.pages); print(f'PDF_OK pages={len(r.pages)}')"
+  status: passed
+  exit_code: 0
+  evidence: pypdf opened 67 pages and every page contained extractable text; rendered first, evidence, middle and last pages had no clipping, overlap or mojibake.
+- id: VER-007
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_runtime_guard.py
+  status: passed
+  exit_code: 0
+  evidence: 10 runtime ownership, resource-conflict, build identity, health and redaction tests passed without mutating Docker or databases.
+- id: VER-008
+  command: npm --prefix frontend run test:unit -- tests/agent-chat/unit/claude-runner.test.ts tests/agent-chat/unit/codex-runner.test.ts
+  status: passed
+  exit_code: 0
+  evidence: 2 runner test files and 15 tests passed, covering model/effort arguments, executable resolution, project cwd and shell-free spawn.
+- id: VER-009
+  command: npx --prefix frontend tsc --noEmit -p frontend/tsconfig.json
+  status: passed
+  exit_code: 0
+  evidence: Frontend TypeScript 5.9.3 completed with no diagnostics.
+- id: VER-010
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_streamjson_contract.py services/knowledge-engine/tests/test_mcp_config.py services/knowledge-engine/tests/test_mcp_prompts.py services/knowledge-engine/tests/test_mcp_trace.py services/knowledge-engine/tests/test_mcp_utils.py services/knowledge-engine/tests/test_mcp_pattern_lib.py services/knowledge-engine/tests/test_harvester_parser.py
+  status: passed
+  exit_code: 0
+  evidence: In an isolated environment with the declared import closure, the exact blocking selection completed with 74 passed in 0.47 seconds.
+- id: VER-011
+  command: python -m pip install -e "services/knowledge-engine[dev]"
+  status: passed
+  exit_code: 0
+  evidence: A fresh virtual environment installed the editable Knowledge Engine and its dev dependencies, imported app successfully, and resolved FastAPI 0.141.0 with Starlette 1.3.1.
+- id: VER-012
+  command: python -B -m pytest --collect-only -q -p no:cacheprovider services/knowledge-engine/tests
+  status: passed
+  exit_code: 0
+  evidence: With a writable upload root, the clean full environment collected 901 Knowledge Engine tests in 3.53 seconds with zero collection errors; only dependency deprecation warnings remained.
+- id: VER-013
+  command: npm --prefix frontend run test:unit
+  status: passed
+  exit_code: 0
+  evidence: Vitest discovered 6 unit files and all 29 tests passed without collecting the Playwright E2E specification.
+graph_diff:
+  status: clean
+  snapshot_before: git:e534655124387655d6528960c67616269f68771c+worktree:20260729T144725Z
+  snapshot_after: worktree:e534655124387655d6528960c67616269f68771c:development-order-s0-5@20260729T232900Z
+  added_nodes:
+  - script:development-readiness
+  - artifact:delivery-attestation
+  - script:runtime-guard
+  - manifest:runtime-allocation
+  - prd:system-convergence-master:v1.2
+  - runner:frontend-agent-chat-codex
+  modified_nodes:
+  - instruction:AGENTS.md
+  - skill:omni-feature-development
+  - script:dev-contract-validator
+  - script:feature-contract-gate
+  - hook:codex-session-start
+  - ci:feature-contract-gate
+  - ci:delivery-seal
+  - ci:ke-bootstrap-gate
+  - workflow:clean-ci-bootstrap
+  - package:knowledge-engine
+  - service:knowledge-engine-app-bootstrap
+  - runner:frontend-vitest
+  removed_nodes: []
+  added_edges:
+  - from: hook:codex-session-start
+    to: script:development-readiness
+    relation: invokes
+  - from: script:feature-contract-gate
+    to: artifact:delivery-attestation
+    relation: emits_after_commit_validation
+  - from: runner:frontend-agent-chat-codex
+    to: instruction:AGENTS.md
+    relation: loads_from_cwd
+  - from: ci:unit-gate
+    to: test:ci-bootstrap
+    relation: executes
+  - from: ci:ke-bootstrap-gate
+    to: package:knowledge-engine
+    relation: installs
+  - from: ci:ke-bootstrap-gate
+    to: test:knowledge-engine-full-collection
+    relation: collects
+  - from: ci:codex-runner-gate
+    to: test:frontend-unit-discovery
+    relation: executes
+  removed_edges: []
+  required_edges:
+  - from: hook:codex-session-start
+    to: script:development-readiness
+    relation: invokes
+    status: present
+    evidence: Hooks JSON covers startup, resume, clear and compact; readiness Hook JSON and its no-PyYAML fallback parse successfully.
+  - from: ci:feature-contract-gate
+    to: script:feature-contract-gate
+    relation: invokes
+    status: present
+    evidence: CI YAML resolves immutable base/head values and calls commit-mode feature-contract validation; workflow structure and regression assertions pass.
+  - from: script:feature-contract-gate
+    to: artifact:delivery-attestation
+    relation: emits_after_commit_validation
+    status: present
+    evidence: Attestation construction is commit-mode-only, hashes commit/tree/contracts/paths, denies R3 and database paths, and is invoked only by the default-branch delivery-seal job.
+  - from: instruction:AGENTS.md
+    to: skill:omni-feature-development
+    relation: routes
+    status: present
+    evidence: AGENTS section 3 routes cross-layer feature work to the implementation Skill and the policy checker resolves the link within its byte budget.
+  - from: runner:frontend-agent-chat-codex
+    to: instruction:AGENTS.md
+    relation: loads_from_cwd
+    status: present
+    evidence: Runner tests prove resolveCodexCwd selects a real project containing AGENTS.md before spawn; Web activation remains outside this slice.
+  - from: ci:unit-gate
+    to: test:ci-bootstrap
+    relation: executes
+    status: present
+    evidence: The blocking unit job installs the clean import closure and runs the exact 74-test Knowledge Engine selection that passed in an empty environment.
+  - from: ci:ke-bootstrap-gate
+    to: package:knowledge-engine
+    relation: installs
+    status: present
+    evidence: The blocking clean-runner job installs the editable package after setuptools discovery is restricted to app and app subpackages, and delivery-seal depends on that job.
+  - from: ci:ke-bootstrap-gate
+    to: test:knowledge-engine-full-collection
+    relation: collects
+    status: present
+    evidence: The blocking clean-runner job collects the full Knowledge Engine suite with a writable upload root after app import stopped eagerly creating /app/data/assets.
+  - from: ci:codex-runner-gate
+    to: test:frontend-unit-discovery
+    relation: executes
+    status: present
+    evidence: The blocking Codex runner job executes the full Vitest unit command; defaults are preserved, E2E is explicitly excluded, and all 29 unit tests pass while Playwright remains on its own command.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: All S0.5 changes are file-only and business-data-free; the candidate can be removed by deleting its new branch/ref or reverted as one commit, while schema v1/v2 remain executable.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: The revised graph candidate includes blocking clean-runner gates and branch-safe non-cancellable delivery semantics; it requires a second immutable integration run before default-branch delivery.

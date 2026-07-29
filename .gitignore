@@ -52,6 +52,11 @@ __pycache__/
 # Dev logs
 .dev-logs/
 
+# Local test/tool caches
+.pytest_cache/
+.ruff_cache/
+.monitor/
+
 # Local backups
 backups/
 
@@ -70,6 +75,8 @@ services/ai-provider-hub/data/
 exported_*
 extracted_*
 image_analysis_*.json
+/exports/
+/output/
 
 # Vercel
 .vercel
@@ -114,6 +121,14 @@ import_yuntu_report.json
 # 调试笔记（本地截图/草稿）
 docs/调试问题/
 
+# Local browser profile and scratch workspaces. These can contain authenticated
+# session state or generated business data and are never canonical source files.
+.chrome-yuntu-debug/
+tmp/
+.pbi-work/
+.superpowers/
+.tmp-p0-video-inspect-*/
+
 # W2 e2e 落盘（base64 图片）
 .e2e-out/
 
@@ -137,3 +152,19 @@ services/scout-agent/catalog/_kpi_extractions.json
 /_keywords_*.txt
 /_packs_*.md
 /SKU*_关键词*.txt
+
+# Runtime and generated business artifacts. Existing tracked fixtures remain
+# tracked; new runtime output must be promoted through an explicit artifact or
+# fixture workflow instead of appearing as an accidental source diff.
+/data/knowledge/
+/data/uploads/
+/data/outputs/
+/data/assets/
+/data/agent_state/yuntu_b2b_*/
+
+# npm/package-lock.json is the frontend dependency truth used by CI and Docker.
+/frontend/pnpm-lock.yaml
+/frontend/pnpm-workspace.yaml
+
+# Runtime guard ownership receipts are local observations, never source truth.
+/.runtime/

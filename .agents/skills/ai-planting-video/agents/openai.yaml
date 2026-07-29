@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI 种草短视频"
+  short_description: "沿 SKU 与人群画像血缘生成以 A3 为目标的痛点解决型 AI 视频段。"
+  default_prompt: "Use $ai-planting-video to continue the lineage-grounded planting-video chain for this SKU."

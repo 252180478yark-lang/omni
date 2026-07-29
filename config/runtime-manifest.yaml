@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "canonical_runtime": {
+    "runtime_id": "omni-main",
+    "compose_project": "omni",
+    "worktree_role": "primary",
+    "database": "omni_vibe_db",
+    "scheduler_owner": true
+  },
+  "identity_labels": {
+    "runtime_id": "io.omni.runtime_id",
+    "source_commit": "org.opencontainers.image.revision",
+    "source_fingerprint": "io.omni.source_fingerprint",
+    "worktree": "io.omni.worktree_root",
+    "scheduler_role": "io.omni.scheduler_role"
+  },
+  "worktree_defaults": {
+    "long_lived_runtime": "deny",
+    "scheduler_enabled": false,
+    "database_pattern": "omni_verify_{change_id}_{sha8}",
+    "shared_writable_volumes": "deny"
+  },
+  "database": {
+    "connection_env": [
+      "DATABASE_URL"
+    ],
+    "read_only_env": "OMNI_DB_READ_ONLY"
+  },
+  "scheduler": {
+    "implicit_services": [
+      "knowledge-engine"
+    ],
+    "enable_env": [
+      "ENABLE_SCHEDULER",
+      "OMNI_SCHEDULER_ENABLED",
+      "SCHEDULER_ENABLED",
+      "CRON_ENABLED"
+    ]
+  },
+  "writable_mount_targets": [
+    "app/data",
+    "app/agent_state",
+    "app/data/uploads",
+    "var/lib/postgresql/data"
+  ],
+  "compose_files": [
+    "docker-compose.yml",
+    "docker-compose.dev.yml",
+    "services/docker-compose.sp1-sp4.yml",
+    "services/infra-core/docker-compose.infra.yml"
+  ],
+  "services": {
+    "postgres": {
+      "required": true,
+      "published_ports": [5432],
+      "health": {"kind": "docker"},
+      "source_paths": [
+        "services/infra-core/postgres"
+      ]
+    },
+    "redis": {
+      "required": true,
+      "published_ports": [6379],
+      "health": {"kind": "docker"},
+      "source_paths": [
+        "services/infra-core/redis"
+      ]
+    },
+    "frontend": {
+      "required": true,
+      "published_ports": [3000],
+      "health": {"kind": "http", "path": ""},
+      "source_paths": [
+        "frontend/Dockerfile",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/server.ts",
+        "frontend/src"
+      ]
+    },
+    "ai-provider-hub": {
+      "required": true,
+      "published_ports": [8001],
+      "health": {"kind": "http", "path": "health"},
+      "source_paths": [
+        "services/ai-provider-hub/Dockerfile",
+        "services/ai-provider-hub/pyproject.toml",
+        "services/ai-provider-hub/app"
+      ]
+    },
+    "knowledge-engine": {
+      "required": true,
+      "published_ports": [8002],
+      "health": {"kind": "http", "path": "health"},
+      "scheduler_default": true,
+      "source_paths": [
+        "services/knowledge-engine/Dockerfile",
+        "services/knowledge-engine/pyproject.toml",
+        "services/knowledge-engine/app",
+        "services/knowledge-engine/config",
+        "migrations",
+        "scripts/apply_migrations.py"
+      ]
+    },
+    "scout-agent": {
+      "required": true,
+      "published_ports": [8009],
+      "health": {"kind": "http", "path": "health"},
+      "source_paths": [
+        "services/scout-agent/Dockerfile",
+        "services/scout-agent/pyproject.toml",
+        "services/scout-agent/app",
+        "services/scout-agent/catalog",
+        "services/scout-agent/scripts"
+      ]
+    },
+    "identity-service": {
+      "required": false,
+      "source_paths": [
+        "services/identity-service"
+      ]
+    },
+    "news-aggregator": {
+      "required": false,
+      "source_paths": [
+        "services/news-aggregator"
+      ]
+    },
+    "video-analysis": {
+      "required": false,
+      "source_paths": [
+        "services/video-analysis"
+      ]
+    },
+    "livestream-analysis": {
+      "required": false,
+      "source_paths": [
+        "services/livestream-analysis"
+      ]
+    },
+    "ad-review-service": {
+      "required": false,
+      "published_ports": [8008],
+      "health": {"kind": "http", "path": "health"},
+      "source_paths": [
+        "services/ad-review-service"
+      ]
+    }
+  }
+}

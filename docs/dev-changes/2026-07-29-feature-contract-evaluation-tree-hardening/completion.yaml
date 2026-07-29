@@ -1,0 +1,86 @@
+schema_version: 2
+change_id: 2026-07-29-feature-contract-evaluation-tree-hardening
+state: COMPLETE
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  summary: Added source-labelled YAML parsing so contracts can be read from an immutable Git tree or index without writing temporary worktree files.
+  paths:
+  - .agents/skills/omni-feature-development/scripts/dev_contract.py
+- id: ACT-002
+  planned_change_id: CHG-002
+  summary: Bound contract reads and archival delivery checks to the same evaluation tree as the changed-file source, including an explicit index mode.
+  paths:
+  - scripts/check_feature_contracts.py
+- id: ACT-003
+  planned_change_id: CHG-003
+  summary: Added regression coverage for staged deletion, index isolation, named-head isolation, CLI selection, and source-labelled YAML parsing.
+  paths:
+  - tests/test_feature_contracts.py
+  - .agents/skills/omni-feature-development/tests/test_dev_contract.py
+contract_delta: []
+verification_results:
+- id: VER-001
+  command: python -B -X utf8 -m pytest -q tests/test_feature_contracts.py .agents/skills/omni-feature-development/tests/test_dev_contract.py
+  status: passed
+  exit_code: 0
+  evidence: 61 passed in 5.08s, including the index-deleted-contract and named-head regression cases.
+- id: VER-002
+  command: python -B -X utf8 -m pytest -q tests/test_feature_contracts.py -k "index_evaluation or evaluation_head"
+  status: passed
+  exit_code: 0
+  evidence: 5 passed and 37 deselected in 2.39s for the isolated index/head cases.
+graph_diff:
+  status: clean
+  snapshot_before: git:e534655124387655d6528960c67616269f68771c
+  snapshot_after: git-index:e534655124387655d6528960c67616269f68771c:feature-contract-evaluation-tree
+  added_nodes:
+  - service:dev_contract.read_yaml_text
+  - state:git.index.contract-evaluation
+  - state:git.evaluation-head.contract-evaluation
+  modified_nodes:
+  - service:feature_contracts.check_feature_contracts
+  removed_nodes: []
+  added_edges:
+  - from: service:feature_contracts.check_feature_contracts
+    to: state:git.index.contract-evaluation
+    relation: reads
+  - from: service:feature_contracts.check_feature_contracts
+    to: state:git.evaluation-head.contract-evaluation
+    relation: reads
+  - from: service:feature_contracts.check_feature_contracts
+    to: service:dev_contract.read_yaml_text
+    relation: parses
+  removed_edges: []
+  required_edges:
+  - from: ci:feature-contract-gate
+    to: service:feature_contracts.check_feature_contracts
+    relation: calls
+    status: present
+    evidence: The existing CI invocation remains unchanged and the gate public CLI stays compatible.
+  - from: service:feature_contracts.check_feature_contracts
+    to: state:git.index.contract-evaluation
+    relation: reads
+    status: present
+    evidence: test_cli_changed_files_mode_uses_index_for_contract_source passed.
+  - from: service:feature_contracts.check_feature_contracts
+    to: state:git.evaluation-head.contract-evaluation
+    relation: reads
+    status: present
+    evidence: test_named_evaluation_head_uses_tree_contract_not_worktree passed.
+  - from: service:feature_contracts.check_feature_contracts
+    to: service:dev_contract.read_yaml_text
+    relation: parses
+    status: present
+    evidence: The gate calls read_yaml_text for non-worktree sources and the helper test passed.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+rollback:
+  verified: true
+  evidence: The helper and gate changes are source-only and can be reverted together; direct unit-test callers retain the prior worktree default.
+final:
+  status: complete
+  completed_at: '2026-07-29T14:02:14Z'
+  completed_by: codex
+  summary: Contract evaluation now reads the declared Git source instead of mutable worktree copies for index and CI ref modes.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "AI Soft Ad Video"
+  short_description: "Lineage-grounded O/A1 AI soft ad videos."
+  default_prompt: "Use $ai-soft-ad-video to generate a lineage-grounded O/A1 AI soft ad video for this SKU."

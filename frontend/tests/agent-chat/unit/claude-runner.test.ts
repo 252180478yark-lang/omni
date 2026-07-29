@@ -38,6 +38,18 @@ describe('claude-runner', () => {
       expect(idx).toBeGreaterThan(-1)
       expect(args[idx + 1]).toBe('Bash(ls),mcp__omni__list_skus')
     })
+
+    it('passes effort to claude cli', () => {
+      const args = buildSpawnArgs({
+        prompt: 'think carefully',
+        mcpConfigPath: '/tmp/mcp.json',
+        effort: 'high',
+      })
+
+      const idx = args.indexOf('--effort')
+      expect(idx).toBeGreaterThan(-1)
+      expect(args[idx + 1]).toBe('high')
+    })
   })
 
   describe('parseStreamChunks', () => {

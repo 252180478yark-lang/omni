@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "status": "draft",
+  "lineage_status": "local_only",
+  "compiled_brief_path": "",
+  "sku_id": "",
+  "matrix_run_id": null,
+  "audience_record_id": null,
+  "audience_pack_id": null,
+  "portrait_id": null,
+  "intent": "planting",
+  "audience_pack_size": null,
+  "project_decisions": [],
+  "sources": [
+    {
+      "source_id": "",
+      "source_type": "sku",
+      "label": ""
+    }
+  ],
+  "content_types": [
+    {
+      "code": "",
+      "name": "",
+      "watch_value": "",
+      "purchase_question": ""
+    }
+  ],
+  "scripts": [
+    {
+      "item_no": 1,
+      "script_id": null,
+      "type_code": "",
+      "title": "",
+      "duration_s": 0,
+      "audience_state": "",
+      "pain_point": "",
+      "scene": "",
+      "hook_3s": "",
+      "product_entry": "",
+      "fact_boundary": "",
+      "beats": [
+        {"order": 1, "time": "0-3s", "action": "", "copy": "", "product_action": ""},
+        {"order": 2, "time": "", "action": "", "copy": "", "product_action": ""},
+        {"order": 3, "time": "", "action": "", "copy": "", "product_action": ""},
+        {"order": 4, "time": "", "action": "", "copy": "", "product_action": ""},
+        {"order": 5, "time": "", "action": "", "copy": "", "product_action": ""}
+      ],
+      "claims": [
+        {"text": "", "source_id": "", "status": "pending"}
+      ]
+    }
+  ],
+  "blocked_claims": [],
+  "validation": {
+    "validated_at": null,
+    "validator_version": "1.0",
+    "passed": false,
+    "errors": []
+  }
+}

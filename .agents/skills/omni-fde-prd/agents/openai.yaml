@@ -1,0 +1,4 @@
+interface:
+  display_name: "omni FDE 需求落地官"
+  short_description: "结合 omni 现状，把模糊需求变成研发可开工的 PRD"
+  default_prompt: "请使用 $omni-fde-prd 先核查 omni 的现有能力，再把我的需求整理成可实施、可验收的 PRD。"

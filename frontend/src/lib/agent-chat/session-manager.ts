@@ -128,12 +128,12 @@ export class SessionManager extends EventEmitter {
   private findOldest(): string | null {
     let oldestId: string | null = null
     let oldestTime = Infinity
-    for (const [id, s] of this.sessions) {
+    this.sessions.forEach((s, id) => {
       if (s.lastActiveAt < oldestTime) {
         oldestTime = s.lastActiveAt
         oldestId = id
       }
-    }
+    })
     return oldestId
   }
 

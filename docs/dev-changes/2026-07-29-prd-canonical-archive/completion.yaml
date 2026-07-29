@@ -1,0 +1,120 @@
+schema_version: 1
+change_id: 2026-07-29-prd-canonical-archive
+state: COMPLETE
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  paths:
+  - AGENTS.md
+  summary: 将新 PRD 的唯一归档、双格式配对、索引和历史兼容规则写入根指令。
+- id: ACT-002
+  planned_change_id: CHG-002
+  paths:
+  - .agents/skills/omni-fde-prd/SKILL.md
+  - .agents/skills/omni-fde-prd/evals/evals.json
+  summary: 修复 validator 路径并把固定目录、不可变版本、双格式发布和交付汇报写入 FDE PRD Skill 与评测。
+- id: ACT-003
+  planned_change_id: CHG-003
+  paths:
+  - .agents/skills/omni-fde-prd/scripts/publish_prd.py
+  - .agents/skills/omni-fde-prd/tests/test_publish_prd.py
+  summary: 新增确定性发布/检查器及覆盖发布、幂等、冲突、元数据、哈希漂移和孤立文件的测试。
+- id: ACT-004
+  planned_change_id: CHG-004
+  paths:
+  - docs/prds/README.md
+  - docs/prds/catalog.json
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.md
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.pdf
+  summary: 建立统一索引并将当前 v1.1 总 PRD 作为第一份同名、同版本、带哈希的标准归档对。
+contract_delta:
+- description: VER-006 使用的 Python 可执行路径改为本工作区依赖加载器返回的实际 bundled runtime 路径。
+  reason: 合同锁定时记录的旧 runtime 路径在当前环境不存在。
+  effect: 只修正验证命令入口；pypdf 的 35 页与非空页断言、范围和验收含义不变。
+  accepted: true
+verification_results:
+- id: VER-001
+  command: python -X utf8 scripts/check_agent_policy.py
+  status: passed
+  exit_code: 0
+  evidence: AGENTS.md 12273/16384 bytes；动态数字与 Skill 引用有效。
+- id: VER-002
+  command: python -X utf8 E:/agent/omni-system/brain/codex/skills/.system/skill-creator/scripts/quick_validate.py .agents/skills/omni-fde-prd
+  status: passed
+  exit_code: 0
+  evidence: Skill is valid；新任务只读前向测试确认发布器路径与仓库根要求无阻塞歧义。
+- id: VER-003
+  command: python -B -m pytest -q -p no:cacheprovider .agents/skills/omni-fde-prd/tests/test_publish_prd.py
+  status: passed
+  exit_code: 0
+  evidence: 5 passed in 0.11s；覆盖发布、幂等、同版本冲突、元数据/PDF 无效、哈希漂移与孤立文件。
+- id: VER-004
+  command: python -X utf8 .agents/skills/omni-fde-prd/scripts/publish_prd.py check --root docs/prds
+  status: passed
+  exit_code: 0
+  evidence: 1 PRD version，1 Markdown，1 PDF；全部配对、登记且哈希一致。
+- id: VER-005
+  command: python -X utf8 .agents/skills/omni-fde-prd/scripts/validate_prd.py docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.md --strict
+  status: passed
+  exit_code: 0
+  evidence: status=READY，strict=True，errors=0，warnings=0。
+- id: VER-006
+  command: C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe -c "from pypdf import PdfReader; p=PdfReader(r'docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.pdf'); assert len(p.pages)==35; assert all((x.extract_text() or '').strip() for x in p.pages); print('35 nonblank pages')"
+  status: passed
+  exit_code: 0
+  evidence: pypdf 确认 35 页全部含文本；Poppler 渲染 35 页并检查 4 张总览及第 7、21、34 页，无裁切、重叠或空白页。
+graph_diff:
+  status: clean
+  snapshot_before: prd-publication:v0:docs-plans+output-pdf:no-catalog
+  snapshot_after: prd-publication:v1:docs-prds:paired+indexed+sha256
+  added_nodes:
+  - workflow:prd-publication
+  - catalog:docs-prds
+  modified_nodes:
+  - codex:project-agents
+  - skill:omni-fde-prd
+  - prd:omni-fde-system-convergence-v1.1
+  removed_nodes: []
+  added_edges:
+  - from: skill:omni-fde-prd
+    to: workflow:prd-publication
+    relation: invokes
+  - from: workflow:prd-publication
+    to: catalog:docs-prds
+    relation: updates
+  - from: catalog:docs-prds
+    to: prd:omni-fde-system-convergence-v1.1
+    relation: indexes-pair
+  removed_edges: []
+  required_edges:
+  - from: codex:project-agents
+    to: skill:omni-fde-prd
+    relation: routes
+    status: present
+    evidence: AGENTS.md routes PRD work to the Skill and declares docs/prds pairing.
+  - from: skill:omni-fde-prd
+    to: workflow:prd-publication
+    relation: invokes
+    status: present
+    evidence: SKILL.md contains the full publish and check commands from repository root.
+  - from: workflow:prd-publication
+    to: catalog:docs-prds
+    relation: updates
+    status: present
+    evidence: publish_prd.py atomically generates catalog.json and README.md; 5 tests pass.
+  - from: catalog:docs-prds
+    to: prd:omni-fde-system-convergence-v1.1
+    relation: indexes-pair
+    status: present
+    evidence: catalog check reports one paired version and matching SHA-256 values.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+rollback:
+  verified: true
+  evidence: 旧 Markdown 与归档副本 SHA-256 均为 FDDFE0...6921，旧 PDF 与归档副本均为 1577CF...EF3；无数据写入，回退仅需撤销规则/Skill并移除本次新增归档路径。
+final:
+  status: complete
+  completed_at: '2026-07-28T19:35:04Z'
+  completed_by: codex
+  summary: 已建立 docs/prds 唯一入口、不可变 Markdown/PDF 成对发布器和索引，并完成第一份 READY 总 PRD 标准归档。

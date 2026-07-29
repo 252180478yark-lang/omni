@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import type { Readable } from 'node:stream'
-import type { ClaudeStreamChunk } from './types'
+import type { BrainEffortLevel, ClaudeStreamChunk } from './types'
 
 // ── L0-1（蓝图 §4）：stream-json 运行时形状校验 ────────────────────────────────
 // CLI 上游一改 stream-json 格式 → 原来裸 JSON.parse 静默崩。这里做轻量运行时校验：
@@ -48,6 +48,8 @@ export interface SpawnOptions {
   maxTurns?: number
   /** claude --model alias 或 full name(e.g. 'sonnet' / 'claude-opus-4-7'). 默认不传 */
   model?: string
+  /** claude --effort: low / medium / high / xhigh / max */
+  effort?: BrainEffortLevel
   /** claude --append-system-prompt 追加到默认 system prompt 后面;不替换 */
   appendSystemPrompt?: string
 }
@@ -76,6 +78,9 @@ export function buildSpawnArgs(opts: SpawnOptions): string[] {
   }
   if (opts.model) {
     args.push('--model', opts.model)
+  }
+  if (opts.effort) {
+    args.push('--effort', opts.effort)
   }
   if (opts.appendSystemPrompt && opts.appendSystemPrompt.trim().length > 0) {
     args.push('--append-system-prompt', opts.appendSystemPrompt)

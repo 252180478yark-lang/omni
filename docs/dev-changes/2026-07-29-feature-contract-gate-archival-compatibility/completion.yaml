@@ -1,0 +1,75 @@
+schema_version: 2
+change_id: 2026-07-29-feature-contract-gate-archival-compatibility
+state: COMPLETE
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  paths:
+  - scripts/check_feature_contracts.py
+  summary: Allow an archival actual path only when it is a concrete tracked file in Git HEAD, otherwise retain the current-diff violation.
+- id: ACT-002
+  planned_change_id: CHG-002
+  paths:
+  - tests/test_feature_contracts.py
+  summary: Cover both the accepted HEAD-tracked historical path and the rejected untracked historical path while retaining the bidirectional current-diff regression.
+contract_delta:
+- description: Refined the archival exception from an implicit local HEAD lookup to an explicit evaluation-head lookup, and applied actual-path delivery proof to valid contract-only diffs as well as protected diffs.
+  reason: The implementation audit showed that CI's --head can differ from the checkout's local HEAD and that leaving contract-only diffs unchecked would retain a path-evidence gap.
+  effect: The locked file scope is unchanged; the gate is stricter for untracked, missing, malformed, and contract-only actual paths while still accepting the verified historical S0/P0 records.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_feature_contracts.py
+  status: passed
+  exit_code: 0
+  evidence: 38 passed, including HEAD-tracked archival acceptance, untracked rejection, contract-only rejection, and explicit evaluation-head regression coverage.
+- id: VER-002
+  command: python -B -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-07-29-feature-contract-gate-archival-compatibility/impact.yaml --completion docs/dev-changes/2026-07-29-feature-contract-gate-archival-compatibility/completion.yaml
+  status: passed
+  exit_code: 0
+  evidence: Contract validator returned OK at VERIFYING after real actual-change evidence and required verification results were recorded.
+- id: VER-003
+  command: python -B scripts/check_feature_contracts.py --changed-files-file <current-staged-file-list>
+  status: passed
+  exit_code: 0
+  evidence: A temporary UTF-8 list generated from git diff --cached --name-only produced 91 protected files covered by 6 changed COMPLETE contracts at the current evaluation HEAD.
+graph_diff:
+  status: clean
+  snapshot_before: git:e534655124387655d6528960c67616269f68771c
+  snapshot_after: git-index-tree:2522e18d28dd3c5f0fe3ee79e5dbd32ac09f86fa
+  added_nodes:
+  - source:git-head-tree
+  modified_nodes:
+  - service:feature-contract-gate
+  - state:contract-gate-report
+  removed_nodes: []
+  added_edges:
+  - service:feature-contract-gate -> source:git-head-tree (reads)
+  removed_edges: []
+  required_edges:
+  - from: ci:feature-contract-gate
+    to: service:feature-contract-gate
+    relation: invokes
+    status: present
+    evidence: The CLI continues to call check_feature_contracts for every supplied diff source.
+  - from: service:feature-contract-gate
+    to: source:git-head-tree
+    relation: reads
+    status: present
+    evidence: git_tracked_files reads the exact supplied evaluation tree with git ls-tree before allowing an archival actual path.
+  - from: service:feature-contract-gate
+    to: state:contract-gate-report
+    relation: emits
+    status: present
+    evidence: The gate returns violations for every actual path that is neither in the diff nor the evaluation tree.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+rollback:
+  verified: true
+  evidence: The regression suite covers the former strict behavior for missing and untracked paths; reverting the two gate files and this contract restores the prior current-diff-only policy without persistent-data recovery.
+final:
+  status: complete
+  completed_at: '2026-07-29T13:24:43Z'
+  completed_by: codex
+  summary: The feature-contract gate now allows historical actual paths only when the exact path is tracked at the supplied evaluation head, while preserving current protected-diff coverage and failing closed for untracked, missing, malformed, or unavailable historical paths.

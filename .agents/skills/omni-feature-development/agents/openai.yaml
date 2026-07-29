@@ -1,0 +1,4 @@
+interface:
+  display_name: "Omni Feature Development"
+  short_description: "约束 Omni 新功能全链路开发并验证上下游合同完整性"
+  default_prompt: "Use $omni-feature-development to implement this Omni feature with an impact contract, full-chain verification, and a completion contract."

@@ -1,0 +1,97 @@
+{
+  "skill_name": "omni-fde-prd",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "我想让直播复盘结束后自动提取三条下场动作，老板确认后建 observation，开播前推企业微信，下一次复盘还能反查有没有执行。结合 omni 现有能力出一份开发可直接开工的 PRD，不写代码。",
+      "expected_output": "select omni-fde-prd; inspect live review, observation and notification contracts before designing",
+      "files": [],
+      "expectations": [
+        "selects omni-fde-prd",
+        "uses read-only system discovery and separates current facts from proposed additions",
+        "reuses generate_live_review, schedule_observation and notification capabilities when proven",
+        "does not modify product code or send a real message",
+        "produces traceable FR and AC plus rollout and rollback"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "把手机端 Human Gate 审批接进 omni：企业微信提醒后打开 PWA，看改前改后，十分钟内批准或驳回，全留审计。先查 desktop、PWA、nginx、Tailscale 和现有审批机制，给 V1 PRD。",
+      "expected_output": "select omni-fde-prd; verify the existing approval boundary and design a secure V1",
+      "files": [],
+      "expectations": [
+        "selects omni-fde-prd",
+        "does not assume mobile approval already exists",
+        "covers authentication, expiry, replay prevention, idempotency, audit and rollback",
+        "separates notification delivery from authorization",
+        "stops for a decision if the identity or secret boundary cannot be derived"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "sku-pipeline 每个产物收到差评后，自动给一到三条规则草稿，老板在 insights 点亮后下次才生效。结合现有反馈飞轮做落地 PRD，别重复造表。",
+      "expected_output": "select omni-fde-prd; map the current feedback-to-rule bridge and specify only proven gaps",
+      "files": [],
+      "expectations": [
+        "selects omni-fde-prd",
+        "checks OutputFeedback, audit feedback fields, complaint listing and prompt rule tools",
+        "keeps rules disabled until an explicit human action",
+        "marks every missing endpoint, table or field as proposed rather than current",
+        "includes deduplication, provenance, failure recovery and acceptance tests"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "给 SKU-375753-0001 写一条种草脚本。",
+      "expected_output": "select the existing script-writing business skill, not omni-fde-prd",
+      "files": [],
+      "expectations": [
+        "does not select omni-fde-prd",
+        "routes to the existing omni business skill for script writing"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "直接修掉 generate_video_segments 缺产品图却还能继续生成的问题。",
+      "expected_output": "enter engineering implementation or diagnosis; do not force a PRD",
+      "files": [],
+      "expectations": [
+        "does not select omni-fde-prd unless the user separately asks for a PRD",
+        "does not add a product-discovery questionnaire before the requested engineering work"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "用 RICE 给这些需求排优先级并做季度路线图。",
+      "expected_output": "select product management capability, not omni-fde-prd",
+      "files": [],
+      "expectations": [
+        "does not select omni-fde-prd",
+        "does not perform repository discovery without an omni implementation request"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "这份 PRD 内容已经定了，帮我重组结构、统一措辞并润色。",
+      "expected_output": "select document coauthoring or editing capability, not omni-fde-prd",
+      "files": [],
+      "expectations": [
+        "does not select omni-fde-prd",
+        "preserves the existing decisions instead of reopening system discovery"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "结合 omni 现状给这个需求生成 READY PRD，并把 Markdown 和 PDF 都保存好，以后我从固定目录查。",
+      "expected_output": "select omni-fde-prd; validate the final Markdown and publish an immutable Markdown/PDF pair into the canonical PRD archive",
+      "files": [],
+      "expectations": [
+        "selects omni-fde-prd",
+        "publishes the Markdown and PDF with the same basename and version under docs/prds/<prd-id>/",
+        "uses publish_prd.py to update catalog.json and README.md rather than editing the index manually",
+        "does not overwrite an existing version and keeps legacy docs/plans and output/pdf files in place",
+        "reports the catalog plus both artifact paths and validation results"
+      ]
+    }
+  ]
+}

@@ -43,6 +43,10 @@ dependencies = [
   "faster-whisper>=1.0.0",
 ]
 
+[tool.setuptools.packages.find]
+include = ["app", "app.*"]
+exclude = ["config", "config.*", "scripts", "scripts.*", "tests", "tests.*"]
+
 [project.optional-dependencies]
 harvester = [
   "playwright>=1.40.0",

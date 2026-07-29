@@ -1,0 +1,296 @@
+schema_version: 1
+kind: omni_prd_implementation_status
+
+document:
+  prd_id: 2026-07-29-omni-fde-system-convergence-master-prd
+  prd_version: v1.2
+  prd_status: READY
+  source_markdown: 2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md
+
+generation:
+  mode: bootstrap_initialization_snapshot
+  generated_at: "2026-07-29T22:46:59+08:00"
+  generated_by: codex_audit_bootstrap
+  generator_implementation: planned
+  manual_completion_allowed: false
+  note: >-
+    This file initializes the machine-generated target format. It records only
+    evidence observed in the named audit snapshot. It is not a completion
+    certificate and must not be edited later to make a slice appear complete.
+
+audit_snapshot:
+  ref: audit:system-convergence:2026-07-29T22:46:59+08:00
+  temporal_scope: point_in_time
+  dynamic_values_are_runtime_truth: false
+  repository:
+    root: E:/agent/omni
+    branch: feat/audience-portrait-brief
+    head: e534655124387655d6528960c67616269f68771c
+    origin_main_tracking_merge_base: 33c5728a38b8393bb5f59da7bf9d724a6862166c
+    origin_main_tracking_divergence:
+      ahead: 326
+      behind: 0
+    dirty: true
+    status_counts:
+      expanded: 448
+      staged: 107
+      unstaged: 137
+      untracked: 231
+    worktree_count: 35
+    local_branch_count: 31
+  observed_runtime:
+    migration_baseline:
+      status: ready
+      blockers: []
+    mcp_doctor:
+      status: passed
+      registered_tools_at_snapshot: 162
+    development_governance:
+      delivery_state: verified_not_delivered
+      reason: >-
+        AGENTS.md, the feature-development Skill and hooks exist in the index or
+        worktree but do not exist in the audited HEAD commit.
+    concurrent_runtime:
+      status: conflict_observed
+      reason: >-
+        A second Knowledge Engine runtime on port 8003 was observed sharing the
+        canonical database, knowledge volume and cron responsibilities.
+    frontend_runtime:
+      status: stale_observed
+      reason: Running frontend bundle did not contain a later source contract change.
+    feature_health:
+      status: partial
+      reason: Visible features include dependencies that were not running or fresh.
+    human_gate:
+      status: blocking_compatibility_path_observed
+      reason: Existing compatibility wrapper can poll inside a request for up to 21600 seconds.
+
+projection_policy:
+  allowed_slice_statuses:
+    - NOT_STARTED
+    - IN_PROGRESS
+    - VERIFIED_NOT_DELIVERED
+    - COMPLETE
+    - BLOCKED
+    - UNKNOWN
+  contract_schema_for_new_changes: 3
+  legacy_contract_schemas_read_only:
+    - 1
+    - 2
+  external_delivery_attestation_required: true
+  receipt_must_be_outside_subject_commit: true
+  effective_complete_requires:
+    - contract_state_graph_diff_ready
+    - subject_commit_exists
+    - subject_commit_reachable_from_target_ref
+    - actual_diff_matches_scope_manifest
+    - required_checks_passed_for_subject_commit
+    - external_delivery_receipt_verified
+  blocked_requires:
+    - deterministic_blocker_evidence
+  unknown_is_not_complete: true
+  historical_receipts_are_immutable: true
+
+current:
+  slice_id: S0.5
+  status: IN_PROGRESS
+  completion_claimed: false
+  reason: >-
+    Migration baseline is ready and repository hygiene has partial local evidence,
+    but governance assets and verified cleanup are not yet represented by an
+    externally attested reachable delivery commit. The current branch is also
+    326 commits ahead of the local origin/main tracking ref, so its historical
+    convergence cannot be silently folded into one new-feature delivery receipt.
+  next_required_outcome: >-
+    Create an immutable S0.5 candidate from the audited HEAD, preserve unrelated
+    index/worktree changes, reconcile the canonical target-ref history separately,
+    and generate the first externally verified DeliveryReceipt only after a trusted
+    default-branch post-merge push.
+  evidence_refs:
+    - EVID-GIT-HEAD
+    - EVID-GIT-STATUS
+    - EVID-MIGRATION-READY
+    - EVID-GOVERNANCE-NOT-IN-HEAD
+    - EVID-GIT-DIVERGENCE
+
+evidence:
+  - id: EVID-GIT-HEAD
+    kind: git
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: repository_head
+    result: e534655124387655d6528960c67616269f68771c
+    source: git rev-parse HEAD
+  - id: EVID-GIT-STATUS
+    kind: git
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: dirty_worktree
+    result: dirty
+    source: git status --porcelain=v1 -uall
+  - id: EVID-MIGRATION-READY
+    kind: runtime_probe
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: p0_migration_baseline
+    result: ready
+    source: p0_preflight_video_production
+  - id: EVID-GOVERNANCE-NOT-IN-HEAD
+    kind: git
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: governance_delivery
+    result: verified_not_delivered
+    source: git status plus git cat-file -e HEAD:<critical-path>
+  - id: EVID-GIT-DIVERGENCE
+    kind: git
+    observed_at: "2026-07-29T23:22:00+08:00"
+    subject: current_branch_vs_origin_main_tracking_ref
+    result: ahead_326_behind_0
+    source: git merge-base HEAD origin/main plus git rev-list --left-right --count origin/main...HEAD
+  - id: EVID-MCP-DOCTOR
+    kind: runtime_probe
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: mcp_registry
+    result: passed
+    source: python -m app.mcp.doctor
+  - id: EVID-RUNTIME-CONFLICT
+    kind: runtime_probe
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: parallel_runtime_resources
+    result: conflict_observed
+    source: Docker container labels, mounts and environment inspection
+  - id: EVID-FRONTEND-STALE
+    kind: runtime_probe
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: frontend_build_identity
+    result: stale_observed
+    source: image creation time, source mtime and running bundle inspection
+  - id: EVID-HEALTH-PARTIAL
+    kind: runtime_probe
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: visible_feature_dependencies
+    result: partial
+    source: Docker, port and BFF health probes
+  - id: EVID-HUMAN-GATE-BLOCKING
+    kind: code
+    observed_at: "2026-07-29T22:46:59+08:00"
+    subject: approval_request_lifecycle
+    result: blocking_compatibility_path_observed
+    source: app/mcp/audit.py plus app/mcp/human_gate.py plus inbox_service.py
+
+slices:
+  - id: S0
+    title: 安全与基线复核
+    status: IN_PROGRESS
+    completion_claimed: false
+    evidence_refs:
+      - EVID-MIGRATION-READY
+      - EVID-GIT-STATUS
+    remaining:
+      - Assign every retained dirty path to a change, owner or recoverable archive.
+      - Verify repository hygiene without deleting client or business data.
+  - id: S0.5
+    title: 交付真值收口
+    status: IN_PROGRESS
+    completion_claimed: false
+    evidence_refs:
+      - EVID-GOVERNANCE-NOT-IN-HEAD
+      - EVID-GIT-DIVERGENCE
+    remaining:
+      - Implement contract schema v3 delivery intent.
+      - Deliver critical governance assets in an immutable candidate commit without changing the shared index/worktree.
+      - Reconcile the 326-commit default-branch divergence as a separate historical integration task.
+      - Generate and verify the first external DeliveryReceipt from a trusted default-branch post-merge push.
+  - id: S1
+    title: 治理底座与风险分级
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S1.5
+    title: 并发运行隔离与Migration单路径
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs:
+      - EVID-RUNTIME-CONFLICT
+  - id: S2
+    title: 风险感知本地过程闸门
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S2.5
+    title: 真健康、错误语义与非阻塞审批
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs:
+      - EVID-FRONTEND-STALE
+      - EVID-HEALTH-PARTIAL
+      - EVID-HUMAN-GATE-BLOCKING
+  - id: S3
+    title: FeatureDefinition与静态图核心
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S4
+    title: Planned/fact、Issue与CI warning
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S5
+    title: 候选功能接入共创
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S6
+    title: 真实小功能试点与block校准
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S7
+    title: 图谱API与统一系统中台静态面
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S8
+    title: 运行追踪事件脊柱
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S9
+    title: 执行微动画、中文解释与四层雷达
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S10
+    title: Host Bridge与Agent合同
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S11
+    title: 前端收敛
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S12
+    title: 后端单真源
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S13
+    title: 兼容面与客户端退役
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+  - id: S14
+    title: 全仓推广
+    status: NOT_STARTED
+    completion_claimed: false
+    evidence_refs: []
+
+refresh_contract:
+  future_generator_inputs:
+    - docs/dev-changes/*/impact.yaml
+    - docs/dev-changes/*/completion.yaml
+    - external DeliveryReceipt artifacts
+    - git target-ref reachability and scoped diff
+    - runtime allocation and build manifests
+    - graph snapshots, health probes and trace evidence
+  update_rule: >-
+    Generate a new snapshot from source evidence. Never change a slice to COMPLETE
+    solely because this file, a PRD sentence or a completion YAML says complete.
