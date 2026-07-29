@@ -46,7 +46,7 @@ def _bridge_facts() -> dict:
             "record": {"id": "00000000-0000-0000-0000-000000000001", "name": "family dinner"},
             "portrait": {
                 "id": "00000000-0000-0000-0000-000000000002",
-                "portrait_md": "family dinner is a practical nightly ritual",
+                "portrait_md": "family dinner is a practical nightly ritual [KB: test]",
             },
         },
         "pack_calibration": {
@@ -58,7 +58,9 @@ def _bridge_facts() -> dict:
             "sku": {"owner_selling_points": "organic soy sauce"},
             "matrix": {"matrix_md": "brew facts"},
             "record": {"name": "family dinner"},
-            "portrait": {"portrait_md": "family dinner is a practical nightly ritual"},
+            "portrait": {
+                "portrait_md": "family dinner is a practical nightly ritual [KB: test]"
+            },
         },
         "pack_calibration_catalog": {
             "pack_md": "weeknight home cooks",
@@ -84,11 +86,11 @@ def _pain_solution_bridge() -> dict:
     return {
         "audience_segment": "family dinner cooks",
         "trigger_scene": "weekday dinner before plating",
-        "pain_point": "the meal is nearly done but still tastes unfinished",
-        "pain_consequence": "the family dinner feels rushed and flat",
-        "product_action": "add soy sauce before plating",
-        "visible_result": "the hot dish is glazed and ready for the table",
-        "belief_shift": "a careful finish does not need a complicated recipe",
+        "pain_point": "for a family dinner, I am worried about choosing seasoning without a clear fact",
+        "pain_consequence": "the family dinner becomes a moment of repeated label checking before cooking",
+        "product_action": "add organic soy sauce before plating",
+        "visible_result": "camera close-up of the organic soy sauce bottle while pouring it",
+        "belief_shift": "from a family dinner concern to choosing organic soy sauce by its stated fact",
         "relevance_module": "M1",
         "justification_module": "M3",
         "portrait_evidence": [
@@ -98,7 +100,11 @@ def _pain_solution_bridge() -> dict:
             {"field": "pack_md", "value": "weeknight home cooks"}
         ],
         "product_evidence": [
-            {"source": "sku", "field": "owner_selling_points", "value": "organic"}
+            {
+                "source": "sku",
+                "field": "owner_selling_points",
+                "value": "organic soy sauce",
+            }
         ],
     }
 
@@ -113,7 +119,7 @@ def _truth_snapshot() -> dict:
             "id": "00000000-0000-0000-0000-000000000002",
             "sku_id": "SKU-1",
             "audience_record_id": "00000000-0000-0000-0000-000000000001",
-            "portrait_md": "family dinner is a practical nightly ritual",
+            "portrait_md": "family dinner is a practical nightly ritual [KB: test]",
             "status": "adopted",
         },
         "product_reference_manifest": {"assets": [{"id": "ref-1", "file_url": "/a.png"}]},
@@ -131,7 +137,7 @@ def _content_spec() -> dict:
         "duration_seconds": 12,
         "cast_count": 1,
         "scene_count": 1,
-        "product_actions": ["add soy sauce before plating"],
+        "product_actions": ["add organic soy sauce before plating"],
         "spoken_copy_goal": "完整口播",
         "pain_solution_bridge": _pain_solution_bridge(),
         "upstream_fact_hash": context["upstream_fact_hash"],
@@ -489,8 +495,8 @@ def test_p0_candidate_gate_and_prompt_approval_bind_facts_and_refs() -> None:
     action = spec["spec"]["product_actions"][0]
     candidate.update(
         {
-            "body": "Add soy sauce before plating, then put the hot meal on the table.",
-            "spoken_copy": "Add soy sauce before plating.",
+                "body": "Add organic soy sauce before plating, then put the hot meal on the table.",
+                "spoken_copy": "Add organic soy sauce before plating.",
             "product_action": action,
             "factual_claims": ["organic soy sauce"],
             "content_spec_hash": spec["spec_hash"],
@@ -794,3 +800,215 @@ def test_product_reference_qa_never_passes_when_all_frames_are_unavailable(
     assert result["status"] == "unavailable"
     assert result["reason_codes"] == ["qa_frame_extract_failed"]
     assert all(item["status"] == "unavailable" for item in result["frame_checks"])
+
+
+class _IdentityLatchAcquire:
+    def __init__(self, conn) -> None:
+        self.conn = conn
+
+    async def __aenter__(self):
+        return self.conn
+
+    async def __aexit__(self, *_args) -> None:
+        return None
+
+
+class _IdentityLatchTransaction:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args) -> None:
+        return None
+
+
+class _IdentityLatchPool:
+    def __init__(self, conn) -> None:
+        self.conn = conn
+
+    def acquire(self):
+        return _IdentityLatchAcquire(self.conn)
+
+    async def execute(self, query: str, *args):
+        return await self.conn.execute(query, *args)
+
+
+class _IdentityLatchConn:
+    def __init__(self, qa_reports: list[dict] | None = None, *, order_status: str = "raw_qa") -> None:
+        self.qa_asset_ids: list[str] = []
+        self.order_status = order_status
+        self.qa_reports = qa_reports if qa_reports is not None else [
+            {
+                "passed": False,
+                "report": {
+                    "product_reference": {
+                        "reason_codes": ["label_text_different"],
+                    }
+                },
+            },
+            {"passed": True, "report": {"reason_codes": []}},
+        ]
+
+    def transaction(self):
+        return _IdentityLatchTransaction()
+
+    async def fetch(self, query: str, *args):
+        assert "FROM pipeline.production_qa_reports" in query
+        self.qa_asset_ids.append(str(args[1]))
+        return list(self.qa_reports)
+
+    async def execute(self, query: str, *args):
+        assert "INSERT INTO pipeline.production_qa_reports" in query
+        self.qa_reports.append({"report": json.loads(args[3]), "passed": args[4]})
+
+    async def fetchrow(self, query: str, *_args):
+        if "source.prompt_source" in query:
+            return {
+                "attempt_id": "attempt-1",
+                "raw_asset_id": "raw-locked",
+                "file_url": "must-not-be-read",
+                "prompt_source": {},
+                "snapshot": {},
+                "content_spec": {},
+                "order_status": self.order_status,
+            }
+        if "FROM pipeline.production_generation_attempts attempt" in query:
+            return {
+                "attempt_id": "attempt-1",
+                "raw_asset_id": "raw-locked",
+                "file_url": "must-not-be-read",
+                "script_id": "script-1",
+                "content_contract": {},
+            }
+        if "FROM pipeline.production_timelines timeline" in query:
+            return {
+                "timeline_id": "timeline-1",
+                "timeline_spec": {"raw_asset_id": "raw-locked"},
+                "timeline_hash": "timeline-hash",
+                "final_asset_id": "final-1",
+                "file_url": "must-not-be-read",
+                "script_id": "script-1",
+                "content_contract": {},
+            }
+        raise AssertionError(query)
+
+
+def test_raw_identity_latch_detects_nested_and_legacy_reason_codes() -> None:
+    assert workflow._product_identity_hard_failure_codes(
+        {"product_reference": {"reason_codes": ["label_text_different"]}}
+    ) == ["label_text_different"]
+    assert workflow._product_identity_hard_failure_codes(
+        {"reason_codes": ["packaging_different", "non_blocking"]}
+    ) == ["packaging_different"]
+
+
+def test_raw_identity_latch_blocks_same_asset_before_reqa(monkeypatch) -> None:
+    conn = _IdentityLatchConn()
+    monkeypatch.setattr(workflow, "get_pool", lambda: _IdentityLatchPool(conn))
+    monkeypatch.setattr(
+        workflow,
+        "resolve_reference_path",
+        lambda _value: (_ for _ in ()).throw(AssertionError("latched asset must not be re-QAed")),
+    )
+
+    result = asyncio.run(
+        workflow.run_raw_qa(production_order_id="order-1", attempt_id="attempt-1")
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "raw_asset_rejected_replacement_required",
+        "raw_asset_id": "raw-locked",
+        "reason_codes": ["label_text_different"],
+    }
+    assert conn.qa_asset_ids == ["raw-locked"]
+
+
+def test_raw_identity_latch_blocks_compose_and_final_qa_for_same_asset(monkeypatch) -> None:
+    conn = _IdentityLatchConn()
+    monkeypatch.setattr(workflow, "get_pool", lambda: _IdentityLatchPool(conn))
+
+    async def compose_context(_conn, _order_id: str, *, lock: bool = False):
+        return {
+            "order": {"status": "raw_passed", "contract_version": P0_CONTRACT_VERSION},
+            "truth": {"snapshot": {}},
+            "spec": {"spec": {}},
+        }
+
+    monkeypatch.setattr(workflow, "_load_context", compose_context)
+    compose = asyncio.run(
+        workflow.compose_final_video(production_order_id="order-1", attempt_id="attempt-1")
+    )
+    assert compose["error"] == "raw_asset_rejected_replacement_required"
+    assert compose["raw_asset_id"] == "raw-locked"
+
+    async def final_context(_conn, _order_id: str, *, lock: bool = False):
+        return {
+            "order": {"status": "final_qa", "contract_version": P0_CONTRACT_VERSION},
+            "truth": {"snapshot": {}},
+            "spec": {"spec": {}},
+        }
+
+    monkeypatch.setattr(workflow, "_load_context", final_context)
+    final = asyncio.run(workflow.run_final_qa(production_order_id="order-1"))
+    assert final["error"] == "raw_asset_rejected_replacement_required"
+    assert final["raw_asset_id"] == "raw-locked"
+    assert conn.qa_asset_ids == ["raw-locked", "raw-locked"]
+
+
+def test_raw_identity_latch_wins_when_semantic_qa_is_unavailable(tmp_path: Path, monkeypatch) -> None:
+    conn = _IdentityLatchConn(qa_reports=[])
+    monkeypatch.setattr(workflow, "get_pool", lambda: _IdentityLatchPool(conn))
+    monkeypatch.setattr(workflow, "resolve_reference_path", lambda _value: tmp_path / "raw.mp4")
+    (tmp_path / "raw.mp4").write_bytes(b"raw")
+    monkeypatch.setattr(workflow, "_ffprobe", lambda _path: {})
+    monkeypatch.setattr(workflow, "validate_media_probe", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(workflow, "_black_freeze_scan", lambda _path: {"black_detected": False, "freeze_detected": False})
+    monkeypatch.setattr(workflow, "_sha256_file", lambda _path: "raw-sha")
+
+    async def unavailable_semantic(**_kwargs):
+        return {"status": "unavailable", "reason_codes": ["semantic_qa_unavailable"]}
+
+    async def wrong_label(**_kwargs):
+        return {"status": "failed", "reason_codes": ["label_text_different"]}
+
+    async def raw_qa_context(_conn, _order_id: str, *, lock: bool = False):
+        return {"order": {"status": "raw_qa"}}
+
+    async def no_op_transition(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(workflow, "_run_raw_semantic_qa", unavailable_semantic)
+    monkeypatch.setattr(workflow, "_run_product_reference_qa", wrong_label)
+    monkeypatch.setattr(workflow, "_load_context", raw_qa_context)
+    monkeypatch.setattr(workflow, "_transition_locked", no_op_transition)
+
+    result = asyncio.run(
+        workflow.run_raw_qa(production_order_id="order-1", attempt_id="attempt-1")
+    )
+
+    assert result["error"] == "raw_asset_rejected_replacement_required"
+    assert result["reason_codes"] == ["label_text_different"]
+    assert result["report"]["status"] == "failed"
+    assert result["report"]["semantic"]["status"] == "unavailable"
+    assert conn.qa_reports[-1]["passed"] is False
+
+
+def test_raw_qa_rejects_calls_outside_raw_states(monkeypatch) -> None:
+    conn = _IdentityLatchConn(order_status="ready_to_release")
+    monkeypatch.setattr(workflow, "get_pool", lambda: _IdentityLatchPool(conn))
+    monkeypatch.setattr(
+        workflow,
+        "resolve_reference_path",
+        lambda _value: (_ for _ in ()).throw(AssertionError("wrong state must not read asset")),
+    )
+
+    result = asyncio.run(
+        workflow.run_raw_qa(production_order_id="order-1", attempt_id="attempt-1")
+    )
+
+    assert result == {
+        "ok": False,
+        "error": "production_order_wrong_state",
+        "status": "ready_to_release",
+    }
+    assert conn.qa_asset_ids == []

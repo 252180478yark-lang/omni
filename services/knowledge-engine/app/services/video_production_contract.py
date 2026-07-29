@@ -23,6 +23,7 @@ from app.services.video_prompt_source import (
 )
 from app.services.pain_solution_bridge import (
     canonical_upstream_fact_hash,
+    constrain_p0_bridge_facts,
     validate_pain_solution_bridge,
 )
 
@@ -511,10 +512,39 @@ def validate_content_spec(
 
         context = truth["snapshot"]["planting_bridge_context"]
         bridge = spec.get("pain_solution_bridge")
+        snapshot_facts = truth["snapshot"].get("facts")
+        factual_whitelist = (
+            _string_list(snapshot_facts.get("whitelist"))
+            if isinstance(snapshot_facts, Mapping)
+            and resolved_contract_version == P0_CONTRACT_VERSION
+            else None
+        )
+        bridge_catalog = context["eligible_evidence_catalog"]
+        if factual_whitelist is not None:
+            try:
+                constrained_facts = constrain_p0_bridge_facts(
+                    context["facts"],
+                    factual_whitelist,
+                )
+            except (TypeError, ValueError) as exc:
+                return {
+                    "ok": False,
+                    "error": "content_spec_pain_solution_bridge_invalid",
+                    "missing_or_invalid": ["bridge_evidence_context"],
+                    "bridge_errors": [f"p0_claim_evidence_invalid: {exc}"],
+                }
+            bridge_catalog = constrained_facts["eligible_evidence_catalog"]
+            if "pack" in context["eligible_evidence_catalog"]:
+                bridge_catalog = {
+                    **bridge_catalog,
+                    "pack": context["eligible_evidence_catalog"]["pack"],
+                }
         bridge_validation = validate_pain_solution_bridge(
             bridge,
-            context["eligible_evidence_catalog"],
+            bridge_catalog,
             require_pack_evidence=context["require_pack_evidence"],
+            require_claim_grounding=resolved_contract_version == P0_CONTRACT_VERSION,
+            allowed_product_evidence=factual_whitelist,
         )
         if not bridge_validation["ok"]:
             return {

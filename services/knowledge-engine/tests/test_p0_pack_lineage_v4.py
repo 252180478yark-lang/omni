@@ -42,14 +42,17 @@ def _facts(*, pack_id: str | None = PACK_ID) -> dict:
         "matrix_evidence": {"id": "00000000-0000-0000-0000-000000000104", "matrix_md": "酿造事实"},
         "portrait_record_evidence": {
             "record": {"id": RECORD_ID, "name": "烟火寻味家"},
-            "portrait": {"id": PORTRAIT_ID, "portrait_md": "下班也愿意认真做一顿饭"},
+            "portrait": {
+                "id": PORTRAIT_ID,
+                "portrait_md": "下班也愿意认真做一顿饭 [KB: test]",
+            },
         },
         "pack_calibration": pack,
         "eligible_evidence_catalog": {
             "sku": {"owner_selling_points": "有机酿造"},
             "matrix": {"matrix_md": "酿造事实"},
             "record": {"name": "烟火寻味家"},
-            "portrait": {"portrait_md": "下班也愿意认真做一顿饭"},
+            "portrait": {"portrait_md": "下班也愿意认真做一顿饭 [KB: test]"},
         },
         "pack_calibration_catalog": pack_catalog,
     }
@@ -68,7 +71,7 @@ def _snapshot(*, version: str = P0_CONTRACT_VERSION, pack_id: str | None = PACK_
             "id": PORTRAIT_ID,
             "sku_id": SKU_ID,
             "audience_record_id": RECORD_ID,
-            "portrait_md": "下班也愿意认真做一顿饭",
+            "portrait_md": "下班也愿意认真做一顿饭 [KB: test]",
             "status": "adopted",
         },
         "product_reference_manifest": {"assets": [{"id": "ref-1", "file_url": "/ref.png"}]},
@@ -86,11 +89,11 @@ def _bridge(*, pack_evidence: list[dict] | None = None) -> dict:
     return {
         "audience_segment": "下班认真做饭的人",
         "trigger_scene": "工作日晚上起锅前",
-        "pain_point": "菜快好时味道还是不够完整",
-        "pain_consequence": "认真做的一顿饭显得仓促平淡",
-        "product_action": "起锅前沿锅边加入酱油",
-        "visible_result": "热菜上色发亮并带起锅气",
-        "belief_shift": "认真收尾不等于复杂做饭",
+        "pain_point": "下班也愿意认真做一顿饭时，担心调味选择没有明确依据",
+        "pain_consequence": "下班也愿意认真做一顿饭时会反复查看配料表、迟迟不下锅",
+        "product_action": "把“有机酿造”的酱油沿锅边倒入",
+        "visible_result": "镜头特写“有机酿造”的瓶身，随后拍到沿锅边倒入",
+        "belief_shift": "从下班也愿意认真做一顿饭时的担心，到先确认“有机酿造”再决定下锅",
         "relevance_module": "M1",
         "justification_module": "M3",
         "portrait_evidence": [
@@ -113,7 +116,7 @@ def _spec(snapshot: dict, *, pack_evidence: list[dict] | None = None) -> dict:
         "duration_seconds": 12,
         "cast_count": 1,
         "scene_count": 1,
-        "product_actions": ["起锅前沿锅边加入酱油"],
+        "product_actions": ["把“有机酿造”的酱油沿锅边倒入"],
         "spoken_copy_goal": "完整自然口播",
         "pain_solution_bridge": _bridge(pack_evidence=pack_evidence),
         "upstream_fact_hash": snapshot["planting_bridge_context"]["upstream_fact_hash"],
@@ -155,6 +158,30 @@ def test_v4_content_spec_requires_selected_pack_evidence() -> None:
     assert rejected["ok"] is False
     assert rejected["error"] == "content_spec_pain_solution_bridge_invalid"
     assert "pack_calibration_evidence" in rejected["missing_or_invalid"]
+
+
+def test_v4_content_spec_rejects_bridge_that_bypasses_review_with_food_result() -> None:
+    snapshot = _snapshot()
+    truth = validate_truth_snapshot(snapshot)
+    assert truth["ok"] is True
+    spec = _spec(snapshot)
+    spec["pain_solution_bridge"]["visible_result"] = (
+        "镜头可见“有机酿造”，汤汁清透不发黑"
+    )
+
+    rejected = validate_content_spec(
+        spec,
+        truth_snapshot_hash=truth["snapshot_hash"],
+        truth_snapshot=snapshot,
+    )
+
+    assert rejected["ok"] is False
+    assert rejected["error"] == "content_spec_pain_solution_bridge_invalid"
+    assert "visible_result" in rejected["missing_or_invalid"]
+    assert any(
+        "bridge_unsupported_claim" in error
+        for error in rejected["bridge_errors"]
+    )
 
 
 def test_v3_stays_readable_without_a_pack_but_new_v4_does_not() -> None:

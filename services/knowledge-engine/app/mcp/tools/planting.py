@@ -6,7 +6,7 @@ import copy
 import json
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from app.mcp import prompts
@@ -16,6 +16,7 @@ from app.mcp.server import mcp
 from app.mcp.trace import attach_next_step, build_trace
 from app.services.ai_hub_client import AIHubClient
 from app.services.pain_solution_bridge import (
+    constrain_p0_bridge_facts,
     extract_response_text,
     load_planting_bridge_context,
     parse_bridge_payload,
@@ -174,6 +175,7 @@ async def _generate_planting_pain_solution_bridge_impl(
     audience_record_id: str,
     portrait_id: str,
     audience_pack_id: str | None = None,
+    allowed_product_evidence: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Generate exactly two grounded bridge candidates with one Pro call."""
 
@@ -195,6 +197,20 @@ async def _generate_planting_pain_solution_bridge_impl(
             "reason": "facts_missing",
         }
 
+    try:
+        prompt_facts = (
+            constrain_p0_bridge_facts(facts, allowed_product_evidence)
+            if allowed_product_evidence is not None
+            else dict(facts)
+        )
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "error": "upstream_lineage_incomplete",
+            "reason": "p0_factual_whitelist_invalid",
+            "detail": str(exc),
+        }
+
     config = get_model_for_tool(_TOOL_NAME)
     model_config, config_errors = _validated_model_config(config)
     if model_config is None:
@@ -205,7 +221,7 @@ async def _generate_planting_pain_solution_bridge_impl(
         }
 
     try:
-        system_prompt, user_prompt = _render_bridge_prompts(facts)
+        system_prompt, user_prompt = _render_bridge_prompts(prompt_facts)
     except Exception as exc:
         return {
             "ok": False,
@@ -251,15 +267,20 @@ async def _generate_planting_pain_solution_bridge_impl(
             model_config=model_config,
         )
 
-    raw_catalog = facts.get("eligible_evidence_catalog")
+    raw_catalog = prompt_facts.get("eligible_evidence_catalog")
     evidence_catalog = (
         dict(copy.deepcopy(raw_catalog)) if isinstance(raw_catalog, Mapping) else {}
     )
-    pack_catalog = facts.get("pack_calibration_catalog")
+    pack_catalog = prompt_facts.get("pack_calibration_catalog")
     if isinstance(pack_catalog, Mapping) and pack_catalog:
         evidence_catalog["pack"] = dict(copy.deepcopy(pack_catalog))
 
-    validation = validate_bridge_pair(bridges, evidence_catalog=evidence_catalog)
+    validation = validate_bridge_pair(
+        bridges,
+        evidence_catalog=evidence_catalog,
+        require_claim_grounding=True,
+        allowed_product_evidence=allowed_product_evidence,
+    )
     if not validation.get("ok"):
         validation_errors = [str(error) for error in validation.get("errors") or []]
         missing_or_invalid = [

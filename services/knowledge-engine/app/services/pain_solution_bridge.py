@@ -12,6 +12,7 @@ import json
 import math
 import re
 import unicodedata
+from copy import deepcopy
 from collections.abc import Mapping, Sequence, Set
 from datetime import date, datetime
 from decimal import Decimal
@@ -125,6 +126,121 @@ _ATTRIBUTE_LIST_SEPARATOR_RE = re.compile(r"[,，、;/；|]+")
 _FENCED_JSON_RE = re.compile(
     r"```(?:json)?\s*(.*?)\s*```", re.IGNORECASE | re.DOTALL
 )
+_PAIN_CONCERN_MARKERS = (
+    "担心",
+    "担忧",
+    "焦虑",
+    "顾虑",
+    "害怕",
+    "怕",
+    "不敢",
+    "拿不准",
+    "不确定",
+    "worried",
+    "concerned",
+    "afraid",
+    "uncertain",
+)
+_PAIN_CONSEQUENCE_BEHAVIOR_MARKERS = (
+    "反复",
+    "犹豫",
+    "迟迟",
+    "不敢",
+    "查看",
+    "核对",
+    "换",
+    "选择",
+    "拿不准",
+    "repeated",
+    "hesitate",
+    "check",
+    "choose",
+)
+_VISUAL_GROUNDING_MARKERS = (
+    "镜头",
+    "画面",
+    "可见",
+    "瓶身",
+    "包装",
+    "配料表",
+    "标签",
+    "倒入",
+    "特写",
+    "近景",
+    "camera",
+    "close-up",
+    "bottle",
+    "label",
+    "package",
+    "pouring",
+)
+_COMPARATIVE_PRODUCT_FACT_RE = re.compile(
+    r"(?:普通|市面(?:上)?|其他|别的|低端|大多数).{0,20}"
+    r"(?:酱油|老抽|调料|产品|品牌)"
+)
+_MIN_PORTRAIT_CLAIM_EVIDENCE_CHARS = 6
+_MIN_PRODUCT_CLAIM_EVIDENCE_CHARS = 4
+_UNSUPPORTED_RESULT_TERMS = (
+    "汤汁",
+    "清透",
+    "不发黑",
+    "发黑",
+    "甜腻",
+    "油腻",
+    "口感",
+    "提鲜",
+    "上色",
+    "发苦",
+    "不苦",
+    "酱香",
+    "好吃",
+    "美味",
+    "健康",
+    "负担",
+    "隐形糖",
+    "无糖",
+    "颜色",
+    "红亮",
+    "红润",
+    "发白",
+    "菜色",
+    "肉色",
+    "成菜",
+    "胃口",
+)
+_P0_PORTRAIT_EVIDENCE_MARKER = "[kb:"
+_P0_PORTRAIT_INFERENCE_MARKERS = (
+    "🧠",
+    "推演",
+    "三层拆解",
+    "匹配度",
+    "可承载卖点",
+    "原始卖点",
+    "化解话术",
+    "典型内心独白",
+    "对这群人说的那句话",
+    "健康",
+    "负担",
+    "上色",
+    "红亮",
+    "红润",
+    "颜色",
+    "酱香",
+    "发苦",
+    "口感",
+    "汤汁",
+    "清透",
+    "甜腻",
+    "好吃",
+    "胃口",
+)
+_P0_RECORD_EVIDENCE_FIELDS = (
+    "id",
+    "name",
+    "kb_doc",
+    "kb_section",
+    "status",
+)
 
 
 def _canonicalize(value: Any, *, path: str = "facts") -> Any:
@@ -184,6 +300,80 @@ def canonical_upstream_fact_hash(facts: Any) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def constrain_p0_bridge_facts(
+    facts: Mapping[str, Any],
+    allowed_product_evidence: Sequence[str],
+) -> dict[str, Any]:
+    """Return P0's claim-safe subset of immutable bridge facts.
+
+    P0 may only cite an order's frozen product whitelist.  Audience portrait
+    text is likewise reduced to lines that carry a direct KB citation, keeping
+    generated inference, copy suggestions, and claimed food outcomes out of
+    both the model prompt and the evidence catalog used for later rechecks.
+    """
+
+    if (
+        not isinstance(allowed_product_evidence, Sequence)
+        or isinstance(allowed_product_evidence, (str, bytes, bytearray))
+    ):
+        raise ValueError("allowed_product_evidence must be a sequence")
+    allowed = tuple(
+        value.strip()
+        for value in allowed_product_evidence
+        if isinstance(value, str) and value.strip()
+    )
+    if not allowed or len(allowed) != len(allowed_product_evidence):
+        raise ValueError("allowed_product_evidence must contain non-empty strings")
+
+    constrained = deepcopy(dict(facts))
+    raw_sku = constrained.get("sku_facts")
+    sku = raw_sku if isinstance(raw_sku, Mapping) else {}
+    constrained["sku_facts"] = {
+        "id": sku.get("id"),
+        "name": sku.get("name"),
+        "owner_selling_points": list(allowed),
+    }
+
+    raw_matrix = constrained.get("matrix_evidence")
+    matrix = raw_matrix if isinstance(raw_matrix, Mapping) else {}
+    constrained["matrix_evidence"] = {"id": matrix.get("id"), "matrix_md": ""}
+
+    raw_audience = constrained.get("portrait_record_evidence")
+    audience = raw_audience if isinstance(raw_audience, Mapping) else {}
+    raw_record = audience.get("record")
+    record = raw_record if isinstance(raw_record, Mapping) else {}
+    safe_record = {
+        field: value
+        for field, value in record.items()
+        if field in _P0_RECORD_EVIDENCE_FIELDS and isinstance(value, str) and value.strip()
+    }
+    raw_portrait = audience.get("portrait")
+    portrait = raw_portrait if isinstance(raw_portrait, Mapping) else {}
+    portrait_text = str(portrait.get("portrait_md") or "")
+    safe_portrait_lines = [
+        line.strip()
+        for line in portrait_text.splitlines()
+        if _P0_PORTRAIT_EVIDENCE_MARKER in line.casefold()
+        and not any(marker in line for marker in _P0_PORTRAIT_INFERENCE_MARKERS)
+    ]
+    safe_portrait = {
+        "id": portrait.get("id"),
+        "portrait_md": "\n".join(safe_portrait_lines),
+    }
+    constrained["portrait_record_evidence"] = {
+        "record": safe_record,
+        "portrait": safe_portrait,
+    }
+
+    constrained["eligible_evidence_catalog"] = {
+        "sku": {"owner_selling_points": "\n".join(allowed)},
+        "matrix": {},
+        "record": safe_record,
+        "portrait": {"portrait_md": safe_portrait["portrait_md"]},
+    }
+    return constrained
 
 
 def _canonical_uuid(value: Any) -> str | None:
@@ -706,6 +896,192 @@ def _dedupe(items: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(items))
 
 
+def _evidence_values(bridge: Mapping[str, Any], field: str) -> tuple[str, ...]:
+    entries = bridge.get(field)
+    if not isinstance(entries, Sequence) or isinstance(entries, (str, bytes, bytearray)):
+        return ()
+    values: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+        value = entry.get("value")
+        if _is_meaningful_text(value):
+            values.append(value)
+    return tuple(values)
+
+
+def _contains_exact_evidence_text(text: Any, evidence_values: Sequence[str]) -> bool:
+    if not _is_meaningful_text(text):
+        return False
+    normalized_text = _normalized_meaningful_value(text)
+    return any(
+        (normalized_value := _normalized_meaningful_value(value))
+        and normalized_value in normalized_text
+        for value in evidence_values
+    )
+
+
+def _claim_length_qualified_values(
+    values: Sequence[str],
+    *,
+    minimum_chars: int,
+) -> tuple[str, ...]:
+    return tuple(
+        value
+        for value in values
+        if len(_normalized_meaningful_value(value)) >= minimum_chars
+    )
+
+
+def _text_without_evidence(text: str, evidence_values: Sequence[str]) -> str:
+    remaining = unicodedata.normalize("NFKC", text)
+    for value in sorted(evidence_values, key=len, reverse=True):
+        normalized_value = unicodedata.normalize("NFKC", value)
+        if normalized_value:
+            remaining = remaining.replace(normalized_value, "")
+    return remaining
+
+
+def _unsupported_result_hits(text: Any, evidence_values: Sequence[str]) -> tuple[str, ...]:
+    if not _is_meaningful_text(text):
+        return ()
+    remaining = _text_without_evidence(text, evidence_values)
+    return tuple(term for term in _UNSUPPORTED_RESULT_TERMS if term in remaining)
+
+
+def _validate_claim_grounding(
+    bridge: Mapping[str, Any],
+    *,
+    allowed_product_evidence: Sequence[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Require reviewable claims to carry the exact fact they rely on.
+
+    This is intentionally a deterministic floor rather than a semantic-model
+    verdict: it prevents a model from turning a portrait concern or a product
+    snippet into a free-standing competitor/product-performance assertion.
+    """
+
+    errors: list[str] = []
+    missing_or_invalid: list[str] = []
+    raw_portrait_values = _evidence_values(bridge, "portrait_evidence")
+    portrait_values = _claim_length_qualified_values(
+        raw_portrait_values,
+        minimum_chars=_MIN_PORTRAIT_CLAIM_EVIDENCE_CHARS,
+    )
+    raw_product_values = _evidence_values(bridge, "product_evidence")
+    product_values = _claim_length_qualified_values(
+        raw_product_values,
+        minimum_chars=_MIN_PRODUCT_CLAIM_EVIDENCE_CHARS,
+    )
+
+    if not portrait_values:
+        errors.append(
+            "portrait_evidence must contain one claim-supporting value of at least "
+            f"{_MIN_PORTRAIT_CLAIM_EVIDENCE_CHARS} meaningful characters"
+        )
+        missing_or_invalid.append("portrait_evidence")
+
+    if allowed_product_evidence is not None:
+        allowed_normalized = {
+            _normalized_meaningful_value(value)
+            for value in allowed_product_evidence
+            if len(_normalized_meaningful_value(value))
+            >= _MIN_PRODUCT_CLAIM_EVIDENCE_CHARS
+        }
+        unapproved_values = [
+            value
+            for value in raw_product_values
+            if _normalized_meaningful_value(value) not in allowed_normalized
+        ]
+        if unapproved_values:
+            errors.append(
+                "bridge_unsupported_claim: product_evidence must use an exact "
+                "facts.whitelist value"
+            )
+            missing_or_invalid.append("product_evidence")
+        product_values = tuple(
+            value
+            for value in product_values
+            if _normalized_meaningful_value(value) in allowed_normalized
+        )
+
+    if not product_values:
+        errors.append(
+            "product_evidence must contain one claim-supporting value of at least "
+            f"{_MIN_PRODUCT_CLAIM_EVIDENCE_CHARS} meaningful characters"
+        )
+        missing_or_invalid.append("product_evidence")
+
+    def require_exact_evidence(
+        field: str,
+        evidence_values: Sequence[str],
+        evidence_field: str,
+    ) -> None:
+        if _is_meaningful_text(bridge.get(field)) and evidence_values and not _contains_exact_evidence_text(
+            bridge.get(field), evidence_values
+        ):
+            errors.append(
+                f"{field} must include exact text from {evidence_field}"
+            )
+            missing_or_invalid.append(field)
+
+    require_exact_evidence("pain_point", portrait_values, "portrait_evidence")
+    require_exact_evidence("pain_consequence", portrait_values, "portrait_evidence")
+    require_exact_evidence("product_action", product_values, "product_evidence")
+    require_exact_evidence("visible_result", product_values, "product_evidence")
+    require_exact_evidence("belief_shift", portrait_values, "portrait_evidence")
+    require_exact_evidence("belief_shift", product_values, "product_evidence")
+
+    pain_point = bridge.get("pain_point")
+    if _is_meaningful_text(pain_point) and not any(
+        marker in pain_point for marker in _PAIN_CONCERN_MARKERS
+    ):
+        errors.append("pain_point must be framed as an audience concern")
+        missing_or_invalid.append("pain_point")
+
+    pain_consequence = bridge.get("pain_consequence")
+    if _is_meaningful_text(pain_consequence) and not any(
+        marker in pain_consequence for marker in _PAIN_CONSEQUENCE_BEHAVIOR_MARKERS
+    ):
+        errors.append("pain_consequence must describe an audience decision behavior")
+        missing_or_invalid.append("pain_consequence")
+
+    visible_result = bridge.get("visible_result")
+    if _is_meaningful_text(visible_result) and not any(
+        marker in visible_result for marker in _VISUAL_GROUNDING_MARKERS
+    ):
+        errors.append(
+            "visible_result must describe a visible product/use fact, not an inferred outcome"
+        )
+        missing_or_invalid.append("visible_result")
+
+    for field in ("pain_point", "pain_consequence", "product_action", "visible_result", "belief_shift"):
+        value = bridge.get(field)
+        if _is_meaningful_text(value) and _COMPARATIVE_PRODUCT_FACT_RE.search(value):
+            errors.append(
+                "bridge_unsupported_claim: "
+                f"{field} must not state an unsupported comparative product fact"
+            )
+            missing_or_invalid.append(field)
+
+    for field, evidence_values in (
+        ("pain_point", portrait_values),
+        ("pain_consequence", portrait_values),
+        ("product_action", product_values),
+        ("visible_result", product_values),
+        ("belief_shift", (*portrait_values, *product_values)),
+    ):
+        hits = _unsupported_result_hits(bridge.get(field), evidence_values)
+        if hits:
+            errors.append(
+                "bridge_unsupported_claim: "
+                f"{field} contains unsupported result terms: {', '.join(hits)}"
+            )
+            missing_or_invalid.append(field)
+
+    return errors, missing_or_invalid
+
+
 def _bridge_validation_result(
     bridge: Any,
     errors: list[str],
@@ -731,6 +1107,8 @@ def validate_pain_solution_bridge(
     evidence_catalog: Mapping[str, Any] | None = None,
     *,
     require_pack_evidence: bool | None = None,
+    require_claim_grounding: bool = False,
+    allowed_product_evidence: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Validate one pain-solution bridge and return deterministic errors."""
 
@@ -751,6 +1129,22 @@ def validate_pain_solution_bridge(
             bridge,
             ["require_pack_evidence must be a bool when provided"],
             ["require_pack_evidence"],
+        )
+    if not isinstance(require_claim_grounding, bool):
+        return _bridge_validation_result(
+            bridge,
+            ["require_claim_grounding must be a bool"],
+            ["require_claim_grounding"],
+        )
+    if allowed_product_evidence is not None and (
+        not isinstance(allowed_product_evidence, Sequence)
+        or isinstance(allowed_product_evidence, (str, bytes, bytearray))
+        or any(not _is_meaningful_text(value) for value in allowed_product_evidence)
+    ):
+        return _bridge_validation_result(
+            bridge,
+            ["allowed_product_evidence must be a sequence of non-empty strings"],
+            ["allowed_product_evidence"],
         )
 
     if require_pack_evidence is None:
@@ -833,6 +1227,14 @@ def validate_pain_solution_bridge(
             )
             missing_or_invalid.extend(("product_action", "visible_result"))
 
+    if require_claim_grounding:
+        grounding_errors, grounding_invalid = _validate_claim_grounding(
+            bridge,
+            allowed_product_evidence=allowed_product_evidence,
+        )
+        errors.extend(grounding_errors)
+        missing_or_invalid.extend(grounding_invalid)
+
     return _bridge_validation_result(bridge, errors, missing_or_invalid)
 
 
@@ -841,6 +1243,8 @@ def validate_bridge_pair(
     evidence_catalog: Mapping[str, Any] | None = None,
     *,
     require_pack_evidence: bool | None = None,
+    require_claim_grounding: bool = False,
+    allowed_product_evidence: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Validate the two-bridge contract and fixed/variable field discipline."""
 
@@ -863,6 +1267,8 @@ def validate_bridge_pair(
             bridge,
             evidence_catalog,
             require_pack_evidence=require_pack_evidence,
+            require_claim_grounding=require_claim_grounding,
+            allowed_product_evidence=allowed_product_evidence,
         )
         for field in result["missing_or_invalid"]:
             if field == "bridge":

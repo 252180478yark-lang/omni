@@ -34,6 +34,7 @@ from app.services.media_reference_manifest import (
 )
 from app.services.pain_solution_bridge import (
     canonical_upstream_fact_hash,
+    constrain_p0_bridge_facts,
     validate_bridge_pair,
     validate_pain_solution_bridge,
 )
@@ -72,6 +73,7 @@ P0_WRITER_TOOL = "p0_video_script_writer"
 P0_CRITIC_TOOL = "p0_video_script_critic"
 P0_GENERATION_TOOL = "p0_generate_video"
 P0_QA_TOOL = "p0_video_qa"
+_PRODUCT_IDENTITY_HARD_FAILURE_CODES = frozenset({"packaging_different", "label_text_different"})
 
 # This is deliberately a small, closed response shape.  The raw-video QA gate
 # must receive a complete decision object; a visible `decision: passed` inside
@@ -307,6 +309,12 @@ def _frozen_strong_lineage_planting_context(
 
     bridge_context = _content(truth.get("planting_bridge_context"))
     facts = _content(bridge_context.get("facts"))
+    snapshot_facts = _content(truth.get("facts"))
+    factual_whitelist = [
+        value.strip()
+        for value in snapshot_facts.get("whitelist", [])
+        if isinstance(value, str) and value.strip()
+    ]
     upstream_fact_hash = str(bridge_context.get("upstream_fact_hash") or "").strip()
     if not facts or not upstream_fact_hash:
         return {
@@ -346,6 +354,32 @@ def _frozen_strong_lineage_planting_context(
         }
 
     catalog, require_pack = _bridge_evidence_catalog(bridge_context)
+    is_p0_v4 = str(order.get("contract_version") or "") == P0_CONTRACT_VERSION
+    if is_p0_v4:
+        if not factual_whitelist:
+            return {
+                "ok": False,
+                "error": "frozen_factual_whitelist_required",
+                "first_blocker": "frozen_factual_whitelist_required",
+            }
+        try:
+            constrained_facts = constrain_p0_bridge_facts(
+                facts,
+                factual_whitelist,
+            )
+        except ValueError as exc:
+            return {
+                "ok": False,
+                "error": "frozen_p0_claim_evidence_invalid",
+                "first_blocker": "frozen_p0_claim_evidence_invalid",
+                "detail": str(exc),
+            }
+        constrained_catalog = _mapping(
+            constrained_facts.get("eligible_evidence_catalog")
+        )
+        if "pack" in catalog:
+            constrained_catalog["pack"] = catalog["pack"]
+        catalog = constrained_catalog
     if str(order.get("contract_version") or "") in P0_PACK_REQUIRED_CONTRACT_VERSIONS:
         order_pack_id = str(order.get("audience_pack_id") or "").strip()
         snapshot_pack_id = str(facts_lineage.get("audience_pack_id") or "").strip()
@@ -385,6 +419,7 @@ def _frozen_strong_lineage_planting_context(
         "upstream_fact_hash": upstream_fact_hash,
         "evidence_catalog": catalog,
         "require_pack_evidence": require_pack,
+        "factual_whitelist": factual_whitelist,
         "lineage": {
             "sku_id": order.get("sku_id"),
             "audience_record_id": order.get("audience_record_id"),
@@ -414,6 +449,13 @@ def _frozen_strong_lineage_planting_context(
             bridge,
             evidence_catalog=catalog,
             require_pack_evidence=require_pack,
+            require_claim_grounding=str(order.get("contract_version") or "")
+            == P0_CONTRACT_VERSION,
+            allowed_product_evidence=(
+                factual_whitelist
+                if str(order.get("contract_version") or "") == P0_CONTRACT_VERSION
+                else None
+            ),
         )
         if not single_validation.get("ok"):
             return {
@@ -913,6 +955,11 @@ async def generate_planting_bridge_candidates(
         str(order["audience_record_id"]),
         str(order["audience_portrait_id"]),
         str(order["audience_pack_id"]),
+        allowed_product_evidence=(
+            list(frozen.get("factual_whitelist") or [])
+            if str(order.get("contract_version") or "") == P0_CONTRACT_VERSION
+            else None
+        ),
     )
     if not generated.get("ok"):
         result = dict(generated)
@@ -935,6 +982,13 @@ async def generate_planting_bridge_candidates(
         bridges,
         evidence_catalog=_mapping(frozen.get("evidence_catalog")),
         require_pack_evidence=bool(frozen.get("require_pack_evidence")),
+        require_claim_grounding=str(order.get("contract_version") or "")
+        == P0_CONTRACT_VERSION,
+        allowed_product_evidence=(
+            list(frozen.get("factual_whitelist") or [])
+            if str(order.get("contract_version") or "") == P0_CONTRACT_VERSION
+            else None
+        ),
     )
     if not pair_validation.get("ok"):
         return {
@@ -2108,6 +2162,62 @@ async def _insert_qa_report(
     )
 
 
+def _product_identity_hard_failure_codes(report: object) -> list[str]:
+    """Return permanent raw-asset identity failures recorded in one QA report.
+
+    Raw reports store product-reference QA below ``product_reference``.  Older
+    reports may carry reason codes at the top level, so inspect both shapes to
+    make the latch effective for already-persisted P0 audit history too.
+    """
+
+    raw = _content(report)
+    candidates = (raw, _content(raw.get("product_reference")))
+    codes: set[str] = set()
+    for candidate in candidates:
+        values = candidate.get("reason_codes")
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            code = str(value).strip()
+            if code in _PRODUCT_IDENTITY_HARD_FAILURE_CODES:
+                codes.add(code)
+    return sorted(codes)
+
+
+async def _raw_asset_product_identity_hard_failures(
+    conn, *, production_order_id: str, raw_asset_id: str
+) -> dict[str, Any]:
+    """Bind raw QA to one immutable asset and latch wrong package/text forever.
+
+    A later model QA pass is never allowed to overturn a prior clear mismatch
+    for the same raw asset.  A different regenerated asset starts with a clean
+    audit history and is evaluated independently.
+    """
+
+    rows = await conn.fetch(
+        """
+        SELECT report,passed
+        FROM pipeline.production_qa_reports
+        WHERE production_order_id=$1::uuid AND stage='raw' AND asset_id=$2::uuid
+        ORDER BY created_at
+        """,
+        production_order_id,
+        raw_asset_id,
+    )
+    codes: set[str] = set()
+    has_passing_report = False
+    for row in rows:
+        report = _mapping(row)
+        if report.get("passed") is True:
+            has_passing_report = True
+        codes.update(_product_identity_hard_failure_codes(report.get("report")))
+    return {
+        "raw_asset_id": raw_asset_id,
+        "has_passing_report": has_passing_report,
+        "product_identity_hard_failure_codes": sorted(codes),
+    }
+
+
 async def run_raw_qa(*, production_order_id: str, attempt_id: str) -> dict[str, Any]:
     """Fail closed on raw media technical or independent semantic QA."""
 
@@ -2116,8 +2226,10 @@ async def run_raw_qa(*, production_order_id: str, attempt_id: str) -> dict[str, 
         row = await conn.fetchrow(
             """
             SELECT attempt.id::text AS attempt_id,attempt.raw_asset_id::text,
-                   asset.file_url,source.prompt_source,truth.snapshot,spec.spec AS content_spec
+                   asset.file_url,source.prompt_source,truth.snapshot,spec.spec AS content_spec,
+                   order_row.status AS order_status
             FROM pipeline.production_generation_attempts attempt
+            JOIN pipeline.production_orders order_row ON order_row.id=attempt.production_order_id
             JOIN pipeline.assets asset ON asset.id=attempt.raw_asset_id
             JOIN pipeline.production_prompt_sources source ON source.id=attempt.prompt_source_id
             JOIN pipeline.order_truth_snapshots truth ON truth.production_order_id=attempt.production_order_id
@@ -2130,12 +2242,36 @@ async def run_raw_qa(*, production_order_id: str, attempt_id: str) -> dict[str, 
     if not row:
         return {"ok": False, "error": "raw_asset_not_found"}
     data = dict(row)
+    order_status = str(data.get("order_status") or "")
+    if order_status not in {"raw_qa", "raw_rejected", "raw_passed"}:
+        return {
+            "ok": False,
+            "error": "production_order_wrong_state",
+            "status": order_status,
+        }
+    async with pool.acquire() as conn:
+        raw_qa_gate = await _raw_asset_product_identity_hard_failures(
+            conn,
+            production_order_id=production_order_id,
+            raw_asset_id=data["raw_asset_id"],
+        )
+    if raw_qa_gate["product_identity_hard_failure_codes"]:
+        return {
+            "ok": False,
+            "error": "raw_asset_rejected_replacement_required",
+            "raw_asset_id": data["raw_asset_id"],
+            "reason_codes": raw_qa_gate["product_identity_hard_failure_codes"],
+        }
     try:
         path = resolve_reference_path(str(data["file_url"] or ""))
     except FileNotFoundError:
         report = {"stage": "raw", "status": "failed", "reason_codes": ["raw_asset_not_persisted"]}
         await _insert_qa_report(production_order_id=production_order_id, stage="raw", asset_id=data["raw_asset_id"], report=report, passed=False)
-        await _move_after_raw_qa(production_order_id, passed=False)
+        await _move_after_raw_qa(
+            production_order_id,
+            raw_asset_id=data["raw_asset_id"],
+            passed=False,
+        )
         return {"ok": False, "error": "raw_asset_not_persisted", "report": report}
     try:
         probe = _ffprobe(path)
@@ -2162,7 +2298,11 @@ async def run_raw_qa(*, production_order_id: str, attempt_id: str) -> dict[str, 
     if not technical["ok"]:
         report = {"stage": "raw", "status": "failed", "technical": technical}
         await _insert_qa_report(production_order_id=production_order_id, stage="raw", asset_id=data["raw_asset_id"], report=report, passed=False)
-        await _move_after_raw_qa(production_order_id, passed=False)
+        await _move_after_raw_qa(
+            production_order_id,
+            raw_asset_id=data["raw_asset_id"],
+            passed=False,
+        )
         return {"ok": False, "error": "raw_technical_qa_failed", "report": report}
     semantic = await _run_raw_semantic_qa(
         path=path,
@@ -2175,6 +2315,34 @@ async def run_raw_qa(*, production_order_id: str, attempt_id: str) -> dict[str, 
         truth_snapshot=_content(data["snapshot"]),
         content_spec=_content(data["content_spec"]),
     )
+    product_identity_failure_codes = _product_identity_hard_failure_codes(product_reference)
+    if product_identity_failure_codes:
+        report = {
+            "stage": "raw",
+            "status": "failed",
+            "technical": technical,
+            "semantic": semantic,
+            "product_reference": product_reference,
+        }
+        await _insert_qa_report(
+            production_order_id=production_order_id,
+            stage="raw",
+            asset_id=data["raw_asset_id"],
+            report=report,
+            passed=False,
+        )
+        await _move_after_raw_qa(
+            production_order_id,
+            raw_asset_id=data["raw_asset_id"],
+            passed=False,
+        )
+        return {
+            "ok": False,
+            "error": "raw_asset_rejected_replacement_required",
+            "raw_asset_id": data["raw_asset_id"],
+            "reason_codes": product_identity_failure_codes,
+            "report": report,
+        }
     if semantic.get("status") == "unavailable" or product_reference.get("status") == "unavailable":
         report = {
             "stage": "raw",
@@ -2194,23 +2362,49 @@ async def run_raw_qa(*, production_order_id: str, attempt_id: str) -> dict[str, 
         "product_reference": product_reference,
     }
     await _insert_qa_report(production_order_id=production_order_id, stage="raw", asset_id=data["raw_asset_id"], report=report, passed=passed)
-    await _move_after_raw_qa(production_order_id, passed=passed)
+    state_update = await _move_after_raw_qa(
+        production_order_id,
+        raw_asset_id=data["raw_asset_id"],
+        passed=passed,
+    )
+    if state_update["product_identity_hard_failure_codes"]:
+        return {
+            "ok": False,
+            "error": "raw_asset_rejected_replacement_required",
+            "raw_asset_id": data["raw_asset_id"],
+            "reason_codes": state_update["product_identity_hard_failure_codes"],
+            "report": report,
+        }
     return {"ok": passed, "error": None if passed else "raw_semantic_qa_failed", "report": report}
 
 
-async def _move_after_raw_qa(production_order_id: str, *, passed: bool) -> None:
+async def _move_after_raw_qa(
+    production_order_id: str, *, raw_asset_id: str, passed: bool
+) -> dict[str, Any]:
     pool = get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
             context = await _load_context(conn, production_order_id, lock=True)
             if not context:
-                return
-            target = "raw_passed" if passed else "raw_rejected"
+                return {
+                    "status": None,
+                    "product_identity_hard_failure_codes": [],
+                }
+            raw_qa_gate = await _raw_asset_product_identity_hard_failures(
+                conn,
+                production_order_id=production_order_id,
+                raw_asset_id=raw_asset_id,
+            )
+            if raw_qa_gate["product_identity_hard_failure_codes"]:
+                target = "raw_rejected"
+            else:
+                target = "raw_passed" if passed else "raw_rejected"
             current = context["order"]["status"]
             if current == target:
-                return
+                return {"status": target, **raw_qa_gate}
             if current in {"raw_qa", "raw_rejected", "raw_passed"}:
                 await _transition_locked(conn, context["order"], target)
+            return {"status": target, **raw_qa_gate}
 
 
 async def _run_raw_semantic_qa(
@@ -2565,6 +2759,25 @@ async def compose_final_video(
     if not row:
         return {"ok": False, "error": "raw_generation_attempt_not_ready"}
     generation = dict(row)
+    async with pool.acquire() as conn:
+        raw_qa_gate = await _raw_asset_product_identity_hard_failures(
+            conn,
+            production_order_id=production_order_id,
+            raw_asset_id=generation["raw_asset_id"],
+        )
+    if raw_qa_gate["product_identity_hard_failure_codes"]:
+        return {
+            "ok": False,
+            "error": "raw_asset_rejected_replacement_required",
+            "raw_asset_id": generation["raw_asset_id"],
+            "reason_codes": raw_qa_gate["product_identity_hard_failure_codes"],
+        }
+    if not raw_qa_gate["has_passing_report"]:
+        return {
+            "ok": False,
+            "error": "raw_asset_qa_not_passed_for_asset",
+            "raw_asset_id": generation["raw_asset_id"],
+        }
     candidate = _candidate_from_review(generation)
     spec = _content(context["spec"]["spec"])
     duration = float(spec["duration_seconds"])
@@ -2880,18 +3093,32 @@ async def run_final_qa(*, production_order_id: str) -> dict[str, Any]:
             """,
             production_order_id,
         )
-        raw_qa_passed = await conn.fetchval(
-            """
-            SELECT EXISTS(
-                SELECT 1 FROM pipeline.production_qa_reports
-                WHERE production_order_id=$1::uuid AND stage='raw' AND passed=true
-            )
-            """,
-            production_order_id,
-        )
     if not row:
         return {"ok": False, "error": "final_timeline_not_found"}
     final = dict(row)
+    timeline_spec = _content(final["timeline_spec"])
+    raw_asset_id = str(timeline_spec.get("raw_asset_id") or "")
+    if not raw_asset_id:
+        return {"ok": False, "error": "final_timeline_raw_asset_missing"}
+    async with pool.acquire() as conn:
+        raw_qa_gate = await _raw_asset_product_identity_hard_failures(
+            conn,
+            production_order_id=production_order_id,
+            raw_asset_id=raw_asset_id,
+        )
+    if raw_qa_gate["product_identity_hard_failure_codes"]:
+        return {
+            "ok": False,
+            "error": "raw_asset_rejected_replacement_required",
+            "raw_asset_id": raw_asset_id,
+            "reason_codes": raw_qa_gate["product_identity_hard_failure_codes"],
+        }
+    if not raw_qa_gate["has_passing_report"]:
+        return {
+            "ok": False,
+            "error": "raw_asset_qa_not_passed_for_asset",
+            "raw_asset_id": raw_asset_id,
+        }
     try:
         final_path = resolve_reference_path(str(final["file_url"] or ""))
         probe = _ffprobe(final_path)
@@ -2907,7 +3134,6 @@ async def run_final_qa(*, production_order_id: str) -> dict[str, Any]:
         report = {"stage": "final", "status": "pending", "reason_codes": ["technical_qa_unavailable"], "detail": str(exc)[:500]}
         await _insert_qa_report(production_order_id=production_order_id, stage="final", asset_id=final["final_asset_id"], report=report, passed=None)
         return {"ok": False, "error": "technical_qa_unavailable", "report": report}
-    timeline_spec = _content(final["timeline_spec"])
     candidate = _candidate_from_review(final)
     subtitles = validate_subtitle_timeline(
         timeline_spec.get("subtitles"),
@@ -2929,13 +3155,14 @@ async def run_final_qa(*, production_order_id: str) -> dict[str, Any]:
         and bool(audio_manifest.get("source_sha256"))
         and bgm_manifest_valid
     )
-    passed = bool(raw_qa_passed) and bool(technical.get("ok")) and bool(subtitles.get("ok")) and manifest_match
+    passed = bool(raw_qa_gate["has_passing_report"]) and bool(technical.get("ok")) and bool(subtitles.get("ok")) and manifest_match
     report = {
         "stage": "final",
         "status": "passed" if passed else "failed",
         "technical": technical,
         "subtitles": subtitles,
-        "raw_qa_passed": bool(raw_qa_passed),
+        "raw_qa_passed": bool(raw_qa_gate["has_passing_report"]),
+        "raw_asset_id": raw_asset_id,
         "manifest_match": manifest_match,
         "audio_manifest": {
             "mode": audio_manifest.get("mode"),

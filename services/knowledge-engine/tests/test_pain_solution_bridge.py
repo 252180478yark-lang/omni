@@ -180,10 +180,10 @@ def _bridge(**overrides: object) -> dict[str, object]:
             {"field": "pack_md", "value": "一二线城市"}
         ],
         "trigger_scene": "下班晚了，十分钟内要端出一盘孩子愿意吃的菜",
-        "pain_point": "时间紧时，调味步骤多且味道容易失手",
-        "pain_consequence": "孩子少吃几口，做饭的人也更挫败",
-        "product_action": "酱油在起锅前完成提鲜和上色",
-        "visible_result": "菜色均匀、鲜味清楚，端上桌就愿意夹",
+        "pain_point": "下班后给孩子做晚饭时，担心调味步骤多且味道容易失手",
+        "pain_consequence": "下班后给孩子做晚饭时会反复查看调味，迟迟不敢下锅",
+        "product_action": "起锅前倒入标有“有机本酿造”的酱油",
+        "visible_result": "镜头可见“有机本酿造”的瓶身与倒入锅中的动作",
         "product_evidence": [
             {
                 "source": "sku",
@@ -191,7 +191,7 @@ def _bridge(**overrides: object) -> dict[str, object]:
                 "value": "有机本酿造",
             }
         ],
-        "belief_shift": "少一道反复补味，也能把家常菜做稳",
+        "belief_shift": "从下班后给孩子做晚饭时反复补味，到先看“有机本酿造”再下锅",
         "relevance_module": "M2",
         "justification_module": "M5",
     }
@@ -205,8 +205,8 @@ def _pair() -> list[dict[str, object]]:
     second.update(
         {
             "trigger_scene": "周末朋友临时来家里，想快速做一道像样的硬菜",
-            "pain_point": "临时加菜时没有时间慢慢调整咸鲜和色泽",
-            "pain_consequence": "成菜寡淡或颜色发灰，待客显得仓促",
+            "pain_point": "临时加菜时也担心下班后给孩子做晚饭那种赶时间的调味失手",
+            "pain_consequence": "下班后给孩子做晚饭式的赶时间一旦失手，待客时也会反复犹豫",
         }
     )
     return [first, second]
@@ -472,6 +472,64 @@ def test_validate_bridge_rejects_slogan_equality_after_normalization() -> None:
 
     assert result["ok"] is False
     assert any("product_action" in error and "visible_result" in error for error in result["errors"])
+
+
+def test_claim_grounding_rejects_competitor_fact_and_unsupported_food_result() -> None:
+    bridge = _bridge(
+        portrait_evidence=[
+            {
+                "source": "portrait",
+                "field": "portrait_md",
+                "value": "调料里的白砂糖和味精",
+            }
+        ],
+        product_evidence=[
+            {
+                "source": "sku",
+                "field": "owner_selling_points",
+                "value": "配料表剔除白砂糖",
+            }
+        ],
+        pain_point="普通老抽里有很多味精，做饭时怕不健康",
+        pain_consequence="吃起来不放心，家人也不愿意多吃",
+        product_action="往锅里倒两勺酱油",
+        visible_result="肉色红润，汤汁清透不发黑",
+        belief_shift="用它就能把红烧肉做得更好吃",
+    )
+    catalog = {
+        "portrait": {"portrait_md": "焦虑调料里的白砂糖和味精"},
+        "pack": {"pack_md": bridge["pack_calibration_evidence"][0]["value"]},
+        "sku": {"owner_selling_points": "配料表剔除白砂糖"},
+    }
+
+    result = validate_pain_solution_bridge(
+        bridge,
+        catalog,
+        require_claim_grounding=True,
+    )
+
+    assert result["ok"] is False
+    assert "pain_point" in result["missing_or_invalid"]
+    assert "visible_result" in result["missing_or_invalid"]
+    assert any("comparative product fact" in error for error in result["errors"])
+    assert any("exact text from product_evidence" in error for error in result["errors"])
+
+
+def test_claim_grounding_accepts_audience_concern_and_visible_product_fact() -> None:
+    bridge = _bridge()
+    catalog = {
+        "portrait": {"portrait_md": "下班后给孩子做晚饭"},
+        "pack": {"pack_md": bridge["pack_calibration_evidence"][0]["value"]},
+        "sku": {"owner_selling_points": "有机本酿造"},
+    }
+
+    result = validate_pain_solution_bridge(
+        bridge,
+        catalog,
+        require_claim_grounding=True,
+    )
+
+    assert result["ok"] is True
 
 
 def test_legacy_flat_evidence_catalog_matches_known_field_labels() -> None:
@@ -1536,6 +1594,84 @@ async def test_bridge_tool_fails_closed_on_invalid_model_payloads(
     assert error_fragment in json.dumps(result.get("errors"), ensure_ascii=False)
     assert len(_FakeAIHubClient.calls) == 1
     assert result["trace"]["params"]["upstream_fact_hash"] == _tool_context()["upstream_fact_hash"]
+
+
+@pytest.mark.asyncio
+async def test_bridge_tool_rejects_historical_style_claims_before_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pair = _pair()
+    for bridge in pair:
+        bridge.update(
+            {
+                "pain_point": "普通老抽里有很多味精，担心下班后给孩子做晚饭时不健康",
+                "pain_consequence": "下班后给孩子做晚饭会让家人有身体负担",
+                "product_action": "倒入有机本酿造的酱油，保证上色",
+                "visible_result": "镜头可见有机本酿造，汤汁清透不发黑",
+                "belief_shift": "从下班后给孩子做晚饭到有机本酿造就更健康",
+            }
+        )
+    pair[1].update(
+        {
+            "trigger_scene": "周末午饭前准备家常菜",
+            "pain_point": "普通调料有很多味精，担心下班后给孩子做晚饭时不健康",
+            "pain_consequence": "下班后给孩子做晚饭会让家人有身体负担和顾虑",
+        }
+    )
+    planting = _install_tool_fakes(
+        monkeypatch,
+        response={"content": json.dumps({"bridges": pair}, ensure_ascii=False)},
+    )
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID, RECORD_ID, PORTRAIT_ID, PACK_ID
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "pain_solution_bridge_invalid"
+    assert any(
+        "bridge_unsupported_claim" in error for error in result["errors"]
+    )
+    assert len(_FakeAIHubClient.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_p0_bridge_generation_hides_matrix_inference_from_the_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pair = _pair()
+    for bridge in pair:
+        bridge.update(
+            {
+                "product_action": "倒入matrix evidence",
+                "visible_result": "镜头可见matrix evidence的标签",
+                "product_evidence": [
+                    {
+                        "source": "matrix",
+                        "field": "matrix_md",
+                        "value": "matrix evidence",
+                    }
+                ],
+                "belief_shift": "从下班后给孩子做晚饭到matrix evidence再下锅",
+            }
+        )
+    planting = _install_tool_fakes(
+        monkeypatch,
+        response={"content": json.dumps({"bridges": pair}, ensure_ascii=False)},
+    )
+
+    result = await planting._generate_planting_pain_solution_bridge_impl(
+        SKU_ID,
+        RECORD_ID,
+        PORTRAIT_ID,
+        PACK_ID,
+        allowed_product_evidence=["有机本酿造"],
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "pain_solution_bridge_invalid"
+    assert "matrix evidence" not in _FakeAIHubClient.calls[0]["messages"][1]["content"]
+    assert any("evidence_catalog" in error for error in result["errors"])
 
 
 def test_bridge_prompt_replacement_is_single_pass_and_preserves_injected_sentinels(
