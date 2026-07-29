@@ -1,0 +1,336 @@
+schema_version: 1
+change_id: p0-planting-upstream-contract-v3
+title: P0 种草前置内容链收口
+state: COMPLETE
+created_at: '2026-07-29T10:29:40Z'
+updated_at: '2026-07-29T10:56:10Z'
+intent:
+  problem: P0 12 秒种草视频允许没有已采纳画像的订单，并把痛点桥作为任意非空字符串。 当前订单 10d86fa6-4d15-4701-8f19-f455123e8315 因此只把人群记录和 SKU 白名单 当作背景文本，脚本没有经画像证据、具体痛点、可见结果和可信理由的正式种草契约约束。
+  expected_outcome: 新 P0 订单必须冻结已采纳的画像和结构化、证据可追溯的痛点—产品动作—结果桥； 12 秒脚本在进入付费视频审批前必须通过正式种草内容闸、三角向量闸和画像来源预匹配。
+  user_visible_behavior:
+  - 没有已采纳画像时，P0 页面明确显示阻断项，不能创建可写 ContentSpec 的正式订单。
+  - 用户先审两条证据化痛点桥并选一条，再审仅开头钩子不同的两条 12 秒脚本。
+  - 脚本审核显示画像证据、场景、痛点、产品动作、可见结果、产品理由和内容闸结果。
+  - 画像缺失、桥无证据、内容闸失败或向量来源降级时，付费视频审批不可打开。
+current_chain:
+  nodes:
+  - page:/sku-pipeline#p0-video
+  - api:POST:/api/omni/sku-pipeline/p0-video/[operation]
+  - mcp:p0_create_video_production_order
+  - mcp:p0_generate_planting_bridge_candidates
+  - mcp:p0_build_video_content_spec
+  - mcp:p0_generate_video_script_candidates
+  - service:video_production_orders.create_or_reuse_production_order
+  - service:video_production_orders.build_and_save_content_spec
+  - service:video_production_workflow.generate_script_candidates
+  - service:video_production_workflow.review_script_candidates
+  - service:video_production_vector_match.assess_frozen_execution_vector_match
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  - db:pipeline.production_content_specs
+  - db:pipeline.production_script_reviews
+  - service:pain_solution_bridge.validate_pain_solution_bridge
+  - service:video_content_gate.evaluate_planting_content_gate
+  - service:triangle_match.audit_content_triangle
+  edges:
+  - from: page:/sku-pipeline#p0-video
+    to: api:POST:/api/omni/sku-pipeline/p0-video/[operation]
+    relation: calls
+  - from: api:POST:/api/omni/sku-pipeline/p0-video/[operation]
+    to: mcp:p0_build_video_content_spec
+    relation: dispatches
+  - from: api:POST:/api/omni/sku-pipeline/p0-video/[operation]
+    to: mcp:p0_generate_planting_bridge_candidates
+    relation: dispatches
+  - from: mcp:p0_build_video_content_spec
+    to: service:video_production_orders.build_and_save_content_spec
+    relation: calls
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: db:pipeline.order_truth_snapshots
+    relation: writes
+  - from: service:video_production_workflow.generate_script_candidates
+    to: db:pipeline.production_script_reviews
+    relation: writes
+  evidence:
+  - 'frontend/src/app/sku-pipeline/P0VideoProductionPanel.tsx:220-313: portrait selection is optional and create sends null.'
+  - 'services/knowledge-engine/app/services/video_production_orders.py:81-180: audience_portrait_id is optional and snapshot permits null portrait.'
+  - 'services/knowledge-engine/app/services/video_production_orders.py:308-390: P0 ContentSpec accepts a free-text pain_solution_bridge.'
+  - 'services/knowledge-engine/app/services/video_production_workflow.py:570-720: P0 writer and critic only consume the P0 truth/spec path.'
+  - 'services/knowledge-engine/app/services/video_production_vector_match.py:57: missing portrait uses record_fallback.'
+  - 'Runtime DB: order 10d86fa6-4d15-4701-8f19-f455123e8315 has audience_portrait_id NULL and bridge text ''下班后，把晚饭认真做好。''.'
+  - services/knowledge-engine/app/mcp/tools/planting.py:302-376 and services/knowledge-engine/app/services/pain_solution_bridge.py:729-899 provide the canonical bridge generator and validator.
+  - services/knowledge-engine/app/services/video_content_gate.py:90-216 provides the canonical 11-field planting content gate.
+scope:
+  pages:
+  - page:/sku-pipeline#p0-video
+  apis:
+  - api:POST:/api/omni/sku-pipeline/p0-video/[operation]
+  mcp_tools:
+  - mcp:p0_create_video_production_order
+  - mcp:p0_generate_planting_bridge_candidates
+  - mcp:p0_build_video_content_spec
+  - mcp:p0_generate_video_script_candidates
+  - mcp:p0_review_video_script_candidates
+  - mcp:p0_assess_execution_vector_match
+  - mcp:generate_planting_pain_solution_bridge
+  services:
+  - service:video_production_orders.create_or_reuse_production_order
+  - service:video_production_orders.build_and_save_content_spec
+  - service:video_production_workflow.generate_script_candidates
+  - service:video_production_workflow.review_script_candidates
+  - service:video_production_vector_match.assess_frozen_execution_vector_match
+  - service:pain_solution_bridge.load_planting_bridge_context
+  - service:pain_solution_bridge.validate_pain_solution_bridge
+  - service:video_content_gate.evaluate_planting_content_gate
+  - service:triangle_match.audit_content_triangle
+  - service:video_vector_gates.score_pre_video_prompt_set
+  database:
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  - db:pipeline.production_content_specs
+  - db:pipeline.production_script_reviews
+  - db:pipeline.production_vector_match_reports
+  data_sources:
+  - db:pipeline.audience_records
+  - db:pipeline.audience_portraits
+  - db:pipeline.audience_packs
+  - db:mvp_sku
+  states_workflows:
+  - state:p0.baseline_ready-to-released
+  - state:planting.BRIDGE_REVIEW
+  - state:planting.SCRIPT_REVIEW
+  - state:planting.PRE_VIDEO_GATE_REVIEW
+  tests:
+  - test:services/knowledge-engine/tests/test_video_production_contract.py
+  - test:services/knowledge-engine/tests/test_video_production_vector_match.py
+  - test:services/knowledge-engine/tests/test_video_production_match.py
+  - test:services/knowledge-engine/tests/test_pain_solution_bridge.py
+  - test:services/knowledge-engine/tests/test_planting_content_gate.py
+  - test:frontend/src/app/sku-pipeline/P0VideoProductionPanel.tsx
+  docs:
+  - docs/dev-changes/p0-planting-upstream-contract-v3/impact.yaml
+  - docs/dev-changes/p0-planting-upstream-contract-v3/completion.yaml
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: page
+  node_id: page:/sku-pipeline#p0-video
+  paths:
+  - frontend/src/app/sku-pipeline/P0VideoProductionPanel.tsx
+  - frontend/src/app/api/omni/sku-pipeline/p0-video/[operation]/route.ts
+  upstream:
+  - mcp:p0_list_video_production_inputs
+  - mcp:p0_generate_planting_bridge_candidates
+  downstream:
+  - mcp:p0_create_video_production_order
+  - mcp:p0_build_video_content_spec
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+  - VER-006
+- id: CHG-002
+  action: modify
+  kind: mcp_service_contract
+  node_id: mcp:p0_create_video_production_order
+  paths:
+  - services/knowledge-engine/app/mcp/tools/video_production.py
+  - services/knowledge-engine/app/services/video_production_orders.py
+  - services/knowledge-engine/app/services/video_production_contract.py
+  upstream:
+  - db:pipeline.audience_portraits
+  - db:pipeline.audience_records
+  downstream:
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  - db:pipeline.production_content_specs
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-005
+- id: CHG-003
+  action: add
+  kind: mcp_service_contract
+  node_id: mcp:p0_generate_planting_bridge_candidates
+  paths:
+  - services/knowledge-engine/app/mcp/tools/video_production.py
+  - services/knowledge-engine/app/mcp/doctor.py
+  - services/knowledge-engine/app/services/video_production_workflow.py
+  - services/knowledge-engine/app/services/pain_solution_bridge.py
+  - services/knowledge-engine/config/prompts/p0_video_writer.system.md
+  - services/knowledge-engine/config/prompts/p0_video_writer.user.md
+  - services/knowledge-engine/config/prompts/p0_video_critic.system.md
+  - services/knowledge-engine/config/prompts/p0_video_critic.user.md
+  upstream:
+  - mcp:generate_planting_pain_solution_bridge
+  - service:pain_solution_bridge.load_planting_bridge_context
+  - service:pain_solution_bridge.validate_pain_solution_bridge
+  downstream:
+  - mcp:p0_build_video_content_spec
+  - mcp:p0_generate_video_script_candidates
+  - db:pipeline.production_script_reviews
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-003
+  - VER-005
+  - VER-006
+- id: CHG-004
+  action: modify
+  kind: service
+  node_id: service:video_production_workflow.review_script_candidates
+  paths:
+  - services/knowledge-engine/app/services/video_production_workflow.py
+  - services/knowledge-engine/app/services/video_production_contract.py
+  - services/knowledge-engine/app/services/video_content_gate.py
+  - services/knowledge-engine/app/services/triangle_match.py
+  upstream:
+  - service:pain_solution_bridge.validate_pain_solution_bridge
+  - service:video_content_gate.evaluate_planting_content_gate
+  - service:triangle_match.audit_content_triangle
+  downstream:
+  - db:pipeline.production_script_reviews
+  - mcp:p0_select_video_script
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-003
+  - VER-005
+- id: CHG-005
+  action: modify
+  kind: service
+  node_id: service:video_production_vector_match.assess_frozen_execution_vector_match
+  paths:
+  - services/knowledge-engine/app/services/video_production_vector_match.py
+  - services/knowledge-engine/app/services/video_vector_gates.py
+  - services/knowledge-engine/app/services/video_production_workflow.py
+  upstream:
+  - db:pipeline.audience_portraits
+  - db:pipeline.production_content_specs
+  downstream:
+  - db:pipeline.production_vector_match_reports
+  - mcp:p0_request_video_generation_approval
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+  - VER-003
+  - VER-005
+- id: CHG-006
+  action: modify
+  kind: tests
+  node_id: test:p0-planting-upstream-contract-v3
+  paths:
+  - services/knowledge-engine/tests/test_video_production_contract.py
+  - services/knowledge-engine/tests/test_video_production_vector_match.py
+  - services/knowledge-engine/tests/test_video_production_match.py
+  - services/knowledge-engine/tests/test_pain_solution_bridge.py
+  - services/knowledge-engine/tests/test_planting_content_gate.py
+  - services/knowledge-engine/tests/test_p0_generation_approval_v3_gate.py
+  - frontend/tests/**/*.test.tsx
+  upstream:
+  - CHG-001
+  - CHG-002
+  - CHG-003
+  - CHG-004
+  - CHG-005
+  downstream: []
+  contract_change: none
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-003
+  - VER-004
+  - VER-005
+  - VER-006
+allowed_unplanned_paths:
+- .agents/skills/omni-feature-development/scripts/dev_contract.py
+compatibility:
+  api:
+    status: compatible
+    strategy: The P0 BFF operation map gains a bridge-review operation; existing operations keep their names but P0 v3 buildSpec requires a selected structured bridge.
+  database:
+    status: compatible
+    strategy: No destructive migration. P0 v3 persists bridge JSON and hashes in existing JSONB ContentSpec/TruthSnapshot fields; v2 orders stay readable and immutable.
+  workflow:
+    status: compatible
+    strategy: P0 v3 adds a BRIDGE_REVIEW blocker between truth and spec, then keeps the 12-second four-beat, prompt, approval, raw-QA, and release states.
+  data_source:
+    status: compatible
+    strategy: Reuse existing SKU, audience record, adopted portrait, optional adopted pack, and product-reference data; no new external source.
+graph_acceptance:
+  required_edges:
+  - from: page:/sku-pipeline#p0-video
+    to: mcp:p0_list_video_production_inputs
+    relation: reads
+  - from: page:/sku-pipeline#p0-video
+    to: mcp:p0_generate_planting_bridge_candidates
+    relation: calls
+  - from: mcp:p0_generate_planting_bridge_candidates
+    to: service:pain_solution_bridge.validate_pain_solution_bridge
+    relation: calls
+  - from: mcp:p0_build_video_content_spec
+    to: db:pipeline.production_content_specs
+    relation: writes
+  - from: service:video_production_workflow.review_script_candidates
+    to: service:video_content_gate.evaluate_planting_content_gate
+    relation: calls
+  - from: service:video_production_workflow.review_script_candidates
+    to: service:triangle_match.audit_content_triangle
+    relation: calls
+  - from: service:video_production_vector_match.assess_frozen_execution_vector_match
+    to: db:pipeline.audience_portraits
+    relation: reads
+  - from: service:video_production_vector_match.assess_frozen_execution_vector_match
+    to: mcp:p0_request_video_generation_approval
+    relation: gates
+  allowed_unknowns: []
+  forbidden_orphans:
+  - mcp:p0_generate_planting_bridge_candidates
+risks:
+- Existing v2 orders lack portrait/bridge fields; version checks must preserve their audit read path while forbidding new v2 writes.
+- The canonical bridge tool is registered at an MCP layer; wrapping it must not create a second unsynchronized bridge schema or bypass audit/trace behavior.
+- The current explicit GenerateCreativePack BFF route does not pass portrait_id, pain_solution_bridge, or upstream_fact_hash; P0 must avoid this loss path or repair its contract.
+- Adding a stricter gate can block more drafts; the page must make first_blocker and the required next action visible instead of showing an empty state.
+out_of_scope:
+- Paid video rerendering, provider choice, and Human Gate approval for a new video attempt.
+- Deterministic product-packshot compositing and product-label raw-video QA changes; those stay as a subsequent renderer-quality change.
+- Ecommerce visual and AI-insert historical branches.
+- Changing the P0 12-second four-beat duration or adding a second historical video chain.
+rollback:
+  strategy: Deploy as a new P0 v3 contract; revert the v3 code/prompt/UI change if needed while retaining v2 read-only order support. Do not mutate historical order/spec/review records.
+  data_recovery: No destructive data operation is planned. New v3 draft orders can be cancelled through the existing workflow; historical raw_rejected order remains audit evidence.
+verification_plan:
+- id: VER-001
+  layer: service
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_video_production_contract.py tests/test_pain_solution_bridge.py tests/test_planting_content_gate.py"
+  proves: Structured bridge validation and the 11-field planting content gate reject missing portrait evidence, free-text bridges, unsupported facts, or missing visible result.
+  required: true
+- id: VER-002
+  layer: service
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_video_production_vector_match.py tests/test_video_production_match.py"
+  proves: P0 v3 blocks record_fallback and uses frozen portrait/bridge inputs for pre-video match evidence.
+  required: true
+- id: VER-003
+  layer: integration
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_video_production_contract.py tests/test_video_production_vector_match.py tests/test_video_production_match.py tests/test_pain_solution_bridge.py tests/test_planting_content_gate.py tests/test_p0_generation_approval_v3_gate.py"
+  proves: The P0 order-to-script path preserves the shared canonical planting bridge, content gate, vector prerequisites, and paid-approval refusal together.
+  required: true
+- id: VER-004
+  layer: frontend
+  command: Push-Location frontend; npx next lint --file src/app/sku-pipeline/P0VideoProductionPanel.tsx --file 'src/app/api/omni/sku-pipeline/p0-video/[operation]/route.ts'; $result = $LASTEXITCODE; Pop-Location; exit $result
+  proves: The changed P0 panel and BFF route lint after adding portrait, bridge-review, and formal-gate blockers. Repository-wide lint is separately recorded as an unrelated pre-existing baseline failure.
+  required: true
+- id: VER-005
+  layer: runtime
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"
+  proves: The P0 MCP registry remains complete after tool contract changes.
+  required: true
+- id: VER-006
+  layer: manual_integration
+  command: Invoke-RestMethod -Uri 'http://localhost:3000/api/omni/sku-pipeline/p0-video/inputs' -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{sku_id='SKU-367991-0002'} | ConvertTo-Json)
+  proves: The P0 entry returns adopted portrait availability and the UI can show portrait/bridge blockers without starting a provider task.
+  required: true
+lock:
+  locked_at: '2026-07-29T10:31:59Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.

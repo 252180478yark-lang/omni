@@ -2,9 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# System deps for PyMuPDF
+# System deps for PyMuPDF and the P0 video QA/composition path.  P0 uses
+# ffprobe to establish immutable media facts and ffmpeg to burn the approved
+# subtitle timeline; keeping both in the KE image makes that path reproducible
+# instead of depending on an operator workstation.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    git \
     libmupdf-dev \
+    fonts-noto-cjk \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml /app/pyproject.toml

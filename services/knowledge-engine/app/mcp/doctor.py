@@ -193,6 +193,31 @@ def _wanted_tools() -> set[str]:
             # 2026-06-12 竞品人群逆向分析：竞品视频 → 8 项人群信号 + 人群假设（🧠/⚠️ 标注）
             # + 可选自家画像对照（对照表/人群空白四区/可借鉴打法），段二 fail-open
             "register_product_reference_asset",
+            # P0 种草视频生产原子：只写 pipeline 订单/事实/ContentSpec，不接电商或 AI 插镜链。
+            "p0_preflight_video_production",
+            "p0_list_video_production_inputs",
+            "p0_list_video_production_orders",
+            "p0_create_video_production_order",
+            "p0_build_video_content_spec",
+            "p0_save_video_content_spec",
+            "p0_get_video_production_order",
+            "p0_generate_planting_bridge_candidates",
+            "p0_generate_video_script_candidates",
+            "p0_save_video_script_candidates",
+            "p0_review_video_script_candidates",
+            "p0_select_video_script",
+            "p0_prepare_video_prompt",
+            "p0_assess_video_content_match",
+            "p0_assess_video_candidate_vector_match",
+            "p0_assess_video_execution_vector_match",
+            "p0_request_video_generation_approval",
+            "p0_start_video_generation",
+            "p0_recover_video_generation",
+            "p0_run_raw_video_qa",
+            "p0_compose_video_final",
+            "p0_run_final_video_qa",
+            "p0_release_video_package",
+            "p0_cancel_video_production",
             "reverse_audience_analysis",
             # 2026-06-12 自建 SOP 存储（migration 050）：桌面拟稿→确认→入库→菜单「我的 SOP」复用
             "sop_save_custom", "sop_list_custom", "sop_archive_custom",
@@ -295,6 +320,10 @@ def _check_prompts(report: DoctorReport) -> None:
             "prescreen_video.system", "prescreen_video.user",
             "planting_pain_solution_bridge.system",
             "planting_pain_solution_bridge.user",
+            "p0_video_writer.system", "p0_video_writer.user",
+            "p0_video_critic.system", "p0_video_critic.user",
+            "p0_video_qa.system", "p0_video_qa.user",
+            "p0_product_reference_qa.system", "p0_product_reference_qa.user",
         }
         missing = wanted - existing
         report.checks.append(CheckResult(

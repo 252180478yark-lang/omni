@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import time
-from typing import Any
+from typing import Any, Mapping
 
 from app.services.gemini_proxy_patch import patch_httplib2_for_proxy
 
@@ -54,6 +54,7 @@ class GeminiVideoClient:
         temperature: float = 0.2,
         max_tokens: int = 16000,
         poll_timeout_sec: int = 180,
+        response_schema: Mapping[str, Any] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """上传视频 + LLM 分析,返回 (parsed_json, usage_meta)。
 
@@ -130,13 +131,16 @@ class GeminiVideoClient:
                 """同步流式收集所有 chunks 到一段 text + 收集 usage."""
                 full_text_parts = []
                 last_resp = None
+                generation_config: dict[str, Any] = {
+                    "response_mime_type": "application/json",
+                    "temperature": temperature,
+                    "max_output_tokens": max_tokens,
+                }
+                if response_schema is not None:
+                    generation_config["response_schema"] = dict(response_schema)
                 stream = self.model.generate_content(
                     [system_prompt, user_prompt, video_file],
-                    generation_config={
-                        "response_mime_type": "application/json",
-                        "temperature": temperature,
-                        "max_output_tokens": max_tokens,
-                    },
+                    generation_config=generation_config,
                     stream=True,
                 )
                 for chunk in stream:

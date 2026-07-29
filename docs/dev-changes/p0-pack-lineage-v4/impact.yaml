@@ -1,0 +1,288 @@
+schema_version: 1
+change_id: p0-pack-lineage-v4
+title: P0 已采纳人群包血缘冻结
+state: COMPLETE
+created_at: '2026-07-29T11:16:29Z'
+updated_at: '2026-07-29T11:37:59Z'
+intent:
+  problem: P0 v3 创建订单只接收已采纳人群、画像和产品参考图，没有接收或冻结已采纳 audience_pack_id。 运行时订单 88f04565-b9b0-4a11-bf75-261728b90163 因而把 facts.lineage.audience_pack_id 冻结为 null， pack_calibration 为空且桥接不要求 pack evidence；这不满足“前置链路内容和知识完整进入视频”的要求。
+  expected_outcome: 新 P0 v4 订单必须由用户选择一个与 SKU、人群、矩阵血缘匹配的已采纳人群包，并将其作为 canonical planting bridge context 的一部分冻结；桥接、ContentSpec、脚本和向量门均使用同一包证据。
+  user_visible_behavior:
+  - P0 输入区会显示与所选人群匹配的已采纳人群包；未选择时不允许创建新订单。
+  - 新订单只接受与已采纳人群、已采纳画像、SKU 和矩阵血缘一致的已采纳包。
+  - 新 v4 桥接必须带有可追溯的人群包校准证据；旧 v2/v3 订单仍可审计但不能继续写入。
+current_chain:
+  nodes:
+  - page:/sku-pipeline#p0-video
+  - api:POST:/api/omni/sku-pipeline/p0-video/create
+  - api:POST:/api/omni/sku-pipeline/p0-video/inputs
+  - mcp:p0_list_video_production_inputs
+  - mcp:p0_create_video_production_order
+  - service:video_production_orders.list_production_inputs
+  - service:video_production_orders.create_or_reuse_production_order
+  - service:pain_solution_bridge.load_planting_bridge_context
+  - service:video_production_contract.validate_truth_snapshot
+  - service:video_production_workflow._frozen_strong_lineage_planting_context
+  - service:video_production_vector_match.formal_planting_dimension_facts
+  - db:pipeline.audience_packs
+  - db:pipeline.order_truth_snapshots
+  - db:pipeline.production_orders
+  - migration:097_p0_v4_adopted_pack_lineage.sql
+  edges:
+  - from: page:/sku-pipeline#p0-video
+    to: api:POST:/api/omni/sku-pipeline/p0-video/inputs
+    relation: calls
+  - from: api:POST:/api/omni/sku-pipeline/p0-video/inputs
+    to: mcp:p0_list_video_production_inputs
+    relation: dispatches
+  - from: page:/sku-pipeline#p0-video
+    to: api:POST:/api/omni/sku-pipeline/p0-video/create
+    relation: calls
+  - from: api:POST:/api/omni/sku-pipeline/p0-video/create
+    to: mcp:p0_create_video_production_order
+    relation: dispatches
+  - from: mcp:p0_create_video_production_order
+    to: service:video_production_orders.create_or_reuse_production_order
+    relation: calls
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: service:pain_solution_bridge.load_planting_bridge_context
+    relation: calls
+  - from: service:pain_solution_bridge.load_planting_bridge_context
+    to: db:pipeline.audience_packs
+    relation: reads
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: db:pipeline.order_truth_snapshots
+    relation: writes
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: db:pipeline.production_orders
+    relation: writes
+  evidence:
+  - services/knowledge-engine/app/services/video_production_orders.py:109-171 calls load_planting_bridge_context without audience_pack_id.
+  - services/knowledge-engine/app/services/video_production_orders.py:490-550 lists only audience records, product references and portraits.
+  - services/knowledge-engine/app/services/pain_solution_bridge.py:248-257 requires an explicit optional pack ID and never selects one implicitly.
+  - services/knowledge-engine/app/services/pain_solution_bridge.py:416-523 freezes pack calibration only when audience_pack_id is supplied.
+  - frontend/src/app/sku-pipeline/P0VideoProductionPanel.tsx:383-411 has no pack selector or create payload field.
+  - 'Runtime DB: order 88f04565-b9b0-4a11-bf75-261728b90163 has v3, facts.lineage.audience_pack_id null, pack_calibration null and require_pack_evidence false.'
+  - 'Runtime DB: adopted matching pack 4c725656-8c37-43c1-a496-1523d6b9b85d exists for audience 71f9cd4b-735f-4862-834d-9320f8b721a3.'
+scope:
+  pages:
+  - page:/sku-pipeline#p0-video
+  apis:
+  - api:POST:/api/omni/sku-pipeline/p0-video/inputs
+  - api:POST:/api/omni/sku-pipeline/p0-video/create
+  mcp_tools:
+  - mcp:p0_list_video_production_inputs
+  - mcp:p0_create_video_production_order
+  services:
+  - service:video_production_orders.list_production_inputs
+  - service:video_production_orders.create_or_reuse_production_order
+  - service:pain_solution_bridge.load_planting_bridge_context
+  - service:video_production_contract.p0_idempotency_key
+  - service:video_production_contract.validate_truth_snapshot
+  - service:video_production_contract.validate_content_spec
+  - service:video_production_workflow._frozen_strong_lineage_planting_context
+  - service:video_production_vector_match.formal_planting_dimension_facts
+  database:
+  - db:pipeline.audience_packs
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  data_sources:
+  - db:pipeline.audience_records
+  - db:pipeline.audience_portraits
+  - db:pipeline.audience_packs
+  - db:mvp_sku
+  states_workflows:
+  - state:p0.v3.read_only
+  - state:p0.v4.baseline_ready-to-truth_ready
+  - state:planting.BRIDGE_REVIEW
+  tests:
+  - test:services/knowledge-engine/tests/test_video_production_contract.py
+  - test:services/knowledge-engine/tests/test_p0_pack_lineage_v4.py
+  - test:services/knowledge-engine/tests/test_p0_pack_lineage_migration.py
+  - test:services/knowledge-engine/tests/test_p0_generation_approval_v3_gate.py
+  - test:services/knowledge-engine/tests/test_video_production_vector_match.py
+  - test:frontend/src/app/sku-pipeline/P0VideoProductionPanel.tsx
+  docs:
+  - docs/dev-changes/p0-pack-lineage-v4/impact.yaml
+  - docs/dev-changes/p0-pack-lineage-v4/completion.yaml
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: page
+  node_id: page:/sku-pipeline#p0-video
+  paths:
+  - frontend/src/app/sku-pipeline/P0VideoProductionPanel.tsx
+  upstream:
+  - mcp:p0_list_video_production_inputs
+  downstream:
+  - mcp:p0_create_video_production_order
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+  - VER-005
+- id: CHG-002
+  action: modify
+  kind: mcp_service_contract
+  node_id: mcp:p0_create_video_production_order
+  paths:
+  - services/knowledge-engine/app/mcp/tools/video_production.py
+  - services/knowledge-engine/app/services/video_production_orders.py
+  upstream:
+  - db:pipeline.audience_packs
+  - service:pain_solution_bridge.load_planting_bridge_context
+  downstream:
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  contract_change: breaking
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-004
+- id: CHG-003
+  action: modify
+  kind: contract
+  node_id: service:video_production_contract.validate_truth_snapshot
+  paths:
+  - services/knowledge-engine/app/services/video_production_contract.py
+  - services/knowledge-engine/tests/test_video_production_contract.py
+  - services/knowledge-engine/tests/test_p0_pack_lineage_v4.py
+  upstream:
+  - db:pipeline.audience_packs
+  downstream:
+  - service:video_production_orders.create_or_reuse_production_order
+  - state:planting.BRIDGE_REVIEW
+  contract_change: breaking
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-006
+  - VER-007
+- id: CHG-004
+  action: add
+  kind: database_migration
+  node_id: migration:097_p0_v4_adopted_pack_lineage.sql
+  paths:
+  - migrations/097_p0_v4_adopted_pack_lineage.sql
+  - services/knowledge-engine/tests/test_p0_pack_lineage_migration.py
+  upstream:
+  - db:pipeline.audience_packs
+  downstream:
+  - db:pipeline.production_orders
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+  - VER-007
+- id: CHG-005
+  action: modify
+  kind: workflow_vector_gate
+  node_id: service:video_production_workflow._frozen_strong_lineage_planting_context
+  paths:
+  - services/knowledge-engine/app/services/video_production_workflow.py
+  - services/knowledge-engine/app/services/video_production_vector_match.py
+  - services/knowledge-engine/tests/test_p0_generation_approval_v3_gate.py
+  - services/knowledge-engine/tests/test_video_production_vector_match.py
+  upstream:
+  - db:pipeline.production_orders
+  - db:pipeline.order_truth_snapshots
+  downstream:
+  - state:planting.BRIDGE_REVIEW
+  contract_change: breaking
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-006
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Existing operation names stay stable; create and inputs gain audience-pack fields for new v4 orders only.
+  database:
+    status: compatible
+    strategy: Add nullable audience_pack_id with an FK and index. v2/v3 rows remain unchanged; v4 persistence requires the value before insert.
+  workflow:
+    status: breaking
+    strategy: New writes use p0.v4 and require an adopted matching pack. p0.v2 and p0.v3 remain readable/auditable but are superseded for mutable workflow actions.
+  data_source:
+    status: compatible
+    strategy: Reuse the existing adopted pipeline.audience_packs source; no platform call or new collector.
+graph_acceptance:
+  required_edges:
+  - from: page:/sku-pipeline#p0-video
+    to: mcp:p0_list_video_production_inputs
+    relation: reads_adopted_pack_inputs
+  - from: page:/sku-pipeline#p0-video
+    to: mcp:p0_create_video_production_order
+    relation: submits_selected_pack
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: service:pain_solution_bridge.load_planting_bridge_context
+    relation: passes_pack_id
+  - from: service:pain_solution_bridge.load_planting_bridge_context
+    to: db:pipeline.audience_packs
+    relation: reads_adopted_matching_pack
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: db:pipeline.order_truth_snapshots
+    relation: writes_pack_lineage_and_calibration
+  - from: service:video_production_workflow._frozen_strong_lineage_planting_context
+    to: service:video_production_vector_match.formal_planting_dimension_facts
+    relation: passes_frozen_pack_calibration
+  allowed_unknowns: []
+  forbidden_orphans:
+  - mcp:p0_create_video_production_order
+  - service:video_production_contract.validate_truth_snapshot
+risks:
+- id: RISK-001
+  description: More than one adopted pack may exist for a person; implicit latest-pack selection would make the input non-reproducible.
+  mitigation: UI and MCP require one explicit audience_pack_id that canonical loader validates against SKU, audience and matrix lineage.
+- id: RISK-002
+  description: Existing v3 orders omit pack context and become invalid if the same contract version is tightened.
+  mitigation: Introduce p0.v4 and preserve v2/v3 as read-only supported audit versions.
+- id: RISK-003
+  description: Fresh runtime preflight is blocked because unrelated migration 096 is present and checksum-matched in runtime but its source is still Git-untracked; v4 migration 097 is likewise not yet canonical or applied.
+  mitigation: Do not bypass, reconcile or edit migration 096 in this change. The owning change must make 096 canonical; then make 097 canonical, apply only 097, and re-run preflight.
+out_of_scope:
+- Resolving source tracking or ownership for migrations/096_creator_homepage_first30_rank.sql or any unrelated repository migration.
+- Cancelling, deleting, rewriting or generating from the already-created incomplete v3 order 88f04565-b9b0-4a11-bf75-261728b90163.
+- Script generation, paid video generation, external provider configuration and video-provider calls.
+rollback:
+  strategy: Revert the v4 code paths if needed; the nullable schema column is backward-compatible, no existing v2/v3 record is modified, and any v4 order remains an immutable audit record that can be explicitly cancelled later.
+  data_recovery: Snapshot data is append-only. The new nullable column does not overwrite legacy data; no recovery operation is needed.
+verification_plan:
+- id: VER-001
+  layer: service_contract
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_video_production_contract.py tests/test_pain_solution_bridge.py tests/test_p0_generation_approval_v3_gate.py tests/test_video_production_vector_match.py"
+  proves: Versioned v2/v3 audit compatibility, v4 pack-required truth/spec/idempotency validation, and frozen pack calibration entering the vector gate.
+  required: true
+- id: VER-002
+  layer: service
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_p0_pack_lineage_v4.py"
+  proves: The create service rejects a missing or mismatched pack and v4 keeps v2/v3 audit compatibility.
+  required: true
+- id: VER-003
+  layer: frontend
+  command: Push-Location frontend; npx next lint --file src/app/sku-pipeline/P0VideoProductionPanel.tsx; $result = $LASTEXITCODE; Pop-Location; exit $result
+  proves: The P0 page compiles and lints with explicit pack selection.
+  required: true
+- id: VER-004
+  layer: registry
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"
+  proves: The existing P0 MCP tool registration remains healthy after its input contract changes.
+  required: true
+- id: VER-005
+  layer: runtime_read
+  command: Invoke-RestMethod -Uri 'http://localhost:3000/api/omni/sku-pipeline/p0-video/inputs' -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{sku_id='SKU-367991-0002'} | ConvertTo-Json)
+  proves: The BFF exposes adopted pack choices without a model or video call.
+  required: true
+- id: VER-006
+  layer: syntax
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && python -m py_compile app/services/video_production_contract.py app/services/video_production_orders.py app/services/video_production_workflow.py app/services/video_production_vector_match.py app/mcp/tools/video_production.py"
+  proves: Changed Python modules import and compile.
+  required: true
+- id: VER-007
+  layer: migration_contract
+  command: python -m pytest -q services/knowledge-engine/tests/test_p0_pack_lineage_migration.py
+  proves: The v4 migration declares the nullable pack FK/index while retaining v2/v3 rows as nullable audit records.
+  required: true
+lock:
+  locked_at: '2026-07-29T11:19:11Z'
+  locked_by: codex
+  rationale: Runtime snapshot proved that v3 omitted an existing adopted audience pack; v4 must bind it before any new script or video.

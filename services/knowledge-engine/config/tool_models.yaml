@@ -234,3 +234,37 @@ generate_director_brief:
   model: gemini-3.1-pro-preview
   temperature: 0.7
   max_tokens: 12000
+
+# P0 single planting-video atom.  Script authoring and criticism deliberately
+# use separate calls; the paid render remains explicitly pinned to Seedance.
+p0_video_script_writer:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.35
+  max_tokens: 4000
+  prompts:
+    system: p0_video_writer.system
+    user: p0_video_writer.user
+
+p0_video_script_critic:
+  provider: gemini
+  model: gemini-3.1-pro-preview
+  temperature: 0.1
+  max_tokens: 2500
+  prompts:
+    system: p0_video_critic.system
+    user: p0_video_critic.user
+
+p0_generate_video:
+  provider: seedance
+  model: doubao-seedance-2-0-260128
+  duration: 15
+
+p0_video_qa:
+  provider: gemini
+  model: gemini-2.5-flash
+  temperature: 0.2
+  max_tokens: 2500
+  prompts:
+    system: p0_video_qa.system
+    user: p0_video_qa.user

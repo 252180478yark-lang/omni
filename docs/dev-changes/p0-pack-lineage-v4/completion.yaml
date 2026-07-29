@@ -1,0 +1,153 @@
+schema_version: 1
+change_id: p0-pack-lineage-v4
+state: COMPLETE
+actual_changes:
+- id: actual-001
+  planned_change_id: CHG-001
+  summary: P0 页面要求用户显式选择与人群匹配的已采纳人群包；创建 payload、输入计数和旧单提示均升级到 v4。
+  paths:
+  - frontend/src/app/sku-pipeline/P0VideoProductionPanel.tsx
+- id: actual-002
+  planned_change_id: CHG-002
+  summary: P0 MCP 和订单服务接收、校验和冻结 audience_pack_id；输入列表只返回已采纳匹配包，并让迁移前的历史订单保持可读。
+  paths:
+  - services/knowledge-engine/app/mcp/tools/video_production.py
+  - services/knowledge-engine/app/services/video_production_orders.py
+- id: actual-003
+  planned_change_id: CHG-003
+  summary: P0 合约新增 v4，要求包血缘、包校准和包证据；v2/v3 继续作为只读审计版本，v4 幂等键包含包 ID。
+  paths:
+  - services/knowledge-engine/app/services/video_production_contract.py
+  - services/knowledge-engine/tests/test_video_production_contract.py
+  - services/knowledge-engine/tests/test_p0_pack_lineage_v4.py
+- id: actual-004
+  planned_change_id: CHG-004
+  summary: 新增可回滚的 nullable audience_pack_id FK 与索引迁移，保留历史 v2/v3 订单记录。
+  paths:
+  - migrations/097_p0_v4_adopted_pack_lineage.sql
+  - services/knowledge-engine/tests/test_p0_pack_lineage_migration.py
+- id: actual-005
+  planned_change_id: CHG-005
+  summary: v4 工作流在桥接、脚本、向量和付费审批前复核订单包、快照包、校准包及包证据的一致性；正式向量维度吸收冻结包和已选包证据。
+  paths:
+  - services/knowledge-engine/app/services/video_production_workflow.py
+  - services/knowledge-engine/app/services/video_production_vector_match.py
+  - services/knowledge-engine/tests/test_p0_generation_approval_v3_gate.py
+  - services/knowledge-engine/tests/test_video_production_vector_match.py
+contract_delta:
+- description: 在影响合同锁定后，将 audience_pack_id 从仅快照字段提升为订单表级别的 nullable FK，并补充迁移合同测试。
+  reason: 审计发现只有快照无法在订单查询、不可变审计和工作流复核中可靠地证明用户实际选定的包；v2/v3 历史行又不能被强制回填。
+  effect: v4 写入必须持久化同一包 ID，v2/v3 保持可读；部署前会被 097 迁移和 P0 preflight 明确阻断，不能静默绕过。
+  accepted: true
+- description: 将 096 运行时 blocker 的表述从 ledger 缺失修正为 canonical source untracked。
+  reason: 只读 preflight 证明 096 已在 runtime ledger 且 checksum 匹配；它被阻断的唯一原因是源码尚未纳入 canonical Git。
+  effect: 不会错误重跑或 reconcile 096；后续必须先由其 owner 纳入 canonical Git，再纳入并定向应用 097。
+  accepted: true
+verification_results:
+- id: VER-001
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_video_production_contract.py tests/test_pain_solution_bridge.py tests/test_p0_generation_approval_v3_gate.py tests/test_video_production_vector_match.py"
+  status: passed
+  exit_code: 0
+  evidence: 140 passed; v4 pack-required truth/spec/idempotency, v2/v3 audit compatibility, bridge validation and vector gate regressions passed. Two third-party deprecation warnings only.
+- id: VER-002
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app pytest -q tests/test_p0_pack_lineage_v4.py"
+  status: passed
+  exit_code: 0
+  evidence: 4 passed; missing pack, mismatched frozen pack, missing selected pack evidence, v3 read compatibility, and service call binding are covered.
+- id: VER-003
+  command: Push-Location frontend; npx next lint --file src/app/sku-pipeline/P0VideoProductionPanel.tsx; $result = $LASTEXITCODE; Pop-Location; exit $result
+  status: passed
+  exit_code: 0
+  evidence: Next lint returned no warnings or errors for the P0 panel with explicit pack selection.
+- id: VER-004
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && PYTHONPATH=/app python -m app.mcp.doctor"
+  status: passed
+  exit_code: 0
+  evidence: Doctor reports DB pool, prompt templates, 162 live tools and MCP HTTP healthy; only pre-existing CLAUDE.md tool-count warning remains.
+- id: VER-005
+  command: Invoke-RestMethod -Uri 'http://localhost:3000/api/omni/sku-pipeline/p0-video/inputs' -Method Post -ContentType 'application/json; charset=utf-8' -Body (@{sku_id='SKU-367991-0002'} | ConvertTo-Json)
+  status: passed
+  exit_code: 0
+  evidence: BFF returned success=true with audience_packs and requires_adopted_audience_pack=true; adopted pack 4c725656-8c37-43c1-a496-1523d6b9b85d is exposed for audience 71f9cd4b-735f-4862-834d-9320f8b721a3.
+- id: VER-006
+  command: docker exec omni-knowledge-engine bash -lc "cd /app && python -m py_compile app/services/video_production_contract.py app/services/video_production_orders.py app/services/video_production_workflow.py app/services/video_production_vector_match.py app/mcp/tools/video_production.py"
+  status: passed
+  exit_code: 0
+  evidence: All changed Python modules compiled successfully.
+- id: VER-007
+  command: python -m pytest -q services/knowledge-engine/tests/test_p0_pack_lineage_migration.py
+  status: passed
+  exit_code: 0
+  evidence: 1 passed; migration declares nullable FK to pipeline.audience_packs and partial index without rewriting v2/v3 rows.
+graph_diff:
+  status: accepted
+  snapshot_before: P0 v3 froze an adopted portrait and bridge context but did not persist an explicit audience-pack identity on the production order.
+  snapshot_after: P0 v4 requires an owner-selected adopted pack, freezes it in the order and truth context, and uses its calibration evidence in bridge, spec and vector gates.
+  added_nodes:
+  - migration:097_p0_v4_adopted_pack_lineage.sql
+  - db:pipeline.production_orders.audience_pack_id
+  modified_nodes:
+  - page:/sku-pipeline#p0-video
+  - mcp:p0_create_video_production_order
+  - service:video_production_orders.list_production_inputs
+  - service:video_production_orders.create_or_reuse_production_order
+  - service:video_production_contract.validate_truth_snapshot
+  - service:video_production_workflow._frozen_strong_lineage_planting_context
+  - service:video_production_vector_match.formal_planting_dimension_facts
+  removed_nodes: []
+  added_edges:
+  - page:/sku-pipeline#p0-video -> mcp:p0_list_video_production_inputs (reads_adopted_pack_inputs)
+  - page:/sku-pipeline#p0-video -> mcp:p0_create_video_production_order (submits_selected_pack)
+  - service:video_production_orders.create_or_reuse_production_order -> service:pain_solution_bridge.load_planting_bridge_context (passes_pack_id)
+  - service:pain_solution_bridge.load_planting_bridge_context -> db:pipeline.audience_packs (reads_adopted_matching_pack)
+  - service:video_production_orders.create_or_reuse_production_order -> db:pipeline.order_truth_snapshots (writes_pack_lineage_and_calibration)
+  - service:video_production_workflow._frozen_strong_lineage_planting_context -> service:video_production_vector_match.formal_planting_dimension_facts (passes_frozen_pack_calibration)
+  removed_edges: []
+  required_edges:
+  - from: page:/sku-pipeline#p0-video
+    to: mcp:p0_list_video_production_inputs
+    relation: reads_adopted_pack_inputs
+    status: present
+    evidence: The panel reads audience_packs and the live BFF inputs response exposes the adopted target pack without a provider call.
+  - from: page:/sku-pipeline#p0-video
+    to: mcp:p0_create_video_production_order
+    relation: submits_selected_pack
+    status: present
+    evidence: The P0 panel includes audience_pack_id in create payload and target lint passed.
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: service:pain_solution_bridge.load_planting_bridge_context
+    relation: passes_pack_id
+    status: present
+    evidence: The service passes the explicit fourth pack argument; v4 regression captures and asserts the exact binding.
+  - from: service:pain_solution_bridge.load_planting_bridge_context
+    to: db:pipeline.audience_packs
+    relation: reads_adopted_matching_pack
+    status: present
+    evidence: The canonical loader validates the pack against SKU, audience, run and matrix lineage before returning frozen facts.
+  - from: service:video_production_orders.create_or_reuse_production_order
+    to: db:pipeline.order_truth_snapshots
+    relation: writes_pack_lineage_and_calibration
+    status: present
+    evidence: v4 truth validation requires facts.lineage.audience_pack_id, pack_calibration, catalog and pack evidence before snapshot persistence.
+  - from: service:video_production_workflow._frozen_strong_lineage_planting_context
+    to: service:video_production_vector_match.formal_planting_dimension_facts
+    relation: passes_frozen_pack_calibration
+    status: present
+    evidence: The workflow requires matching order/snapshot/calibration IDs; vector regression asserts frozen pack and selected pack evidence enter formal dimensions.
+  orphan_nodes: []
+  unknowns:
+  - node_or_edge: db:pipeline.production_orders.audience_pack_id runtime migration
+    reason: 097 is implemented but intentionally not canonical or applied while preflight is blocked by unrelated untracked 096 source.
+    owner: migration source owners and deployment operator
+    expires_at: after 096 and 097 are canonical, then 097 is applied with --only 097
+    accepted: true
+exceptions:
+- Live v4 order creation, bridge review and paid video generation were not attempted because P0 preflight correctly returns blocked for untracked 096 and unapplied/untracked 097.
+rollback:
+  verified: true
+  evidence: Live read of v3 order 88f04565-b9b0-4a11-bf75-261728b90163 still succeeds with audience_pack_id null and next_action create_a_new_v4_order, proving legacy audit compatibility while writes are superseded.
+final:
+  status: complete
+  completed_at: '2026-07-29T11:37:59Z'
+  completed_by: codex
+  summary: P0 v4 now freezes an explicit adopted audience pack through order, truth, bridge, ContentSpec and vector gates; runtime v4 creation remains correctly blocked until canonical source tracking and the scoped 097 migration are completed.

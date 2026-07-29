@@ -219,6 +219,9 @@ services:
       <<: *proxy-env
       DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@omni-postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@omni-redis:6379/1"
+      # P0 owner-facing preflight reads this checkout only to hash the
+      # migration/config baseline; it never writes to the mount.
+      P0_REPOSITORY_ROOT: "/workspace"
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
       VOLCENGINE_ACCESS_KEY: "${VOLCENGINE_ACCESS_KEY:-}"
       VOLCENGINE_SECRET_KEY: "${VOLCENGINE_SECRET_KEY:-}"
@@ -246,6 +249,9 @@ services:
       - ./services/knowledge-engine/tests:/app/tests
       - ./services/knowledge-engine/config:/app/config
       - ./services/knowledge-engine/scripts:/app/scripts:rw
+      # The P0 baseline card must compare runtime state with the same checked
+      # out migration/config sources, not a hand-copied historical branch.
+      - ./:/workspace:ro
       - ./data/agent_state:/app/agent_state:rw
       - ./data/uploads:/app/data/uploads
       # R-22 文档体检：只读挂仓库根 CLAUDE.md，让容器内 doctor 能比对工具数

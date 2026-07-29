@@ -1,0 +1,77 @@
+{
+  "manifest_version": "omni.p0-track.v1",
+  "decision": "P0 only activates the planting-video production atom. Ecommerce visual and AI-insert migrations remain preserved historical tracks and are not executed or treated as P0 sources.",
+  "adopted_unledgered_active_migrations": [
+    "051_pipeline_prompt_nodes.sql",
+    "052_experiment_lab.sql",
+    "053_experiment_ai_track.sql",
+    "054_experiment_view_production_mode.sql",
+    "058_message_feedback_to_rules.sql",
+    "064_experiment_exposure_in_view.sql",
+    "065_content_version_changelog.sql",
+    "066_match_vectors.sql"
+  ],
+  "excluded_repository_migrations": [
+    "055_jd_powerbi_views.sql",
+    "056_jd_daily_view_expand.sql",
+    "057_jd_product_daily.sql",
+    "059_jd_powerbi_star_upgrade.sql",
+    "060_douyin_powerbi_views.sql",
+    "061_jd_monthly_profit_actuals.sql",
+    "062_jd_pop_tmall_same_price.sql",
+    "063_jd_bi_consolidated.sql",
+    "067_live_recap_table.sql"
+  ],
+  "frozen_tracks": {
+    "ai_insert": {
+      "state": "frozen_pending_rebuild",
+      "runtime_migrations": [
+        "070_ai_insert_face_master.sql",
+        "071_ai_insert_snapshot_review_gaps.sql",
+        "072_ai_insert_reference_capabilities.sql",
+        "073_formal_video_dispatches.sql",
+        "074_ai_insert_plan_persistence.sql",
+        "075_ai_insert_generation_dispatch.sql",
+        "076_ai_insert_qc.sql",
+        "077_ai_insert_delivery.sql",
+        "078_ai_insert_reference_uploads.sql",
+        "079_ai_insert_spend_accounting.sql",
+        "080_ai_insert_dispatch_reconciliation_hardening.sql",
+        "081_ai_insert_provider_rejection_terminal.sql",
+        "082_ai_insert_late_rejection_reconciliation.sql"
+      ]
+    },
+    "ecommerce_visual": {
+      "state": "preserved_for_p1_adapter",
+      "runtime_migrations": [
+        "077_ecommerce_renderer_release_locking.sql",
+        "078_ecommerce_visual_prepare_preauthorization_binding.sql",
+        "079_ecommerce_renderer_release_revocation_evidence.sql",
+        "080_ecommerce_ai_insert_asset_attempt_scope.sql",
+        "081_audience_visual_mapping_chain.sql",
+        "082_audience_visual_dna_claim_ledger.sql",
+        "083_remove_upstream_portrait_visual_sidecars.sql",
+        "088_ecommerce_visual_observability.sql",
+        "089_audience_visual_dna_contract.sql",
+        "090_ecommerce_renderer_release_recovery.sql",
+        "091_ecommerce_visual_prototype_gate.sql",
+        "092_ecommerce_visual_prototype_runtime_contract.sql"
+      ]
+    },
+    "planting_legacy_extension": {
+      "state": "frozen_outside_p0_atom",
+      "runtime_migrations": [
+        "075_formal_video_experiment_pack_identity.sql",
+        "076_formal_video_valid_sample_count.sql",
+        "077_formal_a3_event_contract.sql",
+        "078_formal_a3_event_contract_hardening.sql"
+      ]
+    },
+    "unclassified_runtime_extension": {
+      "state": "preserved_noncanonical_pending_scope_decision",
+      "runtime_migrations": [
+        "087_audience_portrait_evidence_manifest.sql"
+      ]
+    }
+  }
+}

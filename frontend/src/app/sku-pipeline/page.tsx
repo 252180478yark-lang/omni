@@ -13,6 +13,7 @@ import { Loader2, Sparkles, ChevronDown, ChevronRight, Copy, Download, Users, Ta
 import Link from 'next/link'
 import OutputFeedback from '@/components/OutputFeedback'
 import LineageTree, { type PickableNode } from './LineageTree'
+import P0VideoProductionPanel from './P0VideoProductionPanel'
 
 interface SkuRow {
   id: string
@@ -620,6 +621,13 @@ export default function SkuPipelinePage() {
   const [skuId, setSkuId] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('tab') === 'p0-video') setActiveTab('p0-video')
+    const requestedSku = params.get('sku')
+    if (requestedSku) setSkuId(requestedSku)
+  }, [])
+
   // Step 2 state
   const [userInitialPoints, setUserInitialPoints] = useState('')
   const [userReviews, setUserReviews] = useState('')
@@ -1010,7 +1018,8 @@ export default function SkuPipelinePage() {
       .then(data => {
         const arr: SkuRow[] = Array.isArray(data) ? data : (data.data || data.skus || [])
         setSkus(arr)
-        if (arr.length > 0 && !skuId) setSkuId(arr[0].id)
+        const requestedSku = new URLSearchParams(window.location.search).get('sku')
+        if (arr.length > 0 && !requestedSku && !skuId) setSkuId(arr[0].id)
       })
       .catch(e => setError(`SKU 列表加载失败: ${String(e)}`))
   }, [])
@@ -2679,6 +2688,9 @@ export default function SkuPipelinePage() {
           <TabsTrigger value="step4" className="text-sm font-medium w-full justify-start py-2">
             <Target className="w-4 h-4 mr-1.5" /> Step 4 · 圈包
           </TabsTrigger>
+          <TabsTrigger value="p0-video" className="text-sm font-medium w-full justify-start py-2">
+            <Film className="w-4 h-4 mr-1.5" /> Step 5 · 种草视频（P0）
+          </TabsTrigger>
           <TabsTrigger value="step5" className="text-sm font-medium w-full justify-start py-2">
             <Film className="w-4 h-4 mr-1.5" /> Step 5 · 创意素材
           </TabsTrigger>
@@ -2857,6 +2869,10 @@ export default function SkuPipelinePage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="p0-video" className="mt-0 flex-1 min-w-0">
+          <P0VideoProductionPanel skuId={skuId} />
         </TabsContent>
 
         {/* ============== STEP 3: 人群匹配 ============== */}

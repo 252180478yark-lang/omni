@@ -49,6 +49,7 @@ from app.mcp.tools import audience_diagnose as _audience_diagnose  # noqa: E402,
 from app.mcp.tools import yuntu_taxonomy as _yuntu_taxonomy  # noqa: E402, F401  # 2026-06-08 巨量云图标签体系确定性查询（修 agent 答不全）
 from app.mcp.tools import portrait_brief as _portrait_brief  # noqa: E402, F401  # 2026-06-12 step 3.5/3.6 人群画像 + 编导 brief
 from app.mcp.tools import planting as _planting  # noqa: E402, F401
+from app.mcp.tools import video_production as _video_production  # noqa: E402, F401  # P0 单条种草视频生产单
 from app.mcp.tools import reverse_audience as _reverse_audience  # noqa: E402, F401  # 2026-06-12 竞品人群逆向分析（视频→竞品人群假设 + 自家画像对照）
 from app.mcp.tools import custom_sops as _custom_sops  # noqa: E402, F401  # 2026-06-12 自建 SOP 存储（桌面拟稿→确认→入库→菜单复用）
 from app.mcp.tools import prompt_rules_tools as _prompt_rules_tools  # noqa: E402, F401  # 2026-06-15 prompt 飞轮搭桥（sku-pipeline 差评→规则→注入）

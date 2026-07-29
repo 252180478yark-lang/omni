@@ -17,6 +17,7 @@ Tracking table:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import os
 import sys
@@ -47,10 +48,38 @@ def ensure_tracking(cur) -> None:
         """
         CREATE TABLE IF NOT EXISTS public.schema_migrations (
             filename TEXT PRIMARY KEY,
-            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            checksum TEXT
         )
         """
     )
+
+
+def tracking_has_checksums(cur) -> bool:
+    cur.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='schema_migrations'
+              AND column_name='checksum'
+        )
+        """
+    )
+    return bool(cur.fetchone()[0])
+
+
+def ensure_database_prerequisites(cur) -> None:
+    """Install extensions required before the first historical migration.
+
+    Migration 001 already uses ``uuid_generate_v4`` and later migrations use
+    ``gen_random_uuid``.  Relying on an image-init side effect made a clean,
+    reproducible database impossible from this runner.
+    """
+
+    cur.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+    cur.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+    cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
 
 
 def list_migrations(only: list[str] | None) -> list[Path]:
@@ -79,11 +108,22 @@ def apply_one(conn, path: Path, *, dry_run: bool) -> bool:
     cur = conn.cursor()
     try:
         cur.execute(sql)
-        cur.execute(
-            "INSERT INTO public.schema_migrations(filename) VALUES (%s) "
-            "ON CONFLICT (filename) DO NOTHING",
-            (path.name,),
-        )
+        if tracking_has_checksums(cur):
+            checksum = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+            cur.execute(
+                """
+                INSERT INTO public.schema_migrations(filename, checksum) VALUES (%s, %s)
+                ON CONFLICT (filename) DO UPDATE
+                SET checksum=COALESCE(public.schema_migrations.checksum, EXCLUDED.checksum)
+                """,
+                (path.name, checksum),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO public.schema_migrations(filename) VALUES (%s) "
+                "ON CONFLICT (filename) DO NOTHING",
+                (path.name,),
+            )
         conn.commit()
         return True
     except errors.Error as exc:
@@ -121,6 +161,7 @@ def main() -> int:
     conn = psycopg2.connect(dsn)
     try:
         cur = conn.cursor()
+        ensure_database_prerequisites(cur)
         ensure_tracking(cur)
         conn.commit()
         already = applied_set(cur)
