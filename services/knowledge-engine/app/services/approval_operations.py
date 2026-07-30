@@ -1044,7 +1044,10 @@ class PostgresApprovalRepository:
                         """UPDATE mcp.approval_operations
                               SET decision=$1, decision_note=$2, state=$3, error=$4::jsonb,
                                   decision_actor=$5, updated_at=$6,
-                                  completed_at=CASE WHEN $3='cancelled' THEN $6 ELSE NULL END,
+                                  completed_at=CASE
+                                      WHEN $3='cancelled' THEN $6::timestamptz
+                                      ELSE NULL
+                                  END,
                                   version=version+1
                             WHERE id=$7 AND decision IS NULL AND state='pending'""",
                         decision.value, note, state, error, actor_id, now, uuid.UUID(operation_id),

@@ -52,6 +52,207 @@ def test_primary_dirty_paths_are_preserved_external_user_without_mutation(
     assert (repo / "base.txt").read_bytes() == before
 
 
+def test_external_path_overlapping_current_contract_remains_blocking(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = _repo(tmp_path)
+    current = tmp_path / "current"
+    _run(repo, "git", "worktree", "add", "-q", "-b", "current", str(current))
+    contract = current / "docs" / "dev-changes" / "change-current" / "impact.yaml"
+    contract.parent.mkdir(parents=True)
+    contract.write_text(
+        yaml.safe_dump(
+            {
+                "change_id": "change-current",
+                "state": "IMPLEMENTING",
+                "planned_changes": [{"paths": ["services/shared/**"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    external = repo / "services" / "shared" / "app.py"
+    external.parent.mkdir(parents=True)
+    external.write_text("primary_user_edit = True\n", encoding="utf-8")
+    monkeypatch.setattr(ownership, "delivered_contracts", lambda *_args, **_kwargs: {})
+
+    report = ownership.inventory_workspace(
+        current, include_primary=True, secret_scope="changed"
+    )
+
+    fact = next(
+        item
+        for item in report["paths"]
+        if item["worktree_id"] == "primary"
+        and item["path"] == "services/shared/app.py"
+    )
+    assert fact["scope_owners"] == ("change-current",)
+    assert fact["scope_conflict"] is True
+    assert report["counts"]["dirty_scope_conflict"] == 1
+    assert report["counts"]["external_scope_overlap"] == 0
+    assert "dirty_scope_conflict" in ownership.blocking_ownership_states(
+        report["counts"]
+    )
+
+
+def test_external_path_with_mismatched_scope_source_remains_blocking(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = _repo(tmp_path)
+    owner = tmp_path / "owner"
+    foreign = tmp_path / "foreign"
+    current = tmp_path / "observer"
+    _run(repo, "git", "worktree", "add", "-q", "-b", "owner", str(owner))
+    _run(repo, "git", "worktree", "add", "-q", "-b", "foreign", str(foreign))
+    _run(repo, "git", "worktree", "add", "-q", "-b", "observer", str(current))
+    contract = owner / "docs" / "dev-changes" / "change-owner" / "impact.yaml"
+    contract.parent.mkdir(parents=True)
+    contract.write_text(
+        yaml.safe_dump(
+            {
+                "change_id": "change-owner",
+                "state": "IMPLEMENTING",
+                "planned_changes": [{"paths": ["services/shared/**"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    target = foreign / "services" / "shared" / "app.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("foreign_edit = True\n", encoding="utf-8")
+    monkeypatch.setattr(ownership, "delivered_contracts", lambda *_args, **_kwargs: {})
+
+    report = ownership.inventory_workspace(
+        current, include_primary=False, secret_scope="changed"
+    )
+
+    foreign_id = ownership.worktree_id(
+        foreign, primary=ownership.primary_worktree(current)
+    )
+    fact = next(
+        item
+        for item in report["paths"]
+        if item["worktree_id"] == foreign_id
+        and item["path"] == "services/shared/app.py"
+    )
+    assert fact["scope_owners"] == ("change-owner",)
+    assert fact["scope_conflict"] is True
+    assert report["counts"]["dirty_scope_conflict"] == 1
+    assert "dirty_scope_conflict" in ownership.blocking_ownership_states(
+        report["counts"]
+    )
+
+
+def test_same_physical_owner_nested_contracts_are_audit_only(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = _repo(tmp_path)
+    owner = tmp_path / "owner"
+    current = tmp_path / "observer"
+    _run(repo, "git", "worktree", "add", "-q", "-b", "owner", str(owner))
+    _run(repo, "git", "worktree", "add", "-q", "-b", "observer", str(current))
+    for change_id, pattern in (
+        ("change-outer", "services/shared/**"),
+        ("change-inner", "services/shared/app.py"),
+    ):
+        contract = owner / "docs" / "dev-changes" / change_id / "impact.yaml"
+        contract.parent.mkdir(parents=True)
+        contract.write_text(
+            yaml.safe_dump(
+                {
+                    "change_id": change_id,
+                    "state": "IMPLEMENTING",
+                    "planned_changes": [{"paths": [pattern]}],
+                }
+            ),
+            encoding="utf-8",
+        )
+    target = owner / "services" / "shared" / "app.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("one_physical_writer = True\n", encoding="utf-8")
+    monkeypatch.setattr(ownership, "delivered_contracts", lambda *_args, **_kwargs: {})
+
+    report = ownership.inventory_workspace(
+        current, include_primary=False, secret_scope="changed"
+    )
+
+    owner_id = ownership.worktree_id(owner, primary=ownership.primary_worktree(current))
+    fact = next(
+        item
+        for item in report["paths"]
+        if item["worktree_id"] == owner_id
+        and item["path"] == "services/shared/app.py"
+    )
+    assert fact["scope_owners"] == ("change-inner", "change-outer")
+    assert fact["scope_conflict"] is False
+    assert report["counts"]["dirty_scope_conflict"] == 0
+    assert report["counts"]["external_scope_overlap"] == 3
+    assert report["contract_scope_overlaps"] == []
+    assert ownership.blocking_ownership_states(report["counts"]) == ()
+
+
+def test_same_change_in_two_external_worktrees_remains_blocking(
+    tmp_path: Path, monkeypatch
+) -> None:
+    repo = _repo(tmp_path)
+    owner = tmp_path / "owner"
+    second_owner = tmp_path / "second-owner"
+    current = tmp_path / "observer"
+    _run(repo, "git", "worktree", "add", "-q", "-b", "owner", str(owner))
+    _run(
+        repo,
+        "git",
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        "second-owner",
+        str(second_owner),
+    )
+    _run(repo, "git", "worktree", "add", "-q", "-b", "observer", str(current))
+    for worktree in (owner, second_owner):
+        contract = (
+            worktree
+            / "docs"
+            / "dev-changes"
+            / "change-shared"
+            / "impact.yaml"
+        )
+        contract.parent.mkdir(parents=True)
+        contract.write_text(
+            yaml.safe_dump(
+                {
+                    "change_id": "change-shared",
+                    "state": "IMPLEMENTING",
+                    "planned_changes": [{"paths": ["services/shared/**"]}],
+                }
+            ),
+            encoding="utf-8",
+        )
+    target = owner / "services" / "shared" / "app.py"
+    target.parent.mkdir(parents=True)
+    target.write_text("ambiguous_writer = True\n", encoding="utf-8")
+    monkeypatch.setattr(ownership, "delivered_contracts", lambda *_args, **_kwargs: {})
+
+    report = ownership.inventory_workspace(
+        current, include_primary=False, secret_scope="changed"
+    )
+
+    owner_id = ownership.worktree_id(owner, primary=ownership.primary_worktree(current))
+    fact = next(
+        item
+        for item in report["paths"]
+        if item["worktree_id"] == owner_id
+        and item["path"] == "services/shared/app.py"
+    )
+    assert fact["scope_owners"] == ("change-shared",)
+    assert fact["scope_conflict"] is True
+    assert report["counts"]["contract_owner_ambiguity"] == 1
+    assert report["counts"]["external_scope_overlap"] == 0
+    assert "contract_owner_ambiguity" in ownership.blocking_ownership_states(
+        report["counts"]
+    )
+
+
 def test_linked_worktree_contract_ownership_and_archive_inventory(
     tmp_path: Path, monkeypatch
 ) -> None:

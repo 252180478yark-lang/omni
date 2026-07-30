@@ -80,9 +80,10 @@ If scope changes later, update and revalidate the contract before touching the n
 - Transition to `VERIFYING`; run the narrow tests first, then relevant integration, doctor, schema, and frontend checks.
 - Record command, exit code, result, and evidence for every required verification ID.
 - Test success, empty data, invalid input, permission failure, timeout/source unavailable, retries or duplicate submission, and partial failure when applicable.
-- Use `scripts/check_feature_contracts.py --mode worktree` for advisory discovery and
-  `--mode index` for the exact staged candidate. These modes derive paths from Git;
-  do not hand-curate a changed-file list for delivery claims.
+- Use `scripts/check_feature_contracts.py --mode worktree` for advisory discovery.
+  For a schema-v3 staged candidate, use `--mode index --base <impact.delivery.base_commit>`
+  so already-committed implementation below `HEAD` stays inside the candidate scope.
+  These modes derive paths from Git; do not hand-curate a changed-file list for delivery claims.
 
 ### 5. Prove the graph diff
 

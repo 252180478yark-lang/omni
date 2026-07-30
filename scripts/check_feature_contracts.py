@@ -193,12 +193,13 @@ def _git_name_list(root: Path, command: list[str], label: str) -> tuple[str, ...
     return normalize_changed_files(names)
 
 
-def git_index_changed_files(root: Path) -> tuple[str, ...]:
-    """Read the complete staged candidate directly from Git's index."""
+def git_index_changed_files(root: Path, base: str = "HEAD") -> tuple[str, ...]:
+    """Read the complete staged candidate against an explicit Git base."""
 
+    base = _validate_git_ref(base, "index base")
     return _git_name_list(
         root,
-        ["diff", "--cached", "--name-only", "--diff-filter=ACMRTD", "-z", "HEAD", "--"],
+        ["diff", "--cached", "--name-only", "--diff-filter=ACMRTD", "-z", base, "--"],
         "git index diff",
     )
 
@@ -609,30 +610,47 @@ def check_feature_contracts(
 
         base_commit: str | None = None
         delivery_changed: set[str] | None = None
-        if schema_version == 3 and validation_mode == "commit":
+        if schema_version == 3 and validation_mode in {"commit", "index"}:
             risk = impact.get("risk") or {}
-            if risk.get("level") == "R3":
+            if validation_mode == "commit" and risk.get("level") == "R3":
                 local_errors.append(
                     "R3 candidates cannot receive a delivery attestation until an "
                     "external gate verifier validates impact.risk.approval.gate_ref"
                 )
             delivery = impact.get("delivery") or {}
             declared_base = str(delivery.get("base_commit", "")).strip().lower()
-            try:
-                base_commit = git_resolve_commit(root, declared_base)
-                delivered_commit = git_resolve_commit(root, head_ref)
-                if base_commit != declared_base:
-                    local_errors.append(
-                        "impact.delivery.base_commit must be the immutable full commit SHA"
-                    )
-                elif not git_commit_is_ancestor(root, base_commit, delivered_commit):
-                    local_errors.append(
-                        "impact.delivery.base_commit is not an ancestor of the delivered commit"
-                    )
-                else:
-                    delivery_changed = set(git_changed_files(root, base_commit, delivered_commit))
-            except GateInputError as exc:
-                local_errors.append(str(exc))
+            if validation_mode == "index" and base_ref is None:
+                local_errors.append(
+                    "schema v3 index mode requires explicit --base matching "
+                    "impact.delivery.base_commit"
+                )
+            else:
+                try:
+                    base_commit = git_resolve_commit(root, declared_base)
+                    if base_commit != declared_base:
+                        local_errors.append(
+                            "impact.delivery.base_commit must be the immutable full commit SHA"
+                        )
+                    elif validation_mode == "index":
+                        requested_base = git_resolve_commit(root, str(base_ref))
+                        if requested_base != base_commit:
+                            local_errors.append(
+                                "index --base must equal impact.delivery.base_commit"
+                            )
+                        else:
+                            delivery_changed = set(changed)
+                    else:
+                        delivered_commit = git_resolve_commit(root, head_ref)
+                        if not git_commit_is_ancestor(root, base_commit, delivered_commit):
+                            local_errors.append(
+                                "impact.delivery.base_commit is not an ancestor of the delivered commit"
+                            )
+                        else:
+                            delivery_changed = set(
+                                git_changed_files(root, base_commit, delivered_commit)
+                            )
+                except GateInputError as exc:
+                    local_errors.append(str(exc))
 
         if schema_version == 3:
             if delivery_changed is not None:
@@ -924,7 +942,10 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path(__file__).resolve().parents[1],
         help="repository root (defaults to the parent of scripts/)",
     )
-    parser.add_argument("--base", help="base git revision for a merge-base diff")
+    parser.add_argument(
+        "--base",
+        help="base Git revision for commit mode or the complete staged index candidate",
+    )
     parser.add_argument("--head", help="head git revision for a merge-base diff")
     parser.add_argument(
         "--mode",
@@ -989,14 +1010,15 @@ def _resolve_evaluation_inputs(args: argparse.Namespace) -> EvaluationInputs:
             base_ref="HEAD",
         )
     if mode == "index":
-        if using_refs:
-            raise GateInputError("index mode derives from HEAD and does not accept --base/--head")
+        if args.head is not None:
+            raise GateInputError("index mode accepts --base but does not accept --head")
+        index_base = args.base or "HEAD"
         return EvaluationInputs(
             mode=mode,
-            changed_files=git_index_changed_files(args.root),
+            changed_files=git_index_changed_files(args.root, index_base),
             head_ref=INDEX_EVALUATION_REF,
             evaluation_ref=INDEX_EVALUATION_REF,
-            base_ref="HEAD",
+            base_ref=args.base,
         )
     if args.base is None or args.head is None:
         raise GateInputError("commit mode requires both --base and --head")

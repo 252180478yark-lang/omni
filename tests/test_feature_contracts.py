@@ -768,6 +768,63 @@ def test_worktree_and_index_modes_derive_different_git_truths(tmp_path: Path) ->
     )
 
 
+def test_index_mode_can_cover_complete_candidate_from_locked_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _initialize_git_repo(tmp_path)
+    base = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True
+    ).strip()
+    _commit_file(tmp_path, "services/example/implementation.py")
+    final_delta = tmp_path / "services" / "example" / "final_delta.py"
+    final_delta.write_text("FINAL = True\n", encoding="utf-8")
+    pair = _write_complete_contract(
+        tmp_path,
+        "feature-v3",
+        ["services/example/**"],
+        actual_paths=[
+            "services/example/implementation.py",
+            "services/example/final_delta.py",
+        ],
+        state="GRAPH_DIFF_READY",
+        schema_version=3,
+        base_commit=base,
+    )
+    subprocess.run(
+        ["git", "add", "--", "services/example/final_delta.py", *pair],
+        cwd=tmp_path,
+        check=True,
+    )
+    monkeypatch.setattr(gate, "load_contract_validator", lambda _root: dc)
+
+    changed = gate.git_index_changed_files(tmp_path, base)
+    assert "services/example/implementation.py" in changed
+    assert "services/example/final_delta.py" in changed
+    assert gate.main(
+        ["--root", str(tmp_path), "--mode", "index", "--base", base]
+    ) == 0
+
+    bare_inputs = gate._resolve_evaluation_inputs(
+        gate._build_parser().parse_args(
+            ["--root", str(tmp_path), "--mode", "index"]
+        )
+    )
+    bare_report = gate.check_feature_contracts(
+        tmp_path,
+        bare_inputs.changed_files,
+        validator=dc,
+        head_ref=bare_inputs.head_ref,
+        evaluation_ref=bare_inputs.evaluation_ref,
+        validation_mode=bare_inputs.mode,
+        base_ref=bare_inputs.base_ref,
+    )
+    assert any(
+        "schema v3 index mode requires explicit --base" in error
+        for error in bare_report.errors
+    )
+
+
 def test_cli_resolves_worktree_index_and_backward_compatible_commit_modes(
     tmp_path: Path,
 ) -> None:
@@ -790,6 +847,14 @@ def test_cli_resolves_worktree_index_and_backward_compatible_commit_modes(
     )
     assert index.mode == "index"
     assert index.changed_files == ("services/example/app.py",)
+
+    indexed_from_base = gate._resolve_evaluation_inputs(
+        parser.parse_args(
+            ["--root", str(tmp_path), "--mode", "index", "--base", base]
+        )
+    )
+    assert indexed_from_base.base_ref == base
+    assert indexed_from_base.changed_files == ("services/example/app.py",)
 
     subprocess.run(["git", "commit", "-qm", "candidate"], cwd=tmp_path, check=True)
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True).strip()

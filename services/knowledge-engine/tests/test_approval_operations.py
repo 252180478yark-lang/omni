@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import asyncio
 import hashlib
 import hmac
+import inspect
 import json
 import time
 import uuid
@@ -425,6 +426,11 @@ async def test_postgres_claim_and_finish_bind_redacted_values_without_name_error
     assert "result-secret" not in finish_args[1]
     assert "error-secret" not in finish_args[2]
     assert '"$redacted": true' in finish_args[1]
+
+
+def test_postgres_decide_types_reused_completion_timestamp_parameter():
+    source = inspect.getsource(PostgresApprovalRepository.decide)
+    assert "THEN $6::timestamptz" in source
 
 
 @pytest.mark.asyncio

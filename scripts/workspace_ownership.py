@@ -578,6 +578,9 @@ def inventory_workspace(
     scopes = active_contract_scopes(root, delivered_ids=delivered)
     scope_overlaps = contract_scope_overlaps(scopes)
     owner_ambiguities = contract_owner_ambiguities(scopes)
+    scope_source_worktrees = {
+        scope.change_id: set(scope.source_worktrees) for scope in scopes
+    }
     leases, lease_audit = _runtime_lease_inventory(root)
     candidates = list(all_worktrees(root))
     if not include_primary:
@@ -590,6 +593,7 @@ def inventory_workspace(
         status_by_worktree = dict(zip(candidates, executor.map(_status_entries, candidates)))
 
     facts: list[DirtyPath] = []
+    current_worktree_id = worktree_id(root, primary=primary)
     for worktree in candidates:
         is_primary = worktree == primary
         is_current = worktree == root
@@ -600,6 +604,16 @@ def inventory_workspace(
             scope_owners = owners_for_path(path, scopes)
             lease_owners = _lease_owners_for_path(path, leases)
             matching_lease_changes = {item.split("@", 1)[0] for item in lease_owners}
+            # A path is audit-only only when every matching contract is owned
+            # by this exact external worktree and none is also owned by the
+            # current candidate. This narrowly permits nested contracts with
+            # one physical writer; current-scope and foreign-scope overlaps
+            # remain blocking merge/concurrency risks.
+            aligned_external_scope = bool(scope_owners) and all(
+                scope_source_worktrees.get(owner, set()) == {wid}
+                and current_worktree_id not in scope_source_worktrees.get(owner, set())
+                for owner in scope_owners
+            )
             if is_primary:
                 facts.append(
                     DirtyPath(
@@ -613,7 +627,7 @@ def inventory_workspace(
                         hygiene_class=hygiene,
                         recovery_action=recovery,
                         scope_owners=scope_owners,
-                        scope_conflict=bool(scope_owners),
+                        scope_conflict=bool(scope_owners) and not aligned_external_scope,
                         lease_owners=lease_owners,
                         lease_conflict=bool(lease_owners),
                     )
@@ -637,10 +651,13 @@ def inventory_workspace(
                 scope.change_id in scope_owners and len(scope.source_worktrees) > 1
                 for scope in scopes
             )
-            scope_conflict = (
-                len(scope_owners) > 1
-                or bool(scope_owners and owning_scope is None)
-                or owner_ambiguity
+            scope_conflict = bool(
+                not aligned_external_scope
+                and (
+                    len(scope_owners) > 1
+                    or bool(scope_owners and owning_scope is None)
+                    or owner_ambiguity
+                )
             )
             lease_conflict = bool(
                 lease_owners
@@ -673,6 +690,13 @@ def inventory_workspace(
         for kind in ("active_change", "preserved_external_user", "preserved_external_worktree", "conflict", "unassigned")
     }
     counts["dirty_scope_conflict"] = sum(1 for fact in facts if fact.scope_conflict)
+    counts["external_scope_overlap"] = sum(
+        1
+        for fact in facts
+        if fact.scope_owners
+        and not fact.scope_conflict
+        and fact.ownership in {"preserved_external_user", "preserved_external_worktree"}
+    )
     counts["contract_scope_conflict"] = len(scope_overlaps)
     counts["contract_owner_ambiguity"] = len(owner_ambiguities)
     counts["scope_conflict"] = (
@@ -726,6 +750,7 @@ def inventory_workspace(
             "primary_dirty_paths": "preserved_external_user",
             "mutates_files": False,
             "conflict_behavior": "block_new_write_only",
+            "external_scope_overlap": "audit_only_when_all_scope_sources_match_external_worktree",
             "blocking_count_keys": list(BLOCKING_OWNERSHIP_COUNT_KEYS),
         },
         "active_contracts": [
