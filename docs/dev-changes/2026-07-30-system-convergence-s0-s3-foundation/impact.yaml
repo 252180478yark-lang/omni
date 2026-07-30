@@ -1,14 +1,14 @@
 schema_version: 3
 change_id: 2026-07-30-system-convergence-s0-s3-foundation
 title: System convergence foundation S0 through S3
-state: VERIFYING
+state: GRAPH_DIFF_READY
 created_at: '2026-07-29T17:34:17Z'
-updated_at: '2026-07-29T19:57:43Z'
+updated_at: '2026-07-30T02:01:08Z'
 feature_refs:
 - feature_id: system-convergence-foundation
   feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S0-S3
 before_snapshot:
-  ref: git:7ccc84f5bbdc6c5cef58864820537025e7a96f20:system-convergence-foundation-before
+  ref: sha256:d429c5f456e6bbd8a79982dc66136952f49d7d5b9e59b30162efa77116cc1adf
 delivery:
   authority: ci_attestation
   base_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
@@ -137,6 +137,7 @@ planned_changes:
   paths:
   - scripts/development_policy.py
   - scripts/check_feature_contracts.py
+  - .agents/skills/omni-feature-development/SKILL.md
   - .agents/skills/omni-feature-development/scripts/dev_contract.py
   - .agents/skills/omni-feature-development/tests/test_dev_contract.py
   - tests/test_development_policy.py
@@ -359,6 +360,22 @@ planned_changes:
   verification_ids:
   - VER-003
   - VER-008
+- id: CHG-011
+  action: remove
+  kind: repository-hygiene
+  node_id: repository:tracked-python-bytecode-cache
+  paths:
+  - services/ai-provider-hub/tests/__pycache__/*.pyc
+  - services/identity-service/app/**/__pycache__/*.pyc
+  - services/identity-service/tests/__pycache__/*.pyc
+  - services/news-aggregator/tests/__pycache__/*.pyc
+  upstream:
+  - policy:python-bytecode-ignore
+  downstream:
+  - state:s0-source-hygiene
+  contract_change: compatible
+  verification_ids:
+  - VER-016
 allowed_unplanned_paths: []
 compatibility:
   api:
@@ -412,8 +429,14 @@ graph_acceptance:
     to: artifact:system-graph-snapshot
     relation: writes_content_addressed_snapshot
   allowed_unknowns:
-  - External CI delivery attestation for the new candidate does not exist until an explicitly authorized default-branch integration push completes.
-  - Existing unrelated live containers and the shared main database remain observational inputs and are not mutated by this isolated implementation task.
+  - node_or_edge: collector:delivery.external
+    reason: External CI delivery attestation for the new candidate does not exist until an explicitly authorized default-branch integration push completes.
+    owner: default-branch-ci
+    expires_at: '2026-08-06T00:00:00Z'
+  - node_or_edge: collector:health.runtime
+    reason: Existing unrelated live containers and the shared main database remain observational inputs; the isolated candidate cannot claim current runtime health until its owner authorizes adoption or rebuild.
+    owner: runtime-owner:8003
+    expires_at: '2026-08-06T00:00:00Z'
   forbidden_orphans:
   - service:development-policy
   - service:runtime-allocation
@@ -477,8 +500,8 @@ verification_plan:
   required: true
 - id: VER-005
   layer: compose
-  command: docker compose config --quiet
-  proves: Canonical compose remains valid after allocation variables, build labels, scheduler ownership, and the one-shot migration service are introduced.
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_compose_runtime_contract.py
+  proves: Canonical Compose fails closed without RuntimeAllocation and remains renderable after allocation variables, build labels, scheduler ownership, and the one-shot migration service are introduced.
   required: true
 - id: VER-006
   layer: hooks
@@ -522,13 +545,18 @@ verification_plan:
   required: true
 - id: VER-014
   layer: contract
-  command: python -B scripts/check_feature_contracts.py --mode worktree
-  proves: Every protected changed path has one active owner and matches the locked R2 impact contract.
+  command: python -B scripts/check_feature_contracts.py --mode index --base 7ccc84f5bbdc6c5cef58864820537025e7a96f20
+  proves: The complete staged candidate tree is evaluated directly against the locked immutable delivery base, including implementation commits already below HEAD, so every protected base-to-index path has exactly one active owner and matches the R2 impact contract; immutable commit mode remains the separate delivery seal.
   required: true
 - id: VER-015
   layer: security-hygiene
   command: python -B -m pytest -q -p no:cacheprovider tests/test_secret_hygiene.py
   proves: Cookie import helpers contain no embedded credential material, require an external local secret-file reference, reject repository-contained secret files, and never echo secret values.
+  required: true
+- id: VER-016
+  layer: repository-hygiene
+  command: python -B -c "import subprocess,sys; paths=subprocess.check_output(['git','ls-files','--','*.pyc'], text=True).splitlines(); print(*paths, sep='\n'); sys.exit(1 if paths else 0)"
+  proves: No tracked Python bytecode cache remains in the four explicitly scoped service test or application trees, and the repository contains no other tracked .pyc artifact.
   required: true
 lock:
   locked_at: '2026-07-29T17:36:13Z'
