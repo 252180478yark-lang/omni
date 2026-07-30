@@ -448,7 +448,7 @@ graph_diff:
     to: artifact:system-graph-snapshot
     relation: writes_content_addressed_snapshot
     status: present
-    evidence: services/knowledge-engine/app/services/system_graph/scanner.py::scan_repository hashes canonical content and snapshots.py::write_snapshot uses that hash as the immutable filename; snapshot tests passed in the fresh 85-test selection and the dynamic scan emitted sha256:2115aa49c86270186e7f2edd3a18300023d06d7e7b3214c22c681321ba5c48db.
+    evidence: services/knowledge-engine/app/services/system_graph/scanner.py::scan_repository hashes canonical content and snapshots.py::write_snapshot uses that hash as the immutable filename; snapshot tests passed in the fresh 85-test selection, and two dynamic scans of immutable subject 597d7402565b539bde12f5229ca78fd7e6b9a502 each emitted 111 nodes and 126 edges at sha256:d429c5f456e6bbd8a79982dc66136952f49d7d5b9e59b30162efa77116cc1adf.
   orphan_nodes: []
   unknowns:
   - node_or_edge: collector:delivery.external
