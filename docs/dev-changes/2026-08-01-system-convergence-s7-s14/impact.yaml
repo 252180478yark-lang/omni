@@ -569,7 +569,7 @@ verification_plan:
   required: true
 - id: VER-007
   layer: feature-and-graph
-  command: powershell -NoProfile -Command 'python -B services/knowledge-engine/scripts/system_graph.py generate --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python -B services/knowledge-engine/scripts/system_graph.py scan --ref 109e63f9c64295720bce0da86f2a0e62f2e023f8 --no-dynamic --output docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots'
+  command: powershell -NoProfile -Command 'python -B services/knowledge-engine/scripts/system_graph.py generate --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python -B services/knowledge-engine/scripts/system_graph.py scan --ref 215e2cbcb86fb26086a9fd0ef8f335ffb353e181 --no-dynamic --output docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots'
   proves: Canonical feature projections are current and the after graph is deterministic without converting unavailable runtime collectors to missing.
   required: true
 - id: VER-008

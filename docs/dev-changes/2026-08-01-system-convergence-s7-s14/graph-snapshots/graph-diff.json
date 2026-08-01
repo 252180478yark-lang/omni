@@ -156,7 +156,7 @@
     "bff_operation:POST:/api/omni/sku-pipeline/selling-points-matrix"
   ],
   "schema_version": 1,
-  "to_snapshot": "sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064",
+  "to_snapshot": "sha256:90bd84c4defcb01fef084550f40c657e61431c0d23ae9a43c33332abe3fc4212",
   "unknown_edges": [],
   "unknown_nodes": []
 }

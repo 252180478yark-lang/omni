@@ -223,7 +223,7 @@ actual_changes:
   - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/fde-health-baseline.json
   - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/graph-diff.json
   - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/sha256-db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840.json
-  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/sha256-d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064.json
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/sha256-90bd84c4defcb01fef084550f40c657e61431c0d23ae9a43c33332abe3fc4212.json
   - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
   - scripts/check_feature_contracts.py
   - scripts/generate_fde_health_baseline.py
@@ -254,11 +254,15 @@ contract_delta:
   accepted: true
 - description: Explicit graph refs now materialize and scan the requested immutable Git tree instead of labeling current-worktree observations with another commit.
   reason: Rebased before/after scans exposed a false empty diff even though the requested commits differed.
-  effect: The new snapshots prove f62e1b4 at 164 nodes and 180 edges versus 109e63f at 166 nodes and 182 edges, with commit identities embedded in the content-addressed artifacts.
+  effect: The new snapshots prove f62e1b4 at 164 nodes and 180 edges versus 215e2cb at 166 nodes and 182 edges, with commit identities embedded in the content-addressed artifacts.
   accepted: true
 - description: Frontend static collection includes declared compatibility alias pages while retaining the canonical command-center route.
   reason: S11 keeps the legacy candidate-plan page reachable until S13 retirement gates pass; scanning only the canonical page falsely reported its BFF chain as removed.
   effect: Both /workspace/development and /system-graph remain factual graph nodes, while the retired direct selling-points page call is the only removed node.
+  accepted: true
+- description: Fresh final verification removed one redundant terminal blank line from each of 13 candidate files.
+  reason: git diff --check rejected the sealed candidate even though the earlier completion record claimed diff hygiene had passed.
+  effect: The affected backend, frontend, migration, retirement, and policy tests were rerun; repository diff hygiene now exits cleanly.
   accepted: true
 verification_results:
 - id: VER-001
@@ -285,17 +289,17 @@ verification_results:
   command: python -B scripts/apply_migrations.py --dry-run --verify
   status: passed
   exit_code: 0
-  evidence: Repository verification found 94 immutable migrations, head 103_metric_ownership_and_compatibility.sql, and digest 132a43f5d58aff7da3a5e3da74ac7a33c3ffd0d54f86b64c822db2a612309a10.
+  evidence: Repository verification found 94 migrations, head 103_metric_ownership_and_compatibility.sql, and candidate digest 79a39f50b0fb9493c57b964a7247b27b737d6f4d85854aad3ca051308dc2e32b.
 - id: VER-006
   command: powershell -NoProfile -File scripts/verify_s7_s14_runtime.ps1
   status: passed
   exit_code: 0
-  evidence: RuntimeAllocation allocation-0472682fe052409ebb9a73d51be7ae06 applied all 94 migrations with pending=0 to a disposable database; 2 real PostgreSQL tests passed and all task containers, volumes, networks, and the allocation were released.
+  evidence: RuntimeAllocation allocation-f48dc6f9d7b648fbb3f52f941711ef67 applied all 94 migrations with pending=0 to a disposable database; 2 real PostgreSQL tests passed and all task containers, volumes, networks, and the allocation were released.
 - id: VER-007
-  command: powershell -NoProfile -Command 'python -B services/knowledge-engine/scripts/system_graph.py generate --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python -B services/knowledge-engine/scripts/system_graph.py scan --ref 109e63f9c64295720bce0da86f2a0e62f2e023f8 --no-dynamic --output docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots'
+  command: powershell -NoProfile -Command 'python -B services/knowledge-engine/scripts/system_graph.py generate --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python -B services/knowledge-engine/scripts/system_graph.py scan --ref 215e2cbcb86fb26086a9fd0ef8f335ffb353e181 --no-dynamic --output docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots'
   status: passed
   exit_code: 0
-  evidence: FeatureDefinition revision sha256:d31c998ec8810c74921874b507e552cf1496849e0a1a1af5095370193e3a4190 was current; immutable scans produced base sha256:db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840 at 164/180 and candidate sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064 at 166/182 while preserving four dynamic sources as unknown.
+  evidence: FeatureDefinition revision sha256:d31c998ec8810c74921874b507e552cf1496849e0a1a1af5095370193e3a4190 was current; immutable scans produced base sha256:db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840 at 164/180 and candidate sha256:90bd84c4defcb01fef084550f40c657e61431c0d23ae9a43c33332abe3fc4212 at 166/182 while preserving four dynamic sources as unknown.
 - id: VER-008
   command: powershell -NoProfile -Command '$env:PYTHONPATH=''services/knowledge-engine''; python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_tool_execution.py services/knowledge-engine/tests/test_metric_ownership.py; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $env:PYTHONPATH=''services/scout-agent''; python -B -m pytest -q -p no:cacheprovider services/scout-agent/tests/test_metric_ownership.py; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Remove-Item Env:PYTHONPATH; python -B -m pytest -q -p no:cacheprovider tests/test_client_retirement_audit.py'
   status: passed
@@ -319,7 +323,7 @@ verification_results:
 graph_diff:
   status: accepted
   snapshot_before: sha256:db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840
-  snapshot_after: sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064
+  snapshot_after: sha256:90bd84c4defcb01fef084550f40c657e61431c0d23ae9a43c33332abe3fc4212
   added_nodes:
   - feature:system-convergence-runtime-execution
   - ui_route:/workspace/development

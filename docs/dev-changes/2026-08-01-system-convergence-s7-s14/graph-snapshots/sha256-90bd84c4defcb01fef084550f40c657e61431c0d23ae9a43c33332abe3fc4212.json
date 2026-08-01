@@ -11,7 +11,7 @@
       "migration.static": "1",
       "python.static": "1"
     },
-    "commit": "109e63f9c64295720bce0da86f2a0e62f2e023f8",
+    "commit": "215e2cbcb86fb26086a9fd0ef8f335ffb353e181",
     "definition_revision": "sha256:d31c998ec8810c74921874b507e552cf1496849e0a1a1af5095370193e3a4190",
     "diagnostics": [],
     "edges": [
@@ -9264,8 +9264,8 @@
       }
     ]
   },
-  "content_hash": "sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064",
-  "generated_at_utc": "2026-08-01T16:07:43Z",
+  "content_hash": "sha256:90bd84c4defcb01fef084550f40c657e61431c0d23ae9a43c33332abe3fc4212",
+  "generated_at_utc": "2026-08-01T16:17:51Z",
   "schema_version": 1,
-  "snapshot_id": "sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064"
+  "snapshot_id": "sha256:90bd84c4defcb01fef084550f40c657e61431c0d23ae9a43c33332abe3fc4212"
 }
