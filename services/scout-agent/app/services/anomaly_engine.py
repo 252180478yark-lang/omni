@@ -427,6 +427,7 @@ async def _llm_one_liner(sku_id: str, rule_id: str, description: str, delta_pct:
     try:
         import httpx
         from app.config import settings
+        from app.runtime_trace import outbound_trace_headers
         prompt = (
             f"你是一位抖音小店运营专家。以下异动刚被检测到：\n"
             f"SKU: {sku_id}，规则: {rule_id}，描述: {description}，变动幅度: {delta_pct:.1f}%\n\n"
@@ -442,6 +443,7 @@ async def _llm_one_liner(sku_id: str, rule_id: str, description: str, delta_pct:
                     "temperature": 0.3,
                     "max_tokens": 80,
                 },
+                headers=outbound_trace_headers(),
             )
             resp.raise_for_status()
             return resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")

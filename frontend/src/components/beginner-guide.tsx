@@ -23,94 +23,97 @@ import {
   Rocket,
   type LucideIcon,
 } from 'lucide-react'
+import { featureById } from '@/lib/feature-registry'
 
 const STORAGE_KEY = 'omni_beginner_guide_seen_v1'
 
 type TabId = 'what' | 'do' | 'start' | 'faq'
 
-interface ToolExplain {
+interface ToolPresentation {
+  featureId: string
   icon: LucideIcon
-  name: string
-  href: string
   oneLine: string
   scene: string
   color: string
 }
 
-const TOOLS: ToolExplain[] = [
+interface ToolExplain extends ToolPresentation {
+  name: string
+  href: string
+}
+
+const TOOL_PRESENTATION: ToolPresentation[] = [
   {
+    featureId: 'chat',
     icon: MessageSquare,
-    name: '智能问答',
-    href: '/chat',
     oneLine: '像微信一样和 AI 聊天，可以让它读你给的资料再回答',
     scene: '比如：把一份产品说明书丢进去，问"这款适合什么人用？"',
     color: 'from-violet-500 to-purple-600',
   },
   {
+    featureId: 'knowledge',
     icon: Database,
-    name: '知识库',
-    href: '/knowledge',
     oneLine: '把你常用的资料（PDF、Word、网页）存进来，AI 就能"记住"它们',
     scene: '比如：把公司所有产品手册、FAQ、合同模板存进去，以后随时问',
     color: 'from-emerald-500 to-teal-600',
   },
   {
+    featureId: 'knowledge-harvester',
     icon: Download,
-    name: '知识采集',
-    href: '/knowledge/harvester',
     oneLine: '给一个网页或飞书文档链接，自动抓回来存进知识库',
     scene: '比如：看到一篇好文章，复制链接进去，3 秒后它就在你的知识库里了',
     color: 'from-blue-500 to-cyan-600',
   },
   {
+    featureId: 'system-console',
     icon: Cpu,
-    name: '模型配置',
-    href: '/models',
     oneLine: '在这里填你的 AI 账号密码（API Key），整个系统才能用',
     scene: '第一次用必须来这里填一次，后面就不用管了',
     color: 'from-slate-500 to-gray-600',
   },
   {
+    featureId: 'video-analysis',
     icon: Clapperboard,
-    name: '短视频分析',
-    href: '/video-analysis',
     oneLine: '上传一段短视频，AI 看完直接给你写分析报告',
     scene: '比如：抖音爆款视频拖进去，告诉你它为什么火、节奏怎么剪',
     color: 'from-pink-500 to-rose-600',
   },
   {
+    featureId: 'livestream-analysis',
     icon: Radio,
-    name: '直播分析',
-    href: '/livestream-analysis',
     oneLine: '上传直播录屏，自动切片打分，输出 Excel 报表',
     scene: '比如：复盘自己昨晚那场直播哪段话术效果最好',
     color: 'from-orange-500 to-amber-600',
   },
   {
+    featureId: 'ad-review',
     icon: LineChart,
-    name: '投放复盘',
-    href: '/ad-review',
     oneLine: '把广告投放数据（巨量千川 CSV）丢进来，AI 帮你分析钱花得值不值',
     scene: '比如：上周投了 5 万块，AI 告诉你哪条素材最赚、下周该怎么改',
     color: 'from-indigo-500 to-blue-600',
   },
   {
+    featureId: 'content-studio',
     icon: Palette,
-    name: '内容工坊',
-    href: '/content-studio',
     oneLine: '一句话说出你想要的视频，AI 帮你写脚本、做分镜、生成视频',
     scene: '比如："给一款保湿面霜写一条 30 秒的口播脚本"，自动出片',
     color: 'from-fuchsia-500 to-pink-600',
   },
   {
+    featureId: 'news',
     icon: Newspaper,
-    name: '资讯中心',
-    href: '/news',
     oneLine: '自动从全网帮你抓行业新闻，集中在一个页面看',
     scene: '比如：每天早上花 3 分钟刷一遍今天行业发生了什么',
     color: 'from-sky-500 to-blue-600',
   },
 ]
+
+const TOOLS: ToolExplain[] = TOOL_PRESENTATION.flatMap((presentation) => {
+  const definition = featureById(presentation.featureId)
+  return definition?.visible && (definition.placements.includes('onboarding') || definition.placements.includes('home'))
+    ? [{ ...presentation, name: definition.title, href: definition.href }]
+    : []
+})
 
 interface Step {
   num: number

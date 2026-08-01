@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import subprocess
+import tarfile
+import tempfile
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from app.schemas.system_graph import (
     EvidenceState,
@@ -44,11 +48,54 @@ from app.services.system_graph.redaction import redact
 class ScanRequest:
     repo: Path
     feature_ids: tuple[str, ...] = ()
-    ref: str = "HEAD"
+    ref: str | None = None
     dynamic: bool = True
     timeout_seconds: float = 8.0
     delivery_attestation: Path | None = None
     base_snapshot: GraphSnapshot | None = None
+
+
+@contextmanager
+def _materialized_git_tree(repo: Path, commit: str) -> Iterator[Path]:
+    """Expose one immutable commit to collectors without reading the caller worktree."""
+
+    with tempfile.TemporaryDirectory(prefix="omni-system-graph-") as temporary:
+        temporary_root = Path(temporary)
+        archive_path = temporary_root / "tree.tar"
+        materialized = temporary_root / "repo"
+        materialized.mkdir()
+        with archive_path.open("wb") as archive:
+            subprocess.run(
+                ["git", "-C", str(repo), "archive", "--format=tar", commit],
+                check=True,
+                stdout=archive,
+                stderr=subprocess.PIPE,
+                timeout=60,
+            )
+        with tarfile.open(archive_path, mode="r:") as bundle:
+            root = materialized.resolve()
+            for member in bundle.getmembers():
+                target = (materialized / member.name).resolve()
+                if target != root and root not in target.parents:
+                    raise ValueError(f"archived path escapes repository: {member.name}")
+                if member.issym() or member.islnk():
+                    link_target = (target.parent / member.linkname).resolve()
+                    if link_target != root and root not in link_target.parents:
+                        raise ValueError(
+                            f"archived link escapes repository: {member.name}"
+                        )
+            bundle.extractall(materialized)
+        # Evidence hashing uses `git hash-object`; an empty local repository is enough
+        # because the materialized bytes are the immutable source of each blob ID.
+        subprocess.run(
+            ["git", "init", "--quiet"],
+            check=True,
+            cwd=materialized,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+        )
+        yield materialized
 
 
 def _evidence_key(item: Any) -> tuple[Any, ...]:
@@ -209,42 +256,49 @@ def _carry_unknowns(
 
 def scan_repository(request: ScanRequest) -> GraphSnapshot:
     repo = request.repo.resolve()
-    all_definitions = load_definitions(repo)
-    selected = select_definitions(all_definitions, list(request.feature_ids))
-    context = CollectorContext(
-        repo=repo,
-        definitions=tuple(selected),
-        dynamic=request.dynamic,
-        timeout_seconds=request.timeout_seconds,
-        delivery_attestation=request.delivery_attestation,
+    subject_commit = resolve_commit(repo, request.ref or "HEAD")
+    scan_context = (
+        _materialized_git_tree(repo, subject_commit)
+        if request.ref is not None
+        else nullcontext(repo)
     )
-    collectors = [
-        FrontendCollector(),
-        PythonGraphCollector(),
-        CatalogCollector(),
-        MigrationCollector(),
-        HealthDeliveryCollector(),
-    ]
-    combined = CollectorOutput()
-    for collector in collectors:
-        try:
-            result = collector.collect(context)
-        except Exception:
-            result = CollectorOutput(
-                source_results=[
-                    source_result(
-                        collector.collector_id,
-                        collector.version,
-                        SourceStatus.UNKNOWN,
-                        "collector_failed",
-                        retryable=True,
-                    )
-                ]
-            )
-        combined.nodes.extend(result.nodes)
-        combined.edges.extend(result.edges)
-        combined.source_results.extend(result.source_results)
-        combined.diagnostics.extend(result.diagnostics)
+    with scan_context as scan_repo:
+        all_definitions = load_definitions(scan_repo)
+        selected = select_definitions(all_definitions, list(request.feature_ids))
+        context = CollectorContext(
+            repo=scan_repo,
+            definitions=tuple(selected),
+            dynamic=request.dynamic,
+            timeout_seconds=request.timeout_seconds,
+            delivery_attestation=request.delivery_attestation,
+        )
+        collectors = [
+            FrontendCollector(),
+            PythonGraphCollector(),
+            CatalogCollector(),
+            MigrationCollector(),
+            HealthDeliveryCollector(),
+        ]
+        combined = CollectorOutput()
+        for collector in collectors:
+            try:
+                result = collector.collect(context)
+            except Exception:
+                result = CollectorOutput(
+                    source_results=[
+                        source_result(
+                            collector.collector_id,
+                            collector.version,
+                            SourceStatus.UNKNOWN,
+                            "collector_failed",
+                            retryable=True,
+                        )
+                    ]
+                )
+            combined.nodes.extend(result.nodes)
+            combined.edges.extend(result.edges)
+            combined.source_results.extend(result.source_results)
+            combined.diagnostics.extend(result.diagnostics)
 
     source_by_id: dict[str, SourceResult] = {}
     for result in combined.source_results:
@@ -276,7 +330,7 @@ def scan_repository(request: ScanRequest) -> GraphSnapshot:
     edges = [edge for edge in edges if edge.source in known_nodes and edge.target in known_nodes]
     diagnostics = sorted(combined.diagnostics, key=lambda item: item.fingerprint)
     content = GraphSnapshotContent(
-        commit=resolve_commit(repo, request.ref),
+        commit=subject_commit,
         definition_revision=definition_revision(all_definitions),
         collector_versions={result.collector_id: result.version for result in source_results},
         feature_ids=sorted(definition.feature_id for definition in selected),

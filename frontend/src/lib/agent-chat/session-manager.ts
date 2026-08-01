@@ -1,6 +1,9 @@
 import { EventEmitter } from 'node:events'
-import { cleanupTempMcpConfig } from './mcp-config'
+import { cleanupTempMcpConfig, type McpTraceContext } from './mcp-config'
 import { startClaudeRunner, type ClaudeRunner, type SpawnOptions } from './claude-runner'
+import { startCodexRunner } from './codex-runner'
+import { startHostBridgeRunner } from './host-bridge-runner'
+import type { BrainProvider } from './types'
 
 export interface ActiveSession {
   id: string
@@ -65,6 +68,8 @@ export class SessionManager extends EventEmitter {
       maxTurns?: number
       model?: string
       appendSystemPrompt?: string
+      brainProvider?: BrainProvider
+      traceContext?: McpTraceContext
     },
   ): ClaudeRunner {
     const sess = this.sessions.get(id)
@@ -80,8 +85,23 @@ export class SessionManager extends EventEmitter {
       maxTurns: extra?.maxTurns,
       model: extra?.model,
       appendSystemPrompt: extra?.appendSystemPrompt,
+      mcpTraceContext: extra?.traceContext,
     }
-    const runner = startClaudeRunner(opts)
+    const provider = extra?.brainProvider || (process.env.OMNI_AGENT_PROVIDER === 'codex' ? 'codex' : 'claude')
+    const localFactory = () => provider === 'codex' ? startCodexRunner(opts) : startClaudeRunner(opts)
+    const mode = process.env.OMNI_AGENT_RUNNER_MODE || 'auto'
+    const runner = mode === 'host' || mode === 'auto'
+      ? startHostBridgeRunner({
+        ...opts,
+        sessionId: id,
+        provider,
+        traceId: extra?.traceContext?.traceId || `trace:session:${id}`,
+        executionId: extra?.traceContext?.executionId || `trace:session:${id}`,
+        parentSpanId: extra?.traceContext?.parentSpanId || `ws:session:${id}`,
+        projectDir: process.env.OMNI_PROJECT_DIR || process.cwd(),
+        fallbackFactory: mode === 'auto' ? localFactory : undefined,
+      })
+      : localFactory()
     sess.runner = runner
     sess.lastActiveAt = this.now()
     this.resetTtl(sess)

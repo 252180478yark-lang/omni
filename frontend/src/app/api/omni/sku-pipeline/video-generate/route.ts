@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     let data: any
     try {
       data = await fetchJson<any>(
-        `${base.knowledge}/api/v1/mcp/exec/generate_video_segments`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.video.generate`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

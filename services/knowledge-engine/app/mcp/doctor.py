@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
 import logging
 import os
 import re
@@ -244,6 +245,8 @@ def _wanted_tools() -> set[str]:
             # + 投后北极星并排 + 闭环校准(确定性记账建议三路权重，不训练)
             "embed_content_and_audience", "predict_audience_match", "calibrate_match_predictor",
             "system_graph_plan_feature", "system_graph_update_plan", "system_graph_confirm_plan",
+            "system_graph_refresh", "system_graph_get", "system_graph_diff",
+            "system_graph_search", "system_graph_list_findings",
     }
 
 
@@ -609,6 +612,21 @@ async def run_at_startup() -> None:
 
 
 async def _cli() -> int:
+    parser = argparse.ArgumentParser(description="Validate MCP registration and runtime health")
+    parser.add_argument(
+        "--registry-only",
+        action="store_true",
+        help="validate static MCP registration without opening a database or HTTP connection",
+    )
+    args = parser.parse_args()
+    if args.registry_only:
+        report = DoctorReport()
+        _check_yaml(report)
+        _check_prompts(report)
+        await _check_tools_registered(report)
+        print(report.render())
+        return 0 if report.all_green else 1
+
     await init_pool()
     try:
         report = await run()

@@ -4,6 +4,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
+const routerMock = { replace: vi.fn() }
+const legacySearchParams = new URLSearchParams('legacy_plan=1')
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => routerMock,
+  useSearchParams: () => legacySearchParams,
+}))
+
 import SystemGraphPlanPage from '@/app/system-graph/page'
 
 afterEach(() => {

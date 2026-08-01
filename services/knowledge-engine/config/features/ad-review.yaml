@@ -7,7 +7,7 @@ lifecycle: active
 routes:
   canonical: /ad-review
   visible: true
-  placements: [home, direct]
+  placements: [home, onboarding, direct]
 capabilities:
   - {capability_id: campaign-review, kind: generate}
 expected_edges: []

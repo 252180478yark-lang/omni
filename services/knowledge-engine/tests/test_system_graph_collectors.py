@@ -80,7 +80,10 @@ def test_catch_all_bff_preserves_literal_page_and_rest_edges() -> None:
     snapshot = scan_repository(
         ScanRequest(repo=REPO, feature_ids=("system-convergence-s4-s6",), dynamic=False)
     )
+    nodes = {node.id for node in snapshot.content.nodes}
     edges = {(edge.source, edge.target, edge.relation) for edge in snapshot.content.edges}
+    assert "ui_route:/workspace/development" in nodes
+    assert "ui_route:/system-graph" in nodes
     assert (
         "ui_route:/system-graph",
         "bff_operation:GET:/api/omni/system-graph/integration-plans",

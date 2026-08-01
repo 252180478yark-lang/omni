@@ -10,6 +10,7 @@ import {
   Package, ArrowLeft, Plus, Sparkles, TrendingUp, History, Bot,
   CheckCircle2, XCircle, Clock, Loader2, Brain, User, Store, Cloud,
   Wand2, Film, Edit3, Save, RefreshCw, ChevronRight, AlertCircle,
+  Network,
 } from 'lucide-react'
 import {
   ComposedChart, Line, XAxis, YAxis, Tooltip,
@@ -17,6 +18,7 @@ import {
 } from 'recharts'
 import { ChangeEventForm } from '@/components/change-event-form'
 import { VideoFeedbackButton } from '@/components/video-feedback-button'
+import { SystemGraphView } from '@/components/system-command-center/SystemGraphView'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -106,7 +108,7 @@ interface BrandMind {
   preference: number | null
 }
 
-type TabKey = 'overview' | 'actions' | 'diagnosis' | 'content'
+type TabKey = 'overview' | 'actions' | 'diagnosis' | 'content' | 'system'
 
 const KEY_METRICS = ['gmv_paid', 'uv', 'ctr', 'cvr']
 const METRIC_LABELS: Record<string, string> = {
@@ -157,6 +159,7 @@ export default function SkuDetailPage() {
     { key: 'actions', label: '动作', icon: History, count: events.length },
     { key: 'diagnosis', label: 'AI 诊断', icon: Bot, count: decisions.length },
     { key: 'content', label: '内容工作台', icon: Film },
+    { key: 'system', label: '业务链路', icon: Network },
   ]
 
   return (
@@ -244,6 +247,7 @@ export default function SkuDetailPage() {
       {tab === 'actions' && <ActionsTab events={events} loading={loading} />}
       {tab === 'diagnosis' && <DiagnosisTab decisions={decisions} loading={loading} skuId={skuId} onJumpToContent={() => setTab('content')} />}
       {tab === 'content' && <ContentTab skuId={skuId} />}
+      {tab === 'system' && <SystemGraphView focusQuery={skuId} />}
     </div>
   )
 }
@@ -1492,4 +1496,3 @@ function OwnerSellingPointsEditor({ skuId, sku, onSaved }: {
     </Card>
   )
 }
-

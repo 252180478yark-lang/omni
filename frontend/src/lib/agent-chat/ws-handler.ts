@@ -5,6 +5,7 @@ import { writeTempMcpConfig } from './mcp-config'
 import { readSessionHistory, encodeProjectDir } from './history-reader'
 import path from 'node:path'
 import os from 'node:os'
+import { randomUUID } from 'node:crypto'
 import { Pool } from 'pg'
 import {
   approvalServiceHeaders,
@@ -18,6 +19,7 @@ import type {
   ChatMessage,
   ChatAttachment,
 } from './types'
+import { createRuntimeTracePublisher, type RuntimeTraceEventInput } from './runtime-trace'
 
 // Lazy init: server.ts 用 @next/env loadEnvConfig 加载 .env.local, 但 ESM import
 // hoisting 会让模块顶层 new Pool() 在 env 加载前执行 → 拿到默认 'omni_pass' 错密码.
@@ -173,22 +175,30 @@ function extractAttachmentsFromResult(content: unknown): ChatAttachment[] {
 export function attachWsHandler(ws: WebSocket, approvalAuthorization: string | null = null): void {
   _initRedisSubscriber()
   let closed = false
-  if (approvalAuthorization) {
-    void verifyApprovalActor(approvalAuthorization)
-      .then(() => {
-        if (!closed && ws.readyState === 1) _approvalConnections.add(ws)
-      })
-      .catch(() => {
-        // Chat compatibility remains available, but this connection is never
-        // admitted to the approval notification/decision channel.
-      })
-  }
+  let authErrorSent = false
+  const authentication = approvalAuthorization
+    ? verifyApprovalActor(approvalAuthorization).then(() => true).catch(() => false)
+    : Promise.resolve(false)
+  void authentication.then((authenticated) => {
+    if (closed || ws.readyState !== 1) return
+    if (authenticated) return void _approvalConnections.add(ws)
+    authErrorSent = true
+    send(ws, { kind: 'error', error: 'authentication_required' })
+    ws.close(1008, 'authentication_required')
+  })
   ws.on('close', () => {
     closed = true
     _approvalConnections.delete(ws)
   })
 
   ws.on('message', async (raw) => {
+    if (!await authentication) {
+      if (!authErrorSent && ws.readyState === 1) {
+        authErrorSent = true
+        send(ws, { kind: 'error', error: 'authentication_required' })
+      }
+      return
+    }
     let msg: WsClientMessage
     try {
       msg = JSON.parse(raw.toString())
@@ -262,11 +272,36 @@ async function handleClientMessage(
   if (msg.kind === 'send_prompt') {
     if (!mgr.has(msg.session_id)) return send(ws, { kind: 'error', error: 'session_not_open' })
     const cfg = msg.config
+    // S8 is explicit: this task trace is emitted independently of the legacy
+    // tool_use backfill below. A failed publisher is an observable gap, never
+    // a reason to infer a tool/audit relationship by name and time window.
+    const traceId = `trace:${randomUUID()}`
+    const executionId = `execution:${randomUUID()}`
+    const tracePublisher = createRuntimeTracePublisher()
+    let traceSequence = 0
+    const publishTrace = (partial: Omit<RuntimeTraceEventInput, 'source' | 'event_id' | 'trace_id' | 'execution_id' | 'session_id' | 'sequence'>) => {
+      const event: RuntimeTraceEventInput = {
+        source: 'agent.websocket', event_id: `ws:${executionId}:${traceSequence}`, trace_id: traceId,
+        execution_id: executionId, session_id: msg.session_id, sequence: traceSequence++, ...partial,
+      }
+      return tracePublisher.publish(event).then((ok) => {
+        if (!ok) send(ws, { kind: 'trace_gap', session_id: msg.session_id, trace_id: traceId, reason: tracePublisher.enabled ? 'append_failed' : 'publisher_disabled' })
+        return ok
+      })
+    }
+    send(ws, { kind: 'trace_started', session_id: msg.session_id, trace_id: traceId, execution_id: executionId })
+    const mcpTraceContext = {
+      traceId, executionId, parentSpanId: `ws:${executionId}`, sessionId: msg.session_id,
+    }
+    await writeTempMcpConfig(msg.session_id, mcpTraceContext)
+    void publishTrace({ span_id: `ws:${executionId}`, parent_span_id: null, event_type: 'started', status: 'running', span_kind: 'websocket', node_id: 'ui_route:/chat', read_write: 'none', payload: { message_kind: 'send_prompt' } })
     const runner = mgr.spawn(msg.session_id, msg.prompt, {
       allowedTools: cfg?.allowed_tools && cfg.allowed_tools.length > 0 ? cfg.allowed_tools : undefined,
       maxTurns: cfg?.max_turns,
       model: cfg?.model,
       appendSystemPrompt: cfg?.append_system_prompt,
+      brainProvider: cfg?.brain_provider,
+      traceContext: mcpTraceContext,
     })
     // 阶段0 块2（tool_use_id 焊归因链）：累积这一轮的 (tool_use_id, tool_name)，
     // 在 task_done（所有 tool 已执行完、KE 的 tool_calls 行已落库）后批量 POST 回填，
@@ -279,25 +314,39 @@ async function handleClientMessage(
         for (const block of chunk.message.content) {
           if (block.type === 'tool_use' && block.id && block.name) {
             turnToolUses.push({ tool_use_id: block.id, tool_name: block.name })
+            void publishTrace({ span_id: `intent:${block.id}`, parent_span_id: `ws:${executionId}`, event_type: 'started', status: 'running', span_kind: 'model', node_id: 'model:tool-selection', read_write: 'none', payload: { selected_tool: block.name } })
           }
+        }
+      }
+      if (chunk.type === 'user' && chunk.message) {
+        for (const block of chunk.message.content) {
+          if (block.type !== 'tool_result') continue
+          const tool = turnToolUses.find((item) => item.tool_use_id === block.tool_use_id)
+          void publishTrace({
+            span_id: `intent:${block.tool_use_id}`, parent_span_id: `ws:${executionId}`,
+            event_type: block.is_error ? 'failed' : 'completed', status: block.is_error ? 'failed' : 'completed',
+            span_kind: 'model', node_id: tool ? 'model:tool-selection' : null, read_write: 'none',
+            payload: { tool_use_id: block.tool_use_id, result_kind: block.is_error ? 'error' : 'success' },
+          })
         }
       }
       if (chunk.session_id) claudeSessionId = chunk.session_id
       const msgs = chunkToMessages(chunk)
       for (const m of msgs) {
-        send(ws, { kind: 'chunk', session_id: msg.session_id, message: m })
+        send(ws, { kind: 'chunk', session_id: msg.session_id, message: m, trace_id: traceId, sequence: traceSequence })
       }
       if (chunk.type === 'result') {
         const usage = chunk.message?.usage
         const durationMs = chunk.duration_ms || 0
         const costUsd = chunk.total_cost_usd || 0
-        send(ws, {
-          kind: 'task_done',
-          session_id: msg.session_id,
-          duration_ms: durationMs,
-          total_cost_usd: costUsd,
-          tokens: { input: usage?.input_tokens || 0, output: usage?.output_tokens || 0 },
-        })
+        void (async () => {
+          await publishTrace({ span_id: `ws:${executionId}`, parent_span_id: null, event_type: 'completed', status: 'completed', span_kind: 'websocket', node_id: 'ui_route:/chat', read_write: 'none', payload: { duration_ms: durationMs, trace_publisher_enabled: tracePublisher.enabled } })
+          await tracePublisher.flush()
+          send(ws, {
+            kind: 'task_done', session_id: msg.session_id, duration_ms: durationMs, total_cost_usd: costUsd,
+            tokens: { input: usage?.input_tokens || 0, output: usage?.output_tokens || 0 }, trace_id: traceId,
+          })
+        })()
         updateSessionStats(msg.session_id, chunk).catch(() => undefined)
         // W6 multi-device: 任务完成自动推企业微信 (老板出差时也能收到通知)
         // fire-and-forget, 没配 WECOM_WEBHOOKS 时 KE 返 skipped 不影响业务
@@ -332,7 +381,8 @@ async function handleClientMessage(
             }),
           }).catch((err) => console.warn('[spend record] failed:', err?.message || err))
         }
-        // 阶段0 块2：批量回填本轮 tool_use_id 焊归因链（fire-and-forget）。
+        // Legacy-only compatibility for the historical tool-use panel. It is
+        // deliberately not a runtime-trace source: S8 uses publishTrace above.
         if (turnToolUses.length > 0) {
           fetch(`${keBase}/api/v1/mcp/tool-uses/link`, {
             method: 'POST',
@@ -351,6 +401,7 @@ async function handleClientMessage(
     })
     runner.on('error', (err: Error) => {
       console.error(`[runner ${msg.session_id}]`, err.name)
+      void publishTrace({ span_id: `ws:${executionId}`, parent_span_id: null, event_type: 'failed', status: 'failed', span_kind: 'websocket', node_id: 'ui_route:/chat', read_write: 'none', payload: { error_kind: err.name } })
       send(ws, { kind: 'error', session_id: msg.session_id, error: 'runner_error' })
     })
     return

@@ -11,6 +11,8 @@ interface UseAgentChatResult {
   messages: ChatMessage[]
   running: boolean
   error: string | null
+  activeTraceId: string | null
+  traceGapCount: number
   sendPrompt: (prompt: string) => void
   cancel: () => void
   decideGate: (shortId: string, decision: 'approved' | 'rejected', note?: string) => void
@@ -29,6 +31,8 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeTraceId, setActiveTraceId] = useState<string | null>(null)
+  const [traceGapCount, setTraceGapCount] = useState(0)
 
   useEffect(() => {
     optionsRef.current = options
@@ -52,8 +56,15 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
       } else if (msg.kind === 'chunk') {
         setMessages((prev) => mergeMessage(prev, msg.message))
       } else if (msg.kind === 'task_done') {
+        if (msg.trace_id) setActiveTraceId(msg.trace_id)
         setRunning(false)
         optionsRef.current.onTaskDone?.(msg.session_id, msg.duration_ms)
+      } else if (msg.kind === 'trace_started') {
+        setActiveTraceId(msg.trace_id)
+        setTraceGapCount(0)
+      } else if (msg.kind === 'trace_gap') {
+        setActiveTraceId(msg.trace_id)
+        setTraceGapCount((count) => count + 1)
       } else if (msg.kind === 'human_gate_new') {
         const gateMsg: ChatMessage = {
           id: `gate-${msg.gate.short_id}`,
@@ -101,7 +112,7 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
     setMessages((prev) => prev.map((m) => (m.gate_short_id === shortId ? { ...m, gate_decision: decision } : m)))
   }, [])
 
-  return { connected, session, messages, running, error, sendPrompt, cancel, decideGate }
+  return { connected, session, messages, running, error, activeTraceId, traceGapCount, sendPrompt, cancel, decideGate }
 }
 
 function mergeMessage(prev: ChatMessage[], incoming: ChatMessage): ChatMessage[] {

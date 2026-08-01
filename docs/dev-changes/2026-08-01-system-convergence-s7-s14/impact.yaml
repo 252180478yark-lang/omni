@@ -1,0 +1,598 @@
+schema_version: 3
+change_id: 2026-08-01-system-convergence-s7-s14
+title: System convergence S7 through S14 completion candidate
+state: GRAPH_DIFF_READY
+created_at: '2026-08-01T14:23:01Z'
+updated_at: '2026-08-01T16:40:00Z'
+feature_refs:
+- feature_id: system-command-center
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S7
+- feature_id: runtime-execution-spine
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S8-S10
+- feature_id: frontend-convergence
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S11
+- feature_id: backend-single-truth
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S12
+- feature_id: compatibility-retirement-readiness
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S13
+- feature_id: full-repository-fde-rollout
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S14
+before_snapshot:
+  ref: sha256:db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840
+delivery:
+  authority: ci_attestation
+  base_commit: f62e1b4163389d026da932e9a4425899d740567a
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - Adds additive migrations, authenticated REST and MCP contracts, a persistent graph repository, a canonical tool executor, metric ownership, and repository-wide deterministic policy.
+  - Converges navigation and SKU Pipeline operations while retaining aliases and compatibility telemetry.
+  - Imports the already verified S8-S10 runtime/Host candidate onto the S4-S6 baseline without running a shared migration or invoking a configured provider.
+  - Prepares S13 retirement evidence but deliberately excludes physical client or data deletion, shared-database migration execution, secrets, and external publication.
+  external_effects: []
+  scope_deltas:
+  - id: DELTA-001
+    discovered_at: '2026-08-01T15:08:00Z'
+    reason: HealthRegistry still parsed visible href literals from TypeScript; S11 projection makes generated FeatureDefinition JSON the only valid discovery source.
+    added_paths:
+    - services/knowledge-engine/app/services/health_registry.py
+    required_level: R2
+    risk_change: none; replaces source scanning with the already locked canonical projection.
+  - id: DELTA-002
+    discovered_at: '2026-08-01T15:34:00Z'
+    reason: The repository already owns the canonical implementation-status generator under a different name, and S14 needs one deterministic health-baseline generator plus the disposable PostgreSQL verifier named in VER-006.
+    added_paths:
+    - scripts/generate_implementation_status.py
+    - scripts/generate_fde_health_baseline.py
+    - scripts/verify_s7_s14_runtime.ps1
+    required_level: R2
+    risk_change: none; these are deterministic projection and disposable verification paths with no shared-runtime mutation.
+  - id: DELTA-003
+    discovered_at: '2026-08-01T15:06:00Z'
+    reason: Verification must isolate the two Python services that both use the top-level app package, and MCP registration needs an explicit database-free doctor mode.
+    added_paths:
+    - services/knowledge-engine/app/mcp/doctor.py
+    required_level: R2
+    risk_change: none; the normal runtime doctor remains unchanged and registry-only mode performs read-only import checks.
+  - id: DELTA-004
+    discovered_at: '2026-08-01T15:14:00Z'
+    reason: Strict index verification exposed imported S8-S10 BFF, Scout registration, and existing regression-test paths that were implemented but missing from the planned path globs.
+    added_paths:
+    - frontend/src/app/api/omni/host-bridge/**
+    - frontend/src/app/api/omni/runtime-findings/route.ts
+    - frontend/src/app/api/omni/runtime-plan-drafts/route.ts
+    - frontend/src/app/api/omni/runtime-traces/**
+    - frontend/tests/approval-ws-authorization.test.ts
+    - frontend/tests/system-graph-plan.test.tsx
+    - frontend/tests/system-health-overview.test.ts
+    - services/knowledge-engine/tests/test_s7_s14_postgres.py
+    - services/scout-agent/app/main.py
+    required_level: R2
+    risk_change: none; this records already implemented and verified paths without expanding behavior or external effects.
+  - id: DELTA-005
+    discovered_at: '2026-08-01T16:05:00Z'
+    reason: Rebased before/after verification proved that scan_repository resolved request.ref only for the commit label while every collector still read the current worktree, allowing a false empty diff between different commits.
+    added_paths:
+    - services/knowledge-engine/app/services/system_graph/scanner.py
+    - services/knowledge-engine/tests/test_system_graph_snapshots.py
+    required_level: R2
+    risk_change: none; the scanner will materialize the requested immutable Git tree for static collection and retain unknown semantics for unavailable dynamic sources.
+  - id: DELTA-006
+    discovered_at: '2026-08-01T16:24:00Z'
+    reason: The S11 route convergence kept /system-graph as a compatibility page but the static frontend collector only scanned the new canonical page, incorrectly reporting the still-reachable candidate-plan BFF chain as removed.
+    added_paths:
+    - services/knowledge-engine/app/services/system_graph/collectors/frontend.py
+    - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+    - services/knowledge-engine/tests/test_system_graph_collectors.py
+    required_level: R2
+    risk_change: none; alias pages remain explicit compatibility facts and the canonical command-center route is observed independently.
+  - id: DELTA-007
+    discovered_at: '2026-08-01T16:40:00Z'
+    reason: Fresh completion verification found 13 candidate files with an extra blank line at EOF, contradicting the recorded diff-hygiene result.
+    added_paths:
+    - frontend/tests/feature-registry.test.ts
+    - migrations/103_metric_ownership_and_compatibility.sql
+    - scripts/client_retirement_audit.py
+    - scripts/generate_fde_health_baseline.py
+    - services/knowledge-engine/app/routers/compatibility.py
+    - services/knowledge-engine/app/routers/tool_execution.py
+    - services/knowledge-engine/app/services/metric_ownership.py
+    - services/knowledge-engine/tests/test_metric_ownership.py
+    - services/knowledge-engine/tests/test_system_graph_persistence.py
+    - services/knowledge-engine/tests/test_tool_execution.py
+    - services/scout-agent/app/services/metric_ownership.py
+    - services/scout-agent/tests/test_metric_ownership.py
+    - tests/test_client_retirement_audit.py
+    required_level: R2
+    risk_change: none; only redundant terminal blank lines will be removed and the affected tests will be rerun.
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The deterministic graph cannot yet be consumed through a durable API or unified command-center UI; frontend entry and operation contracts are duplicated; backend execution and metric writers have parallel truth paths; legacy-client retirement lacks telemetry and reconciliation evidence.
+  expected_outcome: S7 and S11-S14 have one evidence-backed implementation candidate integrated with the existing S8-S10 candidate, while every R3 retirement effect remains fail-closed until 14-day evidence and a separate explicit gate exist.
+  user_visible_behavior:
+  - Workspace advanced mode and SKU detail use the same snapshot-backed graph model, status legend, accessible tree, Chinese evidence drawer, and explicit loading/empty/error/partial states.
+  - Execution mode uses only persisted runtime events and exposes gaps, replay, Host degradation, and fact-only plan drafts.
+  - Sidebar, home, onboarding, aliases, and system graph derive feature identity from the canonical FeatureDefinition projection.
+  - SKU Pipeline calls a closed typed operation registry; an unregistered operation cannot proxy an arbitrary MCP tool.
+  - Canonical and legacy tool URLs share one executor, with equivalent typed success/error, audit, trace, timeout, Gate, and compatibility telemetry semantics.
+  - Non-owner metric writers append observations and collisions but cannot overwrite the canonical value.
+  - A retirement report blocks physical deletion when exclusive usage, checksum, attachment, setting, secret reauthorization, Host smoke, restore, or 14-day evidence is incomplete.
+current_chain:
+  nodes:
+  - page:/system-graph
+  - page:/workspace
+  - page:/sku/{id}
+  - page:/sku-pipeline
+  - service:system-graph-file-snapshot
+  - api:POST:/api/v1/mcp/exec/{tool_name}
+  - api:POST:/api/v1/mcp/catalog/exec
+  - table:public.mvp_daily_metric
+  - desktop:omni-desktop
+  - desktop:tri-mind-synthesizer
+  edges:
+  - from: page:/system-graph
+    to: api:GET:/api/v1/system-graph/integration-plans
+    relation: calls_plan_only
+  - from: page:/sku-pipeline
+    to: api:POST:/api/v1/mcp/exec/{tool_name}
+    relation: calls_many_untyped_wrappers
+  - from: api:POST:/api/v1/mcp/catalog/exec
+    to: mcp:registered-tool
+    relation: dispatches_independently
+  - from: source:scout-metric-ingest
+    to: table:public.mvp_daily_metric
+    relation: upserts_without_owner_gate
+  - from: desktop:omni-desktop
+    to: service:local-provider-runner
+    relation: owns_exclusive_capability
+  evidence:
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/sha256-db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840.json records the repaired S6 baseline at 164 nodes and 180 edges; dynamic collectors are explicitly unknown.
+  - services/knowledge-engine/app/routers/system_graph.py exposes S4-S6 plan and issue routes but no refresh, persisted snapshot graph, search, diff, or evidence read contract.
+  - frontend/src/app/system-graph/page.tsx is a candidate-plan page and frontend/src/components/app-sidebar.tsx exposes it as a separately maintained top-level item.
+  - frontend/src/app/sku-pipeline/page.tsx is approximately 7500 lines and frontend/src/app/api/omni/sku-pipeline contains many route-specific string mappings.
+  - services/knowledge-engine/app/routers/mcp_exec.py contains route-specific tool wrappers plus a dynamic legacy route, while mcp_catalog.py owns another registry dispatcher.
+  - services/scout-agent/app/services/metric_ingest.py and runbook_executor.py update mvp_daily_metric directly with ON CONFLICT and have no metric-owner contract.
+  - E:/agent/omni-desktop at 62245b448884d173140019da48cd8ee855d09421 still owns provider runners, port 7777, BrowserView, attachments, scheduled resume, tray, and shortcuts; its dirty worktree is read-only and outside this change.
+  - commit 8df227b on codex/system-convergence-s8-s10 contains a strict GRAPH_DIFF_READY S8-S10 candidate whose product paths will be re-applied under this single integrated contract.
+scope:
+  pages:
+  - page:/workspace
+  - page:/workspace/execution
+  - page:/system-graph
+  - page:/sku/{id}
+  - page:/sku-pipeline
+  apis:
+  - api:POST:/api/v1/system-graph/refresh
+  - api:GET:/api/v1/system-graph/refreshes/{refresh_id}
+  - api:GET:/api/v1/system-graph/snapshots/{snapshot_id}/graph
+  - api:GET:/api/v1/system-graph/search
+  - api:GET:/api/v1/system-graph/diff
+  - api:POST:/api/v1/mcp/execute/{operation_id}
+  - api:POST:/api/v1/mcp/exec/{tool_name}
+  - api:POST:/api/v1/mcp/catalog/exec
+  - api:GET:/api/v1/compatibility/retirement-report
+  - api:POST:/api/v1/compatibility/telemetry
+  - api:GET:/api/v1/runtime-traces/{trace_id}/events
+  - api:GET:/api/v1/host-bridge/health
+  mcp_tools:
+  - mcp:system_graph_refresh
+  - mcp:system_graph_get
+  - mcp:system_graph_diff
+  - mcp:system_graph_search
+  - mcp:system_graph_list_findings
+  - mcp:registered-tool
+  services:
+  - service:system-graph-repository
+  - service:system-graph-query
+  - service:runtime-trace-ledger
+  - service:runtime-radar
+  - service:host-bridge
+  - service:feature-registry-projection
+  - service:typed-operation-registry
+  - service:registered-tool-executor
+  - service:metric-ownership
+  - service:retirement-readiness
+  database:
+  - table:mcp.system_graph_snapshots
+  - table:mcp.system_graph_nodes
+  - table:mcp.system_graph_edges
+  - table:mcp.runtime_executions
+  - table:mcp.runtime_spans
+  - table:mcp.runtime_events
+  - table:mcp.metric_source_owners
+  - table:mcp.metric_observations
+  - table:mcp.metric_collisions
+  - table:mcp.compatibility_telemetry
+  - table:mcp.retirement_reconciliations
+  data_sources:
+  - source:feature-definition
+  - source:system-graph-collectors
+  - source:mcp-tool-audit
+  - source:agent-websocket
+  - source:scout-metric-ingest
+  - source:legacy-client-telemetry
+  states_workflows:
+  - state:graph-refresh
+  - state:graph-view
+  - state:runtime-trace
+  - state:typed-operation
+  - state:metric-owner-resolution
+  - state:retirement-readiness
+  - state:fde-enforcement
+  tests:
+  - test:system-graph-persistence-and-router
+  - test:command-center-ui
+  - test:feature-registry-projection
+  - test:typed-operation-contract
+  - test:executor-parity
+  - test:metric-owner-collision
+  - test:retirement-readiness-negative
+  - test:runtime-trace-and-host
+  - test:repository-wide-fde-policy
+  docs:
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14
+  - docs/multi-device/host-bridge.md
+  - docs/multi-device/client-retirement.md
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+planned_changes:
+- id: CHG-001
+  action: add
+  kind: runtime-execution-integration
+  node_id: service:runtime-trace-ledger
+  paths:
+  - .env.example
+  - migrations/101_runtime_trace_and_agent_contract.sql
+  - services/host-bridge/**
+  - services/knowledge-engine/app/routers/agent_contracts.py
+  - services/knowledge-engine/app/routers/runtime_*.py
+  - services/knowledge-engine/app/schemas/runtime_trace.py
+  - services/knowledge-engine/app/services/agent_contracts.py
+  - services/knowledge-engine/app/services/runtime_*.py
+  - services/knowledge-engine/tests/test_agent_contracts.py
+  - services/knowledge-engine/tests/test_host_contract.py
+  - services/knowledge-engine/tests/test_mcp_audit_trace.py
+  - services/knowledge-engine/tests/test_runtime_*.py
+  - services/scout-agent/app/runtime_trace.py
+  - services/scout-agent/app/main.py
+  - services/scout-agent/app/services/anomaly_engine.py
+  - services/scout-agent/app/services/llm_vision.py
+  - services/scout-agent/tests/test_runtime_trace.py
+  - frontend/src/lib/agent-chat/**
+  - frontend/src/app/api/omni/host-bridge/**
+  - frontend/src/app/api/omni/runtime-findings/route.ts
+  - frontend/src/app/api/omni/runtime-plan-drafts/route.ts
+  - frontend/src/app/api/omni/runtime-traces/**
+  - frontend/src/hooks/useAgentChat.ts
+  - frontend/src/components/agent-chat/ChatLayout.tsx
+  - frontend/tests/agent-chat/**
+  - frontend/tests/runtime-*.test.*
+  - frontend/tests/approval-ws-authorization.test.ts
+  - docs/multi-device/host-bridge.md
+  - scripts/verify_s8_s10_runtime.ps1
+  upstream:
+  - source:mcp-tool-audit
+  - source:agent-websocket
+  downstream:
+  - table:mcp.runtime_events
+  - service:host-bridge
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-006
+- id: CHG-002
+  action: add
+  kind: persistent-system-command-center
+  node_id: service:system-graph-repository
+  paths:
+  - migrations/102_system_graph_persistence.sql
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/app/schemas/system_graph.py
+  - services/knowledge-engine/app/routers/system_graph.py
+  - services/knowledge-engine/app/mcp/server.py
+  - services/knowledge-engine/app/mcp/doctor.py
+  - services/knowledge-engine/app/mcp/tools/system_graph.py
+  - services/knowledge-engine/app/services/system_graph/__init__.py
+  - services/knowledge-engine/app/services/system_graph/canonical.py
+  - services/knowledge-engine/app/services/system_graph/repository.py
+  - services/knowledge-engine/app/services/system_graph/query.py
+  - services/knowledge-engine/app/services/system_graph/snapshots.py
+  - services/knowledge-engine/app/services/system_graph/scanner.py
+  - services/knowledge-engine/app/services/system_graph/diff.py
+  - services/knowledge-engine/app/services/system_graph/issues.py
+  - services/knowledge-engine/app/services/system_graph/collectors/**
+  - services/knowledge-engine/scripts/system_graph.py
+  - services/knowledge-engine/tests/test_system_graph_*.py
+  - services/knowledge-engine/tests/test_s7_s14_postgres.py
+  - frontend/playwright.config.ts
+  - frontend/src/app/api/omni/system-graph/**
+  - frontend/src/app/workspace/**
+  - frontend/src/app/system-graph/page.tsx
+  - frontend/src/app/sku/[id]/page.tsx
+  - frontend/src/components/system-command-center/**
+  - frontend/src/lib/system-command-center/**
+  - frontend/tests/system-command-center*.test.*
+  - frontend/tests/agent-chat/e2e/system-command-center.spec.ts
+  - frontend/tests/system-graph-plan.test.tsx
+  upstream:
+  - source:system-graph-collectors
+  - table:mcp.runtime_events
+  downstream:
+  - page:/workspace
+  - page:/sku/{id}
+  - mcp:system_graph_get
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-003
+  - VER-004
+  - VER-006
+  - VER-007
+- id: CHG-003
+  action: modify
+  kind: frontend-registry-and-typed-operations
+  node_id: service:typed-operation-registry
+  paths:
+  - services/knowledge-engine/app/services/system_graph/feature_definitions.py
+  - services/knowledge-engine/app/services/health_registry.py
+  - services/knowledge-engine/config/features/*.yaml
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - services/knowledge-engine/tests/test_feature_definitions.py
+  - frontend/src/generated/**
+  - frontend/src/lib/feature-registry.ts
+  - frontend/src/components/app-sidebar.tsx
+  - frontend/src/components/beginner-guide.tsx
+  - frontend/src/app/page.tsx
+  - frontend/src/app/sku-pipeline/**
+  - frontend/src/app/api/omni/sku-pipeline/**
+  - frontend/src/lib/sku-pipeline/**
+  - frontend/tests/feature-registry*.test.*
+  - frontend/tests/sku-pipeline*.test.*
+  - frontend/tests/system-health-overview.test.ts
+  upstream:
+  - source:feature-definition
+  downstream:
+  - page:/sku-pipeline
+  - api:POST:/api/v1/mcp/execute/{operation_id}
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-003
+  - VER-004
+  - VER-007
+- id: CHG-004
+  action: add
+  kind: backend-single-truth
+  node_id: service:registered-tool-executor
+  paths:
+  - migrations/103_metric_ownership_and_compatibility.sql
+  - services/knowledge-engine/app/mcp/audit.py
+  - services/knowledge-engine/app/routers/mcp_exec.py
+  - services/knowledge-engine/app/routers/mcp_catalog.py
+  - services/knowledge-engine/app/routers/tool_execution.py
+  - services/knowledge-engine/app/services/tool_execution.py
+  - services/knowledge-engine/app/services/metric_ownership.py
+  - services/knowledge-engine/tests/test_tool_execution.py
+  - services/knowledge-engine/tests/test_metric_ownership.py
+  - services/scout-agent/app/services/metric_ingest.py
+  - services/scout-agent/app/services/runbook_executor.py
+  - services/scout-agent/app/services/csv_parser.py
+  - services/scout-agent/app/services/jd_ingest.py
+  - services/scout-agent/app/services/metric_ownership.py
+  - services/scout-agent/tests/test_metric_ownership.py
+  upstream:
+  - api:POST:/api/v1/mcp/execute/{operation_id}
+  - source:scout-metric-ingest
+  downstream:
+  - mcp:registered-tool
+  - table:mcp.metric_observations
+  - table:mcp.metric_collisions
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-006
+  - VER-008
+- id: CHG-005
+  action: add
+  kind: compatibility-retirement-readiness
+  node_id: service:retirement-readiness
+  paths:
+  - services/knowledge-engine/app/routers/compatibility.py
+  - services/knowledge-engine/app/services/compatibility.py
+  - services/knowledge-engine/tests/test_compatibility_retirement.py
+  - scripts/client_retirement_audit.py
+  - tests/fixtures/client-retirement/**
+  - tests/test_client_retirement_audit.py
+  - docs/multi-device/client-retirement.md
+  upstream:
+  - source:legacy-client-telemetry
+  downstream:
+  - api:GET:/api/v1/compatibility/retirement-report
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-008
+- id: CHG-006
+  action: modify
+  kind: repository-wide-fde-rollout
+  node_id: state:fde-enforcement
+  paths:
+  - .github/workflows/ci.yml
+  - services/knowledge-engine/config/system_graph/block-policy.yaml
+  - scripts/check_feature_contracts.py
+  - scripts/generate_prd_status.py
+  - scripts/generate_implementation_status.py
+  - scripts/generate_fde_health_baseline.py
+  - scripts/verify_s7_s14_runtime.ps1
+  - tests/test_system_convergence_s14_policy.py
+  - tests/test_prd_status_projection.py
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/**
+  upstream:
+  - service:system-graph-repository
+  - state:runtime-trace
+  downstream:
+  - state:fde-enforcement
+  contract_change: compatible
+  verification_ids:
+  - VER-007
+  - VER-009
+  - VER-010
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: New clients use the typed canonical execution and graph routes; legacy per-tool and catalog URLs remain adapters over the same executor and emit deprecation telemetry.
+  database:
+    status: compatible
+    strategy: Migrations 101-103 only add schemas, tables, indexes, and views through scripts/apply_migrations.py; no historical migration is renamed or edited and no shared database is touched by this change.
+  workflow:
+    status: compatible
+    strategy: Existing plan, tool, metric reader, Web chat, WeCom, and desktop fallback states remain readable; new writes use runtime trace, owner observations, and compatibility telemetry.
+  data_source:
+    status: compatible
+    strategy: Collectors and Scout sources retain raw evidence; unavailable dynamic sources remain unknown and non-owner metric attempts are preserved as observations/collisions rather than dropped.
+graph_acceptance:
+  required_edges:
+  - from: page:/workspace
+    to: api:GET:/api/v1/system-graph/snapshots/{snapshot_id}/graph
+    relation: reads_fact_graph
+  - from: page:/sku/{id}
+    to: api:GET:/api/v1/system-graph/snapshots/{snapshot_id}/graph
+    relation: reads_business_projection
+  - from: api:GET:/api/v1/system-graph/snapshots/{snapshot_id}/graph
+    to: service:system-graph-repository
+    relation: reads
+  - from: mcp:system_graph_get
+    to: service:system-graph-repository
+    relation: reads
+  - from: source:feature-definition
+    to: service:feature-registry-projection
+    relation: generates
+  - from: page:/sku-pipeline
+    to: service:typed-operation-registry
+    relation: invokes
+  - from: service:typed-operation-registry
+    to: api:POST:/api/v1/mcp/execute/{operation_id}
+    relation: calls
+  - from: api:POST:/api/v1/mcp/execute/{operation_id}
+    to: service:registered-tool-executor
+    relation: dispatches
+  - from: api:POST:/api/v1/mcp/exec/{tool_name}
+    to: service:registered-tool-executor
+    relation: adapts_to
+  - from: source:scout-metric-ingest
+    to: service:metric-ownership
+    relation: submits_observation
+  - from: service:metric-ownership
+    to: table:mcp.metric_collisions
+    relation: records_non_owner
+  - from: source:legacy-client-telemetry
+    to: service:retirement-readiness
+    relation: blocks_until_reconciled
+  - from: state:fde-enforcement
+    to: service:system-graph-repository
+    relation: verifies_required_edges
+  allowed_unknowns:
+  - node_or_edge: runtime:canonical-shared-database
+    reason: This R2 candidate may verify only disposable allocated databases; applying migrations to the shared canonical database is a separate R3 action.
+    owner: runtime-owner:canonical
+    expires_at: '2026-08-15T00:00:00Z'
+  - node_or_edge: desktop:physical-retirement
+    reason: Fourteen consecutive days of zero exclusive usage and an explicit R3 gate cannot be manufactured during implementation.
+    owner: owner:omni
+    expires_at: '2026-08-16T00:00:00Z'
+  forbidden_orphans:
+  - service:system-graph-repository
+  - service:registered-tool-executor
+  - service:metric-ownership
+  - service:retirement-readiness
+risks:
+- id: RSK-S7-FACTUALITY
+  description: The command center could manufacture a complete graph or hide partial collectors.
+  mitigation: Render only immutable snapshot/runtime events, preserve source results and unknown states, and test missing/partial/error projections.
+- id: RSK-S11-REGRESSION
+  description: Registry and SKU Pipeline convergence could break historical routes or a production step.
+  mitigation: Retain aliases, migrate a closed operation registry, run type, component, and one-step browser tests, and reject arbitrary tool names.
+- id: RSK-S12-DATA
+  description: Metric ownership could silently discard or overwrite a competing writer.
+  mitigation: Append every observation, persist collisions, preserve the canonical reader, and test owner/non-owner behavior on PostgreSQL.
+- id: RSK-S13-LOSS
+  description: Premature retirement could lose client history, attachments, settings, or secret access.
+  mitigation: This contract cannot delete; it emits a fail-closed report requiring checksums, reauthorization, Host/restore smoke, and 14-day evidence.
+- id: RSK-S14-BLOCKING
+  description: Expanding deterministic policy could block unrelated historical debt.
+  mitigation: Ratchet only validated P0 issue codes and compare the changed-path baseline in CI fixtures.
+out_of_scope:
+- Physical deletion, uninstall, archive, or modification of E:/agent/omni-desktop or any client/user data.
+- Applying migrations to the canonical/shared database or changing a running canonical service.
+- Exporting, reading, logging, or migrating keytar secrets; only reauthorization status may be recorded.
+- External publishing, paid model calls, visible browser login, or configured provider execution.
+- P1 free-form graph layout editing and an optional final Electron thin-shell decision.
+rollback:
+  strategy: Revert the candidate commit; keep legacy URL adapters, desktop fallback, canonical metric reader, and historical migrations intact. New additive tables can remain unused or be removed only by a later separately reviewed cleanup migration.
+  data_recovery: Runtime events, graph snapshots, metric observations/collisions, and compatibility telemetry are append-only. No existing row or external asset is deleted, and disposable verification databases are released after tests.
+verification_plan:
+- id: VER-001
+  layer: knowledge-engine
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_snapshots.py services/knowledge-engine/tests/test_system_graph_collectors.py services/knowledge-engine/tests/test_system_graph_s4_s6_feature.py services/knowledge-engine/tests/test_system_graph_persistence.py services/knowledge-engine/tests/test_system_graph_s7_router.py services/knowledge-engine/tests/test_tool_execution.py services/knowledge-engine/tests/test_metric_ownership.py services/knowledge-engine/tests/test_compatibility_retirement.py services/knowledge-engine/tests/test_runtime_trace.py services/knowledge-engine/tests/test_runtime_trace_router.py services/knowledge-engine/tests/test_runtime_radar.py services/knowledge-engine/tests/test_agent_contracts.py services/knowledge-engine/tests/test_host_contract.py
+  proves: Graph/API, executor, metric, compatibility, runtime, session, and Host service boundaries pass deterministic fixtures.
+  required: true
+- id: VER-002
+  layer: host-and-scout
+  command: python -B -m pytest -q -p no:cacheprovider services/host-bridge/tests services/scout-agent/tests/test_runtime_trace.py services/scout-agent/tests/test_metric_ownership.py
+  proves: Host ownership/resume/security and Scout trace/metric-owner adapters pass.
+  required: true
+- id: VER-003
+  layer: frontend
+  command: cmd /d /c "npm --prefix frontend run test:unit && npx --prefix frontend tsc --noEmit --project frontend/tsconfig.json"
+  proves: Feature registry, command-center states, typed operation, chat, and SKU component contracts pass with no type drift.
+  required: true
+- id: VER-004
+  layer: browser
+  command: powershell -NoProfile -Command '$env:PLAYWRIGHT_E2E_SELF_HOSTED=''1''; $env:PLAYWRIGHT_BASE_URL=''http://127.0.0.1:3101''; if (Test-Path ''C:\Program Files\Google\Chrome\Application\chrome.exe'') { $env:PLAYWRIGHT_EXECUTABLE_PATH=''C:\Program Files\Google\Chrome\Application\chrome.exe'' }; npx --prefix frontend playwright test --config frontend/playwright.config.ts tests/agent-chat/e2e/system-command-center.spec.ts'
+  proves: Real-browser command-center modes, accessibility tree, evidence drawer, partial state, alias, and one typed SKU operation work against deterministic fixtures.
+  required: true
+- id: VER-005
+  layer: migration-static
+  command: python -B scripts/apply_migrations.py --dry-run --verify
+  proves: Historical migrations remain frozen and 101-103 form one canonical head.
+  required: true
+- id: VER-006
+  layer: postgres-integration
+  command: powershell -NoProfile -File scripts/verify_s7_s14_runtime.ps1
+  proves: A unique RuntimeAllocation applies the canonical runner to a disposable PostgreSQL database and verifies graph, trace, metric owner, collision, and retirement stores.
+  required: true
+- id: VER-007
+  layer: feature-and-graph
+  command: powershell -NoProfile -Command 'python -B services/knowledge-engine/scripts/system_graph.py generate --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python -B services/knowledge-engine/scripts/system_graph.py scan --ref 215e2cbcb86fb26086a9fd0ef8f335ffb353e181 --no-dynamic --output docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots'
+  proves: Canonical feature projections are current and the after graph is deterministic without converting unavailable runtime collectors to missing.
+  required: true
+- id: VER-008
+  layer: backend-parity
+  command: powershell -NoProfile -Command '$env:PYTHONPATH=''services/knowledge-engine''; python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_tool_execution.py services/knowledge-engine/tests/test_metric_ownership.py; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $env:PYTHONPATH=''services/scout-agent''; python -B -m pytest -q -p no:cacheprovider services/scout-agent/tests/test_metric_ownership.py; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Remove-Item Env:PYTHONPATH; python -B -m pytest -q -p no:cacheprovider tests/test_client_retirement_audit.py'
+  proves: Both REST families share one executor, writer collisions preserve observations, and retirement remains fail-closed.
+  required: true
+- id: VER-009
+  layer: mcp
+  command: powershell -NoProfile -Command '$env:PYTHONPATH=''services/knowledge-engine''; $env:PYTHONUTF8=''1''; python -B -m app.mcp.doctor --registry-only'
+  proves: New graph tools and existing MCP tools import and register under the canonical doctor contract.
+  required: true
+- id: VER-010
+  layer: governance
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s14_policy.py tests/test_prd_status_projection.py tests/test_feature_contracts.py tests/test_agents_policy.py
+  proves: Repository-wide deterministic P0 policy, generated progress projection, contract ownership, and instruction gates pass.
+  required: true
+- id: VER-011
+  layer: diff-hygiene
+  command: git diff --check
+  proves: The final candidate contains no whitespace errors.
+  required: true
+lock:
+  locked_at: '2026-08-01T14:26:41Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.

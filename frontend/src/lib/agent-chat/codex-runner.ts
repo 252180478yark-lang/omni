@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Readable } from 'node:stream'
 import type { ClaudeRunner, SpawnOptions } from './claude-runner'
+import { getOmniMcpUrl, traceHeaders } from './mcp-config'
 import type { ClaudeStreamChunk } from './types'
 
 const OMNI_SYSTEM_ROOT = process.env.OMNI_SYSTEM_ROOT || 'E:\\agent\\omni-system'
@@ -31,7 +32,7 @@ type CodexEvent = {
 
 type CodexSpawnArgOptions = Pick<
   SpawnOptions,
-  'prompt' | 'appendSystemPrompt' | 'resumeSessionId' | 'cwd' | 'model' | 'effort'
+  'prompt' | 'appendSystemPrompt' | 'resumeSessionId' | 'cwd' | 'model' | 'effort' | 'mcpTraceContext'
 >
 
 export function buildCodexPrompt(opts: Pick<SpawnOptions, 'prompt' | 'appendSystemPrompt'>): string {
@@ -63,6 +64,15 @@ export function buildCodexSpawnArgs(opts: CodexSpawnArgOptions): string[] {
 
   if (opts.effort) {
     args.push('--config', `model_reasoning_effort="${opts.effort}"`)
+  }
+
+  if (opts.mcpTraceContext) {
+    args.push('--config', `mcp_servers.omni.url=${JSON.stringify(getOmniMcpUrl())}`)
+    const headers = Object.entries(traceHeaders(opts.mcpTraceContext))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => `${JSON.stringify(key)}=${JSON.stringify(value)}`)
+      .join(',')
+    args.push('--config', `mcp_servers.omni.http_headers={${headers}}`)
   }
 
   args.push(buildCodexPrompt(opts))

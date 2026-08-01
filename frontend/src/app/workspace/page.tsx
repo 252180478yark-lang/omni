@@ -9,6 +9,10 @@ import {
   ArrowRight, CheckCircle2, XCircle, Loader2, AlertCircle,
   TrendingDown, TrendingUp, CalendarDays, Brain, Truck,
 } from 'lucide-react'
+import { RuntimeOverlay } from '@/components/system-command-center/RuntimeOverlay'
+import { SystemGraphView } from '@/components/system-command-center/SystemGraphView'
+
+type WorkspaceMode = 'business' | 'development' | 'execution'
 
 interface Run {
   id: string
@@ -72,6 +76,7 @@ export default function WorkspacePage() {
   const [shopTodos, setShopTodos] = useState<ShopTodo[]>([])
   const [strategyCards, setStrategyCards] = useState<StrategyCard[]>([])
   const [loading, setLoading] = useState(true)
+  const [mode, setMode] = useState<WorkspaceMode>('business')
 
   useEffect(() => {
     Promise.all([
@@ -89,6 +94,11 @@ export default function WorkspacePage() {
       setShopTodos(st)
       setStrategyCards(sc)
     }).finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('mode')
+    setMode(requested === 'development' || requested === 'execution' ? requested : 'business')
   }, [])
 
   // Summarise today's runbook suite runs
@@ -119,10 +129,20 @@ export default function WorkspacePage() {
             每天先看这里：异动推送 · 决策待办 · 本周复盘
           </p>
         </div>
-        <span className="text-xs text-gray-400">
-          {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}
-        </span>
+        <div className="flex items-center gap-3">
+          <nav aria-label="工作台模式" className="flex rounded-lg border bg-white p-1 text-xs">
+            {(['business', 'development', 'execution'] as WorkspaceMode[]).map((item) => <Link key={item} href={item === 'business' ? '/workspace' : `/workspace?mode=${item}`} onClick={() => setMode(item)} aria-current={mode === item ? 'page' : undefined} className={`rounded px-3 py-1.5 ${mode === item ? 'bg-violet-700 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{item === 'business' ? '经营' : item === 'development' ? '开发' : '执行'}</Link>)}
+          </nav>
+          <span className="text-xs text-gray-400">
+            {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}
+          </span>
+        </div>
       </div>
+
+      {mode === 'development' && <SystemGraphView />}
+      {mode === 'execution' && <RuntimeOverlay />}
+
+      {mode === 'business' && <>
 
       {/* 今日巡店 */}
       <Card>
@@ -380,6 +400,7 @@ export default function WorkspacePage() {
           color="from-emerald-500 to-teal-600"
         />
       </div>
+      </>}
     </div>
   )
 }

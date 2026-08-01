@@ -28,6 +28,10 @@ function upstreamParts(method: string, parts: string[]): string[] | null {
     if (parts.length === 1 && method === 'GET') return parts
     if (parts.length === 3 && method === 'POST' && parts[2] === 'transition') return parts
   }
+  if (parts.length === 1 && parts[0] === 'refresh' && method === 'POST') return parts
+  if (parts.length === 2 && parts[0] === 'refreshes' && method === 'GET') return parts
+  if (parts.length === 3 && parts[0] === 'snapshots' && parts[2] === 'graph' && method === 'GET') return parts
+  if (parts.length === 1 && ['search', 'diff'].includes(parts[0]) && method === 'GET') return parts
   return null
 }
 

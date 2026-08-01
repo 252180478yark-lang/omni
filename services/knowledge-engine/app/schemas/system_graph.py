@@ -236,3 +236,56 @@ class GraphDiff(StrictModel):
                 self.unknown_edges,
             )
         )
+
+
+class GraphRefreshRequest(StrictModel):
+    feature_ids: list[str] = Field(default_factory=list, max_length=100)
+    include_runtime: bool = False
+    idempotency_key: str = Field(min_length=8, max_length=200)
+
+    @field_validator("feature_ids")
+    @classmethod
+    def feature_ids_are_unique(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("duplicate feature_id")
+        return sorted(value)
+
+
+class GraphRefreshRecord(StrictModel):
+    refresh_id: str
+    request_fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    state: Literal["pending", "running", "completed", "partial", "failed", "cancelled"]
+    snapshot_id: str | None = None
+    source_results: list[SourceResult] = Field(default_factory=list)
+    error: dict[str, Any] | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class GraphPageInfo(StrictModel):
+    next_cursor: str | None = None
+    has_more: bool = False
+
+
+class GraphPage(StrictModel):
+    snapshot_id: str
+    generated_at_utc: datetime
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    source_results: list[SourceResult]
+    partial: bool
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    orphan_node_ids: list[str] = Field(default_factory=list)
+    page_info: GraphPageInfo
+
+
+class GraphSearchHit(StrictModel):
+    node: GraphNode
+    path: list[str] = Field(default_factory=list)
+
+
+class GraphSearchPage(StrictModel):
+    snapshot_id: str
+    query: str
+    results: list[GraphSearchHit]
+    page_info: GraphPageInfo

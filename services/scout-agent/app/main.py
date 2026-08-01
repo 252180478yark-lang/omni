@@ -17,6 +17,7 @@ from app.config import settings
 from app.database import init_db, close_db
 from app.scheduler import start_scheduler, stop_scheduler
 from app.routers import health, runbooks, runs, sessions, anomalies, skus, dashboard, taobao, fetch, metrics
+from app.runtime_trace import ScoutTraceMiddleware
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 log = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Omni Scout Agent", version="1.5", lifespan=lifespan)
+
+app.add_middleware(ScoutTraceMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

@@ -31,4 +31,17 @@ describe('mcp-config', () => {
       url: 'http://localhost:8002/mcp',
     })
   })
+
+  it('propagates one task trace into every MCP request without storing a secret', () => {
+    const config = buildMcpConfig({
+      traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:execution:one', sessionId: 'session:one',
+    })
+    expect(config.mcpServers.omni.headers).toEqual({
+      'X-Omni-Trace-Id': 'trace:one',
+      'X-Omni-Execution-Id': 'execution:one',
+      'X-Omni-Parent-Span-Id': 'ws:execution:one',
+      'X-Omni-Session-Id': 'session:one',
+    })
+    expect(JSON.stringify(config)).not.toMatch(/authorization|token|cookie/i)
+  })
 })

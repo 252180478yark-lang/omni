@@ -77,6 +77,9 @@ def test_utf8_definition_and_projection_are_stable(tmp_path: Path) -> None:
     first = generate_bundle(tmp_path)
     second = generate_bundle(tmp_path, check=True)
     assert first == second
+    backend = definitions / "generated" / "features.v1.json"
+    frontend = tmp_path / "frontend/src/generated/feature-registry.v1.json"
+    assert backend.read_bytes() == frontend.read_bytes()
 
 
 def test_duplicate_feature_id_or_href_reports_conflict(tmp_path: Path) -> None:
@@ -176,7 +179,16 @@ def test_sidebar_and_home_visible_hrefs_all_map_to_one_definition() -> None:
             *(alias.href for alias in definition.aliases),
         )
     }
+    projected_hrefs = {
+        href
+        for definition in definitions
+        if definition.lifecycle == "active"
+        and definition.routes.visible
+        and set(definition.routes.placements).intersection({"sidebar", "home", "onboarding"})
+        for href in (definition.routes.canonical, *(alias.href for alias in definition.aliases))
+    }
     assert "/workspace" in visible_hrefs
-    assert "/content-studio/avatars" in visible_hrefs
-    assert "/playground/reverse-storyboard" in visible_hrefs
+    assert "/sku-pipeline" in visible_hrefs
+    assert "/system-graph" not in visible_hrefs
+    assert visible_hrefs == projected_hrefs
     assert visible_hrefs <= definition_hrefs

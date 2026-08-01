@@ -316,7 +316,7 @@ describe('homepage health rendering', () => {
     render(React.createElement(Home))
 
     expect(await screen.findByText('系统就绪，可以开始用了')).toBeTruthy()
-    const definedTitle = screen.getByText('智能问答（定义）')
+    const definedTitle = screen.getByText('Agent 工作对话')
     expect(definedTitle.closest('a')?.getAttribute('href')).toBe('/chat')
     expect(screen.getByText('共 8 个功能')).toBeTruthy()
   })

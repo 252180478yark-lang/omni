@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
-import re
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -262,48 +262,39 @@ def _dependency_id(ref: str) -> str:
     return ref.rsplit(":", 1)[-1]
 
 
-_HREF_LITERAL = re.compile(r"\bhref\s*:\s*['\"](/[^'\"]*)['\"]")
-_FEATURE_ID_LITERAL = re.compile(r"\bfeatureId\s*:\s*['\"]([a-z][a-z0-9-]*)['\"]")
+def _frontend_projection(repo: Path) -> list[Mapping[str, Any]]:
+    path = repo / "frontend" / "src" / "generated" / "feature-registry.v1.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        values = raw.get("frontend_registry", [])
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [value for value in values if isinstance(value, Mapping)]
 
 
 def discover_visible_frontend_hrefs(repo: Path) -> set[str]:
-    """Discover the two currently visible registries without evaluating TypeScript."""
+    """Read visible navigation from the generated canonical projection."""
 
-    sources = (
-        (
-            repo / "frontend" / "src" / "components" / "app-sidebar.tsx",
-            "const NAV_ITEMS",
-            "export function AppSidebar",
-        ),
-        (
-            repo / "frontend" / "src" / "app" / "page.tsx",
-            "const QUICK_",
-            "interface Step",
-        ),
-    )
     hrefs: set[str] = set()
-    for path, start_marker, end_marker in sources:
-        try:
-            source = path.read_text(encoding="utf-8")
-        except OSError:
+    for item in _frontend_projection(repo):
+        placements = set(item.get("placements") or [])
+        if not item.get("visible") or not placements.intersection({"sidebar", "home", "onboarding"}):
             continue
-        if start_marker not in source or end_marker not in source:
-            continue
-        section = source.split(start_marker, 1)[1].split(end_marker, 1)[0]
-        hrefs.update(_HREF_LITERAL.findall(section))
+        href = item.get("href")
+        if isinstance(href, str):
+            hrefs.add(href)
+        for alias in item.get("aliases") or []:
+            if isinstance(alias, Mapping) and isinstance(alias.get("href"), str):
+                hrefs.add(alias["href"])
     return hrefs
 
 
 def discover_visible_frontend_feature_ids(repo: Path) -> set[str]:
-    path = repo / "frontend" / "src" / "app" / "page.tsx"
-    try:
-        source = path.read_text(encoding="utf-8")
-        section = source.split("const QUICK_TOOL_PRESENTATION", 1)[1].split(
-            "interface Step", 1
-        )[0]
-    except (OSError, IndexError):
-        return set()
-    return set(_FEATURE_ID_LITERAL.findall(section))
+    return {
+        str(item["feature_id"])
+        for item in _frontend_projection(repo)
+        if item.get("visible") and "home" in (item.get("placements") or []) and item.get("feature_id")
+    }
 
 
 def load_feature_specs(directory: Path) -> tuple[list[FeatureSpec], list[OperationError]]:

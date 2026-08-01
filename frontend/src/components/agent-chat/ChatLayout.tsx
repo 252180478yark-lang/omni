@@ -6,6 +6,7 @@ import { SessionList } from './SessionList'
 import { MessageStream } from './MessageStream'
 import { InputBar } from './InputBar'
 import { AlertCircle, Menu, X } from 'lucide-react'
+import Link from 'next/link'
 
 export function ChatLayout() {
   const [currentId, setCurrentId] = useState<string | null>(null)
@@ -16,7 +17,7 @@ export function ChatLayout() {
     if (permission === 'default') requestPermission()
   }, [permission, requestPermission])
 
-  const { connected, session, messages, running, error, sendPrompt, cancel, decideGate } = useAgentChat(currentId, {
+  const { connected, session, messages, running, error, activeTraceId, traceGapCount, sendPrompt, cancel, decideGate } = useAgentChat(currentId, {
     onTaskDone: (_sid, dur) => {
       if (typeof document !== 'undefined' && document.hidden) {
         notify('omni 任务完成', { body: `用时 ${(dur / 1000).toFixed(0)}s` })
@@ -64,13 +65,17 @@ export function ChatLayout() {
             <h1 className="text-sm font-semibold text-gray-900 truncate">
               {session?.title || (currentId ? '加载中...' : '从左侧选一个对话')}
             </h1>
-            {session && (
-              <div className="text-[10px] text-gray-400 mt-0.5 truncate">
-                {session.message_count} 条 · {session.sku_id ? `SKU ${session.sku_id} · ` : ''}
-                {connected ? '● 已连接' : '○ 未连接'}
-              </div>
-            )}
+            <div className="text-[10px] text-gray-400 mt-0.5 truncate">
+              {session ? `${session.message_count} 条 · ${session.sku_id ? `SKU ${session.sku_id} · ` : ''}${connected ? '● 已连接' : '○ 未连接'}` : '执行任务与调用工具；需要基于资料回答时使用「知识库与 RAG」'}
+            </div>
           </div>
+          <Link href="/knowledge" className="hidden rounded border px-2 py-1 text-[11px] text-slate-600 hover:bg-slate-50 sm:block">知识库与 RAG</Link>
+          {activeTraceId ? <Link
+            href={`/workspace?mode=execution&trace_id=${encodeURIComponent(activeTraceId)}`}
+            className="rounded border border-violet-200 px-2 py-1 text-[11px] text-violet-700 hover:bg-violet-50"
+          >
+            查看执行链{traceGapCount ? ` · ${traceGapCount} gap` : ''}
+          </Link> : null}
         </header>
 
         {error && (

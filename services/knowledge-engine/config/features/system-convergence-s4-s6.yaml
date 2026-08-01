@@ -5,9 +5,9 @@ domain: platform.system_graph
 owner: {kind: team, id: omni}
 lifecycle: active
 routes:
-  canonical: /system-graph
-  visible: true
-  placements: [sidebar, direct]
+  canonical: /workspace/development
+  visible: false
+  placements: [direct]
 capabilities:
   - {capability_id: planned-fact-projection, kind: read}
   - {capability_id: candidate-plan-revision, kind: admin}
@@ -50,6 +50,7 @@ checks:
     target: frontend/tests/system-graph-plan.test.tsx
     verifies: ui_route:/system-graph
     required: true
-aliases: []
+aliases:
+  - {href: /system-graph, target: /workspace/development}
 dependencies:
   - {ref: health_registration:service:knowledge-engine, required: true}

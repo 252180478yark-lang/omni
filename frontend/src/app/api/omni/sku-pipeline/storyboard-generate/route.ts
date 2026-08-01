@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     let data: any
     try {
       data = await fetchJson<any>(
-        `${base.knowledge}/api/v1/mcp/exec/generate_storyboard_images`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.storyboard.generate`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

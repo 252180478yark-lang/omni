@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.runtime_trace import outbound_trace_headers
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ async def vision_extract(image_path: str, prompt: str) -> dict[str, Any]:
             resp = await client.post(
                 f"{settings.ai_hub_url}/api/v1/ai/analyze",
                 json=payload,
+                headers=outbound_trace_headers(),
             )
             resp.raise_for_status()
             data = resp.json()

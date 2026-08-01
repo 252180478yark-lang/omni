@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   try {
     const data = await fetchJson<any>(
-      `${base.knowledge}/api/v1/mcp/exec/generate_video_anchor`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.video-anchor.generate`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -1,0 +1,13 @@
+{
+  "client_id": "omni-desktop",
+  "observation_started_at": "2026-07-17T00:00:00+00:00",
+  "exclusive_events": [],
+  "inventory": {
+    "sqlite": {"state": "matched", "source_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "target_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    "attachments": {"state": "matched", "source_checksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "target_checksum": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+    "settings": {"state": "matched", "source_checksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "target_checksum": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+    "secret_reauthorization": {"state": "matched"},
+    "host_smoke": {"state": "matched"},
+    "restore_smoke": {"state": "matched"}
+  }
+}

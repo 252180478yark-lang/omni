@@ -115,10 +115,12 @@ export type WsClientMessage =
   | { kind: 'human_gate_decide'; short_id: string; decision: 'approved' | 'rejected'; note?: string }
 
 export type WsServerMessage =
-  | { kind: 'session_opened'; session: SessionState; history: ChatMessage[] }
-  | { kind: 'chunk'; session_id: string; message: ChatMessage }
+  | { kind: 'session_opened'; session: SessionState; history: ChatMessage[]; trace_id?: string }
+  | { kind: 'chunk'; session_id: string; message: ChatMessage; trace_id?: string; sequence?: number }
   | { kind: 'chunk_delta'; session_id: string; message_id: string; text_delta: string }
   | { kind: 'message_completed'; session_id: string; message: ChatMessage }
-  | { kind: 'task_done'; session_id: string; duration_ms: number; total_cost_usd: number; tokens: { input: number; output: number } }
+  | { kind: 'task_done'; session_id: string; duration_ms: number; total_cost_usd: number; tokens: { input: number; output: number }; trace_id?: string }
+  | { kind: 'trace_started'; session_id: string; trace_id: string; execution_id: string }
+  | { kind: 'trace_gap'; session_id: string; trace_id: string; reason: 'publisher_disabled' | 'append_failed' }
   | { kind: 'error'; session_id?: string; error: string; detail?: string }
   | { kind: 'human_gate_new'; session_id: string; gate: { short_id: string; summary: string; tool_name: string } }

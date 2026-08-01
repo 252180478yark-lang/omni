@@ -35,6 +35,7 @@ from typing import Any, Callable
 
 from app.database import get_pool
 from app.services.live_fetch import LiveFetchExecutor
+from app.services.metric_ownership import submit_metric
 
 log = logging.getLogger(__name__)
 
@@ -566,18 +567,12 @@ async def _upsert_bi_scalar_rows(conn, rows: list[dict], platform: str = PLATFOR
             sku_id = cache[ref]
         if not sku_id:
             continue
-        await conn.execute(
-            """
-            INSERT INTO mvp_daily_metric
-                (sku_id, date, metric_name, value, platform, source_runbook)
-            VALUES ($1, $2, $3, $4, $5, 'metric_ingest')
-            ON CONFLICT (sku_id, date, metric_name, platform)
-            DO UPDATE SET value = EXCLUDED.value,
-                          source_runbook = EXCLUDED.source_runbook, created_at = NOW()
-            """,
-            sku_id, _as_date(r["date"]), r["metric"], _as_num(r["value"]), platform,
+        result = await submit_metric(
+            conn, sku_id=sku_id, metric_date=_as_date(r["date"]),
+            metric_name=r["metric"], value=_as_num(r["value"]), platform=platform,
+            source="metric_ingest",
         )
-        n += 1
+        n += int(result["canonical_updated"])
     return n
 
 
@@ -594,19 +589,12 @@ async def _upsert_product_metrics(conn, rows: list[dict], platform: str = PLATFO
         sku_id = cache[pid]
         if not sku_id:
             continue
-        await conn.execute(
-            """
-            INSERT INTO mvp_daily_metric
-                (sku_id, date, metric_name, value, platform, source_runbook)
-            VALUES ($1, $2, $3, $4, $5, 'metric_ingest')
-            ON CONFLICT (sku_id, date, metric_name, platform)
-            DO UPDATE SET value = EXCLUDED.value,
-                          source_runbook = EXCLUDED.source_runbook,
-                          created_at = NOW()
-            """,
-            sku_id, _as_date(r["date"]), r["metric"], _as_num(r["value"]), platform,
+        result = await submit_metric(
+            conn, sku_id=sku_id, metric_date=_as_date(r["date"]),
+            metric_name=r["metric"], value=_as_num(r["value"]), platform=platform,
+            source="metric_ingest",
         )
-        n += 1
+        n += int(result["canonical_updated"])
     return n
 
 
@@ -616,19 +604,12 @@ async def _upsert_metrics(conn, rows: list[dict], platform: str = PLATFORM) -> i
     for r in rows:
         if r["value"] is None:
             continue
-        await conn.execute(
-            """
-            INSERT INTO mvp_daily_metric
-                (sku_id, date, metric_name, value, platform, source_runbook)
-            VALUES ($1, $2, $3, $4, $5, 'metric_ingest')
-            ON CONFLICT (sku_id, date, metric_name, platform)
-            DO UPDATE SET value = EXCLUDED.value,
-                          source_runbook = EXCLUDED.source_runbook,
-                          created_at = NOW()
-            """,
-            SHOP_SENTINEL, _as_date(r["date"]), r["metric"], _as_num(r["value"]), platform,
+        result = await submit_metric(
+            conn, sku_id=SHOP_SENTINEL, metric_date=_as_date(r["date"]),
+            metric_name=r["metric"], value=_as_num(r["value"]), platform=platform,
+            source="metric_ingest",
         )
-        n += 1
+        n += int(result["canonical_updated"])
     return n
 
 

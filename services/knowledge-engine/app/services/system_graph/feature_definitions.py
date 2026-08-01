@@ -104,6 +104,10 @@ def generated_bundle_path(repo: Path) -> Path:
     return definitions_dir(repo) / "generated" / "features.v1.json"
 
 
+def frontend_bundle_path(repo: Path) -> Path:
+    return repo / "frontend" / "src" / "generated" / "feature-registry.v1.json"
+
+
 def _validate_aliases(definitions: list[FeatureDefinition]) -> None:
     canonical_to_feature: dict[str, str] = {}
     alias_targets: dict[str, str] = {}
@@ -237,26 +241,37 @@ def generate_bundle(repo: Path, *, check: bool = False) -> dict[str, object]:
     definitions = load_definitions(repo)
     bundle = build_bundle(definitions)
     expected = bundle_text(bundle)
-    target = generated_bundle_path(repo)
+    targets = [generated_bundle_path(repo), frontend_bundle_path(repo)]
     if check:
-        actual = target.read_text(encoding="utf-8") if target.exists() else ""
-        if actual != expected:
-            raise DefinitionError(f"generated FeatureDefinition bundle is stale: {target}")
+        stale = [
+            target for target in targets
+            if (target.read_text(encoding="utf-8") if target.exists() else "") != expected
+        ]
+        if stale:
+            raise DefinitionError(
+                "generated FeatureDefinition bundle is stale: "
+                + ", ".join(str(target) for target in stale)
+            )
         return bundle
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
-    )
+    temporary_names: list[tuple[Path, str]] = []
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(expected)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary_name, target)
+        for target in targets:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+            )
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(expected)
+                handle.flush()
+                os.fsync(handle.fileno())
+            temporary_names.append((target, temporary_name))
+        for target, temporary_name in temporary_names:
+            os.replace(temporary_name, target)
     except Exception:
         try:
-            Path(temporary_name).unlink(missing_ok=True)
+            for _, temporary_name in temporary_names:
+                Path(temporary_name).unlink(missing_ok=True)
         finally:
             raise
     return bundle

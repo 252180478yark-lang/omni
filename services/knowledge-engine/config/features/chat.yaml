@@ -1,15 +1,15 @@
 schema_version: 1
 feature_id: chat
-title: 智能问答
+title: Agent 工作对话
 domain: agent
 owner: {kind: team, id: omni}
 lifecycle: active
 routes:
   canonical: /chat
   visible: true
-  placements: [home, direct]
+  placements: [home, onboarding, direct]
 capabilities:
-  - {capability_id: agent-chat, kind: generate}
+  - {capability_id: agent-task-session, kind: generate}
 expected_edges: []
 checks:
   - check_id: knowledge-health
