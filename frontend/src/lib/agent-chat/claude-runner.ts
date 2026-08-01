@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import type { Readable } from 'node:stream'
+import type { McpTraceContext } from './mcp-config'
 import type { BrainEffortLevel, ClaudeStreamChunk } from './types'
 
 // ── L0-1（蓝图 §4）：stream-json 运行时形状校验 ────────────────────────────────
@@ -52,6 +53,8 @@ export interface SpawnOptions {
   effort?: BrainEffortLevel
   /** claude --append-system-prompt 追加到默认 system prompt 后面;不替换 */
   appendSystemPrompt?: string
+  /** Trace context forwarded to MCP transports by provider-specific runners. */
+  mcpTraceContext?: McpTraceContext
 }
 
 export function buildSpawnArgs(opts: SpawnOptions): string[] {

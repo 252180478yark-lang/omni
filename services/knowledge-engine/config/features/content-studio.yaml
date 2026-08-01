@@ -7,7 +7,7 @@ lifecycle: active
 routes:
   canonical: /content-studio
   visible: true
-  placements: [home, direct]
+  placements: [home, onboarding, direct]
 capabilities:
   - {capability_id: content-pipeline, kind: generate}
 expected_edges: []

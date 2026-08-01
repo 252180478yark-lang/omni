@@ -1,0 +1,8 @@
+{
+  "client_id": "omni-desktop",
+  "observation_started_at": "2026-07-31T00:00:00+00:00",
+  "exclusive_events": [{"exclusive": true, "capability_id": "provider-runner"}],
+  "inventory": {
+    "sqlite": {"state": "mismatch", "source_checksum": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "target_checksum": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"}
+  }
+}

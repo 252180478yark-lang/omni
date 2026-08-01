@@ -41,6 +41,17 @@ GOVERNANCE_PREFIXES = (
     ".codex/",
     ".github/",
 )
+REQUIRED_DETERMINISTIC_P0_CODES = frozenset(
+    {
+        "required_edge_missing",
+        "protected_change_without_contract",
+        "changed_path_uncovered",
+        "risk_floor_underdeclared",
+        "migration_baseline_blocked",
+        "runtime_step_failed",
+        "external_delivery_missing",
+    }
+)
 
 
 @lru_cache(maxsize=1)
@@ -107,6 +118,35 @@ def normalize_changed_path(value: str) -> str:
 
 def normalize_changed_files(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted({normalize_changed_path(value) for value in values if value.strip()}))
+
+
+def validate_repository_block_policy(root: Path) -> tuple[str, ...]:
+    """Validate the shared S14 allowlist without turning unknown evidence into missing."""
+
+    path = root / "services/knowledge-engine/config/system_graph/block-policy.yaml"
+    if not path.is_file():
+        return ()
+    try:
+        import yaml
+        value = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        return (f"cannot read repository block policy: {exc}",)
+    errors: list[str] = []
+    codes = {str(item) for item in value.get("deterministic_p0_codes") or []}
+    missing = sorted(REQUIRED_DETERMINISTIC_P0_CODES - codes)
+    if value.get("schema_version") != 1:
+        errors.append("repository block policy schema_version must be 1")
+    if value.get("mode") != "repository":
+        errors.append("repository block policy mode must be repository")
+    if missing:
+        errors.append("repository block policy is missing deterministic P0 codes: " + ", ".join(missing))
+    if value.get("unknown_behavior") != "warning":
+        errors.append("repository block policy must preserve unknown as warning")
+    if value.get("historical_debt_behavior") != "ratchet":
+        errors.append("repository block policy must ratchet historical debt")
+    if value.get("new_deterministic_violation_behavior") != "block":
+        errors.append("repository block policy must block new deterministic violations")
+    return tuple(errors)
 
 
 def read_changed_files(path: Path) -> tuple[str, ...]:
@@ -482,7 +522,7 @@ def check_feature_contracts(
             validation_mode=validation_mode,
         )
 
-    errors: list[str] = []
+    errors: list[str] = list(validate_repository_block_policy(root))
     if not contract_files:
         errors.append(
             "protected changes require impact.yaml and completion.yaml from at least one "

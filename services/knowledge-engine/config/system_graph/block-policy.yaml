@@ -1,10 +1,30 @@
 schema_version: 1
-policy_id: s6-selected-deterministic-blocks
-mode: selected
+policy_id: s14-repository-deterministic-p0-blocks
+mode: repository
 selected_block_codes:
 - required_edge_missing
+deterministic_p0_codes:
+- required_edge_missing
+- protected_change_without_contract
+- changed_path_uncovered
+- risk_floor_underdeclared
+- migration_baseline_blocked
+- runtime_step_failed
+- external_delivery_missing
+runtime_block_codes:
+- runtime_step_failed
+delivery_block_codes:
+- external_delivery_missing
+governance_block_codes:
+- protected_change_without_contract
+- changed_path_uncovered
+- risk_floor_underdeclared
+- migration_baseline_blocked
 eligible_classification: observed_fact
 unknown_behavior: warning
+historical_debt_behavior: ratchet
+new_deterministic_violation_behavior: block
 notes:
-- Only deterministic required-edge absences are blocking in the S6 pilot.
+- S6 calibration promoted every proven deterministic P0 code to repository policy.
+- Each enforcement surface consumes only the codes it can prove; this file is the shared allowlist.
 - Collector failures and hypotheses remain unknown and never block.

@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     let data: any
     try {
       data = await fetchJson<any>(
-        `${base.knowledge}/api/v1/mcp/exec/generate_character_sheets`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.character-sheets.generate`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

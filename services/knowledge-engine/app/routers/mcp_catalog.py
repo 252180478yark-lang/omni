@@ -63,40 +63,18 @@ async def exec_tool(payload: ExecRequest) -> Any:
     - 审计/trace/Human Gate 都在 wrapper 里，本端点不绕过任何护栏
     - 参数错误（TypeError）返 ok=False 带 hint，不 500
     """
-    from app.mcp.audit import TOOL_REGISTRY
-
-    reg = TOOL_REGISTRY.get(payload.tool_name)
-    if not reg:
-        return JSONResponse(status_code=404, content={
-            "ok": False,
-            "error": f"unknown_tool: {payload.tool_name}",
-            "hint": "GET /api/v1/mcp/catalog/tools 看可用清单",
-        })
-    import inspect
-
-    fn = reg["fn"]
-    args = payload.args or {}
-
-    # 提前验证参数名：audit wrapper 会把 TypeError 吞成 ok=False 200，
-    # 我们在进 wrapper 之前先用 bind 检验，让参数错误能返回 422。
     try:
-        sig = inspect.signature(fn)
-        sig.bind(**args)
-    except TypeError as exc:
-        return JSONResponse(status_code=422, content={
-            "ok": False,
-            "error": f"bad_args: {exc}",
-            "hint": "对照 catalog 里该工具的 input_schema 检查参数名/类型",
-        })
-
-    try:
-        return await fn(**args)
+        from app.services.tool_execution import execute_registered_tool
+        return await execute_registered_tool(
+            tool_name=payload.tool_name,
+            args=payload.args,
+            route_family="legacy_catalog",
+        )
     except Exception as exc:
-        logger.exception("catalog exec %s 异常", payload.tool_name)
-        return JSONResponse(status_code=500, content={
-            "ok": False,
-            "error": f"{type(exc).__name__}: {exc}",
-        })
+        from app.services.tool_execution import ToolExecutionFailure
+        if isinstance(exc, ToolExecutionFailure):
+            return JSONResponse(status_code=exc.status_code, content=exc.body())
+        raise
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, Archive, CheckCircle2, GitBranch, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -80,6 +81,9 @@ function evidenceLabel(value: EvidenceClass) {
 }
 
 export default function SystemGraphPlanPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const legacyPlan = searchParams.get('legacy_plan') === '1'
   const [plans, setPlans] = useState<Plan[]>([])
   const [summaries, setSummaries] = useState<Record<string, PlanSummary>>({})
   const [selectedId, setSelectedId] = useState('')
@@ -95,6 +99,7 @@ export default function SystemGraphPlanPage() {
   const summary = selected ? summaries[selected.plan_id] : null
 
   const load = useCallback(async () => {
+    if (!legacyPlan) return
     setLoading(true)
     setError('')
     try {
@@ -114,9 +119,14 @@ export default function SystemGraphPlanPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [legacyPlan])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    if (!legacyPlan) router.replace('/workspace?mode=development')
+    else void load()
+  }, [legacyPlan, load, router])
+
+  if (!legacyPlan) return <div className="p-8 text-sm text-slate-500">正在进入统一系统指挥中心…</div>
 
   const replacePlan = (plan: Plan, nextSummary?: PlanSummary) => {
     setPlans((current) => [plan, ...current.filter((item) => item.plan_id !== plan.plan_id)])

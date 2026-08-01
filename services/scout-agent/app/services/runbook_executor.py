@@ -24,6 +24,7 @@ from app.config import settings
 from app.database import get_pool
 from app.schemas.runbook import RunbookDefinition, RunbookStep
 from app.services.notification import dispatcher
+from app.services.metric_ownership import submit_metric
 
 log = logging.getLogger(__name__)
 
@@ -390,15 +391,11 @@ class RunbookExecutor:
                 return
             pool = await _get_pool()
             async with pool.acquire() as conn:
-                await conn.execute(
-                    """
-                    INSERT INTO mvp_daily_metric
-                        (sku_id, date, metric_name, value, source_runbook, source_run_id, platform)
-                    VALUES ($1, CURRENT_DATE - 1, $2, $3, $4, $5, 'douyin')
-                    ON CONFLICT (sku_id, date, metric_name, platform)
-                    DO UPDATE SET value=$3, source_runbook=$4, source_run_id=$5
-                    """,
-                    sku_id, metric, value, self.rb_id, self.run_id,
+                metric_date = await conn.fetchval("SELECT CURRENT_DATE - 1")
+                await submit_metric(
+                    conn, sku_id=sku_id, metric_date=metric_date, metric_name=metric,
+                    value=value, platform="douyin", source=f"runbook:{self.rb_id}",
+                    source_run_id=self.run_id,
                 )
 
         elif action == "write_5a_asset":
@@ -498,6 +495,7 @@ class RunbookExecutor:
             pool = await _get_pool()
             written = 0
             async with pool.acquire() as conn:
+                metric_date = await conn.fetchval("SELECT CURRENT_DATE - 1")
                 # Build douyin_product_id -> mvp_sku.id map once
                 id_rows = await conn.fetch(
                     "SELECT id, douyin_product_id FROM mvp_sku WHERE douyin_product_id IS NOT NULL"
@@ -520,17 +518,12 @@ class RunbookExecutor:
                                 value /= 100.0
                         except (ValueError, TypeError):
                             continue
-                        await conn.execute(
-                            """
-                            INSERT INTO mvp_daily_metric
-                                (sku_id, date, metric_name, value, source_runbook, source_run_id, platform)
-                            VALUES ($1, CURRENT_DATE - 1, $2, $3, $4, $5, 'douyin')
-                            ON CONFLICT (sku_id, date, metric_name, platform)
-                            DO UPDATE SET value=$3, source_runbook=$4, source_run_id=$5
-                            """,
-                            sku_id, metric_name, value, self.rb_id, self.run_id,
+                        result = await submit_metric(
+                            conn, sku_id=sku_id, metric_date=metric_date,
+                            metric_name=metric_name, value=value, platform="douyin",
+                            source=f"runbook:{self.rb_id}", source_run_id=self.run_id,
                         )
-                        written += 1
+                        written += int(result["canonical_updated"])
             log.info("write_per_sku_metrics: wrote %d rows from %d SKUs",
                      written, len(skus_rows))
 

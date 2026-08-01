@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   const body = await request.json()
   try {
     const data = await fetchJson<any>(
-      `${base.knowledge}/api/v1/mcp/exec/generate_audience_match`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.audience-match.generate`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
+import { featureById } from '@/lib/feature-registry'
 import {
   MessageSquare,
   Database,
@@ -288,12 +289,13 @@ export default function Home() {
   }
 
   const quickTools = useMemo<ToolCard[]>(() => {
-    const registry = new Map(
+    const healthRegistry = new Map(
       (overview?.health.features || []).map((feature) => [feature.feature_id, feature]),
     )
     return QUICK_TOOL_PRESENTATION.flatMap((presentation) => {
-      const definition = registry.get(presentation.featureId)
-      return definition?.href
+      const definition = featureById(presentation.featureId)
+      const health = healthRegistry.get(presentation.featureId)
+      return definition?.visible && definition.placements.includes('home') && health
         ? [{ ...presentation, href: definition.href, label: definition.title }]
         : []
     })

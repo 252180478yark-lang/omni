@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   try {
     const data = await fetchJson<any>(
-      `${base.knowledge}/api/v1/mcp/exec/generate_creative_pack`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.creative-pack.generate`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

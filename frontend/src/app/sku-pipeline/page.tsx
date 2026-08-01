@@ -14,6 +14,9 @@ import Link from 'next/link'
 import OutputFeedback from '@/components/OutputFeedback'
 import LineageTree, { type PickableNode } from './LineageTree'
 import P0VideoProductionPanel from './P0VideoProductionPanel'
+import { executeSkuOperation } from '@/lib/sku-pipeline/api'
+import { SKU_PIPELINE_OPERATIONS } from '@/lib/sku-pipeline/operations'
+import { SellingPointsResult } from '@/lib/sku-pipeline/panels/SellingPointsResult'
 
 interface SkuRow {
   id: string
@@ -635,7 +638,6 @@ export default function SkuPipelinePage() {
   const [extraContext2, setExtraContext2] = useState('')
   const [running2, setRunning2] = useState(false)
   const [resp2, setResp2] = useState<MatrixResp | null>(null)
-  const [showPrompt2, setShowPrompt2] = useState(true)
 
   // Step 3 state
   const [matrixMd3, setMatrixMd3] = useState('')
@@ -1038,23 +1040,14 @@ export default function SkuPipelinePage() {
     setResp2(null)
     setError(null)
     try {
-      const res = await fetch('/api/omni/sku-pipeline/selling-points-matrix', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const json = await executeSkuOperation(SKU_PIPELINE_OPERATIONS.sellingPointsGenerate, {
           sku_id: skuId,
           user_initial_points: userInitialPoints,
           user_reviews: userReviews,
           kb_context: kbContext || null,
           extra_context: extraContext2 || null,
-        }),
       })
-      const json = await res.json()
-      if (!json.success) {
-        setError(json.error || '调用失败')
-      } else {
-        setResp2(json.data)
-      }
+      setResp2(json)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -2824,41 +2817,11 @@ export default function SkuPipelinePage() {
                   </div>
                 )}
                 {resp2?.result?.matrix_md && (
-                  <>
-                    {resp2.result.matrix_run_id && (
-                      <div className="mb-3 flex items-center gap-2 text-xs">
-                        <Badge variant="outline" className="text-xs">已落库</Badge>
-                        <span className="text-muted-foreground">
-                          matrix_run_id: <code className="text-[10px]">{resp2.result.matrix_run_id.slice(0, 8)}…</code>
-                          <span className="ml-2">step 3 会自动挂这个 id</span>
-                        </span>
-                      </div>
-                    )}
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {resp2.result.matrix_md}
-                      </ReactMarkdown>
-                    </div>
-
-                    {resp2.trace?.final_prompt && (
-                      <div className="mt-6 border-t pt-4">
-                        <button
-                          className="text-sm font-medium flex items-center gap-1"
-                          onClick={() => setShowPrompt2(s => !s)}
-                        >
-                          {showPrompt2 ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                          Final Prompt
-                        </button>
-                        {showPrompt2 && (
-                          <pre className="mt-2 p-3 bg-muted text-xs rounded whitespace-pre-wrap">
-                            {resp2.trace.final_prompt}
-                          </pre>
-                        )}
-                      </div>
-                    )}
-
-                    <OutputFeedback toolName="generate_selling_points_matrix" />
-                  </>
+                  <SellingPointsResult
+                    matrixMarkdown={resp2.result.matrix_md}
+                    matrixRunId={resp2.result.matrix_run_id}
+                    finalPrompt={resp2.trace?.final_prompt}
+                  />
                 )}
                 {resp2 && !resp2.ok && (
                   <div className="text-sm text-red-500">

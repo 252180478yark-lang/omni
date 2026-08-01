@@ -45,6 +45,28 @@ describe('codex-runner', () => {
         'E:\\agent\\omni',
       ])
     })
+
+    it('forwards the exact Web trace context into the Codex MCP transport', () => {
+      const args = buildCodexSpawnArgs({
+        prompt: 'inspect the system',
+        mcpTraceContext: {
+          traceId: 'trace:one', executionId: 'execution:one',
+          parentSpanId: 'span:websocket', sessionId: 'session:one',
+          correlationId: 'correlation:one', gateId: 'gate:one',
+        },
+      })
+      const configs = args.flatMap((value, index) => value === '--config' ? [args[index + 1]] : [])
+
+      expect(configs).toContain('mcp_servers.omni.url="http://localhost:8002/mcp"')
+      const headers = configs.find((value) => value.startsWith('mcp_servers.omni.http_headers='))
+      expect(headers).toContain('"X-Omni-Trace-Id"="trace:one"')
+      expect(headers).toContain('"X-Omni-Execution-Id"="execution:one"')
+      expect(headers).toContain('"X-Omni-Parent-Span-Id"="span:websocket"')
+      expect(headers).toContain('"X-Omni-Session-Id"="session:one"')
+      expect(headers).toContain('"X-Omni-Correlation-Id"="correlation:one"')
+      expect(headers).toContain('"X-Omni-Gate-Id"="gate:one"')
+      expect(args[args.length - 1]).toBe('inspect the system')
+    })
   })
 
   describe('resolveCodexCwd', () => {

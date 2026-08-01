@@ -7,7 +7,7 @@ lifecycle: active
 routes:
   canonical: /knowledge/harvester
   visible: true
-  placements: [home, direct]
+  placements: [home, onboarding, direct]
 capabilities:
   - {capability_id: web-harvest, kind: write}
 expected_edges: []

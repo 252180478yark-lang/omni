@@ -7,10 +7,12 @@ from pathlib import Path
 
 import time
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -39,9 +41,23 @@ from app.routers.agent_state import router as agent_state_router
 from app.routers.analytics import router as analytics_router, mcp_analysis_router
 from app.routers.transcribe import transcribe_router
 from app.routers.mcp_catalog import router as mcp_catalog_router
+from app.routers.tool_execution import router as tool_execution_router
+from app.routers.compatibility import router as compatibility_router
 from app.routers.system_health import router as system_health_router
 from app.routers.approval_operations import router as approval_operations_router
+from app.routers.runtime_traces import router as runtime_traces_router
+from app.routers.runtime_findings import router as runtime_findings_router
+from app.routers.runtime_plan_drafts import router as runtime_plan_drafts_router
+from app.routers.agent_contracts import router as agent_contracts_router
 from app.routers.system_graph import router as system_graph_router
+from app.schemas.runtime_trace import EventType, ReadWrite, RuntimeEventInput, RuntimeStatus, SpanKind
+from app.services.runtime_trace import (
+    DatabaseTraceLedger,
+    RuntimeTraceContext,
+    activate_context,
+    context_from_headers,
+    reset_context,
+)
 from app.runtime_preflight import validate_runtime_environment
 from app.mcp.server import mcp_http_app
 
@@ -129,6 +145,73 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.service_name, lifespan=lifespan)
+
+
+class RuntimeTraceContextMiddleware(BaseHTTPMiddleware):
+    """Propagate explicit W3C/Omni correlation and record the observed HTTP span."""
+
+    async def dispatch(self, request, call_next):
+        incoming = context_from_headers(request.headers)
+        explicit = bool(request.headers.get("x-omni-trace-id") or request.headers.get("traceparent"))
+        span_id = f"http:{uuid.uuid4().hex}"
+        context = RuntimeTraceContext(
+            trace_id=incoming.trace_id,
+            execution_id=incoming.execution_id,
+            span_id=span_id,
+            parent_span_id=incoming.span_id or incoming.parent_span_id,
+            correlation_id=incoming.correlation_id,
+            session_id=incoming.session_id,
+            gate_id=incoming.gate_id,
+        )
+        token = activate_context(context)
+        started = time.perf_counter()
+        observed_started = datetime.now(timezone.utc)
+        response = None
+        failure: Exception | None = None
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            failure = exc
+            raise
+        finally:
+            if explicit and not request.url.path.startswith("/api/v1/runtime-traces"):
+                route = getattr(request.scope.get("route"), "path", None) or request.url.path
+                node_id = f"rest_operation:{request.method}:{route}"
+                elapsed = int((time.perf_counter() - started) * 1000)
+                read_write = ReadWrite.READ if request.method in {"GET", "HEAD", "OPTIONS"} else ReadWrite.WRITE
+                ledger = DatabaseTraceLedger()
+                for event_type, status, observed_at in (
+                    (EventType.STARTED, RuntimeStatus.RUNNING, observed_started),
+                    (EventType.FAILED if failure else EventType.COMPLETED, RuntimeStatus.FAILED if failure else RuntimeStatus.COMPLETED, datetime.now(timezone.utc)),
+                ):
+                    try:
+                        await ledger.append(RuntimeEventInput(
+                            source="knowledge.http",
+                            event_id=f"{span_id}:{event_type.value}",
+                            trace_id=context.trace_id,
+                            execution_id=context.execution_id,
+                            span_id=span_id,
+                            parent_span_id=context.parent_span_id,
+                            correlation_id=context.correlation_id,
+                            session_id=context.session_id,
+                            gate_id=context.gate_id,
+                            event_type=event_type,
+                            status=status,
+                            span_kind=SpanKind.HTTP,
+                            node_id=node_id,
+                            read_write=read_write,
+                            payload={"method": request.method, "route": route, "status_code": getattr(response, "status_code", 500), "duration_ms": elapsed},
+                            observed_at=observed_at,
+                        ))
+                    except Exception:
+                        logger.warning("runtime HTTP trace append failed", exc_info=True)
+            reset_context(token)
+        response.headers["X-Omni-Trace-Id"] = context.trace_id
+        response.headers["X-Omni-Execution-Id"] = context.execution_id
+        return response
+
+
+app.add_middleware(RuntimeTraceContextMiddleware)
 app.include_router(knowledge_router)
 app.include_router(harvester_router)
 app.include_router(content_studio_router)
@@ -152,8 +235,14 @@ app.include_router(transcribe_router)
 app.include_router(analytics_router)
 app.include_router(mcp_analysis_router)  # 桌面契约 POST /api/v1/mcp/analysis/*
 app.include_router(mcp_catalog_router)   # 工具目录 + 通用按名执行
+app.include_router(tool_execution_router)  # 封闭 operation_id -> 共享注册工具执行器
+app.include_router(compatibility_router)
 app.include_router(system_health_router)
 app.include_router(approval_operations_router)
+app.include_router(runtime_traces_router)
+app.include_router(runtime_findings_router)
+app.include_router(runtime_plan_drafts_router)
+app.include_router(agent_contracts_router)
 app.include_router(system_graph_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）

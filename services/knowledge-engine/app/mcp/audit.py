@@ -32,6 +32,8 @@ from fastmcp import FastMCP
 
 from app.database import get_pool
 from app.mcp import human_gate
+from app.schemas.runtime_trace import EventType, RuntimeStatus
+from app.services.runtime_trace import DatabaseTraceLedger, emit_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,12 @@ def tool_with_audit(
                 json.dumps(args_dict, ensure_ascii=False, default=str),
                 require_approval,
             )
+            await _emit_trace_safely(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                status=RuntimeStatus.RUNNING,
+                event_type=EventType.STARTED,
+            )
 
             if require_approval:
                 summary = summary_fn(args_dict) if summary_fn else f"{tool_name}({args_dict})"
@@ -94,7 +102,7 @@ def tool_with_audit(
                         if decision["decision"] == "expired"
                         else "rejected_by_user"
                     )
-                    await _finalize_error(pool, tool_call_id, _err, start)
+                    await _finalize_error(pool, tool_call_id, tool_name, _err, start)
                     return {
                         "ok": False,
                         "error": _err,
@@ -105,12 +113,12 @@ def tool_with_audit(
                 result = await fn(*args, **kwargs)
             except asyncio.CancelledError:
                 # cancel 不吞：标 cancelled 后 re-raise，不破坏 task 取消语义
-                await _finalize_error(pool, tool_call_id, "cancelled", start)
+                await _finalize_error(pool, tool_call_id, tool_name, "cancelled", start)
                 raise
             except BaseException as exc:  # 含 KeyboardInterrupt / SystemExit
                 logger.exception("tool %s raised", tool_name)
                 err_msg = f"{type(exc).__name__}: {exc}"
-                await _finalize_error(pool, tool_call_id, err_msg, start)
+                await _finalize_error(pool, tool_call_id, tool_name, err_msg, start)
                 if isinstance(exc, (KeyboardInterrupt, SystemExit)):
                     raise
                 # L0-3：异常被吞成 {ok:False} 返回前，再显式 error 级告警一次（带完整堆栈）。
@@ -136,6 +144,13 @@ def tool_with_audit(
                 duration_ms,
                 uuid.UUID(tool_call_id),
             )
+            await _emit_trace_safely(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                status=RuntimeStatus.COMPLETED,
+                event_type=EventType.COMPLETED,
+                duration_ms=duration_ms,
+            )
             return result
 
         # 关键：让 FastMCP 能反射出 fn 原签名生成 JSON schema
@@ -159,7 +174,7 @@ def tool_with_audit(
     return decorator
 
 
-async def _finalize_error(pool, tool_call_id: str, error: str, start: float) -> None:
+async def _finalize_error(pool, tool_call_id: str, tool_name: str, error: str, start: float) -> None:
     duration_ms = int((time.perf_counter() - start) * 1000)
     await pool.execute(
         """
@@ -171,6 +186,35 @@ async def _finalize_error(pool, tool_call_id: str, error: str, start: float) -> 
         duration_ms,
         uuid.UUID(tool_call_id),
     )
+    await _emit_trace_safely(
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        status=RuntimeStatus.FAILED,
+        event_type=EventType.FAILED,
+        duration_ms=duration_ms,
+    )
+
+
+async def _emit_trace_safely(
+    *,
+    tool_call_id: str,
+    tool_name: str,
+    status: RuntimeStatus,
+    event_type: EventType,
+    duration_ms: int | None = None,
+) -> None:
+    """Trace failures never falsify tool execution; they are surfaced as a collector gap."""
+    try:
+        await emit_audit_event(
+            DatabaseTraceLedger(),
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            status=status,
+            event_type=event_type,
+            duration_ms=duration_ms,
+        )
+    except Exception:
+        logger.warning("runtime trace append failed for MCP audit event", exc_info=True)
 
 
 def _bind_args(fn: Callable[..., Any], args: tuple, kwargs: dict) -> dict:

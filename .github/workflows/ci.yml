@@ -568,6 +568,54 @@ jobs:
           tests/test_auth.py
 
   # ---------------------------------------------------------------------------
+  # S14 仓库级门禁：完整 FeatureDefinition 投影、剩余切片服务合同与
+  # 确定性 P0 allowlist。运行时缺证据仍是 unknown，不伪造成绿灯。
+  # ---------------------------------------------------------------------------
+  fde-rollout-gate:
+    name: S7-S14 FDE Rollout（门禁）
+    runs-on: ubuntu-latest
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: 装 Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装 KE 验证依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "services/knowledge-engine[dev]"
+
+      - name: 验证双端 FeatureDefinition 投影未漂移
+        run: python -B services/knowledge-engine/scripts/system_graph.py generate --check
+
+      - name: 验证 S7-S13 确定性服务边界
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          services/knowledge-engine/tests/test_system_graph_persistence.py
+          services/knowledge-engine/tests/test_system_graph_s7_router.py
+          services/knowledge-engine/tests/test_tool_execution.py
+          services/knowledge-engine/tests/test_metric_ownership.py
+          services/knowledge-engine/tests/test_compatibility_retirement.py
+          tests/test_client_retirement_audit.py
+
+      - name: 验证 S14 policy 与机器进度投影
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_system_convergence_s14_policy.py
+          tests/test_prd_status_projection.py
+
+      - name: 验证 canonical migration head
+        run: python -B scripts/apply_migrations.py --dry-run --verify
+
+  # ---------------------------------------------------------------------------
   # 信息性全量：起 DB + 装全依赖跑整套。migration parity 由独立阻断 gate 证明。
   # ---------------------------------------------------------------------------
   full-suite:
@@ -631,6 +679,7 @@ jobs:
       - ke-bootstrap-gate
       - migration-parity-gate
       - convergence-foundation-gate
+      - fde-rollout-gate
     runs-on: ubuntu-latest
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -732,6 +781,7 @@ jobs:
                   "ke-bootstrap-gate": "passed",
                   "migration-parity-gate": "passed",
                   "convergence-foundation-gate": "passed",
+                  "fde-rollout-gate": "passed",
               },
               "migration_gate_verified": True,
           }
@@ -773,6 +823,7 @@ jobs:
           --required-check ke-bootstrap-gate=passed
           --required-check migration-parity-gate=passed
           --required-check convergence-foundation-gate=passed
+          --required-check fde-rollout-gate=passed
           --evidence-artifact-name "delivery-evidence-$HEAD_SHA"
           --evidence-artifact-digest "$EVIDENCE_DIGEST"
           --migration-gate-verified

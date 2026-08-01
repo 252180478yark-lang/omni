@@ -11,12 +11,12 @@ export const dynamic = 'force-dynamic'
 export async function POST(request: Request) {
   const base = serviceBase()
   const body = await request.json()
-  const endpoint = body?.portrait_id
-    ? 'pipeline_get_audience_portrait'
-    : 'pipeline_list_audience_portraits'
+  const operationId = body?.portrait_id
+    ? 'sku.audience-portrait.get'
+    : 'sku.audience-portraits.list'
   try {
     const data = await fetchJson<unknown>(
-      `${base.knowledge}/api/v1/mcp/exec/${endpoint}`,
+      `${base.knowledge}/api/v1/mcp/execute/${operationId}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

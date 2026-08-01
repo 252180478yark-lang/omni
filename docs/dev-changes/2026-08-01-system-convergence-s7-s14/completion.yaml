@@ -1,0 +1,454 @@
+schema_version: 3
+change_id: 2026-08-01-system-convergence-s7-s14
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  summary: Integrated the S8-S10 runtime trace, execution radar, agent session contract, and authenticated Host Bridge candidate on the S4-S6 base.
+  paths:
+  - .env.example
+  - docs/multi-device/host-bridge.md
+  - frontend/src/app/api/omni/host-bridge/_host-auth.ts
+  - frontend/src/app/api/omni/host-bridge/health/route.ts
+  - frontend/src/app/api/omni/host-bridge/sessions/[sessionId]/attachments/[attachmentId]/route.ts
+  - frontend/src/app/api/omni/host-bridge/sessions/[sessionId]/attachments/route.ts
+  - frontend/src/app/api/omni/host-bridge/sessions/[sessionId]/visible-auth/route.ts
+  - frontend/src/app/api/omni/runtime-findings/route.ts
+  - frontend/src/app/api/omni/runtime-plan-drafts/route.ts
+  - frontend/src/app/api/omni/runtime-traces/[traceId]/events/route.ts
+  - frontend/src/app/api/omni/runtime-traces/[traceId]/replay/route.ts
+  - frontend/src/app/api/omni/runtime-traces/_runtime-auth.ts
+  - frontend/src/app/api/omni/runtime-traces/active/route.ts
+  - frontend/src/components/agent-chat/ChatLayout.tsx
+  - frontend/src/hooks/useAgentChat.ts
+  - frontend/src/lib/agent-chat/claude-runner.ts
+  - frontend/src/lib/agent-chat/codex-runner.ts
+  - frontend/src/lib/agent-chat/host-bridge-runner.ts
+  - frontend/src/lib/agent-chat/mcp-config.ts
+  - frontend/src/lib/agent-chat/runtime-trace.ts
+  - frontend/src/lib/agent-chat/session-manager.ts
+  - frontend/src/lib/agent-chat/types.ts
+  - frontend/src/lib/agent-chat/ws-handler.ts
+  - frontend/tests/agent-chat/e2e/runtime-overlay.spec.ts
+  - frontend/tests/agent-chat/e2e/system-command-center.spec.ts
+  - frontend/tests/agent-chat/unit/codex-runner.test.ts
+  - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
+  - frontend/tests/agent-chat/unit/mcp-config.test.ts
+  - frontend/tests/approval-ws-authorization.test.ts
+  - frontend/tests/runtime-api-auth.test.ts
+  - frontend/tests/runtime-overlay.test.tsx
+  - frontend/tests/runtime-trace-publisher.test.ts
+  - migrations/101_runtime_trace_and_agent_contract.sql
+  - scripts/verify_s8_s10_runtime.ps1
+  - services/host-bridge/host_bridge/__init__.py
+  - services/host-bridge/host_bridge/app.py
+  - services/host-bridge/host_bridge/core.py
+  - services/host-bridge/pyproject.toml
+  - services/host-bridge/run.ps1
+  - services/host-bridge/tests/test_host_bridge.py
+  - services/host-bridge/tests/test_host_bridge_http.py
+  - services/knowledge-engine/app/routers/agent_contracts.py
+  - services/knowledge-engine/app/routers/runtime_findings.py
+  - services/knowledge-engine/app/routers/runtime_plan_drafts.py
+  - services/knowledge-engine/app/routers/runtime_traces.py
+  - services/knowledge-engine/app/schemas/runtime_trace.py
+  - services/knowledge-engine/app/services/agent_contracts.py
+  - services/knowledge-engine/app/services/runtime_plan_drafts.py
+  - services/knowledge-engine/app/services/runtime_radar.py
+  - services/knowledge-engine/app/services/runtime_trace.py
+  - services/knowledge-engine/tests/test_agent_contracts.py
+  - services/knowledge-engine/tests/test_host_contract.py
+  - services/knowledge-engine/tests/test_mcp_audit_trace.py
+  - services/knowledge-engine/tests/test_runtime_findings_router.py
+  - services/knowledge-engine/tests/test_runtime_plan_drafts.py
+  - services/knowledge-engine/tests/test_runtime_radar.py
+  - services/knowledge-engine/tests/test_runtime_trace.py
+  - services/knowledge-engine/tests/test_runtime_trace_postgres.py
+  - services/knowledge-engine/tests/test_runtime_trace_router.py
+  - services/scout-agent/app/main.py
+  - services/scout-agent/app/runtime_trace.py
+  - services/scout-agent/app/services/anomaly_engine.py
+  - services/scout-agent/app/services/llm_vision.py
+  - services/scout-agent/tests/test_runtime_trace.py
+- id: ACT-002
+  planned_change_id: CHG-002
+  summary: Added immutable graph persistence, refresh/query/search/diff APIs and MCP tools, then converged workspace and SKU views on one evidence-backed graph component.
+  paths:
+  - frontend/playwright.config.ts
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+  - frontend/src/app/api/omni/system-graph/snapshot/route.ts
+  - frontend/src/app/sku/[id]/page.tsx
+  - frontend/src/app/system-graph/page.tsx
+  - frontend/src/app/workspace/development/page.tsx
+  - frontend/src/app/workspace/execution/page.tsx
+  - frontend/src/app/workspace/page.tsx
+  - frontend/src/components/system-command-center/ExecutionGraph.tsx
+  - frontend/src/components/system-command-center/RuntimeOverlay.tsx
+  - frontend/src/components/system-command-center/RuntimeRadar.tsx
+  - frontend/src/components/system-command-center/SystemGraphView.tsx
+  - frontend/src/lib/system-command-center/graph-model.ts
+  - frontend/src/lib/system-command-center/node-type-registry.ts
+  - frontend/src/lib/system-command-center/runtime-model.ts
+  - frontend/src/lib/system-command-center/runtime-reducer.ts
+  - frontend/tests/system-command-center.test.tsx
+  - frontend/tests/system-graph-plan.test.tsx
+  - migrations/102_system_graph_persistence.sql
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/app/mcp/doctor.py
+  - services/knowledge-engine/app/mcp/tools/system_graph.py
+  - services/knowledge-engine/app/routers/system_graph.py
+  - services/knowledge-engine/app/schemas/system_graph.py
+  - services/knowledge-engine/app/services/system_graph/query.py
+  - services/knowledge-engine/app/services/system_graph/repository.py
+  - services/knowledge-engine/tests/test_s7_s14_postgres.py
+  - services/knowledge-engine/tests/test_system_graph_persistence.py
+  - services/knowledge-engine/tests/test_system_graph_router.py
+  - services/knowledge-engine/tests/test_system_graph_s7_router.py
+- id: ACT-003
+  planned_change_id: CHG-003
+  summary: Made the generated FeatureDefinition bundle the frontend identity source and introduced a closed typed SKU operation vertical with model, API, hook, and panel boundaries.
+  paths:
+  - frontend/src/app/api/omni/sku-pipeline/adopt/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/archive/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/audience-match/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/audience-pack/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/audience-portrait/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/backfill-scenes/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/character-sheets/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/creative-pack/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/director-brief/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/embed-content-and-audience/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-adopt-script/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-attach-arm/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-changelog/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-create/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-distill/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-get/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-list/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-lock-winner/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-next-version-seed/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-prescreen/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-register-round/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/experiment-status/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/get-audience-record/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/get-audience-run/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/get-matrix-run/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/get-pack/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/get-script/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/keyword-pack/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/lineage/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/list-assets/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/list-audience-records/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/list-audience-runs/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/list-matrix-runs/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/list-scripts/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/operations/[operationId]/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/p0-video/[operation]/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/portraits/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/predict-audience-match/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/record-ad-metrics-batch/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/selling-points-matrix/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/storyboard-generate/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/video-anchor/route.ts
+  - frontend/src/app/api/omni/sku-pipeline/video-generate/route.ts
+  - frontend/src/app/page.tsx
+  - frontend/src/app/sku-pipeline/page.tsx
+  - frontend/src/components/app-sidebar.tsx
+  - frontend/src/components/beginner-guide.tsx
+  - frontend/src/generated/feature-registry.v1.json
+  - frontend/src/lib/feature-registry.ts
+  - frontend/src/lib/sku-pipeline/api.ts
+  - frontend/src/lib/sku-pipeline/hooks/useSkuOperation.ts
+  - frontend/src/lib/sku-pipeline/model.ts
+  - frontend/src/lib/sku-pipeline/operations.ts
+  - frontend/src/lib/sku-pipeline/panels/SellingPointsResult.tsx
+  - frontend/tests/feature-registry.test.ts
+  - frontend/tests/sku-pipeline-operation.test.ts
+  - frontend/tests/system-health-overview.test.ts
+  - services/knowledge-engine/app/services/health_registry.py
+  - services/knowledge-engine/app/services/system_graph/feature_definitions.py
+  - services/knowledge-engine/config/features/ad-review.yaml
+  - services/knowledge-engine/config/features/chat.yaml
+  - services/knowledge-engine/config/features/content-studio.yaml
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - services/knowledge-engine/config/features/knowledge-harvester.yaml
+  - services/knowledge-engine/config/features/knowledge.yaml
+  - services/knowledge-engine/config/features/livestream-analysis.yaml
+  - services/knowledge-engine/config/features/news.yaml
+  - services/knowledge-engine/config/features/system-convergence-runtime-execution.yaml
+  - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+  - services/knowledge-engine/config/features/video-analysis.yaml
+  - services/knowledge-engine/tests/test_feature_definitions.py
+- id: ACT-004
+  planned_change_id: CHG-004
+  summary: Converged canonical and compatibility MCP REST paths on one validated executor and enforced append-only metric observations with first-source ownership and collision preservation.
+  paths:
+  - migrations/103_metric_ownership_and_compatibility.sql
+  - services/knowledge-engine/app/mcp/audit.py
+  - services/knowledge-engine/app/routers/mcp_catalog.py
+  - services/knowledge-engine/app/routers/mcp_exec.py
+  - services/knowledge-engine/app/routers/tool_execution.py
+  - services/knowledge-engine/app/services/metric_ownership.py
+  - services/knowledge-engine/app/services/tool_execution.py
+  - services/knowledge-engine/tests/test_metric_ownership.py
+  - services/knowledge-engine/tests/test_tool_execution.py
+  - services/scout-agent/app/services/csv_parser.py
+  - services/scout-agent/app/services/jd_ingest.py
+  - services/scout-agent/app/services/metric_ingest.py
+  - services/scout-agent/app/services/metric_ownership.py
+  - services/scout-agent/app/services/runbook_executor.py
+  - services/scout-agent/tests/test_metric_ownership.py
+- id: ACT-005
+  planned_change_id: CHG-005
+  summary: Added sanitized compatibility telemetry, a capability matrix, checksum and smoke reconciliation, and a fail-closed 14-day retirement-readiness report that cannot authorize physical deletion.
+  paths:
+  - docs/multi-device/client-retirement.md
+  - scripts/client_retirement_audit.py
+  - services/knowledge-engine/app/routers/compatibility.py
+  - services/knowledge-engine/app/services/compatibility.py
+  - services/knowledge-engine/tests/test_compatibility_retirement.py
+  - tests/fixtures/client-retirement/blocked.json
+  - tests/fixtures/client-retirement/ready.json
+  - tests/test_client_retirement_audit.py
+- id: ACT-006
+  planned_change_id: CHG-006
+  summary: Expanded the deterministic repository P0 policy and blocking CI gate, added health/status projections, and supplied a disposable allocation-backed PostgreSQL verifier.
+  paths:
+  - .github/workflows/ci.yml
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/contract-check.json
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/fde-health-baseline.json
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/graph-diff.json
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/sha256-1a29206e4f256762622b5213db7a1cff8c50a7bbe29e5bb525250efcb3f8dab7.json
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/sha256-de871a9642ea35f376028cf98b9fcb0a5cf93a41db12487ca67083b05e10028f.json
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - scripts/check_feature_contracts.py
+  - scripts/generate_fde_health_baseline.py
+  - scripts/verify_s7_s14_runtime.ps1
+  - services/knowledge-engine/config/system_graph/block-policy.yaml
+  - tests/test_prd_status_projection.py
+  - tests/test_system_convergence_s14_policy.py
+contract_delta:
+- description: Health registry discovery now consumes the generated frontend FeatureDefinition projection.
+  reason: Source scanning of TypeScript href literals would preserve a second identity authority.
+  effect: Frontend and backend projections are byte-identical and generator check mode fails on either stale output.
+  accepted: true
+- description: The existing status generator and new deterministic health/runtime verification artifacts were added to the locked scope.
+  reason: S14 already had a canonical status projection under a different name and needed an evidence-producing disposable verifier.
+  effect: Status remains generated, and PostgreSQL evidence is restricted to an allocated omni_verify database.
+  accepted: true
+- description: Backend parity verification was split by service and MCP doctor gained a registry-only CLI mode.
+  reason: Knowledge Engine and Scout both expose a top-level Python app package and cannot be imported safely in one pytest process.
+  effect: Each service is tested in an isolated process while the normal database-backed runtime doctor remains unchanged.
+  accepted: true
+- description: Strict index verification added the already implemented runtime BFF, Scout registration, and regression-test paths to the locked planned globs.
+  reason: Representative completion paths were insufficient for the v3 protected-path accounting gate.
+  effect: Every protected staged path can now be mapped to one planned change without changing runtime behavior or external effects.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_persistence.py services/knowledge-engine/tests/test_system_graph_s7_router.py services/knowledge-engine/tests/test_tool_execution.py services/knowledge-engine/tests/test_metric_ownership.py services/knowledge-engine/tests/test_compatibility_retirement.py services/knowledge-engine/tests/test_runtime_trace.py services/knowledge-engine/tests/test_runtime_trace_router.py services/knowledge-engine/tests/test_runtime_radar.py services/knowledge-engine/tests/test_agent_contracts.py services/knowledge-engine/tests/test_host_contract.py
+  status: passed
+  exit_code: 0
+  evidence: 29 tests passed; graph persistence/API, typed executor, metric ownership, retirement readiness, trace, radar, session, and Host contracts were exercised.
+- id: VER-002
+  command: python -B -m pytest -q -p no:cacheprovider services/host-bridge/tests services/scout-agent/tests/test_runtime_trace.py services/scout-agent/tests/test_metric_ownership.py
+  status: passed
+  exit_code: 0
+  evidence: 12 Host and Scout tests passed, including allowlisted roots, visible authorization, resume, trace propagation, and metric-owner delegation.
+- id: VER-003
+  command: cmd /d /c "npm --prefix frontend run test:unit && npx --prefix frontend tsc --noEmit --project frontend/tsconfig.json"
+  status: passed
+  exit_code: 0
+  evidence: Vitest passed 18 files and 70 tests; TypeScript emitted no diagnostics.
+- id: VER-004
+  command: powershell -NoProfile -Command '$env:PLAYWRIGHT_E2E_SELF_HOSTED=''1''; $env:PLAYWRIGHT_BASE_URL=''http://127.0.0.1:3101''; if (Test-Path ''C:\Program Files\Google\Chrome\Application\chrome.exe'') { $env:PLAYWRIGHT_EXECUTABLE_PATH=''C:\Program Files\Google\Chrome\Application\chrome.exe'' }; npx --prefix frontend playwright test --config frontend/playwright.config.ts tests/agent-chat/e2e/system-command-center.spec.ts'
+  status: passed
+  exit_code: 0
+  evidence: 2 real-Chrome tests passed for the development mode, partial-source warning, accessible tree, evidence drawer, immutable graph page read, and legacy route convergence.
+- id: VER-005
+  command: python -B scripts/apply_migrations.py --dry-run --verify
+  status: passed
+  exit_code: 0
+  evidence: Repository verification found 94 immutable migrations, head 103_metric_ownership_and_compatibility.sql, and digest 132a43f5d58aff7da3a5e3da74ac7a33c3ffd0d54f86b64c822db2a612309a10.
+- id: VER-006
+  command: powershell -NoProfile -File scripts/verify_s7_s14_runtime.ps1
+  status: passed
+  exit_code: 0
+  evidence: RuntimeAllocation allocation-834c68c275954ad2bb7da04bbb739db1 applied all 94 migrations with pending=0 to an omni_verify database; 2 real PostgreSQL tests passed and all task containers, volumes, networks, and the allocation were released.
+- id: VER-007
+  command: powershell -NoProfile -Command 'python -B services/knowledge-engine/scripts/system_graph.py generate --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python -B services/knowledge-engine/scripts/system_graph.py scan --no-dynamic --output docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots'
+  status: passed
+  exit_code: 0
+  evidence: FeatureDefinition revision sha256:8548708b38d99071b594455c8b8c2570630821f3e80b71f55312083d16fbbc30 was current; the deterministic after scan produced 130 nodes, 143 edges, and snapshot sha256:de871a9642ea35f376028cf98b9fcb0a5cf93a41db12487ca67083b05e10028f while preserving four dynamic sources as unknown.
+- id: VER-008
+  command: powershell -NoProfile -Command '$env:PYTHONPATH=''services/knowledge-engine''; python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_tool_execution.py services/knowledge-engine/tests/test_metric_ownership.py; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; $env:PYTHONPATH=''services/scout-agent''; python -B -m pytest -q -p no:cacheprovider services/scout-agent/tests/test_metric_ownership.py; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; Remove-Item Env:PYTHONPATH; python -B -m pytest -q -p no:cacheprovider tests/test_client_retirement_audit.py'
+  status: passed
+  exit_code: 0
+  evidence: The isolated service processes passed 5 Knowledge Engine, 1 Scout, and 2 retirement-audit tests without app-package collision.
+- id: VER-009
+  command: powershell -NoProfile -Command '$env:PYTHONPATH=''services/knowledge-engine''; $env:PYTHONUTF8=''1''; python -B -m app.mcp.doctor --registry-only'
+  status: passed
+  exit_code: 0
+  evidence: MCP doctor reported current YAML, all 51 prompt templates, and all 141 contract tools registered.
+- id: VER-010
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s14_policy.py tests/test_prd_status_projection.py tests/test_feature_contracts.py tests/test_agents_policy.py
+  status: passed
+  exit_code: 0
+  evidence: Repository policy, status projection, feature contracts, and AGENTS gates passed 83 tests and 6 subtests.
+- id: VER-011
+  command: git diff --check
+  status: passed
+  exit_code: 0
+  evidence: Candidate patch has no whitespace errors; only repository line-ending normalization notices remain.
+graph_diff:
+  status: accepted
+  snapshot_before: sha256:1a29206e4f256762622b5213db7a1cff8c50a7bbe29e5bb525250efcb3f8dab7
+  snapshot_after: sha256:de871a9642ea35f376028cf98b9fcb0a5cf93a41db12487ca67083b05e10028f
+  added_nodes:
+  - feature:system-convergence-runtime-execution
+  - ui_route:/workspace/development
+  - ui_route:/workspace/execution
+  modified_nodes:
+  - feature:chat
+  - feature:knowledge
+  - ui_route:/workspace
+  - ui_route:/sku-pipeline
+  - rest_operation:GET:/api/v1/system-graph/integration-plans
+  - mcp_tool:system_graph_confirm_plan
+  removed_nodes:
+  - bff_operation:GET:/api/omni/system-graph/integration-plans
+  - bff_operation:POST:/api/omni/sku-pipeline/selling-points-matrix
+  - ui_route:/system-graph
+  added_edges:
+  - edge:declares:4a9d2904eff189a66dfe6f12
+  - edge:declares:cdcdb96d8d60b25648927192
+  - edge:depends_on:88ceb93055ba5bb8810bf30f
+  removed_edges:
+  - edge:calls:0f31c7118a37ab91a8a5ef16
+  - edge:calls:788133f62a7f584eedfe059e
+  - edge:declares:6d4ff752a931d54f93020aeb
+  - edge:proxies_to:763bd89f81ae998f8cd0fdc2
+  required_edges:
+  - from: page:/workspace
+    to: api:GET:/api/v1/system-graph/snapshots/{snapshot_id}/graph
+    relation: reads_fact_graph
+    status: present
+    evidence: SystemGraphView first resolves the latest immutable ID and then reads the ID-addressed graph page; unit and real-browser tests passed.
+  - from: page:/sku/{id}
+    to: api:GET:/api/v1/system-graph/snapshots/{snapshot_id}/graph
+    relation: reads_business_projection
+    status: present
+    evidence: The SKU business-chain tab renders the same SystemGraphView with an SKU focus query; TypeScript and component tests passed.
+  - from: api:GET:/api/v1/system-graph/snapshots/{snapshot_id}/graph
+    to: service:system-graph-repository
+    relation: reads
+    status: present
+    evidence: get_system_graph_page resolves DatabaseGraphRepository.get_snapshot before graph_page; router and disposable PostgreSQL tests passed.
+  - from: mcp:system_graph_get
+    to: service:system-graph-repository
+    relation: reads
+    status: present
+    evidence: The registered MCP system_graph_get calls the same repository/query service; MCP doctor and graph tests passed.
+  - from: source:feature-definition
+    to: service:feature-registry-projection
+    relation: generates
+    status: present
+    evidence: generate_bundle atomically writes byte-identical backend and frontend JSON projections; generator check and FeatureDefinition tests passed.
+  - from: page:/sku-pipeline
+    to: service:typed-operation-registry
+    relation: invokes
+    status: present
+    evidence: SKU Pipeline imports the closed SKU_PIPELINE_OPERATIONS registry and executeSkuOperation, with one extracted model/API/hook/panel vertical and operation tests passing.
+  - from: service:typed-operation-registry
+    to: api:POST:/api/v1/mcp/execute/{operation_id}
+    relation: calls
+    status: present
+    evidence: The operation BFF rejects unknown IDs and proxies accepted IDs only to the canonical execute route; operation tests passed.
+  - from: api:POST:/api/v1/mcp/execute/{operation_id}
+    to: service:registered-tool-executor
+    relation: dispatches
+    status: present
+    evidence: tool_execution router invokes execute_operation over OPERATION_REGISTRY; typed validation, timeout, audit, trace, and rejection tests passed.
+  - from: api:POST:/api/v1/mcp/exec/{tool_name}
+    to: service:registered-tool-executor
+    relation: adapts_to
+    status: present
+    evidence: The legacy catch-all and retained Python compatibility functions delegate to execute_tool_by_name in the shared executor; parity tests passed.
+  - from: source:scout-metric-ingest
+    to: service:metric-ownership
+    relation: submits_observation
+    status: present
+    evidence: Scout metric_ingest, runbook, CSV, and JD writers delegate to the ownership adapter; isolated Scout tests passed.
+  - from: service:metric-ownership
+    to: table:mcp.metric_collisions
+    relation: records_non_owner
+    status: present
+    evidence: Non-owner submissions append observations and collisions without overwriting the canonical value; the real PostgreSQL verification passed.
+  - from: source:legacy-client-telemetry
+    to: service:retirement-readiness
+    relation: blocks_until_reconciled
+    status: present
+    evidence: Authenticated compatibility telemetry feeds the 14-day capability matrix and reconciliation report, which always denies physical retirement without R3; negative and PostgreSQL tests passed.
+  - from: state:fde-enforcement
+    to: service:system-graph-repository
+    relation: verifies_required_edges
+    status: present
+    evidence: The S14 CI gate generates/checks FeatureDefinitions, scans a fact snapshot, and runs check_feature_contracts under deterministic P0 policy; governance tests passed.
+  orphan_nodes: []
+  unknowns:
+  - node_or_edge: collector:catalog.mcp
+    reason: The locked deterministic scan used --no-dynamic, so live MCP catalog evidence remains unknown rather than inferred missing.
+    owner: owner:knowledge-engine-runtime
+    expires_at: '2026-08-15T00:00:00Z'
+    accepted: true
+  - node_or_edge: collector:catalog.openapi
+    reason: The locked deterministic scan used --no-dynamic, so live OpenAPI evidence remains unknown rather than inferred missing.
+    owner: owner:knowledge-engine-runtime
+    expires_at: '2026-08-15T00:00:00Z'
+    accepted: true
+  - node_or_edge: collector:health.runtime
+    reason: No shared runtime was mutated or adopted; runtime health is deliberately unknown in the local candidate.
+    owner: runtime-owner:canonical
+    expires_at: '2026-08-15T00:00:00Z'
+    accepted: true
+  - node_or_edge: collector:delivery.external
+    reason: No default-branch CI attestation or external delivery receipt exists for this local candidate.
+    owner: default-branch-ci
+    expires_at: '2026-08-15T00:00:00Z'
+    accepted: true
+  - node_or_edge: runtime:canonical-shared-database
+    reason: Migrations were proved only on a unique disposable allocation; applying them to the shared database is a separate R3 operation.
+    owner: runtime-owner:canonical
+    expires_at: '2026-08-15T00:00:00Z'
+    accepted: true
+  - node_or_edge: desktop:physical-retirement
+    reason: Fourteen consecutive days of zero exclusive usage and explicit R3 approval cannot be manufactured in this implementation turn.
+    owner: owner:omni
+    expires_at: '2026-08-16T00:00:00Z'
+    accepted: true
+  - node_or_edge: collector:contract-semantic-edges
+    reason: The static scanner does not natively emit the 13 contract-level relation names and reports them as required_edge_unknown; source paths and passing tests above establish the implementation without relabeling the typed snapshot.
+    owner: owner:system-graph-collector
+    expires_at: '2026-08-15T00:00:00Z'
+    accepted: true
+exceptions:
+- id: EXC-S13-OBSERVATION
+  status: blocking_external
+  description: Physical retirement remains intentionally blocked until a real 14-day zero-exclusive-use window and all reconciliation evidence exist.
+  evidence: Retirement unit tests and disposable PostgreSQL tests prove the report can become ready_for_r3_review but physical_retirement_allowed remains false.
+  owner_action: Collect 14 days of real telemetry, reconcile SQLite, attachments, settings, secret reauthorization, Host smoke, and restore smoke, then request explicit R3 owner approval.
+- id: EXC-DELIVERY
+  status: blocking_external
+  description: Schema v3 reserves COMPLETE for trusted CI attestation, which is absent from this local worktree candidate.
+  evidence: Health baseline reports verified_not_delivered and delivery.external unknown; no external receipt was supplied or fabricated.
+  owner_action: Integrate the candidate and obtain the required default-branch CI attestation and delivery receipt.
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: Source changes are isolated in the named worktree; compatibility aliases remain, all migrations are additive, and every disposable runtime allocation, container, volume, and network created by verification was released or removed.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: S7-S14 implementation and local deterministic verification are ready for CI; physical desktop retirement, shared-runtime adoption, and formal COMPLETE remain external gated facts.

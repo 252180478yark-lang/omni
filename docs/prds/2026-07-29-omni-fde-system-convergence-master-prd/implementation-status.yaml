@@ -7,32 +7,32 @@ document:
   source_markdown: 2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md
 generation:
   mode: machine_projection
-  generated_at: '2026-07-29T19:59:29Z'
+  generated_at: '2026-08-01T15:15:55Z'
   generated_by: scripts/generate_implementation_status.py
   manual_completion_allowed: false
-  source_hash: 0a30f07302de2f5355d9618c23b663793c3a7f24f0727b40a3b3254a03c2489a
+  source_hash: 9839138c6c94ca6ce796cfb9de103e4ffc2f984629893cbea82bbae8aec38490
 audit_snapshot:
   temporal_scope: point_in_time
   repository:
-    head: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
-    branch: codex/system-convergence-s0-s3-v12
+    head: ba7dd935317ba777527f08817b0f2bceff473fac
+    branch: codex/system-convergence-s7-s14
     dirty: true
-    dirty_path_count: 162
+    dirty_path_count: 203
   s0_evidence:
     secret_scan:
       scope: tracked
       status: passed
-      scanned_files: 1432
+      scanned_files: 1662
       finding_count: 0
       findings: []
       redaction: path_rule_fingerprint_only
       coverage: current_tracked_baseline
-      external_worktree_audit_count: 37
+      external_worktree_audit_count: 40
       external_worktree_finding_count: 10
       skipped_summary:
-        count: 302
+        count: 271
         by_reason:
-          binary_extension: 302
+          binary_extension: 271
         samples:
         - path: docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.pdf
           reason: binary_extension
@@ -55,137 +55,25 @@ audit_snapshot:
     ownership:
       status: failed
       counts:
-        active_change: 162
-        preserved_external_user: 458
-        preserved_external_worktree: 2536
-        conflict: 0
+        active_change: 95
+        preserved_external_user: 453
+        preserved_external_worktree: 2521
+        conflict: 108
         unassigned: 0
-        dirty_scope_conflict: 60
-        contract_scope_conflict: 0
-        contract_owner_ambiguity: 0
-        scope_conflict: 60
-        lease_conflict: 0
+        dirty_scope_conflict: 177
+        external_scope_overlap: 38
+        contract_scope_conflict: 21
+        contract_owner_ambiguity: 4
+        scope_conflict: 202
+        lease_conflict: 921
         archive_candidate: 0
     migration_baseline:
-      after: {}
-      allocation_id: repository-only
-      applied: []
-      backfilled_checksums: []
-      before: {}
-      build_identity: {}
-      database_fixture:
-        empty_database: true
-        existing_database: false
-      exit_code: 0
-      generated_at: '2026-07-29T19:26:49Z'
-      kind: omni_migration_receipt
-      mode: repository_verify
-      receipt_id: migration-ff2295577e4c4ea88c2eb51c50d81e4f
-      receipt_key: f87136860424e95c87dec222e9c5501c00400366f13827ab27920ef3c06dbde1
-      redaction: credential_free_target_fingerprint_only
-      repository:
-        checksums:
-          000_content_studio_pipelines_bootstrap.sql: 0541e2d9aaf752656a840b1df99286019144c72732232f0d5948232d9fca4c6e
-          001_ad_review_schema.sql: 8e0c92e661749f03eed724afd7b6b30bb87217d5d81d3299812df20be73326e6
-          002_content_pipeline_v2_phase1.sql: 664d70b896972bdca775cc5f90578802dc98d12ed866ae7b76693af4d6275b04
-          003_content_pipeline_v2_phase2.sql: fa9bc597c4bacd0884b308736ab17f4505bd5648a805a7bd970cdd72c2eaf529
-          004_content_pipeline_v2_extras.sql: ce17e3d239c202fae4740c7337014833838cb570f5d77b6e7865271f5c2b585f
-          005_content_pipeline_v2_char_map.sql: 195de3ab008fe03d29649cb114a75eb0f0cacb5548d7a90b54ee19bbbc8994b7
-          006_top_material_analyzer.sql: 38e93c503ed410243ac8ca9f5294c2fab5371f94dd765264df5f539050dc1eb0
-          007_prompt_feedback.sql: dd7bb8148efa6d0b675866efd497df7996cd5f6adb3bd5fc23e349cc3ef89adf
-          008_chat_sessions.sql: 32a81d586c19747f8510889e31371b3defdb4ad60119c11c7d58fad88b89018c
-          009_mvp_tables.sql: 348839b55aa22c0512fe9fab0e8107e309d583329656aec16c3b4f991f6c0807
-          010_dual_track.sql: 8210710d73656ebe9e4e309da2e9c1596cf1d7672052ba7c8d2cb8803d4b1b4d
-          011_sku_content_orchestration.sql: d33e04d09dfbc0639868d911462cb9defc3a2ce549e6e730b029278538ee7063
-          012_sku_specifications.sql: 3e5e1ef459fe686ead2e4a9702bf565418414a46c4e06d505c532639ad959a85
-          013_sku_brief_feedback_loop.sql: 7b134674e894bf89bd4c5f7a08ec6dd12c3ea50dcf47ec5276cbf9027c1f55a4
-          014_kb_role.sql: c8debca1e72948137a2030ea1218e9dedf5c84805936441e3db966ba9b7a2375
-          015_cost_items.sql: b3b89fe8b8040db0869e873c5a01a5fbef4c9351226375a8feaa3641e54420f8
-          016_mcp_audit.sql: 58b17892e7dd946184f54baa9a59187122a11a4a4413dabf1fd87c4c71161707
-          017_mcp_decisions_observations.sql: ee78e9566e32d4c5b407a372b32d30ce214d163cdc88de5d315cf5bb6fc32879
-          018_cost_visibility.sql: 7b4858b0866fec8f13b1312d17698723954c64f99bda443943ecb3aaad61775d
-          019_product_price_list.sql: be01db134043607e77d6f96ff96cd996f0c01f3da242fb82e1e55dd5f5392abf
-          020_channel_fees.sql: 91b026c75f610d6636994eaf81b48b6c2d7a1139aca7f2c6a1f6332f974ebfad
-          021_pipeline_lineage.sql: bfeb39684ae666eb09908a72acb59664cb43c88d5c20b13d5064830113729a23
-          022_keyword_packs.sql: 9d6f729de342f174f9d14d44c00dae0ad612b07dfd653c8af23d286934776e5c
-          023_creative_pack_kinds.sql: 067b7633a24b6f6a36ec62bf01cf8184138770cabe7966c65e026fb68e2f0215
-          024_phase_d_character_sheets.sql: 157960b92e13fface7c13816d0c072b1ec4ae2f78d71e414594981cfa62b3962
-          025_assets_archived_status.sql: c8e040d3564fb97fd8bd544dc4acf0989a709f06a6451e6a0754ae6434d5d5cc
-          026_asset_type_image_last.sql: 89459b3beeb395f1781ebe4f809d7f0f053bfff43c5939778d6ab604a9ded35d
-          027_asset_type_image_first.sql: 9bc6446a7a6f5ec62386443c55e50c2e6c28cd42aeca31e4dfd77ab152e9c445
-          028_agent_sessions.sql: f9eb0c50ab2b97e43bddac73fb08ecc3e1835e4b44e2ba0f08fffd85d4dcda59
-          029_orch_lineage.sql: 33ac05b6c34dec592a424790b5891133485eea659a5915fa8372d61579305ae4
-          030_playground_sandbox.sql: f85fdafcf8076ec5d6f8f6bc073eac38158ea8ca251d4f76be2cfdf588db3f6f
-          031_feedback_flywheel.sql: 2ced187031557eb08866c5e2eb5b12f5fe5c385783d18a9b75f260010b983509
-          032_bug_memory_and_logs.sql: ba036db792dcbee168e5d479b78f07e2911c439e16b7a8f1bf225b082153738e
-          033_monthly_spend.sql: 4b30ce1d7a31413dfdee01b499c4548b42eb3a7763957d5772eb97f05cdb36d1
-          034_metric_platform_dim.sql: fe3bd45a76de1e4b78a403cd6cad299166dcea0dd87b4fac6e27b27a6d7596b8
-          035_toolcalls_tooluseid.sql: ac18a804c5013394ddd2f8e4589103344f07b8c2f6c8542e732703685ec23da4
-          036_actor_id.sql: cce1a02dd8cd34d8a9b9d61c25eb8a392ec190fc0b900171be0e3b199417860b
-          037_product_platform_rollup.sql: 256f67db13b61fbfb8cc1010ccf92d01b24fe3d03788f301d3fa3d450478ef50
-          038_improvement_proposals.sql: 6e0337f2950f4ea608b70ff1720a5473402a58a3a94cacfeec4d0cc9013a9ef7
-          039_anomaly_freshness_suppression.sql: f8fda55c6cef04e16373a759130ccd61f60b69e8280d55996fe9ff71b8ab3d33
-          040_bi2_dim_tables.sql: bddf844f8b7f8de4e0d6d1cc9c2d5a9e3b6a14d80ae078a4b4f396244b1d8878
-          041_bi2_dim_tables_batch3.sql: 8084fb11a9b27f07523726fb04b625e5c8b3a8e1699c9d8702c009bc0949228b
-          042_bi2_service_flow.sql: aa3ac4cd0bc905f9e872ae3cd75fc4de36fce3761b8ffd09d7045b97cecff71b
-          043_anomaly_description_llm.sql: 3b209832bf6791bac3395013332d2e333756f0e425e99713a0b8e308c35caf81
-          044_logistics_weight_dicts.sql: 33dcd657cb04d8bba877128a139c1037512363d0056af521aad8f4a7b7bc700c
-          045_channel_product_costs.sql: 50515f35ef3044917ec08198213ecc256fc96b04dcb19963dd4d72b213da1bad
-          046_sku_components.sql: d206437b8d00c94eb2b938a11e486124ac78b10957728f450c3e2b63a8101d5d
-          047_audience_portraits.sql: 90079ef5e29269939453fb9718b0475375699ee4b2a76d54a992b80da705ac84
-          048_metric_platform_unique.sql: 0b7f7564a4ca139bf0bc3d29cd1ded856a9746bd74f9978eec159a224e8ec9a4
-          049_hype_question_text_and_task_fidelity.sql: 676fc8a11b03130e34cd37d56e38045fdceb462b2c2b4c8500295e4780c608b2
-          050_custom_sops.sql: 29ef7db5abd35a7a3eed54930fc9aaf4d1eea6a8c5110033f0d788db2edc0f02
-          051_pipeline_prompt_nodes.sql: ed55725dce2048645e31a4c4c8b68ddc6a88d10ee5dde244f5fc2996bbef75eb
-          052_experiment_lab.sql: f913d42244987d25270b211ffbc51aac13fc25b69a734e81e8c267d04e7ed62e
-          053_experiment_ai_track.sql: 0e7455ccf81ab540329b66ffb8d414e942e96b96867476f5cd66749b8df8288c
-          054_experiment_view_production_mode.sql: 0b9ab2b846f3af4945c0d10601dd71ba708893dd8a020f449b5acb108c766c40
-          055_jd_powerbi_views.sql: bc0ba5b9700ecfc11a27b295d5ea1454765b2b39fa9db3f8761e4008c642fc96
-          056_jd_daily_view_expand.sql: f0e8ca94fba335f2f658580d06ae876253b9c9ec7251b962b83e06952e23ce9c
-          057_jd_product_daily.sql: 8cccbd447b3b0f037a873808ef6dff57c2518cf2c9327145af5b01f8b88ae918
-          058_message_feedback_to_rules.sql: 622b6eb7d7305b722c8c7dec7b6ab6191e984650a3015a21119c8e1395687b21
-          059_jd_powerbi_star_upgrade.sql: 21ab23c7624b35bb09179126a4f5b9c388474aa07b2c8401a8f0a90493411b73
-          060_douyin_powerbi_views.sql: b8eff5feccaedb4657294a4a14c3ee58fbac4d64fd3efa7b41e2aa1439bce64f
-          061_jd_monthly_profit_actuals.sql: 4ed0500f17df8ea7db31aba440c11f475a809a2fd1ee4ff9463392f18a227def
-          062_jd_pop_tmall_same_price.sql: daa2cfdf2219462991d7cd92f01066c9a63ea78dbee1eaceb91119a6e87f6d70
-          063_jd_bi_consolidated.sql: 52613ec184c1534e940425e784a1d7336e7707105c76d1c796c3f199e055ead1
-          064_experiment_exposure_in_view.sql: 2dfe815709145d01bf408322356620a68616d99132a26aea46324edc0a95c22d
-          065_content_version_changelog.sql: 3762a134ad4c578387d9f8577ca14dc1ef844c33e929af93f3b4a280418197b6
-          066_match_vectors.sql: 2373e36af08562fde303b756e39ba53484e1e4a3f4a30f5eea434199624b4af9
-          068_ai_planting_agent_parity.sql: d48118a67b8b2821f9293422664c6bf6bb5b9ef23cce7f5851140b31d7ba2108
-          069_fix_planting_zero_impression_cpm.sql: 2771f5fa15e4e6b58410a4a61503156ae78f32dacfb96e3e1791f3b13a032e0b
-          070_video_generation_set_hardening.sql: 3adf4381784f2fe9dd1e7029fe4f0611416dcd96abeabe230b68f1204ba622e4
-          071_planting_effective_metric_pooling.sql: 270fc78c6c9c0ced584ef2537905dcfeada41ffa931dafe47e4bd473fc6d51af
-          072_video_generation_scene_claims.sql: 8c224333cda8bf23265e08022584ff61787a087d1b98bace7a84e15e7c39a664
-          073_soft_ad_completion_pooling.sql: 09d327ac385ed820c03c2a1a489bfd9ef8839f0dc21ed2520b70a34980609f15
-          074_completion_pair_feasibility_views.sql: 2555dde12eca53f8ca17d988724c79bed22305005aa9fed8982beab0d25ce851
-          083_p0_video_production_atom.sql: 41d5b823fd29440a844071dedae7af06a43d44a2cd13ca03d194a00326e92b87
-          084_migration_checksum_ledger.sql: f91645e971ece18a059078ce956e7f3253d7b922b27f8d57db6c44a2681af3a5
-          085_p0_generation_attempt_retry.sql: 37f3e27fba813c9297dcc4b5991497a06b90b14e8f119cca3396871faa61efbf
-          086_p0_execution_content_match.sql: 2ecc047c609e6254c2301a87393b430ada4405ffd1b15049aaeebda87500708d
-          088_creator_learning_persistence.sql: d0853c972a026771a0125e360458cd0789d0257201cad65d4d7305356101ff89
-          089_creator_learning_integrity_followups.sql: 427daa29b0bdc14a4d49fcd28643cbb8b3aa56529c4ec5b11ebe50985c1f54e8
-          090_p0_truth_snapshot_reuse_scope.sql: 755b3e96adebed71797690884daffc9976002e77545f3f8a088fc0b5c8daaa53
-          091_p0_execution_vector_match.sql: 78671b62c751a165e63321c55f60b0a17812c041be5e425de3d8671d2af43199
-          092_p0_content_spec_reuse_scope.sql: 22e0e5d95570a47758a945e8878777ac7c6e5d26d10382ea5211f1bcd7016f70
-          093_creator_transcript_archive_gated_learning.sql: 2d98a50ce9833ac699cf17037aef54560627d55887806d3b971cb7757debea59
-          094_creator_knowledge_recovery.sql: 0c5a00482064ff43c12a3d74fe908fed10968e9fb7c338fbcd9fbb799aed39be
-          095_creator_video_analysis_idempotency.sql: d4aad3b397d31f0272e8815be175d1e9a4a7f59d7571b7beba113c86b9ea80b9
-          096_creator_homepage_first30_rank.sql: 8a5cc96b8b7c3ff0c956c6269475598cd5dcb19fe9875ee389229faa087e4048
-          097_p0_v4_adopted_pack_lineage.sql: 536b06b4d00ad03ceec54fed1d131efbd66dcb3b21f2dd1c3e630c957a850a59
-          098_approval_operations.sql: 44f42b98d8adac034c8f39aff2e25f4c58eeb4e7789e7c035822c6fd461f0c04
-          099_identity_users_schema.sql: 86143c8d399b915a6a55e56764deab284b58b477a4c61c05e9e38586fafb35bf
-          100_news_aggregator_schema.sql: 7ca27ad078b55d796e18e7f85f0a7b22cc848273e852ab0f75b379843c402edb
-        count: 91
-        digest: 8462b7bfa9509f4128fc64ac5e56d330e2df40c304f6df9c401bf4de512528f4
-        head: 100_news_aggregator_schema.sql
-      runner_version: omni-migration-runner-v2
-      schema_version: 1
-      status: passed
-      target_fingerprint: null
+      status: unknown
     gate_status: BLOCKED
     gate_reasons: &id001
     - workspace_ownership_conflict
+    - migration_baseline_unknown
+    - '2026-08-01-system-convergence-s4-s6-gap-closure: system-convergence feature_ref has no slice mapping'
     archive_candidate_count: 0
     cleanup_mutated: false
   hook_trust:
@@ -211,19 +99,21 @@ current:
 contracts:
 - change_id: 2026-07-29-development-order-s0-5
   contract_state: GRAPH_DIFF_READY
-  effective_state: COMPLETE
+  effective_state: VERIFIED_NOT_DELIVERED
   risk_level: R2
   contract_path: docs/dev-changes/2026-07-29-development-order-s0-5/impact.yaml
   slices: []
   delivery:
     change_id: 2026-07-29-development-order-s0-5
-    valid: true
-    delivery_state: delivered
+    valid: false
+    delivery_state: stale
     subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
-    reasons: []
+    reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
 - change_id: 2026-07-29-feature-contract-evaluation-tree-hardening
   contract_state: COMPLETE
   effective_state: COMPLETE
@@ -239,6 +129,8 @@ contracts:
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
     reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
     - change_not_present_in_receipt
 - change_id: 2026-07-29-feature-contract-gate-archival-compatibility
   contract_state: COMPLETE
@@ -256,6 +148,8 @@ contracts:
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
     reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
     - change_not_present_in_receipt
 - change_id: 2026-07-29-prd-canonical-archive
   contract_state: COMPLETE
@@ -272,6 +166,8 @@ contracts:
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
     reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
     - change_not_present_in_receipt
 - change_id: 2026-07-29-system-convergence-s1-governance-foundation
   contract_state: COMPLETE
@@ -288,10 +184,12 @@ contracts:
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
     reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
     - change_not_present_in_receipt
 - change_id: 2026-07-30-system-convergence-s0-s3-foundation
-  contract_state: VERIFYING
-  effective_state: IN_PROGRESS
+  contract_state: GRAPH_DIFF_READY
+  effective_state: VERIFIED_NOT_DELIVERED
   risk_level: R2
   contract_path: docs/dev-changes/2026-07-30-system-convergence-s0-s3-foundation/impact.yaml
   slices:
@@ -311,6 +209,73 @@ contracts:
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
     reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
+    - change_not_present_in_receipt
+- change_id: 2026-08-01-system-convergence-s4-s6-gap-closure
+  contract_state: GRAPH_DIFF_READY
+  effective_state: VERIFIED_NOT_DELIVERED
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-01-system-convergence-s4-s6-gap-closure/impact.yaml
+  slices: []
+  delivery:
+    change_id: 2026-08-01-system-convergence-s4-s6-gap-closure
+    valid: false
+    delivery_state: stale
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
+    target_ref: refs/heads/main
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: delivery-attestation.json
+    reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
+    - change_not_present_in_receipt
+- change_id: 2026-08-01-system-convergence-s4-s6-static
+  contract_state: GRAPH_DIFF_READY
+  effective_state: VERIFIED_NOT_DELIVERED
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-01-system-convergence-s4-s6-static/impact.yaml
+  slices:
+  - S4
+  - S5
+  - S6
+  delivery:
+    change_id: 2026-08-01-system-convergence-s4-s6-static
+    valid: false
+    delivery_state: stale
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
+    target_ref: refs/heads/main
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: delivery-attestation.json
+    reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
+    - change_not_present_in_receipt
+- change_id: 2026-08-01-system-convergence-s7-s14
+  contract_state: GRAPH_DIFF_READY
+  effective_state: VERIFIED_NOT_DELIVERED
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-01-system-convergence-s7-s14/impact.yaml
+  slices:
+  - S7
+  - S8
+  - S9
+  - S10
+  - S11
+  - S12
+  - S13
+  - S14
+  delivery:
+    change_id: 2026-08-01-system-convergence-s7-s14
+    valid: false
+    delivery_state: stale
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
+    target_ref: refs/heads/main
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: delivery-attestation.json
+    reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
     - change_not_present_in_receipt
 - change_id: p0-pack-lineage-v4
   contract_state: COMPLETE
@@ -327,6 +292,8 @@ contracts:
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
     reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
     - change_not_present_in_receipt
 - change_id: p0-planting-upstream-contract-v3
   contract_state: COMPLETE
@@ -343,6 +310,8 @@ contracts:
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
     reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
     - change_not_present_in_receipt
 - change_id: p0-v4-canonical-deployment
   contract_state: COMPLETE
@@ -359,8 +328,11 @@ contracts:
     receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
     receipt_locator: delivery-attestation.json
     reasons:
+    - live_provenance_refresh_required
+    - required_checks_not_passed
     - change_not_present_in_receipt
-projection_errors: []
+projection_errors:
+- '2026-08-01-system-convergence-s4-s6-gap-closure: system-convergence feature_ref has no slice mapping'
 slices:
 - id: S0
   title: 安全与基线复核
@@ -379,7 +351,7 @@ slices:
   - current_user_hook_trust_confirmation_required:/hooks
 - id: S1
   title: 治理底座与风险分级
-  status: IN_PROGRESS
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
   evidence_refs:
   - 2026-07-29-feature-contract-gate-archival-compatibility
@@ -388,7 +360,7 @@ slices:
   - Complete required verification and obtain a trusted external delivery attestation.
 - id: S1.5
   title: 并发运行隔离与Migration单路径
-  status: IN_PROGRESS
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
   evidence_refs:
   - 2026-07-30-system-convergence-s0-s3-foundation
@@ -396,7 +368,7 @@ slices:
   - Complete required verification and obtain a trusted external delivery attestation.
 - id: S2
   title: 风险感知本地过程闸门
-  status: IN_PROGRESS
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
   evidence_refs:
   - 2026-07-30-system-convergence-s0-s3-foundation
@@ -404,7 +376,7 @@ slices:
   - Complete required verification and obtain a trusted external delivery attestation.
 - id: S2.5
   title: 真健康、错误语义与非阻塞审批
-  status: IN_PROGRESS
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
   evidence_refs:
   - 2026-07-30-system-convergence-s0-s3-foundation
@@ -412,7 +384,7 @@ slices:
   - Complete required verification and obtain a trusted external delivery attestation.
 - id: S3
   title: FeatureDefinition与静态图核心
-  status: IN_PROGRESS
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
   evidence_refs:
   - 2026-07-30-system-convergence-s0-s3-foundation
@@ -420,70 +392,92 @@ slices:
   - Complete required verification and obtain a trusted external delivery attestation.
 - id: S4
   title: Planned/fact、Issue与CI warning
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s4-s6-static
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S5
   title: 候选功能接入共创
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s4-s6-static
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S6
   title: 真实小功能试点与block校准
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s4-s6-static
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S7
   title: 图谱API与统一系统中台静态面
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s7-s14
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S8
   title: 运行追踪事件脊柱
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s7-s14
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S9
   title: 执行微动画、中文解释与四层雷达
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s7-s14
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S10
   title: Host Bridge与Agent合同
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s7-s14
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S11
   title: 前端收敛
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s7-s14
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S12
   title: 后端单真源
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s7-s14
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S13
   title: 兼容面与客户端退役
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s7-s14
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S14
   title: 全仓推广
-  status: NOT_STARTED
+  status: VERIFIED_NOT_DELIVERED
   completion_claimed: false
-  evidence_refs: []
-  remaining: []
+  evidence_refs:
+  - 2026-08-01-system-convergence-s7-s14
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 refresh_contract:
   inputs:
   - docs/dev-changes/*/impact.yaml

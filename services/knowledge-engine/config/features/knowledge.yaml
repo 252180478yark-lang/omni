@@ -1,15 +1,16 @@
 schema_version: 1
 feature_id: knowledge
-title: 知识库
+title: 知识库与 RAG
 domain: knowledge
 owner: {kind: team, id: omni}
 lifecycle: active
 routes:
   canonical: /knowledge
   visible: true
-  placements: [home, direct]
+  placements: [home, onboarding, direct]
 capabilities:
   - {capability_id: knowledge-library, kind: write}
+  - {capability_id: grounded-retrieval, kind: read}
 expected_edges: []
 checks:
   - check_id: knowledge-health

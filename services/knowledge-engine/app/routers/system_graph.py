@@ -1,15 +1,26 @@
-"""Owner-authenticated S4 issue and S5 candidate-plan APIs."""
+"""Authenticated system graph, issue, planning, and snapshot APIs."""
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import Field
 
 from app.routers.approval_operations import get_approval_principal
-from app.schemas.system_graph import IntegrationPlanState, StrictModel
+from app.schemas.system_graph import (
+    GraphDiff,
+    GraphPage,
+    GraphRefreshRecord,
+    GraphRefreshRequest,
+    GraphSearchPage,
+    GraphSnapshot,
+    IntegrationPlanState,
+    StrictModel,
+)
 from app.services.approval_operations import ApprovalPrincipal
 from app.services.system_graph.integration_plans import (
     IntegrationPlanService,
@@ -27,7 +38,14 @@ from app.services.system_graph.issues import (
     IssueStore,
     default_issue_store,
 )
-
+from app.services.system_graph.scanner import ScanRequest, scan_repository
+from app.services.system_graph.diff import diff_snapshots
+from app.services.system_graph.query import graph_page, search_page
+from app.services.system_graph.repository import (
+    DatabaseGraphRepository,
+    GraphRepository,
+    refresh_fingerprint,
+)
 
 router = APIRouter(prefix="/api/v1/system-graph", tags=["system-graph"])
 
@@ -75,6 +93,10 @@ def get_integration_plan_service() -> IntegrationPlanService:
 
 def get_issue_store() -> IssueStore:
     return default_issue_store()
+
+
+def get_graph_repository() -> GraphRepository:
+    return DatabaseGraphRepository()
 
 
 def _require_plan_reader(principal: ApprovalPrincipal) -> None:
@@ -258,3 +280,165 @@ async def transition_system_graph_issue(
     except (KeyError, IssueConflict, ValueError) as exc:
         return _error(exc)
     return {"issue": issue.model_dump(mode="json")}
+
+
+def repository_root() -> Path:
+    configured = os.getenv("OMNI_REPO_ROOT", "").strip()
+    root = Path(configured).resolve() if configured else Path(__file__).resolve().parents[4]
+    if not (root / "AGENTS.md").is_file():
+        raise RuntimeError("system_graph_repository_unavailable")
+    return root
+
+
+@router.get("/snapshot", response_model=GraphSnapshot)
+async def read_system_graph_snapshot(
+    repository: GraphRepository = Depends(get_graph_repository),
+) -> GraphSnapshot:
+    # Dynamic probes are deliberately disabled: the adapter must not turn a
+    # runtime outage into a changed static fact just to render execution mode.
+    try:
+        latest = await repository.latest_snapshot()
+    except RuntimeError:
+        latest = None
+    return latest or scan_repository(ScanRequest(repo=repository_root(), dynamic=False))
+
+
+async def _run_refresh(
+    refresh_id: str,
+    request: GraphRefreshRequest,
+    repository: GraphRepository,
+) -> None:
+    try:
+        await repository.mark_refresh_running(refresh_id)
+        base = await repository.latest_snapshot()
+        snapshot = scan_repository(
+            ScanRequest(
+                repo=repository_root(),
+                feature_ids=tuple(request.feature_ids),
+                dynamic=request.include_runtime,
+                base_snapshot=base,
+            )
+        )
+        await repository.save_snapshot(snapshot)
+        await repository.complete_refresh(refresh_id, snapshot)
+    except Exception as exc:
+        try:
+            await repository.fail_refresh(
+                refresh_id,
+                code=f"collector_{type(exc).__name__.lower()}",
+                retryable=True,
+            )
+        except Exception:
+            pass
+
+
+@router.post("/refresh", status_code=202)
+async def refresh_system_graph(
+    payload: GraphRefreshRequest,
+    background_tasks: BackgroundTasks,
+    repository: GraphRepository = Depends(get_graph_repository),
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+):
+    _require_plan_reader(principal)
+    request_payload = payload.model_dump(mode="json")
+    fingerprint = refresh_fingerprint(request_payload)
+    record, created = await repository.begin_refresh(
+        fingerprint=fingerprint,
+        actor_id=principal.principal_id,
+        request=request_payload,
+    )
+    if created:
+        background_tasks.add_task(_run_refresh, record.refresh_id, payload, repository)
+    return {
+        "refresh": record.model_dump(mode="json"),
+        "reused": not created,
+        "status_url": f"/api/v1/system-graph/refreshes/{record.refresh_id}",
+    }
+
+
+@router.get("/refreshes/{refresh_id}", response_model=GraphRefreshRecord)
+async def get_system_graph_refresh(
+    refresh_id: str,
+    repository: GraphRepository = Depends(get_graph_repository),
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+) -> GraphRefreshRecord:
+    _require_plan_reader(principal)
+    try:
+        return await repository.get_refresh(refresh_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail={"code": "refresh_not_found"}) from exc
+
+
+@router.get("/snapshots/{snapshot_id}/graph", response_model=GraphPage)
+async def get_system_graph_page(
+    snapshot_id: str,
+    root: str | None = Query(default=None),
+    direction: Literal["in", "out", "both"] = Query(default="both"),
+    depth: int = Query(default=2, ge=0, le=6),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    kinds: list[str] = Query(default=[]),
+    states: list[str] = Query(default=[]),
+    repository: GraphRepository = Depends(get_graph_repository),
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+) -> GraphPage:
+    _require_plan_reader(principal)
+    try:
+        snapshot = await repository.get_snapshot(snapshot_id)
+        return graph_page(
+            snapshot,
+            root=root,
+            direction=direction,
+            depth=depth,
+            cursor=cursor,
+            limit=limit,
+            kinds=set(kinds),
+            states=set(states),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"code": "snapshot_or_root_not_found"}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc)}) from exc
+
+
+@router.get("/search", response_model=GraphSearchPage)
+async def search_system_graph(
+    q: str = Query(min_length=1, max_length=200),
+    snapshot_id: str | None = Query(default=None),
+    cursor: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    repository: GraphRepository = Depends(get_graph_repository),
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+) -> GraphSearchPage:
+    _require_plan_reader(principal)
+    try:
+        snapshot = (
+            await repository.get_snapshot(snapshot_id)
+            if snapshot_id
+            else await repository.latest_snapshot()
+        )
+        if snapshot is None:
+            raise KeyError("latest")
+        return search_page(snapshot, query=q, cursor=cursor, limit=limit)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"code": "snapshot_not_found"}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": str(exc)}) from exc
+
+
+@router.get("/diff", response_model=GraphDiff)
+async def get_system_graph_diff(
+    from_snapshot: str = Query(alias="from"),
+    to_snapshot: str = Query(alias="to"),
+    repository: GraphRepository = Depends(get_graph_repository),
+    principal: ApprovalPrincipal = Depends(get_approval_principal),
+) -> GraphDiff:
+    _require_plan_reader(principal)
+    try:
+        before = await repository.get_snapshot(from_snapshot)
+        after = await repository.get_snapshot(to_snapshot)
+        return diff_snapshots(before, after)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail={"code": "snapshot_not_found"}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"code": "incompatible_schema"}) from exc

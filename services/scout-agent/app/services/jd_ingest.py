@@ -21,6 +21,8 @@ from pathlib import Path
 
 import asyncpg
 
+from app.services.metric_ownership import submit_metric
+
 log = logging.getLogger(__name__)
 
 SESSION = Path(os.environ.get("SCOUT_SESSIONS_DIR", "/app/sessions")) / "jd" / "storage_state.json"
@@ -418,13 +420,11 @@ async def run_jd_daily_ingest() -> dict:
     try:
         n = 0
         for (dt, m), v in rows.items():
-            await conn.execute(
-                """INSERT INTO mvp_daily_metric (sku_id, date, metric_name, value, platform, source_runbook)
-                   VALUES ($1,$2,$3,$4,$5,$6)
-                   ON CONFLICT (sku_id, date, metric_name, platform)
-                   DO UPDATE SET value=EXCLUDED.value, source_runbook=EXCLUDED.source_runbook, created_at=now()""",
-                SHOP, datetime.date.fromisoformat(dt), m, v, PLATFORM, SRC)
-            n += 1
+            result = await submit_metric(
+                conn, sku_id=SHOP, metric_date=datetime.date.fromisoformat(dt),
+                metric_name=m, value=v, platform=PLATFORM, source=SRC,
+            )
+            n += int(result["canonical_updated"])
         today = datetime.date.today()
         pn = 0
         for spu, p in prod_map.items():
@@ -474,13 +474,11 @@ async def run_jd_daily_ingest() -> dict:
                 exp_rows = rs
         exp_n = 0
         for m, v in exp_rows:
-            await conn.execute(
-                """INSERT INTO mvp_daily_metric (sku_id,date,metric_name,value,platform,source_runbook)
-                   VALUES ($1,$2,$3,$4,$5,$6)
-                   ON CONFLICT (sku_id,date,metric_name,platform)
-                   DO UPDATE SET value=EXCLUDED.value, source_runbook=EXCLUDED.source_runbook, created_at=now()""",
-                SHOP, today, m, v, PLATFORM, SRC)
-            exp_n += 1
+            result = await submit_metric(
+                conn, sku_id=SHOP, metric_date=today, metric_name=m,
+                value=v, platform=PLATFORM, source=SRC,
+            )
+            exp_n += int(result["canonical_updated"])
 
         # ── 推广（ad_trend 日序列优先，findPromoteData 快照补今日；停投显式写0=确认未投）──
         ad_map = {}
@@ -492,13 +490,11 @@ async def run_jd_daily_ingest() -> dict:
                 ad_map.setdefault((dt, m), v)
         ad_n = 0
         for (dt, m), v in ad_map.items():
-            await conn.execute(
-                """INSERT INTO mvp_daily_metric (sku_id,date,metric_name,value,platform,source_runbook)
-                   VALUES ($1,$2,$3,$4,$5,$6)
-                   ON CONFLICT (sku_id,date,metric_name,platform)
-                   DO UPDATE SET value=EXCLUDED.value, source_runbook=EXCLUDED.source_runbook, created_at=now()""",
-                SHOP, datetime.date.fromisoformat(dt), m, v, PLATFORM, SRC)
-            ad_n += 1
+            result = await submit_metric(
+                conn, sku_id=SHOP, metric_date=datetime.date.fromisoformat(dt),
+                metric_name=m, value=v, platform=PLATFORM, source=SRC,
+            )
+            ad_n += int(result["canonical_updated"])
 
         # ── 货款结算（宽表 by set_date + 镜像3指标进长表，源 jd_bill_capture）──
         bill_seen = {}
@@ -525,12 +521,10 @@ async def run_jd_daily_ingest() -> dict:
                 bv = _num(val)
                 if bv is None:
                     continue
-                await conn.execute(
-                    """INSERT INTO mvp_daily_metric (sku_id,date,metric_name,value,platform,source_runbook)
-                       VALUES ($1,$2,$3,$4,$5,$6)
-                       ON CONFLICT (sku_id,date,metric_name,platform)
-                       DO UPDATE SET value=EXCLUDED.value, created_at=now()""",
-                    SHOP, sd, mn, bv, PLATFORM, "jd_bill_capture")
+                await submit_metric(
+                    conn, sku_id=SHOP, metric_date=sd, metric_name=mn,
+                    value=bv, platform=PLATFORM, source="jd_bill_capture",
+                )
             bill_n += 1
     finally:
         await conn.close()

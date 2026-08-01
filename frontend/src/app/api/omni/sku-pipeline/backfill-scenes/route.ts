@@ -7,7 +7,7 @@ export async function POST() {
   const base = serviceBase()
   try {
     const data = await fetchJson<any>(
-      `${base.knowledge}/api/v1/mcp/exec/pipeline_backfill_scenes`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.scenes.backfill`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

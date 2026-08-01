@@ -1,0 +1,45 @@
+{
+  "delivery": {
+    "external_attestation_required": true,
+    "status": "verified_not_delivered"
+  },
+  "findings": {
+    "reason_code": "runtime_evidence_not_supplied",
+    "runtime_blocking_count": null,
+    "static_diagnostic_count": 0,
+    "status": "unknown"
+  },
+  "graph": {
+    "edge_count": 143,
+    "node_count": 130,
+    "snapshot_id": "sha256:de871a9642ea35f376028cf98b9fcb0a5cf93a41db12487ca67083b05e10028f",
+    "status": "partial",
+    "unavailable_sources": [
+      "catalog.mcp:unknown",
+      "catalog.openapi:unknown",
+      "delivery.external:unknown",
+      "health.runtime:unknown"
+    ]
+  },
+  "kind": "omni_fde_health_baseline",
+  "policy": {
+    "deterministic_p0_codes": [
+      "changed_path_uncovered",
+      "external_delivery_missing",
+      "migration_baseline_blocked",
+      "protected_change_without_contract",
+      "required_edge_missing",
+      "risk_floor_underdeclared",
+      "runtime_step_failed"
+    ],
+    "historical_debt_behavior": "ratchet",
+    "policy_id": "s14-repository-deterministic-p0-blocks",
+    "unknown_behavior": "warning"
+  },
+  "schema_version": 1,
+  "trace": {
+    "event_count": null,
+    "reason_code": "runtime_evidence_not_supplied",
+    "status": "unknown"
+  }
+}

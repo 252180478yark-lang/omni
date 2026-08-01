@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { featuresForPlacement, type FeatureRegistryEntry } from '@/lib/feature-registry'
 import {
   BrainCircuit,
   BookOpen,
@@ -71,78 +72,37 @@ function isSection(entry: NavEntry): entry is NavSection {
   return (entry as NavSection).kind === 'section'
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 路径 A 桥接：sidebar 5 段分组结构（不删任何旧项，新增 4 项 + 1 个决策日志入口）
-//
-//   工作流（路径 A 主入口）
-//     📍 工作台 / 📦 我的产品
-//   数据与采集
-//     📊 巡店监控 / 📰 资讯中心 / 📥 知识采集
-//   知识与对话
-//     🧠 知识库 / 💬 智能问答
-//   内容生产
-//     🎬 内容工坊 / 🎞 短视频分析 / 🔬 反向拆解 / 📡 直播分析
-//   投放与复盘
-//     🎯 投放复盘 / 🔁 飞轮仪表盘 / 📋 决策日志
-//   系统
-//     ⚙ 模型配置 / 📝 任务进度 / 🧪 Prompt 实验室 / 🏠 控制台
-// ─────────────────────────────────────────────────────────────────────────────
+const SIDEBAR_PRESENTATION: Record<string, { icon: LucideIcon; hint: string; section: string; order: number }> = {
+  'workspace-operations': { icon: Inbox, hint: '经营、开发与执行共用的统一入口', section: '工作流', order: 10 },
+  'product-management': { icon: Package, hint: 'SKU 数据、资产、动作与诊断', section: '工作流', order: 20 },
+  'scout-monitoring': { icon: ScanSearch, hint: '自动采集与异动检测', section: '数据与采集', order: 30 },
+  'sku-pipeline': { icon: Sparkles, hint: '按封闭操作契约运行 SKU 前链路', section: '内容生产', order: 40 },
+  'reverse-engineer': { icon: Wand2, hint: '把素材拆成可复用镜头和提示词', section: '内容生产', order: 50 },
+  'cost-management': { icon: Calculator, hint: '结构化成本与利润核算', section: '投放与复盘', order: 60 },
+  'commerce-feedback': { icon: Send, hint: '把投后真实指标写回血缘', section: '投放与复盘', order: 70 },
+  'approval-inbox': { icon: ClipboardCheck, hint: '查看和处理显式审批 Gate', section: '投放与复盘', order: 80 },
+  'system-console': { icon: Home, hint: '系统服务、指标与健康监控', section: '系统', order: 90 },
+}
 
-const NAV_ITEMS: NavEntry[] = [
-  { kind: 'section', label: '工作流' },
-  { href: '/workspace', icon: Inbox, label: '工作台', hint: '每日入口：异动推送 + 决策待办' },
-  { href: '/products', icon: Package, label: '我的产品', hint: 'SKU 全景：数据 / 资产 / 动作 / AI 诊断' },
+function projectedNavItem(feature: FeatureRegistryEntry): NavItem {
+  const presentation = SIDEBAR_PRESENTATION[feature.feature_id] || { icon: Network, hint: feature.domain, section: '其他', order: 999 }
+  return { href: feature.href, label: feature.title, icon: presentation.icon, hint: presentation.hint }
+}
 
-  { kind: 'section', label: '数据与采集' },
-  { href: '/scout', icon: ScanSearch, label: '巡店监控', hint: '抖店罗盘自动抓取与异动检测' },
-  { href: '/news', icon: Newspaper, label: '资讯中心', hint: '找行业灵感，再沉淀进知识库' },
-  { href: '/knowledge/harvester', icon: Download, label: '知识采集', hint: '先抓网页/飞书，沉淀成资料' },
-
-  { kind: 'section', label: '知识与对话' },
-  { href: '/knowledge', icon: Database, label: '知识库', hint: '管理 PDF、网页、复盘和报告' },
-  { href: '/chat', icon: Brain, label: 'Agent 对话（Web 版）', hint: '备用 web 入口；主用桌面 app（omni-desktop）' },
-
-  { kind: 'section', label: '内容生产' },
-  {
-    id: 'content-studio',
-    icon: Palette,
-    label: '内容工坊',
-    hint: '把复盘结论变成脚本和视频',
-    defaultHref: '/content-studio',
-    children: [
-      { href: '/content-studio/guide', icon: BookOpen, label: '使用指南', hint: '先看完整流程和模型选择建议' },
-      { href: '/content-studio/new', icon: Sparkles, label: '新建流水线', hint: '从复盘结论开始生成新视频' },
-      { href: '/content-studio', icon: Palette, label: '生成流水线', hint: '查看已生成的视频项目' },
-      { href: '/content-studio/briefs', icon: ListTodo, label: 'Brief 库', hint: '保存常用选题和脚本要求' },
-      { href: '/content-studio/avatars', icon: Palette, label: '数字人脸库', hint: '管理 AI 数字人形象' },
-    ],
-  },
-  { href: '/sku-pipeline', icon: Sparkles, label: 'SKU Pipeline 测试', hint: 'sku-pipeline 各 step 单独测 + 调 prompt（step 2 卖点矩阵 + step 3 人群匹配 已通）' },
-  { href: '/video-analysis', icon: Clapperboard, label: '短视频分析', hint: '上传素材，先让 AI 写分析报告' },
-  { href: '/reverse-engineer', icon: Wand2, label: '反向拆解', hint: '把爆款素材拆成可复用提示词与镜头' },
-  { href: '/livestream-analysis', icon: Radio, label: '直播分析', hint: '上传直播录屏，自动复盘出 Excel' },
-
-  { kind: 'section', label: '投放与复盘' },
-  { href: '/cost', icon: Calculator, label: '成本算账', hint: '结构化录入成本，精确算净利率（不走 RAG）' },
-  { href: '/ad-review', icon: LineChart, label: '投放复盘', hint: '广告 CSV + 素材报告，生成复盘建议' },
-  { href: '/ad-review/flywheel', icon: RefreshCw, label: '飞轮仪表盘', hint: '看多轮投放迭代有没有变好' },
-  { href: '/ad-metrics', icon: Send, label: '投后回传', hint: '测试投放后把真实 ROI/GMV/完播率写回素材血缘' },
-  { href: '/content-leaderboard', icon: Trophy, label: '带货榜', hint: '哪套内容真带货——按投后数据排行 + 反查全链路' },
-  { href: '/decisions', icon: ClipboardCheck, label: '决策日志', hint: 'AI 给的所有建议都存这里，跟踪命中率' },
-  { href: '/inbox', icon: Inbox, label: '待批', hint: '点头让 omni 做要紧的事 / 不点超时自动驳' },
-  { href: '/agent-log', icon: Activity, label: 'Agent 日志', hint: '看 omni 跑了啥 / 给好坏打分 / 自动累积模式' },
-  { href: '/insights', icon: Brain, label: '运营洞察', hint: '诊断官改进建议 + omni 运行成本 + 自动周期报 + 底座就绪度' },
-  { href: '/review', icon: CalendarDays, label: '周末复盘', hint: '本周 AI 命中率 + 前后对比卡 + 策略归档' },
-
-  { kind: 'section', label: '系统' },
-  { href: '/models', icon: Cpu, label: '模型配置', hint: '填 AI Key，模型不可用时先检查这里' },
-  { href: '/tasks', icon: ListTodo, label: '任务进度', hint: '看采集、分析、生成这些后台任务' },
-  { href: '/prompt-lab', icon: Sparkles, label: 'Prompt 实验室', hint: '微调 AI 生成规则和反馈记录' },
-  { href: '/system-graph', icon: Network, label: '系统图谱', hint: '在事实快照上共创功能接法，查看 planned/fact 缺口' },
-  { href: '/playground', icon: FlaskConical, label: 'Playground', hint: 'tool / skill / MCP 调试场:多层 trace + raw JSON + 隔离 session' },
-  { href: '/playground/reverse-storyboard', icon: Wand2, label: '反推故事板(测试)', hint: 'reverse_storyboard_video tool 专属页:贴视频路径→3 类 prompt 包+方法论判断' },
-  { href: '/', icon: Home, label: '控制台', hint: '系统服务、指标、监控' },
-]
+const NAV_ITEMS: NavEntry[] = (() => {
+  const result: NavEntry[] = []
+  let section = ''
+  const features = featuresForPlacement('sidebar').sort((a, b) => (SIDEBAR_PRESENTATION[a.feature_id]?.order ?? 999) - (SIDEBAR_PRESENTATION[b.feature_id]?.order ?? 999))
+  for (const feature of features) {
+    const nextSection = SIDEBAR_PRESENTATION[feature.feature_id]?.section || '其他'
+    if (nextSection !== section) {
+      section = nextSection
+      result.push({ kind: 'section', label: section })
+    }
+    result.push(projectedNavItem(feature))
+  }
+  return result
+})()
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -404,26 +364,6 @@ export function AppSidebar() {
           return renderItem(entry)
         })}
       </nav>
-
-      {/* Quick AI Access */}
-      <div className="px-2.5 pb-2">
-        <Link
-          href="/chat"
-          className={cn(
-            'flex items-center gap-3 rounded-xl px-2.5 py-2.5 bg-gradient-to-r from-violet-600 to-purple-500 text-white shadow-lg shadow-purple-300/30 hover:shadow-purple-300/50 transition-all duration-200',
-          )}
-        >
-          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          {expanded && (
-            <div className="min-w-0 flex-1 animate-in fade-in slide-in-from-left-2 duration-200">
-              <div className="text-sm font-medium truncate">立即和 AI 对话</div>
-              <div className="text-[10.5px] text-white/70 truncate">最常用，随时回这里</div>
-            </div>
-          )}
-        </Link>
-      </div>
 
       {/* Toggle */}
       <div className="px-2.5 py-3 border-t border-gray-100 shrink-0">

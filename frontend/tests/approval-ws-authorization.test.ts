@@ -24,6 +24,7 @@ import { attachWsHandler } from '@/lib/agent-chat/ws-handler'
 
 class FakeWebSocket {
   readyState = 1
+  closed = false
   readonly sent: string[] = []
   private readonly handlers = new Map<string, (...args: unknown[]) => unknown>()
 
@@ -40,6 +41,8 @@ class FakeWebSocket {
   }
 
   close(): void {
+    this.closed = true
+    this.readyState = 3
     this.handlers.get('close')?.()
   }
 }
@@ -55,12 +58,17 @@ describe('approval WebSocket authorization', () => {
     vi.stubGlobal('fetch', fetchMock)
     const anonymous = new FakeWebSocket()
     attachWsHandler(anonymous as never, null)
+    await Promise.resolve()
 
     redisHarness.handlers.get('message')?.(
       'mcp.human_gates.new',
       JSON.stringify({ short_id: 'gate-1', tool_name: 'fixture', summary: 'pending' }),
     )
-    expect(anonymous.sent).toEqual([])
+    expect(anonymous.sent.map((item) => JSON.parse(item))).toContainEqual({
+      kind: 'error',
+      error: 'authentication_required',
+    })
+    expect(anonymous.closed).toBe(true)
 
     await anonymous.message({
       kind: 'human_gate_decide',
@@ -69,10 +77,6 @@ describe('approval WebSocket authorization', () => {
       note: '',
     })
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(anonymous.sent.map((item) => JSON.parse(item))).toContainEqual({
-      kind: 'error',
-      error: 'authentication_required',
-    })
     anonymous.close()
   })
 })

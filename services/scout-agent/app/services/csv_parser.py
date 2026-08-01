@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 
 from app.database import get_pool
+from app.services.metric_ownership import submit_metric
 
 log = logging.getLogger(__name__)
 
@@ -225,17 +226,12 @@ async def parse_and_write(
                 except ValueError:
                     continue
 
-                await conn.execute(
-                    """
-                    INSERT INTO mvp_daily_metric
-                        (sku_id, date, metric_name, value, source_runbook, source_run_id, platform)
-                    VALUES ($1, $2::date, $3, $4, $5, $6, 'douyin')
-                    ON CONFLICT (sku_id, date, metric_name, platform)
-                    DO UPDATE SET value=$4, source_runbook=$5, source_run_id=$6
-                    """,
-                    sku_id, date_str, metric_name, value, schema_name, run_id,
+                result = await submit_metric(
+                    conn, sku_id=sku_id, metric_date=date_str, metric_name=metric_name,
+                    value=value, platform="douyin", source=f"csv:{schema_name}",
+                    source_run_id=run_id,
                 )
-                written += 1
+                written += int(result["canonical_updated"])
 
     log.info("csv_parser: wrote %d metric rows from %s", written, csv_path)
     return written

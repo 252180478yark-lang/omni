@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   const body = await request.json()
   try {
     const data = await fetchJson<unknown>(
-      `${base.knowledge}/api/v1/mcp/exec/experiment_next_version_seed`,
+      `${base.knowledge}/api/v1/mcp/execute/experiment.seed.next`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
