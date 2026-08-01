@@ -33,6 +33,14 @@ def test_delivery_attestation_requires_migration_gate_and_content_addressed_evid
     )
     delivery = workflow["jobs"]["delivery-seal"]
     assert "migration-parity-gate" in delivery["needs"]
+    attestation = next(
+        step
+        for step in delivery["steps"]
+        if isinstance(step, dict) and step.get("name") == "生成 CI 外部 delivery attestation"
+    )
+    assert attestation["env"]["EVIDENCE_DIGEST"] == (
+        "sha256:${{ steps.evidence.outputs.artifact-digest }}"
+    )
     script = "\n".join(
         str(step.get("run", ""))
         for step in delivery["steps"]
@@ -40,7 +48,7 @@ def test_delivery_attestation_requires_migration_gate_and_content_addressed_evid
     )
     assert "--migration-gate-verified" in script
     assert "--required-check migration-parity-gate=passed" in script
-    assert "--evidence-artifact-digest" in script
+    assert script.count('--evidence-artifact-digest "$EVIDENCE_DIGEST"') == 1
     evidence_upload = next(
         step
         for step in delivery["steps"]

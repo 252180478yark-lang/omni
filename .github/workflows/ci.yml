@@ -704,7 +704,7 @@ jobs:
         env:
           BASE_SHA: ${{ steps.refs.outputs.base_sha }}
           HEAD_SHA: ${{ steps.refs.outputs.head_sha }}
-          EVIDENCE_DIGEST: ${{ steps.evidence.outputs.artifact-digest }}
+          EVIDENCE_DIGEST: sha256:${{ steps.evidence.outputs.artifact-digest }}
         run: >-
           python -B scripts/check_feature_contracts.py
           --mode commit

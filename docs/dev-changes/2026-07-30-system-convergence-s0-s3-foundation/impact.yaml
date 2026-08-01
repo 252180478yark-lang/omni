@@ -205,6 +205,7 @@ planned_changes:
   - VER-003
   - VER-004
   - VER-005
+  - VER-017
 - id: CHG-005
   action: add
   kind: local-hook
@@ -557,6 +558,11 @@ verification_plan:
   layer: repository-hygiene
   command: python -B -c "import subprocess,sys; paths=subprocess.check_output(['git','ls-files','--','*.pyc'], text=True).splitlines(); print(*paths, sep='\n'); sys.exit(1 if paths else 0)"
   proves: No tracked Python bytecode cache remains in the four explicitly scoped service test or application trees, and the repository contains no other tracked .pyc artifact.
+  required: true
+- id: VER-017
+  layer: delivery-attestation
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_ci_migration_gate.py::test_delivery_attestation_requires_migration_gate_and_content_addressed_evidence
+  proves: The delivery-attestation step normalizes the upload-artifact output to one sha256-qualified content address before passing it to the fail-closed checker.
   required: true
 lock:
   locked_at: '2026-07-29T17:36:13Z'
