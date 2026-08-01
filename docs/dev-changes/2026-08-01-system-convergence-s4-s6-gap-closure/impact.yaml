@@ -3,15 +3,15 @@ change_id: 2026-08-01-system-convergence-s4-s6-gap-closure
 title: Complete S4-S6 planned fact co-design and pilots
 state: GRAPH_DIFF_READY
 created_at: '2026-08-01T13:00:00Z'
-updated_at: '2026-08-01T12:36:23Z'
+updated_at: '2026-08-01T15:53:54Z'
 feature_refs:
 - feature_id: system-convergence-s4-s6
-  feature_ref: config/features/system-convergence-s4-s6.yaml@8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+  feature_ref: config/features/system-convergence-s4-s6.yaml@af11294eeadc84a45284c3265ddf623826edb1f7
 before_snapshot:
-  ref: git:8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+  ref: git:af11294eeadc84a45284c3265ddf623826edb1f7
 delivery:
   authority: ci_attestation
-  base_commit: 8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+  base_commit: af11294eeadc84a45284c3265ddf623826edb1f7
 risk:
   level: R2
   reasons:
@@ -261,7 +261,7 @@ verification_plan:
   required: true
 - id: VER-006
   layer: contract-graph
-  command: python -B scripts/check_feature_contracts.py --mode index --base 8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+  command: python -B scripts/check_feature_contracts.py --mode commit --base af11294eeadc84a45284c3265ddf623826edb1f7 --head HEAD
   proves: The staged protected diff has exactly one v3 owner and is ready for immutable CI evaluation.
   required: false
 lock:

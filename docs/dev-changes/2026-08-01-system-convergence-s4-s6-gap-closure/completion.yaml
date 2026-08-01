@@ -55,6 +55,10 @@ actual_changes:
   - docs/dev-changes/2026-08-01-system-convergence-s4-s6-gap-closure/graph-snapshots/sha256-5bf6756c6822a32ce79e6a6f2acd5743a9eba2220807f10854ef41d1dbc4572b.json
   summary: Bound the visible feature graph and actual S4 warning, issue, S6 pilot and delivery-gate evidence to blocking CI.
 contract_delta:
+- description: Rebase the S6 gap-closure delivery baseline onto the already delivered S4-S6 static merge commit.
+  reason: The first remote candidate was evaluated from 041f05d, so both the delivered static contract and the gap-closure contract appeared in one diff and claimed eleven protected paths twice.
+  effect: The logical product patch and graph subject tree are unchanged, while the delivery base, feature reference, commit-mode verification command and before reference now bind only the gap closure relative to main at af11294.
+  accepted: true
 - description: Use the repository's Vitest script for the S5 owner page verification.
   reason: Frontend package.json exposes test:unit rather than an npm test script, and Vitest does not accept Jest runInBand.
   effect: VER-003 now runs the exact supported frontend unit-test entrypoint without changing product scope.
@@ -98,15 +102,15 @@ verification_results:
   exit_code: 0
   evidence: repository workdir; complete S4-S6 deterministic selection passed 28 tests in 7.89s with one third-party PendingDeprecationWarning.
 - id: VER-006
-  command: python -B scripts/check_feature_contracts.py --mode index --base 8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+  command: python -B scripts/check_feature_contracts.py --mode commit --base af11294eeadc84a45284c3265ddf623826edb1f7 --head HEAD
   status: passed
   exit_code: 0
   evidence: Final staged-index self-check passed; 18 protected files are covered by exactly one delivery-ready v3 candidate.
 graph_diff:
   status: accepted
-  snapshot_before: git:8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+  snapshot_before: git:af11294eeadc84a45284c3265ddf623826edb1f7
   snapshot_after: sha256:5bf6756c6822a32ce79e6a6f2acd5743a9eba2220807f10854ef41d1dbc4572b
-  snapshot_evidence: The deterministic HEAD scan of checkpoint 7385b96 produced 10 nodes, 7 edges and 17 verified evidence coordinates. Compared with the prior S4-S6 snapshot sha256:c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76 it adds the visible page, GET BFF/REST nodes and their call/proxy edges with no removals.
+  snapshot_evidence: The deterministic scan artifact from checkpoint 7385b96 produced 10 nodes, 7 edges and 17 verified evidence coordinates. Rebased checkpoint dcb3827 has the identical Git tree d0a2820186c70917e29a63f832d596baf7cdd030, so the content-addressed artifact remains valid. Compared with the prior S4-S6 snapshot sha256:c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76 it adds the visible page, GET BFF/REST nodes and their call/proxy edges with no removals.
   added_nodes:
   - ui_route:/system-graph
   - bff_operation:GET:/api/omni/system-graph/integration-plans
