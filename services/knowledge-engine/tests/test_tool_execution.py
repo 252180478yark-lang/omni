@@ -65,4 +65,3 @@ def test_frontend_operation_ids_are_a_subset_of_backend_registry() -> None:
     frontend_ids = set(re.findall(r"'((?:sku|experiment|video)\.[a-z0-9.-]+)'", source.split("} as const", 1)[0]))
     assert frontend_ids
     assert frontend_ids <= set(OPERATION_REGISTRY)
-

@@ -23,4 +23,3 @@ def test_blocked_fixture_reports_window_usage_and_reconciliation() -> None:
     report = MODULE.audit(value, as_of=datetime(2026, 8, 1, tzinfo=timezone.utc))
     assert report["ready_for_r3_review"] is False
     assert {"observation_window_incomplete", "exclusive_usage_observed", "sqlite_not_reconciled"} <= set(report["blockers"])
-

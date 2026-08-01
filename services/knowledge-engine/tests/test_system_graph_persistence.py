@@ -88,4 +88,3 @@ def test_graph_query_paginates_filters_and_searches_without_dangling_edges() -> 
     assert result.results[0].path == ["rest_operation:GET:/api/v1/system-graph"]
     with pytest.raises(ValueError, match="invalid_cursor"):
         graph_page(graph, cursor="not-a-cursor")
-

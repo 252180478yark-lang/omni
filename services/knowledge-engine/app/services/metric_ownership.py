@@ -113,4 +113,3 @@ async def submit_metric_observation(conn: Any, observation: MetricObservation) -
         canonical["source_runbook"] if canonical else None,
     )
     return MetricWriteResult(observation_id, str(owner), False, collision_id)
-

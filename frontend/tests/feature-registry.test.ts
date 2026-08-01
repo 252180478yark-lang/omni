@@ -18,4 +18,3 @@ describe('generated FeatureDefinition projection', () => {
     expect(featuresForPlacement('sidebar').some((entry) => entry.href === '/system-graph')).toBe(false)
   })
 })
-

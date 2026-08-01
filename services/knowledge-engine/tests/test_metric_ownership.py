@@ -46,4 +46,3 @@ async def test_non_owner_is_preserved_as_collision_without_overwrite() -> None:
     assert conn.canonical[("SKU-1", date(2026, 8, 1), "gmv", "douyin")]["value"] == Decimal("10")
     assert len(conn.observations) == 2
     assert len(conn.collisions) == 1
-

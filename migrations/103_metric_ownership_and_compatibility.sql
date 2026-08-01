@@ -73,7 +73,6 @@ BEGIN
   RAISE EXCEPTION '% is append-only', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME;
 END;
 $$;
-
 DO $$
 DECLARE table_name TEXT;
 BEGIN
@@ -92,4 +91,3 @@ BEGIN
   END LOOP;
 END;
 $$;
-

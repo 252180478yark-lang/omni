@@ -73,4 +73,3 @@ async def submit_metric(
         canonical["source_runbook"] if canonical else None,
     )
     return {"observation_id": str(observation_id), "canonical_updated": False, "owner_source": owner, "collision_id": str(collision_id)}
-

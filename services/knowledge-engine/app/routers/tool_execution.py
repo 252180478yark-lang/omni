@@ -34,4 +34,3 @@ async def execute_operation(operation_id: str, request: Request) -> Any:
         )
     except ToolExecutionFailure as exc:
         return failure_response(exc)
-

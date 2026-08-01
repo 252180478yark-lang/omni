@@ -61,4 +61,3 @@ async def record_telemetry(payload: TelemetryInput) -> dict[str, Any]:
 @router.get("/retirement-report", dependencies=[Depends(require_compatibility_access)])
 async def retirement_report(client_id: str = Query(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,99}$")) -> dict[str, Any]:
     return await database_retirement_report(client_id)
-

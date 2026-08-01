@@ -3,7 +3,7 @@ change_id: 2026-08-01-system-convergence-s7-s14
 title: System convergence S7 through S14 completion candidate
 state: GRAPH_DIFF_READY
 created_at: '2026-08-01T14:23:01Z'
-updated_at: '2026-08-01T16:31:00Z'
+updated_at: '2026-08-01T16:40:00Z'
 feature_refs:
 - feature_id: system-command-center
   feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S7
@@ -87,6 +87,25 @@ risk:
     - services/knowledge-engine/tests/test_system_graph_collectors.py
     required_level: R2
     risk_change: none; alias pages remain explicit compatibility facts and the canonical command-center route is observed independently.
+  - id: DELTA-007
+    discovered_at: '2026-08-01T16:40:00Z'
+    reason: Fresh completion verification found 13 candidate files with an extra blank line at EOF, contradicting the recorded diff-hygiene result.
+    added_paths:
+    - frontend/tests/feature-registry.test.ts
+    - migrations/103_metric_ownership_and_compatibility.sql
+    - scripts/client_retirement_audit.py
+    - scripts/generate_fde_health_baseline.py
+    - services/knowledge-engine/app/routers/compatibility.py
+    - services/knowledge-engine/app/routers/tool_execution.py
+    - services/knowledge-engine/app/services/metric_ownership.py
+    - services/knowledge-engine/tests/test_metric_ownership.py
+    - services/knowledge-engine/tests/test_system_graph_persistence.py
+    - services/knowledge-engine/tests/test_tool_execution.py
+    - services/scout-agent/app/services/metric_ownership.py
+    - services/scout-agent/tests/test_metric_ownership.py
+    - tests/test_client_retirement_audit.py
+    required_level: R2
+    risk_change: none; only redundant terminal blank lines will be removed and the affected tests will be rerun.
   approval:
     required: false
     gate_ref: ''

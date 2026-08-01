@@ -41,4 +41,3 @@ async def test_scout_adapter_enforces_first_claimed_owner() -> None:
     assert second["canonical_updated"] is False
     assert conn.canonical["value"] == 10
     assert len(conn.collisions) == 1
-
