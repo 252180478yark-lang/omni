@@ -1,0 +1,179 @@
+schema_version: 3
+change_id: 2026-08-01-system-convergence-s4-s6-static
+state: VERIFYING
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  summary: Added stable S4-S6 enum contracts for plan decisions, evidence classification, required-edge state, and immutable plan revision state.
+  paths:
+  - services/knowledge-engine/app/schemas/system_graph.py
+- id: ACT-002
+  planned_change_id: CHG-002
+  summary: Added deterministic impact-to-planned/fact projection, unknown-safe required-edge evaluation, and stable repair cards.
+  paths:
+  - services/knowledge-engine/app/services/system_graph/planned.py
+- id: ACT-003
+  planned_change_id: CHG-003
+  summary: Added candidate plan revisions, idempotent draft reuse, CAS, stale and critical-unknown guards, file artifacts, and no-write impact projection.
+  paths:
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py
+- id: ACT-004
+  planned_change_id: CHG-004
+  summary: Added deterministic R1/R2 pilot calibration and an inert R3 pending fixture.
+  paths:
+  - services/knowledge-engine/app/services/system_graph/pilot.py
+- id: ACT-005
+  planned_change_id: CHG-005
+  summary: Exposed the planned/fact projection through the system-graph CLI and package surface for warning-artifact generation.
+  paths:
+  - services/knowledge-engine/scripts/system_graph.py
+  - services/knowledge-engine/app/services/system_graph/__init__.py
+- id: ACT-006
+  planned_change_id: CHG-006
+  summary: Extended the deterministic convergence CI job with the S4-S6 test slice.
+  paths:
+  - .github/workflows/ci.yml
+- id: ACT-007
+  planned_change_id: CHG-007
+  summary: Added hermetic fixtures covering S4 planned/fact warnings, S5 plan revision/CAS, and S6 calibrated pilot behavior.
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_planned.py
+  - services/knowledge-engine/tests/test_system_graph_integration_plans.py
+  - services/knowledge-engine/tests/test_system_graph_pilot.py
+- id: ACT-008
+  planned_change_id: CHG-008
+  summary: Added a durable candidate-plan artifact adapter and immutable snapshot guard; service confirmation returns an in-memory impact draft only.
+  paths:
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py
+- id: ACT-009
+  planned_change_id: CHG-009
+  summary: Added owner-authenticated REST endpoints for create/read/CAS update/explicit confirmation of candidate plans.
+  paths:
+  - services/knowledge-engine/app/routers/system_graph.py
+  - services/knowledge-engine/app/main.py
+- id: ACT-010
+  planned_change_id: CHG-010
+  summary: Registered MCP discovery tools and doctor contract entries that explicitly refuse to bypass the owner-authenticated REST boundary.
+  paths:
+  - services/knowledge-engine/app/mcp/tools/system_graph.py
+  - services/knowledge-engine/app/mcp/server.py
+  - services/knowledge-engine/app/mcp/doctor.py
+- id: ACT-011
+  planned_change_id: CHG-011
+  summary: Added a same-origin, owner-authenticated BFF proxy restricted to the plan API route matrix.
+  paths:
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+- id: ACT-012
+  planned_change_id: CHG-012
+  summary: Added REST permission/confirmation/staleness and MCP registration/no-bypass tests.
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_integration_router.py
+  - services/knowledge-engine/tests/test_system_graph_mcp_registration.py
+- id: ACT-013
+  planned_change_id: CHG-013
+  summary: Added a temporary-git, noncanonical R1/R2 allocation vertical with fixture receipt, transcript, release evidence, and R3 pre-approval no-effect assertion.
+  paths:
+  - tests/test_system_convergence_s6_vertical.py
+- id: ACT-014
+  planned_change_id: CHG-014
+  summary: Added canonical FeatureDefinition binding and source-derived REST-to-service plus direct MCP decorator facts for the S4-S6 adapters.
+  paths:
+  - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - services/knowledge-engine/app/services/system_graph/collectors/python_graph.py
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py
+  - services/knowledge-engine/app/routers/system_graph.py
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+- id: ACT-015
+  planned_change_id: CHG-015
+  summary: Added a hermetic source-to-fact graph test for the S4-S6 FeatureDefinition.
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_s4_s6_feature.py
+contract_delta:
+- description: Expanded the R2-only S5/S6 static candidate to include authenticated adapters and isolated vertical evidence.
+  reason: S5 and S6 acceptance require an executable API/MCP permission boundary and an isolated allocation/receipt vertical proof beyond storage-neutral unit services.
+  effect: Re-locked R2-only additions for local-owner REST/BFF/MCP adapters and temporary fixture runtime allocation, while preserving no product writer, no Docker/shared DB, and no external CI claim.
+  accepted: true
+- description: Added an evidence-only S4 graph binding because abstract adapter names are not scanner facts.
+  reason: GraphDiffReady must be based on canonical FeatureDefinition nodes and observed source edges rather than the planned-layer labels alone.
+  effect: Re-locked only FeatureDefinition, generated projection, AST/decorator recognition, and their hermetic test; no new runtime, database, or external effect is authorized.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_models.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 4 passed in 0.12s.
+- id: VER-002
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_planned.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 4 passed in 0.15s, including warning-artifact behavior.
+- id: VER-003
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_integration_plans.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 4 passed in 0.12s, including CAS/stale/critical-unknown guards.
+- id: VER-004
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_pilot.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 3 passed in 0.13s, including zero-side-effect R3 fixture.
+- id: VER-005
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_models.py tests/test_system_graph_snapshots.py tests/test_system_graph_planned.py tests/test_system_graph_integration_plans.py tests/test_system_graph_pilot.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 19 passed in 5.38s; S3 snapshot compatibility retained.
+- id: VER-006
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_planned.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 4 passed in 0.15s; CLI warning projection covered.
+- id: VER-007
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_integration_router.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 2 passed, including owner permission, immutable snapshot staleness, explicit confirmation, candidate artifact persistence, and no-product-write impact draft.
+- id: VER-008
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_mcp_registration.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 2 passed; MCP tools are live in FastMCP and doctor contract and direct invocation refuses owner-authentication bypass.
+- id: VER-009
+  command: npm run lint -- --file src/app/api/omni/system-graph/[[...path]]/route.ts
+  status: passed
+  exit_code: 0
+  evidence: frontend workdir; after npm ci --ignore-scripts in this isolated worktree, next lint reported no warnings or errors for the restricted BFF route.
+- id: VER-010
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_vertical.py
+  status: passed
+  exit_code: 0
+  evidence: repository workdir; 1 passed in 2.76s. Temporary git repo used noncanonical R1/R2 allocations, commit-mode contract gate, fixture-labeled receipt, transcript and CAS release; R3 remained no-effect pending.
+- id: VER-011
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_s4_s6_feature.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 1 passed. Generated FeatureDefinition projection is current and observed REST-to-service, explicit test, and direct MCP decorator edges have valid evidence coordinates.
+graph_diff:
+  status: pending
+  snapshot_before: sha256:9fe346af8775bb9b5d3a8c18bf03cecff28eed2def9385e3629e969d3d58d3c8
+  snapshot_after: ''
+  added_nodes: []
+  modified_nodes: []
+  removed_nodes: []
+  added_edges: []
+  removed_edges: []
+  required_edges: []
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: pending
+rollback:
+  verified: false
+  evidence: ''
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: S4-S6 static implementation and hermetic verification are complete; graph-diff promotion remains pending a commit-addressable after-scan and the separate S4 entry R3 Gate.

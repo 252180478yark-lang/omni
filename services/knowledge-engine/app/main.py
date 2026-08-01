@@ -41,6 +41,7 @@ from app.routers.transcribe import transcribe_router
 from app.routers.mcp_catalog import router as mcp_catalog_router
 from app.routers.system_health import router as system_health_router
 from app.routers.approval_operations import router as approval_operations_router
+from app.routers.system_graph import router as system_graph_router
 from app.runtime_preflight import validate_runtime_environment
 from app.mcp.server import mcp_http_app
 
@@ -153,6 +154,7 @@ app.include_router(mcp_analysis_router)  # 桌面契约 POST /api/v1/mcp/analysi
 app.include_router(mcp_catalog_router)   # 工具目录 + 通用按名执行
 app.include_router(system_health_router)
 app.include_router(approval_operations_router)
+app.include_router(system_graph_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)

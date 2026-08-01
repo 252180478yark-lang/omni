@@ -21,6 +21,7 @@ from app.services.system_graph.feature_definitions import (  # noqa: E402
     load_definitions,
     select_definitions,
 )
+from app.services.system_graph.planned import load_impact, project_impact  # noqa: E402
 from app.services.system_graph.scanner import ScanRequest, scan_repository  # noqa: E402
 from app.services.system_graph.snapshots import (  # noqa: E402
     read_snapshot,
@@ -156,6 +157,43 @@ def command_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_check_contract(args: argparse.Namespace) -> int:
+    """Render S4 planned/fact results as a CI warning artifact.
+
+    The default is intentionally non-blocking.  A caller must pass an explicit
+    selected deterministic issue code to turn a matching observation into a
+    non-zero result; this is the S6 calibration boundary.
+    """
+
+    impact = load_impact(Path(args.impact))
+    snapshot = read_snapshot(Path(args.snapshot))
+    report = project_impact(impact, snapshot, selected_block_codes=args.block_code)
+    payload = report.model_dump(mode="json")
+    if args.output:
+        target = Path(args.output)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    for issue in report.issues:
+        annotation = "error" if issue.severity == "blocking" else "warning"
+        message = f"{issue.code}: {issue.expected} ({issue.observed})"
+        print(f"::{annotation} title=system-graph::{message}")
+    _print(
+        {
+            "ok": not bool(report.selected_blocking),
+            "change_id": report.change_id,
+            "snapshot_id": report.snapshot_id,
+            "warning_count": sum(issue.severity == "warning" for issue in report.issues),
+            "unknown_count": sum(issue.severity == "unknown" for issue in report.issues),
+            "blocking_count": len(report.selected_blocking),
+            "output": str(args.output) if args.output else None,
+        }
+    )
+    return 1 if report.selected_blocking else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -187,6 +225,15 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--feature", required=True)
     verify.add_argument("--ref", default="HEAD")
     verify.set_defaults(handler=command_verify)
+
+    check_contract = subparsers.add_parser(
+        "check-contract", help="project a locked impact over an immutable snapshot"
+    )
+    check_contract.add_argument("--impact", required=True)
+    check_contract.add_argument("--snapshot", required=True)
+    check_contract.add_argument("--output")
+    check_contract.add_argument("--block-code", action="append", default=[])
+    check_contract.set_defaults(handler=command_check_contract)
     return parser
 
 

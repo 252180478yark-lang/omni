@@ -50,6 +50,35 @@ class SourceStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class PlanDecision(StrEnum):
+    """A candidate-plan decision; it never asserts that a fact exists."""
+
+    REUSE = "reuse"
+    MODIFY = "modify"
+    ADD = "add"
+    NOT_DO = "not_do"
+    UNKNOWN = "unknown"
+
+
+class EvidenceClassification(StrEnum):
+    """Keep observed facts separate from recommendations and hypotheses."""
+
+    OBSERVED_FACT = "observed_fact"
+    RECOMMENDATION = "recommendation"
+    HYPOTHESIS = "hypothesis"
+
+
+class RequiredEdgeState(StrEnum):
+    PRESENT = "present"
+    MISSING = "missing"
+    UNKNOWN = "unknown"
+
+
+class IntegrationPlanState(StrEnum):
+    DRAFT = "draft"
+    FROZEN = "frozen"
+
+
 class EvidenceRef(StrictModel):
     """A source coordinate, deliberately without source text or arbitrary metadata."""
 

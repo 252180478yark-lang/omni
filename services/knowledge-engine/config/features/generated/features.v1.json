@@ -1,5 +1,5 @@
 {
-  "definition_revision": "sha256:018c848d8713565cfbb250c5b5e46d95663cae2f52e843b875c9ab628dbeb0d9",
+  "definition_revision": "sha256:720e8fb9868e244d637dfbf3f121bbf4872f41963612eee75ef679a3a40c24b3",
   "frontend_registry": [
     {
       "aliases": [
@@ -397,6 +397,32 @@
       ],
       "title": "系统控制台",
       "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "candidate-plan-revision",
+          "kind": "admin"
+        },
+        {
+          "capability_id": "planned-fact-projection",
+          "kind": "read"
+        }
+      ],
+      "domain": "platform.system_graph",
+      "feature_id": "system-convergence-s4-s6",
+      "href": "/system-graph",
+      "lifecycle": "active",
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct"
+      ],
+      "title": "System graph planning and pilot controls",
+      "visible": false
     },
     {
       "aliases": [],
@@ -874,6 +900,51 @@
       ],
       "expected_edges": [],
       "feature_id": "system-console"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "system-graph-mcp-doctor",
+          "kind": "pytest",
+          "required": true,
+          "target": "services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract",
+          "verifies": "mcp_tool:system_graph_confirm_plan"
+        },
+        {
+          "check_id": "system-graph-rest-owner",
+          "kind": "pytest",
+          "required": true,
+          "target": "services/knowledge-engine/tests/test_system_graph_integration_router.py::test_rest_plan_requires_owner_and_returns_only_candidate_artifacts",
+          "verifies": "rest_operation:POST:/api/v1/system-graph/integration-plans"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [
+        {
+          "from": "rest_operation:POST:/api/v1/system-graph/integration-plans",
+          "relation": "invokes",
+          "required": true,
+          "to": "service_symbol:app.services.system_graph.integration_plans.create_candidate_plan"
+        },
+        {
+          "from": "test:services/knowledge-engine/tests/test_system_graph_integration_router.py::test_rest_plan_requires_owner_and_returns_only_candidate_artifacts",
+          "relation": "verifies",
+          "required": true,
+          "to": "rest_operation:POST:/api/v1/system-graph/integration-plans"
+        },
+        {
+          "from": "test:services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract",
+          "relation": "verifies",
+          "required": true,
+          "to": "mcp_tool:system_graph_confirm_plan"
+        }
+      ],
+      "feature_id": "system-convergence-s4-s6"
     },
     {
       "checks": [
