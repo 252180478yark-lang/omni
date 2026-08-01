@@ -35,6 +35,7 @@ class RequiredEdgeResult(StrictModel):
     relation: str = Field(min_length=1)
     state: RequiredEdgeState
     evidence_refs: list[str] = Field(default_factory=list)
+    collector_ids: list[str] = Field(default_factory=list)
 
 
 class RepairCard(StrictModel):
@@ -56,6 +57,8 @@ class PlannedFactReport(StrictModel):
     planned_nodes: list[PlannedNode]
     required_edges: list[RequiredEdgeResult]
     issues: list[RepairCard]
+    deviation_nodes: list[str] = Field(default_factory=list)
+    orphan_nodes: list[str] = Field(default_factory=list)
 
     @property
     def selected_blocking(self) -> list[RepairCard]:
@@ -98,10 +101,20 @@ def _planned_nodes(impact: Mapping[str, Any]) -> list[PlannedNode]:
     return [PlannedNode(node_id=node_id, decision=nodes[node_id]) for node_id in sorted(nodes)]
 
 
-def _all_sources_succeeded(snapshot: GraphSnapshot) -> bool:
-    return bool(snapshot.content.source_results) and all(
-        result.status is SourceStatus.SUCCESS for result in snapshot.content.source_results
-    )
+def _sources_succeeded(snapshot: GraphSnapshot, collector_ids: Iterable[str]) -> bool:
+    """Return true only when every relevant collector positively succeeded.
+
+    Older impact contracts do not identify edge collectors.  They retain the
+    conservative all-collectors rule; newer contracts may name the exact
+    collectors so an unrelated partial source does not hide a deterministic
+    missing edge.
+    """
+
+    results = {result.collector_id: result.status for result in snapshot.content.source_results}
+    selected = tuple(sorted({str(item).strip() for item in collector_ids if str(item).strip()}))
+    if selected:
+        return all(results.get(item) is SourceStatus.SUCCESS for item in selected)
+    return bool(results) and all(status is SourceStatus.SUCCESS for status in results.values())
 
 
 def _edge_evidence(snapshot: GraphSnapshot, edge_id: str) -> list[str]:
@@ -136,7 +149,6 @@ def _repair_card(
         {
             "code": code,
             "change_id": change_id,
-            "snapshot_id": snapshot_id,
             "expected": expected,
         }
     )
@@ -187,12 +199,13 @@ def project_impact(
         if not isinstance(raw_edge, Mapping):
             raise ValueError("required edge must be a mapping")
         source, target, relation = _as_edge(raw_edge)
+        collector_ids = [str(item) for item in (raw_edge.get("collector_ids") or []) if str(item).strip()]
         edge_id = actual.get((source, target, relation))
         state = (
             RequiredEdgeState.PRESENT
             if edge_id
             else RequiredEdgeState.MISSING
-            if _all_sources_succeeded(snapshot)
+            if _sources_succeeded(snapshot, collector_ids)
             else RequiredEdgeState.UNKNOWN
         )
         result = RequiredEdgeResult(
@@ -201,6 +214,7 @@ def project_impact(
             relation=relation,
             state=state,
             evidence_refs=_edge_evidence(snapshot, edge_id) if edge_id else [],
+            collector_ids=collector_ids,
         )
         results.append(result)
         if state is not RequiredEdgeState.PRESENT:
@@ -213,6 +227,50 @@ def project_impact(
                     selected_block_codes=block_codes,
                 )
             )
+    issue_codes = {
+        "schema_drift",
+        "mcp_tool_unregistered",
+        "migration_missing",
+        "source_missing",
+        "test_missing",
+        "orphan_node",
+        "compatibility_alias_mismatch",
+    }
+    for diagnostic in snapshot.content.diagnostics:
+        if diagnostic.code not in issue_codes:
+            continue
+        classification = (
+            EvidenceClassification.HYPOTHESIS
+            if diagnostic.severity == "unknown"
+            else EvidenceClassification.OBSERVED_FACT
+        )
+        severity = "unknown" if classification is EvidenceClassification.HYPOTHESIS else "warning"
+        if diagnostic.code in block_codes and classification is EvidenceClassification.OBSERVED_FACT:
+            severity = "blocking"
+        fingerprint = sha256_value(
+            {
+                "code": diagnostic.code,
+                "change_id": change_id,
+                "collector_id": diagnostic.collector_id,
+            }
+        )
+        evidence_refs = [
+            f"{ref.path}:{ref.line}:{ref.symbol}:{ref.blob}" for ref in diagnostic.evidence
+        ]
+        issues.append(
+            RepairCard(
+                fingerprint=fingerprint,
+                code=diagnostic.code,
+                severity=severity,
+                classification=classification,
+                observed=f"collector {diagnostic.collector_id} reported {diagnostic.code}",
+                expected="the declared graph contract and discovered repository fact agree",
+                impact_paths=paths,
+                evidence_refs=evidence_refs,
+                suggested_locations=paths,
+                verification_command="python -B services/knowledge-engine/scripts/system_graph.py verify --feature <feature-id> --ref <commit>",
+            )
+        )
     return PlannedFactReport(
         change_id=change_id,
         snapshot_id=snapshot.snapshot_id,

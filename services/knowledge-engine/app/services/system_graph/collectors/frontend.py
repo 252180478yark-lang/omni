@@ -52,13 +52,13 @@ class FrontendCollector:
     def collect(self, context: CollectorContext) -> CollectorOutput:
         output = CollectorOutput()
         api_root = context.repo / "frontend" / "src" / "app" / "api"
-        route_index: dict[tuple[str, str], tuple[Path, int]] = {}
+        route_index: dict[tuple[str, str], tuple[Path, int, str]] = {}
         if api_root.exists():
             for route_file in sorted(api_root.rglob("route.ts")):
                 text = route_file.read_text(encoding="utf-8")
                 route = _route_from_file(api_root, route_file)
                 for match in _EXPORT_RE.finditer(text):
-                    route_index[(match.group(1), route)] = (route_file, _line(text, match.start()))
+                    route_index[(match.group(1), route)] = (route_file, _line(text, match.start()), route)
 
         for definition in context.definitions:
             definition_path = context.repo / definition.source_path
@@ -123,8 +123,19 @@ class FrontendCollector:
                 method = _method_after_fetch(page_text, match.end())
                 indexed = route_index.get((method, fetched_route))
                 if indexed is None:
+                    indexed = next(
+                        (
+                            value
+                            for (candidate_method, candidate_route), value in route_index.items()
+                            if candidate_method == method
+                            and "{path*}" in candidate_route
+                            and fetched_route.startswith(candidate_route.split("/{path*}", 1)[0] + "/")
+                        ),
+                        None,
+                    )
+                if indexed is None:
                     continue
-                bff_path, bff_line = indexed
+                bff_path, bff_line, indexed_route = indexed
                 bff_key = f"{method}:{fetched_route}"
                 bff_id = make_node_id("bff_operation", bff_key)
                 bff_evidence = [
@@ -164,13 +175,21 @@ class FrontendCollector:
                         continue
                     end = exports[index + 1].start() if index + 1 < len(exports) else len(bff_text)
                     function_text = bff_text[export.start() : end]
-                    for outbound in _KNOWLEDGE_RE.finditer(function_text):
+                    delegated = re.search(r"\bproxy\(", function_text) is not None
+                    outbound_text = bff_text if delegated else function_text
+                    outbound_base = 0 if delegated else export.start()
+                    for outbound in _KNOWLEDGE_RE.finditer(outbound_text):
                         raw_path = outbound.group("path")
-                        raw_path = raw_path.split("${", 1)[0]
+                        if "${" in raw_path and "{path*}" in indexed_route:
+                            bff_prefix = indexed_route.split("/{path*}", 1)[0]
+                            suffix = fetched_route.removeprefix(bff_prefix)
+                            raw_path = raw_path.split("${", 1)[0].rstrip("/") + suffix
+                        else:
+                            raw_path = raw_path.split("${", 1)[0]
                         rest_route = normalize_route(raw_path)
                         rest_key = f"{method}:{rest_route}"
                         rest_id = make_node_id("rest_operation", rest_key)
-                        absolute_offset = export.start() + outbound.start()
+                        absolute_offset = outbound_base + outbound.start()
                         edge_evidence = [
                             evidence_ref(
                                 context.repo,

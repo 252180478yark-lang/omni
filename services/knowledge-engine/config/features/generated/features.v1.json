@@ -1,5 +1,5 @@
 {
-  "definition_revision": "sha256:720e8fb9868e244d637dfbf3f121bbf4872f41963612eee75ef679a3a40c24b3",
+  "definition_revision": "sha256:56c1d7d7be3ad4d57483a72f540f08dfa50744b65130fe7ea85a2bc4378ad326",
   "frontend_registry": [
     {
       "aliases": [
@@ -406,8 +406,16 @@
           "kind": "admin"
         },
         {
+          "capability_id": "issue-repair-history",
+          "kind": "read"
+        },
+        {
           "capability_id": "planned-fact-projection",
           "kind": "read"
+        },
+        {
+          "capability_id": "repository-pilot-calibration",
+          "kind": "admin"
         }
       ],
       "domain": "platform.system_graph",
@@ -419,10 +427,11 @@
         "kind": "team"
       },
       "placements": [
-        "direct"
+        "direct",
+        "sidebar"
       ],
       "title": "System graph planning and pilot controls",
-      "visible": false
+      "visible": true
     },
     {
       "aliases": [],
@@ -911,6 +920,13 @@
           "verifies": "mcp_tool:system_graph_confirm_plan"
         },
         {
+          "check_id": "system-graph-owner-page",
+          "kind": "command",
+          "required": true,
+          "target": "frontend/tests/system-graph-plan.test.tsx",
+          "verifies": "ui_route:/system-graph"
+        },
+        {
           "check_id": "system-graph-rest-owner",
           "kind": "pytest",
           "required": true,
@@ -925,6 +941,12 @@
         }
       ],
       "expected_edges": [
+        {
+          "from": "bff_operation:GET:/api/omni/system-graph/integration-plans",
+          "relation": "proxies_to",
+          "required": true,
+          "to": "rest_operation:GET:/api/v1/system-graph/integration-plans"
+        },
         {
           "from": "rest_operation:POST:/api/v1/system-graph/integration-plans",
           "relation": "invokes",
@@ -942,6 +964,12 @@
           "relation": "verifies",
           "required": true,
           "to": "mcp_tool:system_graph_confirm_plan"
+        },
+        {
+          "from": "ui_route:/system-graph",
+          "relation": "calls",
+          "required": true,
+          "to": "bff_operation:GET:/api/omni/system-graph/integration-plans"
         }
       ],
       "feature_id": "system-convergence-s4-s6"

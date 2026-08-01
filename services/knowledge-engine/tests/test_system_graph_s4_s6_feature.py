@@ -24,6 +24,16 @@ def test_s4_s6_feature_definition_binds_observed_rest_service_mcp_and_tests() ->
     )
     edges = {(edge.source, edge.target, edge.relation) for edge in snapshot.content.edges}
     assert (
+        "ui_route:/system-graph",
+        "bff_operation:GET:/api/omni/system-graph/integration-plans",
+        "calls",
+    ) in edges
+    assert (
+        "bff_operation:GET:/api/omni/system-graph/integration-plans",
+        "rest_operation:GET:/api/v1/system-graph/integration-plans",
+        "proxies_to",
+    ) in edges
+    assert (
         "rest_operation:POST:/api/v1/system-graph/integration-plans",
         "service_symbol:app.services.system_graph.integration_plans.create_candidate_plan",
         "invokes",

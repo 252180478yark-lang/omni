@@ -8,6 +8,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import yaml
+
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -22,6 +24,10 @@ from app.services.system_graph.feature_definitions import (  # noqa: E402
     select_definitions,
 )
 from app.services.system_graph.planned import load_impact, project_impact  # noqa: E402
+from app.services.system_graph.issues import (  # noqa: E402
+    IssueStatus,
+    IssueStore,
+)
 from app.services.system_graph.scanner import ScanRequest, scan_repository  # noqa: E402
 from app.services.system_graph.snapshots import (  # noqa: E402
     read_snapshot,
@@ -167,7 +173,16 @@ def command_check_contract(args: argparse.Namespace) -> int:
 
     impact = load_impact(Path(args.impact))
     snapshot = read_snapshot(Path(args.snapshot))
-    report = project_impact(impact, snapshot, selected_block_codes=args.block_code)
+    block_codes = set(args.block_code)
+    if args.policy:
+        policy = yaml.safe_load(Path(args.policy).read_text(encoding="utf-8")) or {}
+        if policy.get("schema_version") != 1:
+            raise ValueError("system graph block policy schema_version must be 1")
+        block_codes.update(str(code) for code in policy.get("selected_block_codes") or [])
+    report = project_impact(impact, snapshot, selected_block_codes=sorted(block_codes))
+    persisted = []
+    if args.issue_root:
+        persisted = IssueStore(Path(args.issue_root)).upsert_report(report)
     payload = report.model_dump(mode="json")
     if args.output:
         target = Path(args.output)
@@ -188,10 +203,31 @@ def command_check_contract(args: argparse.Namespace) -> int:
             "warning_count": sum(issue.severity == "warning" for issue in report.issues),
             "unknown_count": sum(issue.severity == "unknown" for issue in report.issues),
             "blocking_count": len(report.selected_blocking),
+            "persisted_issue_count": len(persisted),
             "output": str(args.output) if args.output else None,
         }
     )
     return 1 if report.selected_blocking else 0
+
+
+def command_list_issues(args: argparse.Namespace) -> int:
+    store = IssueStore(Path(args.issue_root))
+    status = IssueStatus(args.status) if args.status else None
+    issues = store.list(status=status, code=args.code, query=args.query or "")
+    _print({"ok": True, "count": len(issues), "issues": [item.model_dump(mode="json") for item in issues]})
+    return 0
+
+
+def command_transition_issue(args: argparse.Namespace) -> int:
+    issue = IssueStore(Path(args.issue_root)).transition(
+        args.fingerprint,
+        expected_revision=args.expected_revision,
+        status=IssueStatus(args.status),
+        actor=args.actor,
+        reason=args.reason,
+    )
+    _print({"ok": True, "issue": issue.model_dump(mode="json")})
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -233,7 +269,25 @@ def build_parser() -> argparse.ArgumentParser:
     check_contract.add_argument("--snapshot", required=True)
     check_contract.add_argument("--output")
     check_contract.add_argument("--block-code", action="append", default=[])
+    check_contract.add_argument("--policy")
+    check_contract.add_argument("--issue-root")
     check_contract.set_defaults(handler=command_check_contract)
+
+    list_issues = subparsers.add_parser("list-issues", help="search durable system graph issues")
+    list_issues.add_argument("--issue-root", required=True)
+    list_issues.add_argument("--status", choices=[item.value for item in IssueStatus])
+    list_issues.add_argument("--code")
+    list_issues.add_argument("--query")
+    list_issues.set_defaults(handler=command_list_issues)
+
+    transition_issue = subparsers.add_parser("transition-issue", help="acknowledge, snooze, or resolve an issue")
+    transition_issue.add_argument("--issue-root", required=True)
+    transition_issue.add_argument("--fingerprint", required=True)
+    transition_issue.add_argument("--expected-revision", required=True, type=int)
+    transition_issue.add_argument("--status", required=True, choices=[item.value for item in IssueStatus])
+    transition_issue.add_argument("--actor", required=True)
+    transition_issue.add_argument("--reason", default="")
+    transition_issue.set_defaults(handler=command_transition_issue)
     return parser
 
 

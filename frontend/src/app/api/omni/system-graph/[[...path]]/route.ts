@@ -11,15 +11,29 @@ import {
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-function isAllowed(method: string, parts: string[]): boolean {
-  if (method === 'POST' && parts.length === 0) return true
-  if (method === 'GET' && parts.length === 1) return true
-  if (method === 'PATCH' && parts.length === 1) return true
-  return method === 'POST' && parts.length === 2 && parts[1] === 'confirm'
+function upstreamParts(method: string, parts: string[]): string[] | null {
+  // Preserve the original compact plan routes while exposing the explicit S4/S5
+  // route tree used by the owner co-design page.
+  if (parts.length === 0 && method === 'POST') return ['integration-plans']
+  if (parts.length === 1 && ['GET', 'PATCH'].includes(method)) return ['integration-plans', parts[0]]
+  if (parts.length === 2 && method === 'POST' && parts[1] === 'confirm') {
+    return ['integration-plans', parts[0], 'confirm']
+  }
+  if (parts[0] === 'integration-plans') {
+    if (parts.length === 1 && ['GET', 'POST'].includes(method)) return parts
+    if (parts.length === 2 && ['GET', 'PATCH'].includes(method)) return parts
+    if (parts.length === 3 && method === 'POST' && ['confirm', 'rebase', 'archive'].includes(parts[2])) return parts
+  }
+  if (parts[0] === 'issues') {
+    if (parts.length === 1 && method === 'GET') return parts
+    if (parts.length === 3 && method === 'POST' && parts[2] === 'transition') return parts
+  }
+  return null
 }
 
 async function proxy(request: NextRequest, method: string, parts: string[]) {
-  if (!isAllowed(method, parts)) {
+  const targetParts = upstreamParts(method, parts)
+  if (!targetParts) {
     return NextResponse.json({ success: false, error: 'system_graph_route_not_allowed' }, { status: 404 })
   }
   try {
@@ -27,8 +41,8 @@ async function proxy(request: NextRequest, method: string, parts: string[]) {
     const actor = await requireApprovalActor(request)
     const body = method === 'GET' ? '' : await request.text()
     const base = serviceBase()
-    const suffix = parts.map(encodeURIComponent).join('/')
-    const url = `${base.knowledge}/api/v1/system-graph/integration-plans${suffix ? `/${suffix}` : ''}${request.nextUrl.search}`
+    const suffix = targetParts.map(encodeURIComponent).join('/')
+    const url = `${base.knowledge}/api/v1/system-graph/${suffix}${request.nextUrl.search}`
     const response = await fetch(url, {
       method,
       headers: {

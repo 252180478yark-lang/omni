@@ -34,6 +34,7 @@ import {
   FlaskConical,
   Send,
   Trophy,
+  Network,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -137,6 +138,7 @@ const NAV_ITEMS: NavEntry[] = [
   { href: '/models', icon: Cpu, label: '模型配置', hint: '填 AI Key，模型不可用时先检查这里' },
   { href: '/tasks', icon: ListTodo, label: '任务进度', hint: '看采集、分析、生成这些后台任务' },
   { href: '/prompt-lab', icon: Sparkles, label: 'Prompt 实验室', hint: '微调 AI 生成规则和反馈记录' },
+  { href: '/system-graph', icon: Network, label: '系统图谱', hint: '在事实快照上共创功能接法，查看 planned/fact 缺口' },
   { href: '/playground', icon: FlaskConical, label: 'Playground', hint: 'tool / skill / MCP 调试场:多层 trace + raw JSON + 隔离 session' },
   { href: '/playground/reverse-storyboard', icon: Wand2, label: '反推故事板(测试)', hint: 'reverse_storyboard_video tool 专属页:贴视频路径→3 类 prompt 包+方法论判断' },
   { href: '/', icon: Home, label: '控制台', hint: '系统服务、指标、监控' },
