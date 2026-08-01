@@ -1,0 +1,117 @@
+schema_version: 3
+change_id: 2026-08-01-system-convergence-s4-s6-gap-closure
+state: VERIFYING
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  paths:
+  - services/knowledge-engine/app/schemas/system_graph.py
+  - services/knowledge-engine/app/services/system_graph/planned.py
+  - services/knowledge-engine/app/services/system_graph/issues.py
+  - services/knowledge-engine/scripts/system_graph.py
+  - services/knowledge-engine/config/system_graph/block-policy.yaml
+  - services/knowledge-engine/tests/fixtures/system_graph/s4-warning-impact.yaml
+  - services/knowledge-engine/tests/test_system_graph_planned.py
+  - services/knowledge-engine/tests/test_system_graph_issues.py
+  summary: Added source-aware planned/fact classification, durable revisioned issues, selected block policy, CLI and warning fixtures.
+- id: ACT-002
+  planned_change_id: CHG-002
+  paths:
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py
+  - services/knowledge-engine/app/routers/system_graph.py
+  - services/knowledge-engine/app/mcp/tools/system_graph.py
+  - services/knowledge-engine/tests/test_system_graph_integration_plans.py
+  - services/knowledge-engine/tests/test_system_graph_integration_router.py
+  - services/knowledge-engine/tests/test_system_graph_mcp_registration.py
+  - services/knowledge-engine/tests/test_system_graph_s4_s6_completion.py
+  summary: Completed the 11-layer evidence plan, forward states, file CAS, owner API, impact projection and no-write MCP scaffold.
+- id: ACT-003
+  planned_change_id: CHG-003
+  paths:
+  - frontend/src/app/system-graph/page.tsx
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+  - frontend/src/components/app-sidebar.tsx
+  - frontend/tests/system-graph-plan.test.tsx
+  summary: Added the owner co-design page, stale rebase flow, navigation entry, BFF allowlist and five-state UI tests.
+- id: ACT-004
+  planned_change_id: CHG-004
+  paths:
+  - services/knowledge-engine/app/services/system_graph/pilot.py
+  - services/knowledge-engine/config/system_graph/pilots.yaml
+  - scripts/run_system_convergence_pilots.py
+  - services/knowledge-engine/tests/test_system_graph_pilot.py
+  - tests/test_system_convergence_s6_repository_pilot.py
+  summary: Added versioned real-repository R1-R3 pilots, isolated allocation/release, inert pending approval and transcript evidence.
+- id: ACT-005
+  planned_change_id: CHG-005
+  paths:
+  - .github/workflows/ci.yml
+  - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - services/knowledge-engine/app/services/system_graph/collectors/frontend.py
+  - services/knowledge-engine/tests/test_system_graph_s4_s6_feature.py
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
+  - tests/test_system_convergence_s4_s6_ci.py
+  summary: Bound the visible feature graph and actual S4 warning, issue, S6 pilot and delivery-gate evidence to blocking CI.
+contract_delta:
+- description: Use the repository's Vitest script for the S5 owner page verification.
+  reason: Frontend package.json exposes test:unit rather than an npm test script, and Vitest does not accept Jest runInBand.
+  effect: VER-003 now runs the exact supported frontend unit-test entrypoint without changing product scope.
+  accepted: true
+- description: Extend the existing frontend graph collector for literal callers of a catch-all BFF route.
+  reason: The real S5 page calls /api/omni/system-graph/integration-plans while Next.js implements that boundary with [[...path]]; exact-only route matching would leave the required page-to-BFF edge unobservable.
+  effect: CHG-005 now owns the compatible collector and regression-test change; no runtime or API behavior changes.
+  accepted: true
+- description: Persist the deterministic after-scan beside the v3 completion contract.
+  reason: GRAPH_DIFF_READY needs a content-addressed, reviewable graph artifact rather than an ignored local output path.
+  effect: CHG-005 owns one generated graph-snapshot JSON file under this contract directory; it contains repository evidence only and no runtime secret.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_planned.py tests/test_system_graph_issues.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 6 passed in 0.25s, covering source-aware unknowns, stable fingerprints and durable issue revisions.
+- id: VER-002
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_integration_plans.py tests/test_system_graph_integration_router.py tests/test_system_graph_mcp_registration.py tests/test_system_graph_s4_s6_completion.py
+  status: passed
+  exit_code: 0
+  evidence: services/knowledge-engine workdir; 13 passed in 2.98s with one third-party PendingDeprecationWarning.
+- id: VER-003
+  command: npm run test:unit -- tests/system-graph-plan.test.tsx
+  status: passed
+  exit_code: 0
+  evidence: frontend workdir; Vitest passed 1 file and 5 tests in 1.03s, including error, partial evidence, create, freeze guard and stale rebase states.
+- id: VER-004
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py
+  status: passed
+  exit_code: 0
+  evidence: repository workdir; 2 passed in 4.11s, proving real paths, isolated release, fixture receipt boundary and pending no-effect R3.
+- id: VER-005
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_planned.py services/knowledge-engine/tests/test_system_graph_issues.py services/knowledge-engine/tests/test_system_graph_integration_plans.py services/knowledge-engine/tests/test_system_graph_integration_router.py services/knowledge-engine/tests/test_system_graph_mcp_registration.py services/knowledge-engine/tests/test_system_graph_pilot.py services/knowledge-engine/tests/test_system_graph_s4_s6_feature.py services/knowledge-engine/tests/test_system_graph_s4_s6_completion.py tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py tests/test_system_convergence_s4_s6_ci.py
+  status: passed
+  exit_code: 0
+  evidence: repository workdir; complete S4-S6 deterministic selection passed 28 tests in 7.89s with one third-party PendingDeprecationWarning.
+graph_diff:
+  status: pending
+  snapshot_before: ''
+  snapshot_after: ''
+  added_nodes: []
+  modified_nodes: []
+  removed_nodes: []
+  added_edges: []
+  removed_edges: []
+  required_edges: []
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: pending
+rollback:
+  verified: false
+  evidence: ''
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''

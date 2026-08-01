@@ -76,6 +76,23 @@ def test_static_nodes_do_not_claim_health() -> None:
     assert static.state.health.value == "unknown"
 
 
+def test_catch_all_bff_preserves_literal_page_and_rest_edges() -> None:
+    snapshot = scan_repository(
+        ScanRequest(repo=REPO, feature_ids=("system-convergence-s4-s6",), dynamic=False)
+    )
+    edges = {(edge.source, edge.target, edge.relation) for edge in snapshot.content.edges}
+    assert (
+        "ui_route:/system-graph",
+        "bff_operation:GET:/api/omni/system-graph/integration-plans",
+        "calls",
+    ) in edges
+    assert (
+        "bff_operation:GET:/api/omni/system-graph/integration-plans",
+        "rest_operation:GET:/api/v1/system-graph/integration-plans",
+        "proxies_to",
+    ) in edges
+
+
 def test_every_evidence_has_no_source_snippet_field() -> None:
     snapshot = scan_repository(
         ScanRequest(repo=REPO, feature_ids=("cost-management",), dynamic=False)

@@ -1,0 +1,14 @@
+change_id: ci-s4-warning-fixture
+planned_changes:
+- id: FIXTURE-001
+  action: add
+  node_id: service:fixture.missing_consumer
+  paths:
+  - services/knowledge-engine/app/services/system_graph/fixture_missing.py
+graph_acceptance:
+  required_edges:
+  - from: rest_operation:POST:/api/v1/system-graph/integration-plans
+    to: service_symbol:fixture.missing_consumer
+    relation: invokes
+    collector_ids:
+    - python.static

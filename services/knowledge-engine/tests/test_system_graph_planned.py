@@ -24,7 +24,7 @@ from app.services.system_graph.planned import project_impact
 from app.services.system_graph.snapshots import write_snapshot
 
 
-def _snapshot(*, success: bool, include_edge: bool = True) -> GraphSnapshot:
+def _snapshot(*, success: bool, include_edge: bool = True, commit: str = "a" * 40) -> GraphSnapshot:
     source = "fixture.collector"
     left = GraphNode(id="page:/fixture", kind="page", key="/fixture", label="Fixture")
     right = GraphNode(id="api:GET:/fixture", kind="api", key="GET:/fixture", label="Fixture API")
@@ -36,7 +36,7 @@ def _snapshot(*, success: bool, include_edge: bool = True) -> GraphSnapshot:
         sources=[source],
     )
     content = GraphSnapshotContent(
-        commit="a" * 40,
+        commit=commit,
         definition_revision="sha256:" + "b" * 64,
         collector_versions={source: "1"},
         feature_ids=["fixture"],
@@ -109,7 +109,7 @@ def test_unknown_collector_never_reports_missing_or_blocking() -> None:
 def test_repair_card_fingerprint_is_stable_and_block_is_explicit() -> None:
     snapshot = _snapshot(success=True)
     first = project_impact(_impact(), snapshot)
-    second = project_impact(_impact(), snapshot)
+    second = project_impact(_impact(), _snapshot(success=True, commit="c" * 40))
     promoted = project_impact(
         _impact(), snapshot, selected_block_codes=["required_edge_missing"]
     )
@@ -126,9 +126,17 @@ def test_cli_warning_artifact_is_nonblocking_until_a_code_is_selected(tmp_path: 
     from scripts.system_graph import command_check_contract
 
     code = command_check_contract(
-        argparse.Namespace(impact=str(impact_path), snapshot=str(snapshot_path), output=str(output), block_code=[])
+        argparse.Namespace(
+            impact=str(impact_path),
+            snapshot=str(snapshot_path),
+            output=str(output),
+            block_code=[],
+            policy=None,
+            issue_root=str(tmp_path / "issues"),
+        )
     )
     assert code == 0
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["issues"][0]["severity"] == "warning"
     assert "::warning title=system-graph::" in capsys.readouterr().out
+    assert len(list((tmp_path / "issues").glob("sha256-*.json"))) == 1

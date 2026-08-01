@@ -6,12 +6,22 @@ owner: {kind: team, id: omni}
 lifecycle: active
 routes:
   canonical: /system-graph
-  visible: false
-  placements: [direct]
+  visible: true
+  placements: [sidebar, direct]
 capabilities:
   - {capability_id: planned-fact-projection, kind: read}
   - {capability_id: candidate-plan-revision, kind: admin}
+  - {capability_id: issue-repair-history, kind: read}
+  - {capability_id: repository-pilot-calibration, kind: admin}
 expected_edges:
+  - from: ui_route:/system-graph
+    to: bff_operation:GET:/api/omni/system-graph/integration-plans
+    relation: calls
+    required: true
+  - from: bff_operation:GET:/api/omni/system-graph/integration-plans
+    to: rest_operation:GET:/api/v1/system-graph/integration-plans
+    relation: proxies_to
+    required: true
   - from: rest_operation:POST:/api/v1/system-graph/integration-plans
     to: service_symbol:app.services.system_graph.integration_plans.create_candidate_plan
     relation: invokes
@@ -34,6 +44,11 @@ checks:
     kind: pytest
     target: services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract
     verifies: mcp_tool:system_graph_confirm_plan
+    required: true
+  - check_id: system-graph-owner-page
+    kind: command
+    target: frontend/tests/system-graph-plan.test.tsx
+    verifies: ui_route:/system-graph
     required: true
 aliases: []
 dependencies:

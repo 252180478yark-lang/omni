@@ -1,0 +1,10 @@
+schema_version: 1
+policy_id: s6-selected-deterministic-blocks
+mode: selected
+selected_block_codes:
+- required_edge_missing
+eligible_classification: observed_fact
+unknown_behavior: warning
+notes:
+- Only deterministic required-edge absences are blocking in the S6 pilot.
+- Collector failures and hypotheses remain unknown and never block.

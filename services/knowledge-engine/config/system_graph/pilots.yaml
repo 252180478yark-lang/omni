@@ -1,0 +1,62 @@
+schema_version: 1
+pilots:
+  - pilot_id: s6-r1-planned-fact
+    risk_level: R1
+    purpose: Prove that selected deterministic planned/fact gaps stay warnings unless the versioned policy explicitly blocks them.
+    candidate_paths:
+      - services/knowledge-engine/config/system_graph/block-policy.yaml
+      - services/knowledge-engine/app/services/system_graph/issues.py
+      - services/knowledge-engine/tests/test_system_graph_issues.py
+    allocation_paths:
+      - services/knowledge-engine/config/system_graph/**
+      - services/knowledge-engine/app/services/system_graph/issues.py
+    selected_block_codes:
+      - required_edge_missing
+    commands:
+      - working_directory: services/knowledge-engine
+        argv:
+          - python
+          - -B
+          - -m
+          - pytest
+          - -q
+          - -p
+          - no:cacheprovider
+          - tests/test_system_graph_planned.py
+          - tests/test_system_graph_issues.py
+
+  - pilot_id: s6-r2-owner-codesign
+    risk_level: R2
+    purpose: Prove the real owner page, BFF, API, service, and completion slice without writing product data.
+    candidate_paths:
+      - frontend/src/app/system-graph/page.tsx
+      - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+      - services/knowledge-engine/app/routers/system_graph.py
+      - services/knowledge-engine/app/services/system_graph/integration_plans.py
+      - services/knowledge-engine/tests/test_system_graph_s4_s6_completion.py
+    allocation_paths:
+      - frontend/src/app/system-graph/**
+      - frontend/src/app/api/omni/system-graph/**
+      - services/knowledge-engine/app/services/system_graph/integration_plans.py
+    commands:
+      - working_directory: services/knowledge-engine
+        argv:
+          - python
+          - -B
+          - -m
+          - pytest
+          - -q
+          - -p
+          - no:cacheprovider
+          - tests/test_system_graph_integration_plans.py
+          - tests/test_system_graph_integration_router.py
+          - tests/test_system_graph_s4_s6_completion.py
+
+  - pilot_id: s6-r3-approval-pending
+    risk_level: R3
+    purpose: Prove the real approval operation stops at pending without registering or invoking an effect handler.
+    candidate_paths:
+      - services/knowledge-engine/app/schemas/approval_operations.py
+      - services/knowledge-engine/app/services/approval_operations.py
+    approval_handler: system.noop-audit
+    approval_target: external:system-graph-pilot-noop

@@ -54,6 +54,8 @@ def _item() -> dict[str, object]:
         "verification": "python -m pytest tests/test_fixture.py",
         "risk": "R2",
         "critical": False,
+        "review_status": "accepted",
+        "review_note": "",
     }
 
 
@@ -89,10 +91,17 @@ async def test_rest_plan_requires_owner_and_returns_only_candidate_artifacts(tmp
         plan_id = body["plan"]["plan_id"]
         assert list(plan_root.glob(f"{plan_id}/revision-1.json"))
 
+        reviewing = await client.patch(
+            f"/api/v1/system-graph/integration-plans/{plan_id}",
+            json={"expected_revision": 1, "current_snapshot_id": snapshot_id, "items": [_item()]},
+        )
+        assert reviewing.status_code == 200
+        assert reviewing.json()["plan"]["state"] == "reviewing"
+
         confirmed = await client.post(
             f"/api/v1/system-graph/integration-plans/{plan_id}/confirm",
             json={
-                "expected_revision": 1,
+                "expected_revision": 2,
                 "current_snapshot_id": snapshot_id,
                 "request_id": "owner-confirmation-1",
                 "confirmed": True,
@@ -102,7 +111,9 @@ async def test_rest_plan_requires_owner_and_returns_only_candidate_artifacts(tmp
     confirmed_body = confirmed.json()
     assert confirmed_body["plan"]["state"] == "frozen"
     assert confirmed_body["impact_draft"]["product_write_performed"] is False
-    assert list(plan_root.glob(f"{plan_id}/revision-2.json"))
+    assert confirmed_body["impact_draft"]["artifact_path"].endswith("impact-draft-r3.yaml")
+    assert list(plan_root.glob(f"{plan_id}/revision-3.json"))
+    assert list(plan_root.glob(f"{plan_id}/impact-draft-r3.yaml"))
 
 
 @pytest.mark.asyncio
@@ -129,4 +140,4 @@ async def test_rest_plan_rejects_non_owner_and_stale_snapshot(tmp_path: Path) ->
             json={"expected_revision": 1, "current_snapshot_id": SNAPSHOT_HASH, "items": [_item()]},
         )
     assert stale.status_code == 409
-    assert stale.json()["code"] == "plan_not_impact_locked"
+    assert stale.json()["code"] == "plan_stale"

@@ -508,16 +508,52 @@ jobs:
         run: >-
           python -B -m pytest -q -p no:cacheprovider
           tests/test_system_graph_planned.py
+          tests/test_system_graph_issues.py
           tests/test_system_graph_integration_plans.py
           tests/test_system_graph_pilot.py
           tests/test_system_graph_integration_router.py
           tests/test_system_graph_mcp_registration.py
           tests/test_system_graph_s4_s6_feature.py
+          tests/test_system_graph_s4_s6_completion.py
+
+      - name: 生成 S4 planned/fact CI warning 与持久 issue 制品
+        working-directory: services/knowledge-engine
+        run: >-
+          python -B scripts/system_graph.py check-contract
+          --impact tests/fixtures/system_graph/s4-warning-impact.yaml
+          --snapshot ../../docs/dev-changes/2026-08-01-system-convergence-s4-s6-static/graph-snapshots/sha256-c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76.json
+          --output "$RUNNER_TEMP/system-graph-s4-warning.json"
+          --issue-root "$RUNNER_TEMP/system-graph-issues"
+
+      - name: 上传 S4 warning 与 issue 制品
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-graph-s4-warning-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/system-graph-s4-warning.json
+            ${{ runner.temp }}/system-graph-issues/*.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: 实跑 S6 隔离运行时与候选收据竖切
         run: >-
           python -B -m pytest -q -p no:cacheprovider
+          tests/test_system_convergence_s6_repository_pilot.py
           tests/test_system_convergence_s6_vertical.py
+
+      - name: 运行真实仓库 S6 R1-R3 试点并生成 transcript
+        run: >-
+          python -B scripts/run_system_convergence_pilots.py
+          --output "$RUNNER_TEMP/system-graph-s6-pilot.json"
+          --state-dir "$RUNNER_TEMP/system-graph-s6-runtime"
+
+      - name: 上传 S6 真实仓库试点证据
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-graph-s6-pilot-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/system-graph-s6-pilot.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: 实跑 RuntimeAllocation 启动前预检
         working-directory: services/knowledge-engine
