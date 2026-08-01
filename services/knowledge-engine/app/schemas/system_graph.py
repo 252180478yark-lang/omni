@@ -76,7 +76,17 @@ class RequiredEdgeState(StrEnum):
 
 class IntegrationPlanState(StrEnum):
     DRAFT = "draft"
+    REVIEWING = "reviewing"
     FROZEN = "frozen"
+    STALE = "stale"
+    ARCHIVED = "archived"
+
+
+class PlanReviewStatus(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    REWRITTEN = "rewritten"
 
 
 class EvidenceRef(StrictModel):

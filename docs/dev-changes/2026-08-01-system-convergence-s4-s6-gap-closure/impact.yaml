@@ -1,0 +1,270 @@
+schema_version: 3
+change_id: 2026-08-01-system-convergence-s4-s6-gap-closure
+title: Complete S4-S6 planned fact co-design and pilots
+state: VERIFYING
+created_at: '2026-08-01T13:00:00Z'
+updated_at: '2026-08-01T12:32:40Z'
+feature_refs:
+- feature_id: system-convergence-s4-s6
+  feature_ref: config/features/system-convergence-s4-s6.yaml@8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+before_snapshot:
+  ref: git:8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+delivery:
+  authority: ci_attestation
+  base_commit: 8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+risk:
+  level: R2
+  reasons:
+  - Cross-layer completion changes frontend, BFF, REST, MCP, service state machines, CI governance, and delivery evidence.
+  - Candidate plans and issue artifacts must remain local and reversible; no business database or external system is written.
+  external_effects: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The existing S4-S6 candidate proves a narrow fixture skeleton but lacks durable issues, real CI warning artifacts, cross-process CAS, evidence/state guards, an owner UI, and repository-backed pilot evidence.
+  expected_outcome: S4-S6 meet PRD v1.2 acceptance locally at GRAPH_DIFF_READY, with external CI attestation remaining the only delivery authority.
+  user_visible_behavior:
+  - Owners can create, review, rebase, archive, and explicitly freeze candidate integration plans from /system-graph.
+  - Planned/fact gaps produce durable searchable repair cards and CI warning artifacts without converting unknown evidence into missing facts.
+  - R1/R2 repository pilots and an inert R3 approval fixture emit a transcript and calibrated block-policy evidence.
+current_chain:
+  nodes:
+  - service:system_graph.planned.project_impact
+  - service:system_graph.integration_plans.IntegrationPlanService
+  - api:/api/v1/system-graph/integration-plans
+  - bff:/api/omni/system-graph
+  - mcp:system_graph_plan_feature
+  - ci:convergence-foundation-gate
+  edges:
+  - from: bff:/api/omni/system-graph
+    to: api:/api/v1/system-graph/integration-plans
+    relation: proxies
+  - from: api:/api/v1/system-graph/integration-plans
+    to: service:system_graph.integration_plans.IntegrationPlanService
+    relation: invokes
+  - from: ci:convergence-foundation-gate
+    to: service:system_graph.planned.project_impact
+    relation: tests
+  evidence:
+  - services/knowledge-engine/app/services/system_graph/planned.py:project_impact
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py:IntegrationPlanService
+  - services/knowledge-engine/app/routers/system_graph.py:router
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts:proxy
+  - .github/workflows/ci.yml:convergence-foundation-gate
+scope:
+  pages:
+  - page:/system-graph
+  apis:
+  - api:/api/v1/system-graph/integration-plans
+  - bff:/api/omni/system-graph
+  mcp_tools:
+  - mcp:system_graph_plan_feature
+  - mcp:system_graph_update_plan
+  - mcp:system_graph_confirm_plan
+  services:
+  - service:system_graph.planned
+  - service:system_graph.issues
+  - service:system_graph.integration_plans
+  - service:system_graph.pilot
+  database: []
+  data_sources:
+  - source:immutable-system-graph-snapshot
+  - source:git-delivery-attestation
+  states_workflows:
+  - state:integration-plan
+  - state:system-graph-issue
+  - state:s6-pilot
+  tests:
+  - test:services/knowledge-engine/tests/test_system_graph_s4_s6_completion.py
+  - test:tests/test_system_convergence_s6_repository_pilot.py
+  - test:frontend/tests/system-graph-plan.test.tsx
+  docs:
+  - docs/dev-changes/2026-08-01-system-convergence-s4-s6-gap-closure
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: service
+  node_id: service:system_graph.planned
+  paths:
+  - services/knowledge-engine/app/schemas/system_graph.py
+  - services/knowledge-engine/app/services/system_graph/planned.py
+  - services/knowledge-engine/app/services/system_graph/issues.py
+  - services/knowledge-engine/scripts/system_graph.py
+  - services/knowledge-engine/config/system_graph/block-policy.yaml
+  - services/knowledge-engine/tests/fixtures/system_graph/s4-warning-impact.yaml
+  - services/knowledge-engine/tests/test_system_graph_planned.py
+  - services/knowledge-engine/tests/test_system_graph_issues.py
+  upstream:
+  - source:immutable-system-graph-snapshot
+  downstream:
+  - ci:convergence-foundation-gate
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-005
+- id: CHG-002
+  action: modify
+  kind: api-service
+  node_id: service:system_graph.integration_plans
+  paths:
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py
+  - services/knowledge-engine/app/routers/system_graph.py
+  - services/knowledge-engine/app/mcp/tools/system_graph.py
+  - services/knowledge-engine/tests/test_system_graph_integration_plans.py
+  - services/knowledge-engine/tests/test_system_graph_integration_router.py
+  - services/knowledge-engine/tests/test_system_graph_mcp_registration.py
+  - services/knowledge-engine/tests/test_system_graph_s4_s6_completion.py
+  upstream:
+  - api:/api/v1/system-graph/integration-plans
+  downstream:
+  - state:integration-plan
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+  - VER-005
+- id: CHG-003
+  action: add
+  kind: page-bff
+  node_id: page:/system-graph
+  paths:
+  - frontend/src/app/system-graph/page.tsx
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+  - frontend/src/components/app-sidebar.tsx
+  - frontend/tests/system-graph-plan.test.tsx
+  upstream:
+  - actor:owner
+  downstream:
+  - api:/api/v1/system-graph/integration-plans
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+- id: CHG-004
+  action: modify
+  kind: pilot-governance
+  node_id: state:s6-pilot
+  paths:
+  - services/knowledge-engine/app/services/system_graph/pilot.py
+  - services/knowledge-engine/config/system_graph/pilots.yaml
+  - scripts/run_system_convergence_pilots.py
+  - services/knowledge-engine/tests/test_system_graph_pilot.py
+  - tests/test_system_convergence_s6_repository_pilot.py
+  - tests/test_system_convergence_s6_vertical.py
+  upstream:
+  - service:system_graph.planned
+  - service:system_graph.integration_plans
+  downstream:
+  - source:git-delivery-attestation
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+  - VER-005
+- id: CHG-005
+  action: modify
+  kind: ci-feature-definition
+  node_id: ci:convergence-foundation-gate
+  paths:
+  - .github/workflows/ci.yml
+  - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - services/knowledge-engine/app/services/system_graph/collectors/frontend.py
+  - services/knowledge-engine/tests/test_system_graph_s4_s6_feature.py
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
+  - tests/test_system_convergence_s4_s6_ci.py
+  - docs/dev-changes/2026-08-01-system-convergence-s4-s6-gap-closure/graph-snapshots/*.json
+  upstream:
+  - service:system_graph.planned
+  - state:s6-pilot
+  downstream:
+  - source:git-delivery-attestation
+  contract_change: compatible
+  verification_ids:
+  - VER-005
+  - VER-006
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Existing create/get/patch/confirm responses remain valid; list, review, rebase, archive, summaries, and durable impact artifact fields are additive.
+  database:
+    status: not_applicable
+    strategy: Issue, plan, and pilot evidence are local JSON artifacts; no database schema or shared runtime DDL changes.
+  workflow:
+    status: compatible
+    strategy: Existing draft/frozen values remain valid while reviewing/stale/archived and issue/pilot states are added with forward-only revisions.
+  data_source:
+    status: compatible
+    strategy: Immutable snapshots and CI attestation remain read-only sources; failed collectors remain unknown and no secret-bearing evidence is persisted.
+graph_acceptance:
+  required_edges:
+  - from: page:/system-graph
+    to: bff:/api/omni/system-graph
+    relation: calls
+  - from: bff:/api/omni/system-graph
+    to: api:/api/v1/system-graph/integration-plans
+    relation: proxies
+  - from: api:/api/v1/system-graph/integration-plans
+    to: service:system_graph.integration_plans.IntegrationPlanService
+    relation: invokes
+  - from: ci:convergence-foundation-gate
+    to: service:system_graph.planned.project_impact
+    relation: verifies
+  - from: state:s6-pilot
+    to: source:git-delivery-attestation
+    relation: awaits
+  allowed_unknowns: []
+  forbidden_orphans:
+  - page:/system-graph
+  - service:system_graph.issues
+  - state:s6-pilot
+risks:
+- id: RSK-001
+  description: Cross-process updates could acknowledge two conflicting revisions.
+  mitigation: Persist immutable revision files with exclusive creation and fail the loser with a deterministic CAS conflict.
+- id: RSK-002
+  description: A collector failure could be misreported as a missing edge and promoted to a block.
+  mitigation: Evaluate source-specific success and permit blocking only for observed deterministic facts selected by a versioned policy.
+- id: RSK-003
+  description: A pilot could fabricate delivery or execute an R3 side effect.
+  mitigation: Local evidence stays external_ci_pending; only CI emits attestation, and the R3 fixture uses the real approval state machine without a worker/effect handler.
+out_of_scope:
+- No shared database migration, business data write, external publication, paid action, secret rotation, or runtime container mutation.
+- S7-S14 graph visualization, runtime animation, frontend convergence, and legacy retirement remain separate slices.
+rollback:
+  strategy: Revert this gap-closure commit; local plan/issue/pilot artifacts are additive and may be ignored or moved aside without touching business data.
+  data_recovery: No business data is changed. Preserve immutable JSON revisions for audit; restore a prior artifact directory snapshot if local planning history must be recovered.
+verification_plan:
+- id: VER-001
+  layer: s4-service
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_planned.py tests/test_system_graph_issues.py
+  proves: Planned/fact classification, stable issue identity, durable issue history, unknown safety, warning artifacts, and selected block policy.
+  required: true
+- id: VER-002
+  layer: s5-api-service
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_integration_plans.py tests/test_system_graph_integration_router.py tests/test_system_graph_mcp_registration.py tests/test_system_graph_s4_s6_completion.py
+  proves: Evidence guards, forward plan states, atomic cross-process CAS, owner permissions, rebase/archive/confirm, impact artifacts, and MCP boundary.
+  required: true
+- id: VER-003
+  layer: frontend
+  command: npm run test:unit -- tests/system-graph-plan.test.tsx
+  proves: The owner co-design page exposes loading, empty, error, success, evidence, review, stale, and confirmation states.
+  required: true
+- id: VER-004
+  layer: s6-pilot
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py
+  proves: Repository R1/R2 pilots use real candidate paths and allocations while R3 remains pending with no effect and delivery stays external CI pending.
+  required: true
+- id: VER-005
+  layer: regression
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_planned.py services/knowledge-engine/tests/test_system_graph_issues.py services/knowledge-engine/tests/test_system_graph_integration_plans.py services/knowledge-engine/tests/test_system_graph_integration_router.py services/knowledge-engine/tests/test_system_graph_mcp_registration.py services/knowledge-engine/tests/test_system_graph_pilot.py services/knowledge-engine/tests/test_system_graph_s4_s6_feature.py services/knowledge-engine/tests/test_system_graph_s4_s6_completion.py tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py tests/test_system_convergence_s4_s6_ci.py
+  proves: The complete S4-S6 deterministic regression slice passes from repository root.
+  required: true
+- id: VER-006
+  layer: contract-graph
+  command: python -B scripts/check_feature_contracts.py --mode index --base 8703c3f1d2f5f2b260eb4796f2af41264c2f59df
+  proves: The staged protected diff has exactly one v3 owner and is ready for immutable CI evaluation.
+  required: true
+lock:
+  locked_at: '2026-08-01T12:14:37Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.

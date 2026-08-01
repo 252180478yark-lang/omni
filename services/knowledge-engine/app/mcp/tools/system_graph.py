@@ -8,6 +8,7 @@ an authentication bypass or a pre-confirmation product writer.
 from __future__ import annotations
 
 from app.mcp.server import mcp
+from app.services.system_graph.integration_plans import default_plan_items
 
 
 def _rest_only(operation: str, plan_id: str = "") -> dict[str, object]:
@@ -22,12 +23,20 @@ def _rest_only(operation: str, plan_id: str = "") -> dict[str, object]:
 
 
 @mcp.tool()
-async def system_graph_plan_feature(feature_id: str, base_snapshot_id: str) -> dict[str, object]:
-    """Explain the owner-authenticated route for creating an S5 candidate plan."""
+async def system_graph_plan_feature(feature_id: str, base_snapshot_id: str, intent: str = "") -> dict[str, object]:
+    """Build a no-write co-design scaffold for the owner-authenticated route."""
 
     if not feature_id or not base_snapshot_id:
         return {"ok": False, "error": "feature_id_and_base_snapshot_id_required", "product_write_performed": False}
-    return _rest_only("create")
+    return {
+        "ok": True,
+        "feature_id": feature_id,
+        "base_snapshot_id": base_snapshot_id,
+        "intent": intent,
+        "items": [item.model_dump(mode="json") for item in default_plan_items(feature_id)],
+        "product_write_performed": False,
+        "next": "Review the evidence table, then use the owner-authenticated REST route to persist a candidate revision.",
+    }
 
 
 @mcp.tool()
