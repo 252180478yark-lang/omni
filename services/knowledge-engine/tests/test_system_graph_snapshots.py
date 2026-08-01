@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,6 +75,109 @@ def test_same_inputs_have_stable_hash_empty_diff_and_immutable_path(tmp_path: Pa
     assert first_path == second_path
     assert read_snapshot(first_path).content_hash == first.content_hash
     assert verify_evidence(first, REPO) == []
+
+
+def test_scan_ref_reads_requested_commit_instead_of_current_worktree(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        return completed.stdout.strip()
+
+    git("init", "--quiet")
+    git("config", "user.email", "system-graph@example.invalid")
+    git("config", "user.name", "System Graph Test")
+    definition_path = (
+        repo
+        / "services"
+        / "knowledge-engine"
+        / "config"
+        / "features"
+        / "fixture-feature.yaml"
+    )
+    definition_path.parent.mkdir(parents=True)
+
+    def write_definition(route: str) -> None:
+        definition_path.write_text(
+            "\n".join(
+                [
+                    "schema_version: 1",
+                    "feature_id: fixture-feature",
+                    "title: Fixture Feature",
+                    "domain: test",
+                    "owner:",
+                    "  kind: team",
+                    "  id: fixture",
+                    "lifecycle: active",
+                    "routes:",
+                    f"  canonical: {route}",
+                    "  visible: true",
+                    "  placements: [direct]",
+                    "capabilities: []",
+                    "expected_edges: []",
+                    "checks: []",
+                    "aliases: []",
+                    "dependencies: []",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+    first_page = repo / "frontend" / "src" / "app" / "first" / "page.tsx"
+    first_page.parent.mkdir(parents=True)
+    first_page.write_text("export default function Page() { return null }\n", encoding="utf-8")
+    write_definition("/first")
+    git("add", ".")
+    git("commit", "--quiet", "-m", "first graph")
+    first_commit = git("rev-parse", "HEAD")
+
+    first_page.unlink()
+    second_page = repo / "frontend" / "src" / "app" / "second" / "page.tsx"
+    second_page.parent.mkdir(parents=True)
+    second_page.write_text("export default function Page() { return null }\n", encoding="utf-8")
+    write_definition("/second")
+    git("add", "-A")
+    git("commit", "--quiet", "-m", "second graph")
+    second_commit = git("rev-parse", "HEAD")
+
+    before = scan_repository(
+        ScanRequest(
+            repo=repo,
+            feature_ids=("fixture-feature",),
+            ref=first_commit,
+            dynamic=False,
+        )
+    )
+    after = scan_repository(
+        ScanRequest(
+            repo=repo,
+            feature_ids=("fixture-feature",),
+            ref=second_commit,
+            dynamic=False,
+        )
+    )
+
+    before_nodes = {node.id for node in before.content.nodes}
+    after_nodes = {node.id for node in after.content.nodes}
+    assert before.content.commit == first_commit
+    assert after.content.commit == second_commit
+    assert "ui_route:/first" in before_nodes
+    assert "ui_route:/first" not in after_nodes
+    assert "ui_route:/second" not in before_nodes
+    assert "ui_route:/second" in after_nodes
+    diff = diff_snapshots(before, after)
+    assert "ui_route:/first" in diff.removed_nodes
+    assert "ui_route:/second" in diff.added_nodes
 
 
 def test_failed_source_never_produces_removed() -> None:
