@@ -1,5 +1,5 @@
 {
-  "definition_revision": "sha256:8548708b38d99071b594455c8b8c2570630821f3e80b71f55312083d16fbbc30",
+  "definition_revision": "sha256:d31c998ec8810c74921874b507e552cf1496849e0a1a1af5095370193e3a4190",
   "frontend_registry": [
     {
       "aliases": [
@@ -992,7 +992,7 @@
           "kind": "command",
           "required": true,
           "target": "frontend/tests/system-graph-plan.test.tsx",
-          "verifies": "ui_route:/workspace/development"
+          "verifies": "ui_route:/system-graph"
         },
         {
           "check_id": "system-graph-rest-owner",
@@ -1034,7 +1034,7 @@
           "to": "mcp_tool:system_graph_confirm_plan"
         },
         {
-          "from": "ui_route:/workspace/development",
+          "from": "ui_route:/system-graph",
           "relation": "calls",
           "required": true,
           "to": "bff_operation:GET:/api/omni/system-graph/integration-plans"
