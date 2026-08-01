@@ -10,9 +10,9 @@
     "status": "unknown"
   },
   "graph": {
-    "edge_count": 143,
-    "node_count": 130,
-    "snapshot_id": "sha256:de871a9642ea35f376028cf98b9fcb0a5cf93a41db12487ca67083b05e10028f",
+    "edge_count": 182,
+    "node_count": 166,
+    "snapshot_id": "sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064",
     "status": "partial",
     "unavailable_sources": [
       "catalog.mcp:unknown",

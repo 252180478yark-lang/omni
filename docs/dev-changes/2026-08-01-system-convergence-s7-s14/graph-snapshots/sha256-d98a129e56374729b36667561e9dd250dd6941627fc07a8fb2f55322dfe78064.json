@@ -11,8 +11,8 @@
       "migration.static": "1",
       "python.static": "1"
     },
-    "commit": "ba7dd935317ba777527f08817b0f2bceff473fac",
-    "definition_revision": "sha256:8548708b38d99071b594455c8b8c2570630821f3e80b71f55312083d16fbbc30",
+    "commit": "109e63f9c64295720bce0da86f2a0e62f2e023f8",
+    "definition_revision": "sha256:d31c998ec8810c74921874b507e552cf1496849e0a1a1af5095370193e3a4190",
     "diagnostics": [],
     "edges": [
       {
@@ -89,6 +89,31 @@
           "lifecycle": "active"
         },
         "target": "bff_operation:GET:/api/omni/scout/runs"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "adbd37419555390cdf1dd8fc868488ea1190d884",
+            "line": 176,
+            "path": "frontend/src/app/insights/page.tsx",
+            "symbol": "fetch GET /api/omni/spend"
+          }
+        ],
+        "id": "edge:calls:030ca850332c63393aaefb3e",
+        "relation": "calls",
+        "source": "ui_route:/insights",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/spend"
       },
       {
         "attrs": {},
@@ -176,6 +201,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "9f47028a234102475da2aacc0574bf99f9cbf04e",
+            "line": 81,
+            "path": "frontend/src/app/models/page.tsx",
+            "symbol": "fetch GET /api/omni/models"
+          }
+        ],
+        "id": "edge:calls:09733473339c2207dff79daa",
+        "relation": "calls",
+        "source": "ui_route:/models",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/models"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "8fc9fcdf5b9ffa13ecaf56cd18029521bb8952dd",
             "line": 1097,
             "path": "frontend/src/app/sku-pipeline/page.tsx",
@@ -250,6 +300,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "d7f5058a2063b1822682c2cd1c3c4ca38dc80f57",
+            "line": 108,
+            "path": "frontend/src/app/system-graph/page.tsx",
+            "symbol": "fetch GET /api/omni/system-graph/integration-plans"
+          }
+        ],
+        "id": "edge:calls:0f31c7118a37ab91a8a5ef16",
+        "relation": "calls",
+        "source": "ui_route:/system-graph",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/system-graph/integration-plans"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "d3d06cd0e6bcb5914462245f8c3d3c241eb3ec64",
             "line": 264,
             "path": "frontend/src/app/video-analysis/page.tsx",
@@ -269,6 +344,31 @@
           "lifecycle": "active"
         },
         "target": "bff_operation:POST:/api/omni/video-analysis/sync-provider"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "5cb85452615fd3f324978476a6006d9097364dc9",
+            "line": 206,
+            "path": "frontend/src/app/content-studio/new/page.tsx",
+            "symbol": "fetch GET /api/omni/content-studio/pipeline"
+          }
+        ],
+        "id": "edge:calls:17a135bef0a937055548a291",
+        "relation": "calls",
+        "source": "ui_route:/content-studio/new",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/content-studio/pipeline"
       },
       {
         "attrs": {},
@@ -344,6 +444,37 @@
           "lifecycle": "active"
         },
         "target": "bff_operation:POST:/api/omni/knowledge/bases"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "5cb85452615fd3f324978476a6006d9097364dc9",
+            "line": 133,
+            "path": "frontend/src/app/content-studio/new/page.tsx",
+            "symbol": "fetch PUT /api/omni/content-studio/pipeline/product-images"
+          },
+          {
+            "blob": "5cb85452615fd3f324978476a6006d9097364dc9",
+            "line": 221,
+            "path": "frontend/src/app/content-studio/new/page.tsx",
+            "symbol": "fetch PUT /api/omni/content-studio/pipeline/product-images"
+          }
+        ],
+        "id": "edge:calls:248c73df8ec67c999487ad4e",
+        "relation": "calls",
+        "source": "ui_route:/content-studio/new",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:PUT:/api/omni/content-studio/pipeline/product-images"
       },
       {
         "attrs": {},
@@ -536,6 +667,56 @@
           "lifecycle": "active"
         },
         "target": "bff_operation:POST:/api/omni/cost/cost-items/bulk"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "13e7b0a9e9b07178f2bf484920d08437815517ab",
+            "line": 114,
+            "path": "frontend/src/app/playground/reverse-storyboard/page.tsx",
+            "symbol": "fetch POST /api/omni/mcp-exec/reverse-storyboard"
+          }
+        ],
+        "id": "edge:calls:324ae0e4863fecc33198f78d",
+        "relation": "calls",
+        "source": "ui_route:/playground/reverse-storyboard",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:POST:/api/omni/mcp-exec/reverse-storyboard"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "adbd37419555390cdf1dd8fc868488ea1190d884",
+            "line": 107,
+            "path": "frontend/src/app/insights/page.tsx",
+            "symbol": "fetch POST /api/omni/proposals"
+          }
+        ],
+        "id": "edge:calls:39c6c418950aabec995f2554",
+        "relation": "calls",
+        "source": "ui_route:/insights",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:POST:/api/omni/proposals"
       },
       {
         "attrs": {},
@@ -859,6 +1040,56 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "35d77469656a6b8551d6e8d03f183f013f70c0ab",
+            "line": 44,
+            "path": "frontend/src/app/prompt-lab/page.tsx",
+            "symbol": "fetch GET /api/omni/prompt/nodes"
+          }
+        ],
+        "id": "edge:calls:5777b8e9a43c159c6016c8a0",
+        "relation": "calls",
+        "source": "ui_route:/prompt-lab",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/prompt/nodes"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "f3715700738ef121b175912c8074e219c39a34d4",
+            "line": 48,
+            "path": "frontend/src/app/content-studio/briefs/page.tsx",
+            "symbol": "fetch GET /api/omni/ad-review/products"
+          }
+        ],
+        "id": "edge:calls:58c4823d08cf0dc386670c24",
+        "relation": "calls",
+        "source": "ui_route:/content-studio/briefs",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/ad-review/products"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "a5784e9e043a8b9f8f21f311ce33755c9678b063",
             "line": 215,
             "path": "frontend/src/app/knowledge/page.tsx",
@@ -959,6 +1190,31 @@
           "lifecycle": "active"
         },
         "target": "bff_operation:POST:/api/omni/sku-pipeline/list-scripts"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "adbd37419555390cdf1dd8fc868488ea1190d884",
+            "line": 219,
+            "path": "frontend/src/app/insights/page.tsx",
+            "symbol": "fetch GET /api/omni/cron-reports"
+          }
+        ],
+        "id": "edge:calls:664cac186b16f4f0ea513e13",
+        "relation": "calls",
+        "source": "ui_route:/insights",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/cron-reports"
       },
       {
         "attrs": {},
@@ -1134,6 +1390,31 @@
           "lifecycle": "active"
         },
         "target": "bff_operation:GET:/api/omni/knowledge/bases"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "d0b5c566dfd6daaaf56e6a6c1b1bf79c96ecffbe",
+            "line": 57,
+            "path": "frontend/src/app/tasks/page.tsx",
+            "symbol": "fetch GET /api/omni/knowledge/tasks"
+          }
+        ],
+        "id": "edge:calls:79e071a6049ac6539d6d550c",
+        "relation": "calls",
+        "source": "ui_route:/tasks",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/knowledge/tasks"
       },
       {
         "attrs": {},
@@ -1371,6 +1652,37 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "ee80a3c9a16c6e040cf8c08d660ca395d7d8da5e",
+            "line": 92,
+            "path": "frontend/src/app/agent-log/page.tsx",
+            "symbol": "fetch GET /api/omni/agent-log"
+          },
+          {
+            "blob": "ee80a3c9a16c6e040cf8c08d660ca395d7d8da5e",
+            "line": 109,
+            "path": "frontend/src/app/agent-log/page.tsx",
+            "symbol": "fetch GET /api/omni/agent-log"
+          }
+        ],
+        "id": "edge:calls:916aff95c19ea44d6712f7ba",
+        "relation": "calls",
+        "source": "ui_route:/agent-log",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/agent-log"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "66381368f9ed7db387110535aae4238d1a421081",
             "line": 165,
             "path": "frontend/src/app/ad-metrics/page.tsx",
@@ -1502,6 +1814,37 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "5cb85452615fd3f324978476a6006d9097364dc9",
+            "line": 179,
+            "path": "frontend/src/app/content-studio/new/page.tsx",
+            "symbol": "fetch POST /api/omni/content-studio/pipeline/extra-refs/upload"
+          },
+          {
+            "blob": "5cb85452615fd3f324978476a6006d9097364dc9",
+            "line": 189,
+            "path": "frontend/src/app/content-studio/new/page.tsx",
+            "symbol": "fetch POST /api/omni/content-studio/pipeline/extra-refs/upload"
+          }
+        ],
+        "id": "edge:calls:9c8299acdb7968df7e94dcb0",
+        "relation": "calls",
+        "source": "ui_route:/content-studio/new",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:POST:/api/omni/content-studio/pipeline/extra-refs/upload"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "aa6d554496b2581f6a90db4a3956c12441935a53",
             "line": 57,
             "path": "frontend/src/app/reverse-engineer/page.tsx",
@@ -1533,6 +1876,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "44d19dc342ced746a5ea81d57e2216686e74a52e",
+            "line": 91,
+            "path": "frontend/src/app/content-leaderboard/page.tsx",
+            "symbol": "fetch GET /api/omni/asset-lineage"
+          }
+        ],
+        "id": "edge:calls:a0a0e9b85f25f7f7918898fc",
+        "relation": "calls",
+        "source": "ui_route:/content-leaderboard",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/asset-lineage"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "8fc9fcdf5b9ffa13ecaf56cd18029521bb8952dd",
             "line": 2075,
             "path": "frontend/src/app/sku-pipeline/page.tsx",
@@ -1552,6 +1920,31 @@
           "lifecycle": "active"
         },
         "target": "bff_operation:POST:/api/omni/sku-pipeline/experiment-create"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "44d19dc342ced746a5ea81d57e2216686e74a52e",
+            "line": 69,
+            "path": "frontend/src/app/content-leaderboard/page.tsx",
+            "symbol": "fetch GET /api/omni/asset-metrics"
+          }
+        ],
+        "id": "edge:calls:acf69fccba255582c9b9a5c0",
+        "relation": "calls",
+        "source": "ui_route:/content-leaderboard",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/asset-metrics"
       },
       {
         "attrs": {},
@@ -1932,6 +2325,112 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "d0b5c566dfd6daaaf56e6a6c1b1bf79c96ecffbe",
+            "line": 103,
+            "path": "frontend/src/app/tasks/page.tsx",
+            "symbol": "fetch POST /api/omni/knowledge/tasks/batch-delete"
+          },
+          {
+            "blob": "d0b5c566dfd6daaaf56e6a6c1b1bf79c96ecffbe",
+            "line": 117,
+            "path": "frontend/src/app/tasks/page.tsx",
+            "symbol": "fetch POST /api/omni/knowledge/tasks/batch-delete"
+          }
+        ],
+        "id": "edge:calls:d18f238134c67d08c7a12cc3",
+        "relation": "calls",
+        "source": "ui_route:/tasks",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:POST:/api/omni/knowledge/tasks/batch-delete"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "fb2bf59a45639be0e1ea8cdbc7ecda749dc0d188",
+            "line": 65,
+            "path": "frontend/src/app/decisions/page.tsx",
+            "symbol": "fetch GET /api/omni/scout/decisions"
+          }
+        ],
+        "id": "edge:calls:d4ddf2dfa72570a24517caf7",
+        "relation": "calls",
+        "source": "ui_route:/decisions",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/scout/decisions"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "d47a0fe779f2a439a55a745c30b2bda9032ed00c",
+            "line": 64,
+            "path": "frontend/src/app/review/page.tsx",
+            "symbol": "fetch GET /api/omni/scout/weekly-review"
+          }
+        ],
+        "id": "edge:calls:d80bd3b00575d464ce805ce7",
+        "relation": "calls",
+        "source": "ui_route:/review",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/scout/weekly-review"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "fb2bf59a45639be0e1ea8cdbc7ecda749dc0d188",
+            "line": 92,
+            "path": "frontend/src/app/decisions/page.tsx",
+            "symbol": "fetch PATCH /api/omni/scout/decisions"
+          }
+        ],
+        "id": "edge:calls:d9d21c31be1df6af5c5c9e60",
+        "relation": "calls",
+        "source": "ui_route:/decisions",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:PATCH:/api/omni/scout/decisions"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "638e0e2f760d5aaa405c6e1780911606401fd231",
             "line": 1595,
             "path": "frontend/src/app/content-studio/page.tsx",
@@ -2057,6 +2556,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "adbd37419555390cdf1dd8fc868488ea1190d884",
+            "line": 94,
+            "path": "frontend/src/app/insights/page.tsx",
+            "symbol": "fetch GET /api/omni/proposals"
+          }
+        ],
+        "id": "edge:calls:efe4b79534a6468b1d7c96b2",
+        "relation": "calls",
+        "source": "ui_route:/insights",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:GET:/api/omni/proposals"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "66381368f9ed7db387110535aae4238d1a421081",
             "line": 91,
             "path": "frontend/src/app/ad-metrics/page.tsx",
@@ -2132,6 +2656,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "d47a0fe779f2a439a55a745c30b2bda9032ed00c",
+            "line": 177,
+            "path": "frontend/src/app/review/page.tsx",
+            "symbol": "fetch POST /api/omni/scout/strategies"
+          }
+        ],
+        "id": "edge:calls:f8cdf02e1274f7c179471b03",
+        "relation": "calls",
+        "source": "ui_route:/review",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:POST:/api/omni/scout/strategies"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "1688ad9537e12e0ad93979f77129dbb2a5573dd7",
             "line": 87,
             "path": "frontend/src/app/workspace/page.tsx",
@@ -2151,6 +2700,49 @@
           "lifecycle": "active"
         },
         "target": "bff_operation:GET:/api/omni/scout/dashboard/shop-todos"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "9f47028a234102475da2aacc0574bf99f9cbf04e",
+            "line": 142,
+            "path": "frontend/src/app/models/page.tsx",
+            "symbol": "fetch POST /api/omni/models"
+          },
+          {
+            "blob": "9f47028a234102475da2aacc0574bf99f9cbf04e",
+            "line": 208,
+            "path": "frontend/src/app/models/page.tsx",
+            "symbol": "fetch POST /api/omni/models"
+          },
+          {
+            "blob": "9f47028a234102475da2aacc0574bf99f9cbf04e",
+            "line": 263,
+            "path": "frontend/src/app/models/page.tsx",
+            "symbol": "fetch POST /api/omni/models"
+          },
+          {
+            "blob": "9f47028a234102475da2aacc0574bf99f9cbf04e",
+            "line": 300,
+            "path": "frontend/src/app/models/page.tsx",
+            "symbol": "fetch POST /api/omni/models"
+          }
+        ],
+        "id": "edge:calls:fdfd692f7ea6806d122289cd",
+        "relation": "calls",
+        "source": "ui_route:/models",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "bff_operation:POST:/api/omni/models"
       },
       {
         "attrs": {},
@@ -2182,6 +2774,81 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "d25f6e4387b2a1fc0dfb82ccb055d1e30f9957a2",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-console.yaml",
+            "symbol": "system-console"
+          }
+        ],
+        "id": "edge:declares:023b62d61974d3b8a2808347",
+        "relation": "declares",
+        "source": "feature:system-console",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/playground/reverse-storyboard"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "d25f6e4387b2a1fc0dfb82ccb055d1e30f9957a2",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-console.yaml",
+            "symbol": "system-console"
+          }
+        ],
+        "id": "edge:declares:0918a3db73e073249419d47c",
+        "relation": "declares",
+        "source": "feature:system-console",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/tasks"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "47ef409d86575b2615f2405a8dce74ddd501eefc",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/workspace-operations.yaml",
+            "symbol": "workspace-operations"
+          }
+        ],
+        "id": "edge:declares:0f385b642034fc70f3463817",
+        "relation": "declares",
+        "source": "feature:workspace-operations",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/agent-log"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "47ef409d86575b2615f2405a8dce74ddd501eefc",
             "line": 1,
             "path": "services/knowledge-engine/config/features/workspace-operations.yaml",
@@ -2201,6 +2868,31 @@
           "lifecycle": "active"
         },
         "target": "ui_route:/workspace"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "d25f6e4387b2a1fc0dfb82ccb055d1e30f9957a2",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-console.yaml",
+            "symbol": "system-console"
+          }
+        ],
+        "id": "edge:declares:259a7011080110343cf6cc0f",
+        "relation": "declares",
+        "source": "feature:system-console",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/prompt-lab"
       },
       {
         "attrs": {},
@@ -2282,6 +2974,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "47ef409d86575b2615f2405a8dce74ddd501eefc",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/workspace-operations.yaml",
+            "symbol": "workspace-operations"
+          }
+        ],
+        "id": "edge:declares:2fe740460dd928fe4690c00a",
+        "relation": "declares",
+        "source": "feature:workspace-operations",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/decisions"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "2d0a1d2760c0a7b63eab2306f6730c27415ae147",
             "line": 1,
             "path": "services/knowledge-engine/config/features/chat.yaml",
@@ -2301,6 +3018,31 @@
           "lifecycle": "active"
         },
         "target": "ui_route:/chat"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "55d9afdc8cbc0e46d37a810b99e43f385495a08c",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/ad-review.yaml",
+            "symbol": "ad-review"
+          }
+        ],
+        "id": "edge:declares:402c4ff8ba49f7bac79d1df8",
+        "relation": "declares",
+        "source": "feature:ad-review",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/ad-review/flywheel"
       },
       {
         "attrs": {},
@@ -2332,7 +3074,7 @@
         "confidence": 1.0,
         "evidence": [
           {
-            "blob": "cbdb487a0004d9f67a0197f852822cabaccd612c",
+            "blob": "9234002ad1aa84cfbb872e8638b21f925c344f3c",
             "line": 1,
             "path": "services/knowledge-engine/config/features/system-convergence-s4-s6.yaml",
             "symbol": "system-convergence-s4-s6"
@@ -2407,6 +3149,56 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "fe4ec4ac8cab3a90c145285e9dc31d0157c8a547",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/commerce-feedback.yaml",
+            "symbol": "commerce-feedback"
+          }
+        ],
+        "id": "edge:declares:6852205a8fe977174923f0b9",
+        "relation": "declares",
+        "source": "feature:commerce-feedback",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/content-leaderboard"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "9234002ad1aa84cfbb872e8638b21f925c344f3c",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-convergence-s4-s6.yaml",
+            "symbol": "system-convergence-s4-s6"
+          }
+        ],
+        "id": "edge:declares:6d4ff752a931d54f93020aeb",
+        "relation": "declares",
+        "source": "feature:system-convergence-s4-s6",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/system-graph"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "0915e573faf1bbab9f1361145de942764adfdf93",
             "line": 1,
             "path": "services/knowledge-engine/config/features/sku-pipeline.yaml",
@@ -2426,6 +3218,56 @@
           "lifecycle": "active"
         },
         "target": "ui_route:/sku-pipeline"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "5f27ed8b243c6d17f74adf022d5f65acc613cb0b",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/content-studio.yaml",
+            "symbol": "content-studio"
+          }
+        ],
+        "id": "edge:declares:7f8d67f7c1868429c253d108",
+        "relation": "declares",
+        "source": "feature:content-studio",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/content-studio/avatars"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "5f27ed8b243c6d17f74adf022d5f65acc613cb0b",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/content-studio.yaml",
+            "symbol": "content-studio"
+          }
+        ],
+        "id": "edge:declares:8072c948ff45a7b76e798639",
+        "relation": "declares",
+        "source": "feature:content-studio",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/content-studio/new"
       },
       {
         "attrs": {},
@@ -2457,6 +3299,56 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "5f27ed8b243c6d17f74adf022d5f65acc613cb0b",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/content-studio.yaml",
+            "symbol": "content-studio"
+          }
+        ],
+        "id": "edge:declares:82eceaf264ad4848ea66264a",
+        "relation": "declares",
+        "source": "feature:content-studio",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/content-studio/briefs"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "47ef409d86575b2615f2405a8dce74ddd501eefc",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/workspace-operations.yaml",
+            "symbol": "workspace-operations"
+          }
+        ],
+        "id": "edge:declares:84f7e9f8a11042737c682b4f",
+        "relation": "declares",
+        "source": "feature:workspace-operations",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/review"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "ed7239c826327c6b49306ff697ad1ce278ce8a50",
             "line": 1,
             "path": "services/knowledge-engine/config/features/knowledge.yaml",
@@ -2482,6 +3374,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "d25f6e4387b2a1fc0dfb82ccb055d1e30f9957a2",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-console.yaml",
+            "symbol": "system-console"
+          }
+        ],
+        "id": "edge:declares:9514e12c5eb9499f784dcf8a",
+        "relation": "declares",
+        "source": "feature:system-console",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/models"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "fe4ec4ac8cab3a90c145285e9dc31d0157c8a547",
             "line": 1,
             "path": "services/knowledge-engine/config/features/commerce-feedback.yaml",
@@ -2501,6 +3418,31 @@
           "lifecycle": "active"
         },
         "target": "ui_route:/ad-metrics"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "5f27ed8b243c6d17f74adf022d5f65acc613cb0b",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/content-studio.yaml",
+            "symbol": "content-studio"
+          }
+        ],
+        "id": "edge:declares:b9fdcbd539990ac9c60d4ce5",
+        "relation": "declares",
+        "source": "feature:content-studio",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/content-studio/guide"
       },
       {
         "attrs": {},
@@ -2607,6 +3549,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "47ef409d86575b2615f2405a8dce74ddd501eefc",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/workspace-operations.yaml",
+            "symbol": "workspace-operations"
+          }
+        ],
+        "id": "edge:declares:d29aa7c8642ed183bb0eab6a",
+        "relation": "declares",
+        "source": "feature:workspace-operations",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/insights"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "ba5c69aad87fa33abb0a294175dc0081019f2508",
             "line": 1,
             "path": "services/knowledge-engine/config/features/cost-management.yaml",
@@ -2626,6 +3593,31 @@
           "lifecycle": "active"
         },
         "target": "ui_route:/cost"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "d25f6e4387b2a1fc0dfb82ccb055d1e30f9957a2",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-console.yaml",
+            "symbol": "system-console"
+          }
+        ],
+        "id": "edge:declares:dfb2f8c2534af84d27376316",
+        "relation": "declares",
+        "source": "feature:system-console",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "ui_route:/playground"
       },
       {
         "attrs": {},
@@ -3037,7 +4029,7 @@
         "confidence": 1.0,
         "evidence": [
           {
-            "blob": "cbdb487a0004d9f67a0197f852822cabaccd612c",
+            "blob": "9234002ad1aa84cfbb872e8638b21f925c344f3c",
             "line": 1,
             "path": "services/knowledge-engine/config/features/system-convergence-s4-s6.yaml",
             "symbol": "system-convergence-s4-s6"
@@ -3652,6 +4644,31 @@
         "confidence": 1.0,
         "evidence": [
           {
+            "blob": "4e8280aa65f590534db3191e2d9db0821f82a9ca",
+            "line": 49,
+            "path": "frontend/src/app/api/omni/system-graph/[[...path]]/route.ts",
+            "symbol": "proxy GET /api/v1/system-graph/integration-plans"
+          }
+        ],
+        "id": "edge:proxies_to:763bd89f81ae998f8cd0fdc2",
+        "relation": "proxies_to",
+        "source": "bff_operation:GET:/api/omni/system-graph/integration-plans",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "rest_operation:GET:/api/v1/system-graph/integration-plans"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
             "blob": "35c3b328f4e257c6c8fa36688d46bd3a30ca4804",
             "line": 56,
             "path": "frontend/src/app/api/omni/cost/cost-items/route.ts",
@@ -3921,6 +4938,102 @@
         "attrs": {},
         "evidence": [
           {
+            "blob": "19b5338c9a58ccbf39f74d3b0d2a9c23f99d6840",
+            "line": 55,
+            "path": "frontend/src/app/api/omni/ad-review/[[...path]]/route.ts",
+            "symbol": "GET /api/omni/ad-review/products"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/ad-review/products",
+        "key": "GET:/api/omni/ad-review/products",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/ad-review/products",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "d9de001feb5df9ca7916245005c720a5ab7741b2",
+            "line": 7,
+            "path": "frontend/src/app/api/omni/agent-log/route.ts",
+            "symbol": "GET /api/omni/agent-log"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/agent-log",
+        "key": "GET:/api/omni/agent-log",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/agent-log",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "8223cb30e25ea3538cc8c9885c4e750f56f1fec2",
+            "line": 7,
+            "path": "frontend/src/app/api/omni/asset-lineage/route.ts",
+            "symbol": "GET /api/omni/asset-lineage"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/asset-lineage",
+        "key": "GET:/api/omni/asset-lineage",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/asset-lineage",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "ecb6d1df352e3329e9e5d26f0904c58cba884886",
+            "line": 9,
+            "path": "frontend/src/app/api/omni/asset-metrics/route.ts",
+            "symbol": "GET /api/omni/asset-metrics"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/asset-metrics",
+        "key": "GET:/api/omni/asset-metrics",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/asset-metrics",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
             "blob": "74db592b66329e0d484af3a198e380d6e9e26188",
             "line": 8,
             "path": "frontend/src/app/api/omni/assets/route.ts",
@@ -3945,6 +5058,30 @@
         "attrs": {},
         "evidence": [
           {
+            "blob": "b7cc34f1fa0796e724bbf2257751c87c3865bed3",
+            "line": 49,
+            "path": "frontend/src/app/api/omni/content-studio/[[...path]]/route.ts",
+            "symbol": "GET /api/omni/content-studio/pipeline"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/content-studio/pipeline",
+        "key": "GET:/api/omni/content-studio/pipeline",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/content-studio/pipeline",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
             "blob": "35c3b328f4e257c6c8fa36688d46bd3a30ca4804",
             "line": 50,
             "path": "frontend/src/app/api/omni/cost/cost-items/route.ts",
@@ -3955,6 +5092,30 @@
         "key": "GET:/api/omni/cost/cost-items",
         "kind": "bff_operation",
         "label": "BFF GET /api/omni/cost/cost-items",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "8dd4e1b378926c57fc79680de8c6b8caeb45b334",
+            "line": 7,
+            "path": "frontend/src/app/api/omni/cron-reports/route.ts",
+            "symbol": "GET /api/omni/cron-reports"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/cron-reports",
+        "key": "GET:/api/omni/cron-reports",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/cron-reports",
         "sources": [
           "frontend.static"
         ],
@@ -4065,6 +5226,30 @@
         "attrs": {},
         "evidence": [
           {
+            "blob": "a5319d5aac60fa6e15aabd963fdb70725b592a18",
+            "line": 24,
+            "path": "frontend/src/app/api/omni/knowledge/tasks/route.ts",
+            "symbol": "GET /api/omni/knowledge/tasks"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/knowledge/tasks",
+        "key": "GET:/api/omni/knowledge/tasks",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/knowledge/tasks",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
             "blob": "e0cc60ced89ba887de59efa31361e63e6bf33a66",
             "line": 82,
             "path": "frontend/src/app/api/omni/models/route.ts",
@@ -4099,6 +5284,54 @@
         "key": "GET:/api/omni/overview",
         "kind": "bff_operation",
         "label": "BFF GET /api/omni/overview",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "e1a030cd662d22d3ef0c8ac54a5ac11e60285056",
+            "line": 6,
+            "path": "frontend/src/app/api/omni/prompt/nodes/route.ts",
+            "symbol": "GET /api/omni/prompt/nodes"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/prompt/nodes",
+        "key": "GET:/api/omni/prompt/nodes",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/prompt/nodes",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "963e9ec35df86068fa79c653ac1de5f9c921cd39",
+            "line": 7,
+            "path": "frontend/src/app/api/omni/proposals/route.ts",
+            "symbol": "GET /api/omni/proposals"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/proposals",
+        "key": "GET:/api/omni/proposals",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/proposals",
         "sources": [
           "frontend.static"
         ],
@@ -4305,6 +5538,102 @@
         "attrs": {},
         "evidence": [
           {
+            "blob": "c5c715a43a4497db084823ed7e72c88fa030a1ae",
+            "line": 37,
+            "path": "frontend/src/app/api/omni/scout/[[...path]]/route.ts",
+            "symbol": "GET /api/omni/scout/weekly-review"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/scout/weekly-review",
+        "key": "GET:/api/omni/scout/weekly-review",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/scout/weekly-review",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "8766b286f04dcd37a47461cdae5279498edbf0db",
+            "line": 7,
+            "path": "frontend/src/app/api/omni/spend/route.ts",
+            "symbol": "GET /api/omni/spend"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/spend",
+        "key": "GET:/api/omni/spend",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/spend",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "4e8280aa65f590534db3191e2d9db0821f82a9ca",
+            "line": 71,
+            "path": "frontend/src/app/api/omni/system-graph/[[...path]]/route.ts",
+            "symbol": "GET /api/omni/system-graph/integration-plans"
+          }
+        ],
+        "id": "bff_operation:GET:/api/omni/system-graph/integration-plans",
+        "key": "GET:/api/omni/system-graph/integration-plans",
+        "kind": "bff_operation",
+        "label": "BFF GET /api/omni/system-graph/integration-plans",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "c5c715a43a4497db084823ed7e72c88fa030a1ae",
+            "line": 43,
+            "path": "frontend/src/app/api/omni/scout/[[...path]]/route.ts",
+            "symbol": "PATCH /api/omni/scout/decisions"
+          }
+        ],
+        "id": "bff_operation:PATCH:/api/omni/scout/decisions",
+        "key": "PATCH:/api/omni/scout/decisions",
+        "kind": "bff_operation",
+        "label": "BFF PATCH /api/omni/scout/decisions",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
             "blob": "ecb6d1df352e3329e9e5d26f0904c58cba884886",
             "line": 25,
             "path": "frontend/src/app/api/omni/asset-metrics/route.ts",
@@ -4363,6 +5692,30 @@
         "key": "POST:/api/omni/content-studio/digital-humans/promote-from-pipeline",
         "kind": "bff_operation",
         "label": "BFF POST /api/omni/content-studio/digital-humans/promote-from-pipeline",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "b7cc34f1fa0796e724bbf2257751c87c3865bed3",
+            "line": 53,
+            "path": "frontend/src/app/api/omni/content-studio/[[...path]]/route.ts",
+            "symbol": "POST /api/omni/content-studio/pipeline/extra-refs/upload"
+          }
+        ],
+        "id": "bff_operation:POST:/api/omni/content-studio/pipeline/extra-refs/upload",
+        "key": "POST:/api/omni/content-studio/pipeline/extra-refs/upload",
+        "kind": "bff_operation",
+        "label": "BFF POST /api/omni/content-studio/pipeline/extra-refs/upload",
         "sources": [
           "frontend.static"
         ],
@@ -4569,6 +5922,30 @@
         "attrs": {},
         "evidence": [
           {
+            "blob": "4b3bebe2d4eafe9383801780f9790c7a5032eb2d",
+            "line": 6,
+            "path": "frontend/src/app/api/omni/knowledge/tasks/batch-delete/route.ts",
+            "symbol": "POST /api/omni/knowledge/tasks/batch-delete"
+          }
+        ],
+        "id": "bff_operation:POST:/api/omni/knowledge/tasks/batch-delete",
+        "key": "POST:/api/omni/knowledge/tasks/batch-delete",
+        "kind": "bff_operation",
+        "label": "BFF POST /api/omni/knowledge/tasks/batch-delete",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
             "blob": "745926fecd86f37975b52819e122f52072b7e87b",
             "line": 10,
             "path": "frontend/src/app/api/omni/knowledge/upload/route.ts",
@@ -4603,6 +5980,102 @@
         "key": "POST:/api/omni/livestream-analysis/sync-provider",
         "kind": "bff_operation",
         "label": "BFF POST /api/omni/livestream-analysis/sync-provider",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "83fc34f497cfba73d3722cf080c89f2f655419ea",
+            "line": 14,
+            "path": "frontend/src/app/api/omni/mcp-exec/reverse-storyboard/route.ts",
+            "symbol": "POST /api/omni/mcp-exec/reverse-storyboard"
+          }
+        ],
+        "id": "bff_operation:POST:/api/omni/mcp-exec/reverse-storyboard",
+        "key": "POST:/api/omni/mcp-exec/reverse-storyboard",
+        "kind": "bff_operation",
+        "label": "BFF POST /api/omni/mcp-exec/reverse-storyboard",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "e0cc60ced89ba887de59efa31361e63e6bf33a66",
+            "line": 93,
+            "path": "frontend/src/app/api/omni/models/route.ts",
+            "symbol": "POST /api/omni/models"
+          }
+        ],
+        "id": "bff_operation:POST:/api/omni/models",
+        "key": "POST:/api/omni/models",
+        "kind": "bff_operation",
+        "label": "BFF POST /api/omni/models",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "963e9ec35df86068fa79c653ac1de5f9c921cd39",
+            "line": 24,
+            "path": "frontend/src/app/api/omni/proposals/route.ts",
+            "symbol": "POST /api/omni/proposals"
+          }
+        ],
+        "id": "bff_operation:POST:/api/omni/proposals",
+        "key": "POST:/api/omni/proposals",
+        "kind": "bff_operation",
+        "label": "BFF POST /api/omni/proposals",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "c5c715a43a4497db084823ed7e72c88fa030a1ae",
+            "line": 40,
+            "path": "frontend/src/app/api/omni/scout/[[...path]]/route.ts",
+            "symbol": "POST /api/omni/scout/strategies"
+          }
+        ],
+        "id": "bff_operation:POST:/api/omni/scout/strategies",
+        "key": "POST:/api/omni/scout/strategies",
+        "kind": "bff_operation",
+        "label": "BFF POST /api/omni/scout/strategies",
         "sources": [
           "frontend.static"
         ],
@@ -5478,6 +6951,30 @@
         }
       },
       {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "b7cc34f1fa0796e724bbf2257751c87c3865bed3",
+            "line": 57,
+            "path": "frontend/src/app/api/omni/content-studio/[[...path]]/route.ts",
+            "symbol": "PUT /api/omni/content-studio/pipeline/product-images"
+          }
+        ],
+        "id": "bff_operation:PUT:/api/omni/content-studio/pipeline/product-images",
+        "key": "PUT:/api/omni/content-studio/pipeline/product-images",
+        "kind": "bff_operation",
+        "label": "BFF PUT /api/omni/content-studio/pipeline/product-images",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
         "attrs": {
           "domain": "advertising",
           "owner": "omni"
@@ -5916,7 +7413,7 @@
         },
         "evidence": [
           {
-            "blob": "cbdb487a0004d9f67a0197f852822cabaccd612c",
+            "blob": "9234002ad1aa84cfbb872e8638b21f925c344f3c",
             "line": 1,
             "path": "services/knowledge-engine/config/features/system-convergence-s4-s6.yaml",
             "symbol": "system-convergence-s4-s6"
@@ -6247,7 +7744,7 @@
             "symbol": "system-convergence-runtime-execution"
           },
           {
-            "blob": "cbdb487a0004d9f67a0197f852822cabaccd612c",
+            "blob": "9234002ad1aa84cfbb872e8638b21f925c344f3c",
             "line": 1,
             "path": "services/knowledge-engine/config/features/system-convergence-s4-s6.yaml",
             "symbol": "system-convergence-s4-s6"
@@ -6869,6 +8366,58 @@
       },
       {
         "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "daa87c9bfcafee68d84c3c2b8c51fcec5a16d4c1",
+            "line": 1,
+            "path": "frontend/src/app/ad-review/flywheel/page.tsx",
+            "symbol": "/ad-review/flywheel"
+          }
+        ],
+        "id": "ui_route:/ad-review/flywheel",
+        "key": "/ad-review/flywheel",
+        "kind": "ui_route",
+        "label": "UI /ad-review/flywheel",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "ee80a3c9a16c6e040cf8c08d660ca395d7d8da5e",
+            "line": 1,
+            "path": "frontend/src/app/agent-log/page.tsx",
+            "symbol": "/agent-log"
+          }
+        ],
+        "id": "ui_route:/agent-log",
+        "key": "/agent-log",
+        "kind": "ui_route",
+        "label": "UI /agent-log",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
           "visible": true
         },
         "evidence": [
@@ -6883,6 +8432,32 @@
         "key": "/chat",
         "kind": "ui_route",
         "label": "UI /chat",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "44d19dc342ced746a5ea81d57e2216686e74a52e",
+            "line": 1,
+            "path": "frontend/src/app/content-leaderboard/page.tsx",
+            "symbol": "/content-leaderboard"
+          }
+        ],
+        "id": "ui_route:/content-leaderboard",
+        "key": "/content-leaderboard",
+        "kind": "ui_route",
+        "label": "UI /content-leaderboard",
         "sources": [
           "frontend.static"
         ],
@@ -6921,6 +8496,110 @@
       },
       {
         "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "bdb47907ce8d7fb2efab0774086f0acd178eae6e",
+            "line": 1,
+            "path": "frontend/src/app/content-studio/avatars/page.tsx",
+            "symbol": "/content-studio/avatars"
+          }
+        ],
+        "id": "ui_route:/content-studio/avatars",
+        "key": "/content-studio/avatars",
+        "kind": "ui_route",
+        "label": "UI /content-studio/avatars",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "f3715700738ef121b175912c8074e219c39a34d4",
+            "line": 1,
+            "path": "frontend/src/app/content-studio/briefs/page.tsx",
+            "symbol": "/content-studio/briefs"
+          }
+        ],
+        "id": "ui_route:/content-studio/briefs",
+        "key": "/content-studio/briefs",
+        "kind": "ui_route",
+        "label": "UI /content-studio/briefs",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "0debcfe7089a5ce3e7a503e83e9d6186a005d5e3",
+            "line": 1,
+            "path": "frontend/src/app/content-studio/guide/page.tsx",
+            "symbol": "/content-studio/guide"
+          }
+        ],
+        "id": "ui_route:/content-studio/guide",
+        "key": "/content-studio/guide",
+        "kind": "ui_route",
+        "label": "UI /content-studio/guide",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "5cb85452615fd3f324978476a6006d9097364dc9",
+            "line": 1,
+            "path": "frontend/src/app/content-studio/new/page.tsx",
+            "symbol": "/content-studio/new"
+          }
+        ],
+        "id": "ui_route:/content-studio/new",
+        "key": "/content-studio/new",
+        "kind": "ui_route",
+        "label": "UI /content-studio/new",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
           "visible": true
         },
         "evidence": [
@@ -6947,6 +8626,32 @@
       },
       {
         "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "fb2bf59a45639be0e1ea8cdbc7ecda749dc0d188",
+            "line": 1,
+            "path": "frontend/src/app/decisions/page.tsx",
+            "symbol": "/decisions"
+          }
+        ],
+        "id": "ui_route:/decisions",
+        "key": "/decisions",
+        "kind": "ui_route",
+        "label": "UI /decisions",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
           "visible": true
         },
         "evidence": [
@@ -6961,6 +8666,32 @@
         "key": "/inbox",
         "kind": "ui_route",
         "label": "UI /inbox",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "adbd37419555390cdf1dd8fc868488ea1190d884",
+            "line": 1,
+            "path": "frontend/src/app/insights/page.tsx",
+            "symbol": "/insights"
+          }
+        ],
+        "id": "ui_route:/insights",
+        "key": "/insights",
+        "kind": "ui_route",
+        "label": "UI /insights",
         "sources": [
           "frontend.static"
         ],
@@ -7051,6 +8782,32 @@
       },
       {
         "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "9f47028a234102475da2aacc0574bf99f9cbf04e",
+            "line": 1,
+            "path": "frontend/src/app/models/page.tsx",
+            "symbol": "/models"
+          }
+        ],
+        "id": "ui_route:/models",
+        "key": "/models",
+        "kind": "ui_route",
+        "label": "UI /models",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
           "visible": true
         },
         "evidence": [
@@ -7065,6 +8822,58 @@
         "key": "/news",
         "kind": "ui_route",
         "label": "UI /news",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "f563cf4d06fc6f9166eaa6e1bd62103e7a11bed2",
+            "line": 1,
+            "path": "frontend/src/app/playground/page.tsx",
+            "symbol": "/playground"
+          }
+        ],
+        "id": "ui_route:/playground",
+        "key": "/playground",
+        "kind": "ui_route",
+        "label": "UI /playground",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "13e7b0a9e9b07178f2bf484920d08437815517ab",
+            "line": 1,
+            "path": "frontend/src/app/playground/reverse-storyboard/page.tsx",
+            "symbol": "/playground/reverse-storyboard"
+          }
+        ],
+        "id": "ui_route:/playground/reverse-storyboard",
+        "key": "/playground/reverse-storyboard",
+        "kind": "ui_route",
+        "label": "UI /playground/reverse-storyboard",
         "sources": [
           "frontend.static"
         ],
@@ -7103,6 +8912,32 @@
       },
       {
         "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "35d77469656a6b8551d6e8d03f183f013f70c0ab",
+            "line": 1,
+            "path": "frontend/src/app/prompt-lab/page.tsx",
+            "symbol": "/prompt-lab"
+          }
+        ],
+        "id": "ui_route:/prompt-lab",
+        "key": "/prompt-lab",
+        "kind": "ui_route",
+        "label": "UI /prompt-lab",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
           "visible": true
         },
         "evidence": [
@@ -7117,6 +8952,32 @@
         "key": "/reverse-engineer",
         "kind": "ui_route",
         "label": "UI /reverse-engineer",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "d47a0fe779f2a439a55a745c30b2bda9032ed00c",
+            "line": 1,
+            "path": "frontend/src/app/review/page.tsx",
+            "symbol": "/review"
+          }
+        ],
+        "id": "ui_route:/review",
+        "key": "/review",
+        "kind": "ui_route",
+        "label": "UI /review",
         "sources": [
           "frontend.static"
         ],
@@ -7169,6 +9030,58 @@
         "key": "/sku-pipeline",
         "kind": "ui_route",
         "label": "UI /sku-pipeline",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "d7f5058a2063b1822682c2cd1c3c4ca38dc80f57",
+            "line": 1,
+            "path": "frontend/src/app/system-graph/page.tsx",
+            "symbol": "/system-graph"
+          }
+        ],
+        "id": "ui_route:/system-graph",
+        "key": "/system-graph",
+        "kind": "ui_route",
+        "label": "UI /system-graph",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "visible": false
+        },
+        "evidence": [
+          {
+            "blob": "d0b5c566dfd6daaaf56e6a6c1b1bf79c96ecffbe",
+            "line": 1,
+            "path": "frontend/src/app/tasks/page.tsx",
+            "symbol": "/tasks"
+          }
+        ],
+        "id": "ui_route:/tasks",
+        "key": "/tasks",
+        "kind": "ui_route",
+        "label": "UI /tasks",
         "sources": [
           "frontend.static"
         ],
@@ -7351,8 +9264,8 @@
       }
     ]
   },
-  "content_hash": "sha256:de871a9642ea35f376028cf98b9fcb0a5cf93a41db12487ca67083b05e10028f",
-  "generated_at_utc": "2026-08-01T15:06:14Z",
+  "content_hash": "sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064",
+  "generated_at_utc": "2026-08-01T16:07:43Z",
   "schema_version": 1,
-  "snapshot_id": "sha256:de871a9642ea35f376028cf98b9fcb0a5cf93a41db12487ca67083b05e10028f"
+  "snapshot_id": "sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064"
 }

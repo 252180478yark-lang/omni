@@ -16,6 +16,7 @@
     "edge:calls:08dcbac5f07bac8eaf4b29b1",
     "edge:calls:095dfae38fa9ed478f500a34",
     "edge:calls:09bb96e3c7d1a384f6db807e",
+    "edge:calls:0f31c7118a37ab91a8a5ef16",
     "edge:calls:196e97022137b4c08bbfa191",
     "edge:calls:1b430fb366e5996b0a43ead4",
     "edge:calls:26652d5a86ad9a4267d957cb",
@@ -57,8 +58,14 @@
     "edge:declares:2ee680cb8753eead81484708",
     "edge:declares:2f0e8811dd42d7b91b1bb085",
     "edge:declares:330debcd9d58f4cc43f78e6f",
+    "edge:declares:402c4ff8ba49f7bac79d1df8",
+    "edge:declares:6d4ff752a931d54f93020aeb",
+    "edge:declares:7f8d67f7c1868429c253d108",
+    "edge:declares:8072c948ff45a7b76e798639",
     "edge:declares:82bef72e835d56573a19a6c3",
+    "edge:declares:82eceaf264ad4848ea66264a",
     "edge:declares:8754da727759c5933d51be8d",
+    "edge:declares:b9fdcbd539990ac9c60d4ce5",
     "edge:declares:bc4569930962042dc810ab9a",
     "edge:declares:c28f7c125c0598cf51363f1d",
     "edge:declares:e59d1f5dfed556e32a3045b9",
@@ -80,9 +87,11 @@
     "edge:depends_on:f47a727486ef38528a14836a",
     "edge:depends_on:f8bf0027de0354aeed9207f4",
     "edge:depends_on:fa4a1fbc0a2916bb431b113f",
-    "edge:invokes:a6e9d54fe15deaa586fa4a7b"
+    "edge:invokes:a6e9d54fe15deaa586fa4a7b",
+    "edge:proxies_to:763bd89f81ae998f8cd0fdc2"
   ],
   "changed_nodes": [
+    "bff_operation:GET:/api/omni/system-graph/integration-plans",
     "bff_operation:POST:/api/omni/sku-pipeline/adopt",
     "bff_operation:POST:/api/omni/sku-pipeline/audience-match",
     "bff_operation:POST:/api/omni/sku-pipeline/audience-pack",
@@ -136,22 +145,18 @@
     "rest_operation:POST:/api/v1/system-graph/integration-plans",
     "ui_route:/",
     "ui_route:/sku-pipeline",
+    "ui_route:/system-graph",
     "ui_route:/workspace"
   ],
-  "from_snapshot": "sha256:1a29206e4f256762622b5213db7a1cff8c50a7bbe29e5bb525250efcb3f8dab7",
+  "from_snapshot": "sha256:db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840",
   "removed_edges": [
-    "edge:calls:0f31c7118a37ab91a8a5ef16",
-    "edge:calls:788133f62a7f584eedfe059e",
-    "edge:declares:6d4ff752a931d54f93020aeb",
-    "edge:proxies_to:763bd89f81ae998f8cd0fdc2"
+    "edge:calls:788133f62a7f584eedfe059e"
   ],
   "removed_nodes": [
-    "bff_operation:GET:/api/omni/system-graph/integration-plans",
-    "bff_operation:POST:/api/omni/sku-pipeline/selling-points-matrix",
-    "ui_route:/system-graph"
+    "bff_operation:POST:/api/omni/sku-pipeline/selling-points-matrix"
   ],
   "schema_version": 1,
-  "to_snapshot": "sha256:de871a9642ea35f376028cf98b9fcb0a5cf93a41db12487ca67083b05e10028f",
+  "to_snapshot": "sha256:d98a129e56374729b36667561e9dd250dd6941627fc07a8fb2f55322dfe78064",
   "unknown_edges": [],
   "unknown_nodes": []
 }

@@ -3,7 +3,7 @@ change_id: 2026-08-01-system-convergence-s7-s14
 title: System convergence S7 through S14 completion candidate
 state: GRAPH_DIFF_READY
 created_at: '2026-08-01T14:23:01Z'
-updated_at: '2026-08-01T16:24:00Z'
+updated_at: '2026-08-01T16:31:00Z'
 feature_refs:
 - feature_id: system-command-center
   feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S7
@@ -18,7 +18,7 @@ feature_refs:
 - feature_id: full-repository-fde-rollout
   feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S14
 before_snapshot:
-  ref: sha256:1a29206e4f256762622b5213db7a1cff8c50a7bbe29e5bb525250efcb3f8dab7
+  ref: sha256:db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840
 delivery:
   authority: ci_attestation
   base_commit: f62e1b4163389d026da932e9a4425899d740567a
@@ -130,7 +130,7 @@ current_chain:
     to: service:local-provider-runner
     relation: owns_exclusive_capability
   evidence:
-  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/sha256-1a29206e4f256762622b5213db7a1cff8c50a7bbe29e5bb525250efcb3f8dab7.json records 130 nodes and 144 edges; dynamic collectors are explicitly unknown.
+  - docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots/sha256-db6b377fbd4d2fabd46db9ea498b93592c5018111f5a0dc95c367fea6eed8840.json records the repaired S6 baseline at 164 nodes and 180 edges; dynamic collectors are explicitly unknown.
   - services/knowledge-engine/app/routers/system_graph.py exposes S4-S6 plan and issue routes but no refresh, persisted snapshot graph, search, diff, or evidence read contract.
   - frontend/src/app/system-graph/page.tsx is a candidate-plan page and frontend/src/components/app-sidebar.tsx exposes it as a separately maintained top-level item.
   - frontend/src/app/sku-pipeline/page.tsx is approximately 7500 lines and frontend/src/app/api/omni/sku-pipeline contains many route-specific string mappings.
@@ -550,7 +550,7 @@ verification_plan:
   required: true
 - id: VER-007
   layer: feature-and-graph
-  command: powershell -NoProfile -Command 'python -B services/knowledge-engine/scripts/system_graph.py generate --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python -B services/knowledge-engine/scripts/system_graph.py scan --no-dynamic --output docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots'
+  command: powershell -NoProfile -Command 'python -B services/knowledge-engine/scripts/system_graph.py generate --check; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; python -B services/knowledge-engine/scripts/system_graph.py scan --ref 109e63f9c64295720bce0da86f2a0e62f2e023f8 --no-dynamic --output docs/dev-changes/2026-08-01-system-convergence-s7-s14/graph-snapshots'
   proves: Canonical feature projections are current and the after graph is deterministic without converting unavailable runtime collectors to missing.
   required: true
 - id: VER-008
