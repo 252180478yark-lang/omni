@@ -87,6 +87,8 @@ def _is_mcp_tool(function: ast.AsyncFunctionDef | ast.FunctionDef) -> bool:
         target = call.func if call else decorator
         if isinstance(target, ast.Name) and target.id == "tool_with_audit":
             return True
+        if isinstance(target, ast.Attribute) and target.attr == "tool":
+            return True
     return False
 
 

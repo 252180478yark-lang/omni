@@ -243,6 +243,7 @@ def _wanted_tools() -> set[str]:
             # 2026-06-26 内容↔人群向量匹配 + 北极星闭环（migration 066）：投前向量预测分(排序少烧钱)
             # + 投后北极星并排 + 闭环校准(确定性记账建议三路权重，不训练)
             "embed_content_and_audience", "predict_audience_match", "calibrate_match_predictor",
+            "system_graph_plan_feature", "system_graph_update_plan", "system_graph_confirm_plan",
     }
 
 

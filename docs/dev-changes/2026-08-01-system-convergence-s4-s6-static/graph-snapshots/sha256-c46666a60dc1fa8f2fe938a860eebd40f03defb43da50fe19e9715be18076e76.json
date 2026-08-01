@@ -1,0 +1,378 @@
+{
+  "content": {
+    "collector_versions": {
+      "catalog.mcp": "1",
+      "catalog.openapi": "1",
+      "catalog.static": "1",
+      "delivery.external": "1",
+      "frontend.static": "1",
+      "health.definition": "1",
+      "health.runtime": "1",
+      "migration.static": "1",
+      "python.static": "1"
+    },
+    "commit": "c0ee12c3125616f7c6359aa051c5fb957fbbce1f",
+    "definition_revision": "sha256:720e8fb9868e244d637dfbf3f121bbf4872f41963612eee75ef679a3a40c24b3",
+    "diagnostics": [],
+    "edges": [
+      {
+        "attrs": {
+          "required": true
+        },
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "7c1f1059700a8b88f702ce7dca35174ef3040e11",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-convergence-s4-s6.yaml",
+            "symbol": "system-convergence-s4-s6"
+          }
+        ],
+        "id": "edge:depends_on:7409e31a119e3162313b879a",
+        "relation": "depends_on",
+        "source": "feature:system-convergence-s4-s6",
+        "sources": [
+          "health.definition"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "health_registration:service:knowledge-engine"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "0e4116d867105f3c33ce32a2b07049a35a56bf6c",
+            "line": 84,
+            "path": "services/knowledge-engine/app/routers/system_graph.py",
+            "symbol": "create_candidate_plan"
+          }
+        ],
+        "id": "edge:invokes:a6e9d54fe15deaa586fa4a7b",
+        "relation": "invokes",
+        "source": "rest_operation:POST:/api/v1/system-graph/integration-plans",
+        "sources": [
+          "python.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "service_symbol:app.services.system_graph.integration_plans.create_candidate_plan"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "c3500f87c85fc863529c83cdade3463a04e4e400",
+            "line": 77,
+            "path": "services/knowledge-engine/tests/test_system_graph_integration_router.py",
+            "symbol": "test_rest_plan_requires_owner_and_returns_only_candidate_artifacts"
+          }
+        ],
+        "id": "edge:verifies:3e825c965fffd916308ac0f3",
+        "relation": "verifies",
+        "source": "test:services/knowledge-engine/tests/test_system_graph_integration_router.py::test_rest_plan_requires_owner_and_returns_only_candidate_artifacts",
+        "sources": [
+          "python.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "rest_operation:POST:/api/v1/system-graph/integration-plans"
+      },
+      {
+        "attrs": {},
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "blob": "9dca03aa245330f32cb84526e9966ea0874e9f77",
+            "line": 13,
+            "path": "services/knowledge-engine/tests/test_system_graph_mcp_registration.py",
+            "symbol": "test_system_graph_mcp_tools_are_registered_and_in_doctor_contract"
+          }
+        ],
+        "id": "edge:verifies:9f2beaaa416de8cfe48231b5",
+        "relation": "verifies",
+        "source": "test:services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract",
+        "sources": [
+          "python.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        },
+        "target": "mcp_tool:system_graph_confirm_plan"
+      }
+    ],
+    "feature_ids": [
+      "system-convergence-s4-s6"
+    ],
+    "nodes": [
+      {
+        "attrs": {
+          "domain": "platform.system_graph",
+          "owner": "omni"
+        },
+        "evidence": [
+          {
+            "blob": "7c1f1059700a8b88f702ce7dca35174ef3040e11",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-convergence-s4-s6.yaml",
+            "symbol": "system-convergence-s4-s6"
+          }
+        ],
+        "id": "feature:system-convergence-s4-s6",
+        "key": "system-convergence-s4-s6",
+        "kind": "feature",
+        "label": "System graph planning and pilot controls",
+        "sources": [
+          "frontend.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "required": true
+        },
+        "evidence": [
+          {
+            "blob": "7c1f1059700a8b88f702ce7dca35174ef3040e11",
+            "line": 1,
+            "path": "services/knowledge-engine/config/features/system-convergence-s4-s6.yaml",
+            "symbol": "system-convergence-s4-s6"
+          }
+        ],
+        "id": "health_registration:service:knowledge-engine",
+        "key": "service:knowledge-engine",
+        "kind": "health_registration",
+        "label": "Health service:knowledge-engine",
+        "sources": [
+          "health.definition"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "34f3ec8a941cdab1b58eacf2e3c4187fa8a5ac18",
+            "line": 41,
+            "path": "services/knowledge-engine/app/mcp/tools/system_graph.py",
+            "symbol": "system_graph_confirm_plan"
+          }
+        ],
+        "id": "mcp_tool:system_graph_confirm_plan",
+        "key": "system_graph_confirm_plan",
+        "kind": "mcp_tool",
+        "label": "MCP system_graph_confirm_plan",
+        "sources": [
+          "python.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "symbol": "create_integration_plan"
+        },
+        "evidence": [
+          {
+            "blob": "0e4116d867105f3c33ce32a2b07049a35a56bf6c",
+            "line": 77,
+            "path": "services/knowledge-engine/app/routers/system_graph.py",
+            "symbol": "create_integration_plan"
+          }
+        ],
+        "id": "rest_operation:POST:/api/v1/system-graph/integration-plans",
+        "key": "POST:/api/v1/system-graph/integration-plans",
+        "kind": "rest_operation",
+        "label": "REST POST /api/v1/system-graph/integration-plans",
+        "sources": [
+          "python.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {},
+        "evidence": [
+          {
+            "blob": "70c0189f9c363c58d37dbfd966dd9b4a52dcfaaa",
+            "line": 294,
+            "path": "services/knowledge-engine/app/services/system_graph/integration_plans.py",
+            "symbol": "app.services.system_graph.integration_plans.create_candidate_plan"
+          }
+        ],
+        "id": "service_symbol:app.services.system_graph.integration_plans.create_candidate_plan",
+        "key": "app.services.system_graph.integration_plans.create_candidate_plan",
+        "kind": "service_symbol",
+        "label": "app.services.system_graph.integration_plans.create_candidate_plan",
+        "sources": [
+          "python.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "check_id": "system-graph-rest-owner",
+          "required": true
+        },
+        "evidence": [
+          {
+            "blob": "c3500f87c85fc863529c83cdade3463a04e4e400",
+            "line": 77,
+            "path": "services/knowledge-engine/tests/test_system_graph_integration_router.py",
+            "symbol": "test_rest_plan_requires_owner_and_returns_only_candidate_artifacts"
+          }
+        ],
+        "id": "test:services/knowledge-engine/tests/test_system_graph_integration_router.py::test_rest_plan_requires_owner_and_returns_only_candidate_artifacts",
+        "key": "services/knowledge-engine/tests/test_system_graph_integration_router.py::test_rest_plan_requires_owner_and_returns_only_candidate_artifacts",
+        "kind": "test",
+        "label": "Test test_rest_plan_requires_owner_and_returns_only_candidate_artifacts",
+        "sources": [
+          "python.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      },
+      {
+        "attrs": {
+          "check_id": "system-graph-mcp-doctor",
+          "required": true
+        },
+        "evidence": [
+          {
+            "blob": "9dca03aa245330f32cb84526e9966ea0874e9f77",
+            "line": 13,
+            "path": "services/knowledge-engine/tests/test_system_graph_mcp_registration.py",
+            "symbol": "test_system_graph_mcp_tools_are_registered_and_in_doctor_contract"
+          }
+        ],
+        "id": "test:services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract",
+        "key": "services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract",
+        "kind": "test",
+        "label": "Test test_system_graph_mcp_tools_are_registered_and_in_doctor_contract",
+        "sources": [
+          "python.static"
+        ],
+        "state": {
+          "evidence": "static",
+          "existence": "observed",
+          "health": "unknown",
+          "lifecycle": "active"
+        }
+      }
+    ],
+    "schema_version": 1,
+    "source_results": [
+      {
+        "collector_id": "catalog.mcp",
+        "reason_code": "dynamic_disabled",
+        "retryable": true,
+        "status": "unknown",
+        "version": "1"
+      },
+      {
+        "collector_id": "catalog.openapi",
+        "reason_code": "dynamic_disabled",
+        "retryable": true,
+        "status": "unknown",
+        "version": "1"
+      },
+      {
+        "collector_id": "catalog.static",
+        "reason_code": "",
+        "retryable": false,
+        "status": "success",
+        "version": "1"
+      },
+      {
+        "collector_id": "delivery.external",
+        "reason_code": "attestation_not_supplied",
+        "retryable": true,
+        "status": "unknown",
+        "version": "1"
+      },
+      {
+        "collector_id": "frontend.static",
+        "reason_code": "",
+        "retryable": false,
+        "status": "success",
+        "version": "1"
+      },
+      {
+        "collector_id": "health.definition",
+        "reason_code": "",
+        "retryable": false,
+        "status": "success",
+        "version": "1"
+      },
+      {
+        "collector_id": "health.runtime",
+        "reason_code": "dynamic_disabled",
+        "retryable": true,
+        "status": "unknown",
+        "version": "1"
+      },
+      {
+        "collector_id": "migration.static",
+        "reason_code": "",
+        "retryable": false,
+        "status": "success",
+        "version": "1"
+      },
+      {
+        "collector_id": "python.static",
+        "reason_code": "",
+        "retryable": false,
+        "status": "success",
+        "version": "1"
+      }
+    ]
+  },
+  "content_hash": "sha256:c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76",
+  "generated_at_utc": "2026-08-01T11:34:38Z",
+  "schema_version": 1,
+  "snapshot_id": "sha256:c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76"
+}

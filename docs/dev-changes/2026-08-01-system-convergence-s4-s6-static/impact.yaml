@@ -1,0 +1,469 @@
+schema_version: 3
+change_id: 2026-08-01-system-convergence-s4-s6-static
+title: System convergence S4 to S6 deterministic static chain
+state: GRAPH_DIFF_READY
+created_at: '2026-08-01T11:15:00Z'
+updated_at: '2026-08-01T13:10:00Z'
+feature_refs:
+- feature_id: system-convergence-s4-s6
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S4-S6
+before_snapshot:
+  ref: sha256:9fe346af8775bb9b5d3a8c18bf03cecff28eed2def9385e3629e969d3d58d3c8
+delivery:
+  authority: ci_attestation
+  base_commit: 041f05d931967d3ab014f031e684d1b02765c684
+risk:
+  level: R2
+  reasons:
+  - This adds deterministic graph, planning, CI-warning, REST/BFF/MCP adapters, and pilot contracts across schema, service, CLI, CI, and tests.
+  - The implementation is repository-local and does not execute migrations, start runtime resources, publish, call external systems, or alter business data.
+  external_effects: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: S3 can scan immutable facts, but lacks a deterministic planned-to-fact projection, evidence-backed repair cards, candidate-plan revision/CAS, and an R1/R2/R3 pilot calibration surface.
+  expected_outcome: A static, directly testable S4-S6 chain projects an impact contract over a fact snapshot, emits stable warning artifacts, preserves unknown rather than claiming removal, supports immutable candidate plan revisions and confirmation projections, and proves R3 fixtures cannot invoke an effect before approval.
+  user_visible_behavior:
+  - Required-edge gaps are shown as evidence-backed warning or unknown repair cards instead of silently turning facts green.
+  - Candidate plans remain revisions until explicit confirmation and cannot create a product write before confirmation.
+  - R1/R2 pilot fixtures can close their deterministic loop automatically in an isolated allocation; R3 fixtures remain pending with zero effect execution.
+current_chain:
+  nodes:
+  - artifact:impact-contract
+  - artifact:system-graph-s3-snapshot
+  - service:system-graph-planned-fact
+  - service:system-graph-integration-plans
+  - service:system-graph-pilot
+  - api:system-graph-integration-plans
+  - mcp:system-graph-integration-plans
+  - bff:system-graph
+  - runtime:isolated-r1-r2-pilot
+  - feature:system-convergence-s4-s6
+  - ci:system-graph-warning
+  edges:
+  - from: artifact:impact-contract
+    to: service:system-graph-planned-fact
+    relation: projects
+  - from: artifact:system-graph-s3-snapshot
+    to: service:system-graph-planned-fact
+    relation: compares
+  - from: service:system-graph-planned-fact
+    to: ci:system-graph-warning
+    relation: reports
+  - from: service:system-graph-integration-plans
+    to: artifact:impact-contract
+    relation: projects
+  - from: service:system-graph-pilot
+    to: service:system-graph-planned-fact
+    relation: verifies
+  - from: api:system-graph-integration-plans
+    to: service:system-graph-integration-plans
+    relation: invokes
+  - from: bff:system-graph
+    to: api:system-graph-integration-plans
+    relation: proxies
+  - from: mcp:system-graph-integration-plans
+    to: service:system-graph-integration-plans
+    relation: invokes
+  - from: runtime:isolated-r1-r2-pilot
+    to: service:system-graph-pilot
+    relation: verifies
+  - from: rest_operation:POST:/api/v1/system-graph/integration-plans
+    to: service_symbol:app.services.system_graph.integration_plans.create_candidate_plan
+    relation: invokes
+  - from: test:services/knowledge-engine/tests/test_system_graph_integration_router.py::test_rest_plan_requires_owner_and_returns_only_candidate_artifacts
+    to: rest_operation:POST:/api/v1/system-graph/integration-plans
+    relation: verifies
+  - from: test:services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract
+    to: mcp_tool:system_graph_confirm_plan
+    relation: verifies
+  evidence:
+  - services/knowledge-engine/scripts/system_graph.py:command_verify proves S3 facts are deterministic before this change.
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md:422 specifies planned/fact, issue, and CI behavior.
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md:552 specifies S5 candidate plans and confirmation constraints.
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md:522 specifies S6 R1/R2 pilots and a zero-side-effect R3 fixture.
+scope:
+  pages:
+  - frontend-bff:system-graph
+  apis:
+  - POST /api/v1/system-graph/integration-plans
+  - PATCH /api/v1/system-graph/integration-plans/{plan_id}
+  - POST /api/v1/system-graph/integration-plans/{plan_id}/confirm
+  - GET /api/v1/system-graph/integration-plans/{plan_id}
+  mcp_tools:
+  - system_graph_plan_feature
+  - system_graph_update_plan
+  - system_graph_confirm_plan
+  services:
+  - service:system-graph-planned-fact
+  - service:system-graph-integration-plans
+  - service:system-graph-pilot
+  database: []
+  data_sources:
+  - source:impact-contract
+  - source:system-graph-snapshot
+  states_workflows:
+  - state:planned-fact-edge
+  - state:integration-plan-revision
+  - state:pilot-warning-to-block
+  tests:
+  - test:system-graph-planned
+  - test:system-graph-integration-plans
+  - test:system-graph-pilot
+  - test:system-graph-feature-definition
+  docs:
+  - docs/dev-changes/2026-08-01-system-convergence-s4-s6-static
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: schema
+  node_id: schema:system-graph-s4-s6
+  paths:
+  - services/knowledge-engine/app/schemas/system_graph.py
+  upstream:
+  - artifact:impact-contract
+  downstream:
+  - service:system-graph-planned-fact
+  - service:system-graph-integration-plans
+  - service:system-graph-pilot
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-002
+  action: add
+  kind: service
+  node_id: service:system-graph-planned-fact
+  paths:
+  - services/knowledge-engine/app/services/system_graph/planned.py
+  upstream:
+  - artifact:impact-contract
+  - artifact:system-graph-s3-snapshot
+  downstream:
+  - ci:system-graph-warning
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+  - VER-005
+- id: CHG-003
+  action: add
+  kind: service
+  node_id: service:system-graph-integration-plans
+  paths:
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py
+  upstream:
+  - artifact:system-graph-s3-snapshot
+  downstream:
+  - artifact:impact-contract
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+  - VER-005
+- id: CHG-004
+  action: add
+  kind: service
+  node_id: service:system-graph-pilot
+  paths:
+  - services/knowledge-engine/app/services/system_graph/pilot.py
+  upstream:
+  - service:system-graph-planned-fact
+  downstream:
+  - state:pilot-warning-to-block
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+  - VER-005
+- id: CHG-005
+  action: modify
+  kind: cli
+  node_id: cli:system-graph-check-contract
+  paths:
+  - services/knowledge-engine/scripts/system_graph.py
+  - services/knowledge-engine/app/services/system_graph/__init__.py
+  upstream:
+  - service:system-graph-planned-fact
+  downstream:
+  - ci:system-graph-warning
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+- id: CHG-006
+  action: modify
+  kind: ci
+  node_id: ci:system-graph-warning
+  paths:
+  - .github/workflows/ci.yml
+  upstream:
+  - cli:system-graph-check-contract
+  downstream: []
+  contract_change: compatible
+  verification_ids:
+  - VER-006
+- id: CHG-007
+  action: add
+  kind: test
+  node_id: test:system-graph-s4-s6
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_planned.py
+  - services/knowledge-engine/tests/test_system_graph_integration_plans.py
+  - services/knowledge-engine/tests/test_system_graph_pilot.py
+  upstream:
+  - service:system-graph-planned-fact
+  - service:system-graph-integration-plans
+  - service:system-graph-pilot
+  downstream: []
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-003
+  - VER-004
+  - VER-007
+  - VER-008
+  - VER-009
+  - VER-010
+- id: CHG-008
+  action: modify
+  kind: service
+  node_id: service:system-graph-integration-plans
+  paths:
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py
+  - services/knowledge-engine/app/services/system_graph/snapshots.py
+  upstream:
+  - artifact:system-graph-s3-snapshot
+  downstream:
+  - api:system-graph-integration-plans
+  - mcp:system-graph-integration-plans
+  contract_change: compatible
+  verification_ids:
+  - VER-007
+  - VER-008
+- id: CHG-009
+  action: add
+  kind: api
+  node_id: api:system-graph-integration-plans
+  paths:
+  - services/knowledge-engine/app/routers/system_graph.py
+  - services/knowledge-engine/app/main.py
+  upstream:
+  - service:system-graph-integration-plans
+  downstream:
+  - bff:system-graph
+  contract_change: compatible
+  verification_ids:
+  - VER-007
+- id: CHG-010
+  action: add
+  kind: mcp
+  node_id: mcp:system-graph-integration-plans
+  paths:
+  - services/knowledge-engine/app/mcp/tools/system_graph.py
+  - services/knowledge-engine/app/mcp/server.py
+  - services/knowledge-engine/app/mcp/doctor.py
+  upstream:
+  - service:system-graph-integration-plans
+  downstream: []
+  contract_change: compatible
+  verification_ids:
+  - VER-008
+- id: CHG-011
+  action: add
+  kind: bff
+  node_id: bff:system-graph
+  paths:
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+  upstream:
+  - api:system-graph-integration-plans
+  downstream: []
+  contract_change: compatible
+  verification_ids:
+  - VER-009
+- id: CHG-012
+  action: add
+  kind: test
+  node_id: test:system-graph-adapters
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_integration_router.py
+  - services/knowledge-engine/tests/test_system_graph_mcp_registration.py
+  upstream:
+  - api:system-graph-integration-plans
+  - mcp:system-graph-integration-plans
+  downstream: []
+  contract_change: compatible
+  verification_ids:
+  - VER-007
+  - VER-008
+- id: CHG-013
+  action: add
+  kind: test
+  node_id: test:system-graph-s6-vertical
+  paths:
+  - tests/test_system_convergence_s6_vertical.py
+  upstream:
+  - runtime:isolated-r1-r2-pilot
+  - service:system-graph-pilot
+  downstream:
+  - artifact:fixture-ci-attestation
+  contract_change: compatible
+  verification_ids:
+  - VER-010
+- id: CHG-014
+  action: modify
+  kind: graph-fact-binding
+  node_id: feature:system-convergence-s4-s6
+  paths:
+  - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - docs/dev-changes/2026-08-01-system-convergence-s4-s6-static/graph-snapshots/*.json
+  - services/knowledge-engine/app/services/system_graph/collectors/python_graph.py
+  - services/knowledge-engine/app/services/system_graph/integration_plans.py
+  - services/knowledge-engine/app/routers/system_graph.py
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+  upstream:
+  - service:system-graph-integration-plans
+  - mcp:system-graph-integration-plans
+  downstream:
+  - artifact:system-graph-s4-s6-snapshot
+  contract_change: compatible
+  verification_ids:
+  - VER-011
+  - VER-012
+- id: CHG-015
+  action: add
+  kind: test
+  node_id: test:system-graph-feature-definition
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_s4_s6_feature.py
+  upstream:
+  - feature:system-convergence-s4-s6
+  downstream: []
+  contract_change: compatible
+  verification_ids:
+  - VER-011
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: A local-owner-only REST adapter and same-domain BFF/MCP facade expose candidate plan artifacts. They accept no product writer and require explicit confirmation before an impact draft is returned.
+  database:
+    status: not_applicable
+    strategy: S5 revisions are file-backed artifacts under an explicit service-owned directory; no migration, shared database access, or DDL is introduced.
+  workflow:
+    status: compatible
+    strategy: Existing S3 snapshots stay immutable, existing approval operations remain authoritative, and the new R3 fixture is incapable of invoking a real effect.
+  data_source:
+    status: compatible
+    strategy: Only explicit impact YAML and immutable graph snapshots are read; collector failures remain unknown.
+graph_acceptance:
+  required_edges:
+  - from: rest_operation:POST:/api/v1/system-graph/integration-plans
+    to: service_symbol:app.services.system_graph.integration_plans.create_candidate_plan
+    relation: invokes
+  - from: test:services/knowledge-engine/tests/test_system_graph_integration_router.py::test_rest_plan_requires_owner_and_returns_only_candidate_artifacts
+    to: rest_operation:POST:/api/v1/system-graph/integration-plans
+    relation: verifies
+  - from: test:services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract
+    to: mcp_tool:system_graph_confirm_plan
+    relation: verifies
+  allowed_unknowns:
+  - baseline_snapshot_artifact_unavailable
+  forbidden_orphans:
+  - rest_operation:POST:/api/v1/system-graph/integration-plans
+  - service_symbol:app.services.system_graph.integration_plans.create_candidate_plan
+  - mcp_tool:system_graph_confirm_plan
+risks:
+- id: RSK-001
+  description: A partial collector could be mistaken for a removed required edge.
+  mitigation: Missing edges are unknown whenever any relevant source is partial or unknown; only fully successful sources can emit deterministic missing warnings.
+- id: RSK-002
+  description: A plan confirmation could overwrite a concurrent or stale candidate plan.
+  mitigation: Every mutation requires an expected revision and confirmation rejects stale snapshots or unresolved critical unknowns.
+- id: RSK-003
+  description: Pilot calibration could accidentally turn unproven hypotheses into blocks.
+  mitigation: Only an explicit allowlist of deterministic observed-fact issue codes can block; hypotheses stay warnings.
+- id: RSK-004
+  description: An R3 test could call an external effect callback.
+  mitigation: The fixture exposes only a pending result and never accepts or invokes an effect callback.
+- id: RSK-005
+  description: A plan adapter could be mistaken for a product execution authority.
+  mitigation: The REST and MCP adapters only write candidate-plan revisions in an explicit local artifact root; confirmation returns an in-memory impact draft and reports product_write_performed false.
+- id: RSK-006
+  description: A vertical pilot could touch a canonical runtime or present a fixture receipt as external CI.
+  mitigation: The vertical test acquires a noncanonical temporary runtime allocation, commits only in a temporary repository, records a fixture-labeled attestation, and leaves delivery status pending external CI.
+- id: RSK-007
+  description: Abstract adapter names could be presented as observed graph facts without collector evidence.
+  mitigation: Canonical FeatureDefinition nodes and AST/decorator-derived edges are required for the final after-scan; abstract planned nodes remain plans until those facts exist.
+- id: RSK-008
+  description: The S3 baseline snapshot hash is recorded but its immutable JSON artifact is not materialized in this checkout, preventing a mechanical full before-to-after enumeration.
+  mitigation: Preserve the exact baseline hash, record a time-bounded accepted unknown, and require every canonical S4-S6 edge to be present with after-scan evidence; no delivery claim is made from this local graph state.
+out_of_scope:
+- No database migration, shared database access, Docker startup, production plan storage, external write, actual external CI attestation issuance, or worktree ownership operation is part of this change.
+- The separate pending R3 gate at docs/dev-changes/2026-08-01-system-convergence-s4-entry-prereqs/gate-plan.yaml remains unapproved and untouched.
+rollback:
+  strategy: Revert this single repository-local candidate; no migrations, runtime resources, or external state are created.
+  data_recovery: No business or persistent production data is written. File-backed test artifacts are created only inside temporary test directories.
+verification_plan:
+- id: VER-001
+  layer: schema
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_models.py
+  proves: Versioned S4-S6 graph and planning schemas reject malformed stable identities and preserve explicit states.
+  required: true
+- id: VER-002
+  layer: planned-fact
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_planned.py
+  proves: Impact-to-planned mapping, required-edge state, stable repair cards, unknown handling, and CLI warning serialization work against immutable fixtures.
+  required: true
+- id: VER-003
+  layer: integration-plan
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_integration_plans.py
+  proves: Candidate revisions use idempotent drafts, CAS, stale/rebase protection, critical-unknown rejection, and confirmation-to-impact projection with no product writes.
+  required: true
+- id: VER-004
+  layer: pilot
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_pilot.py
+  proves: R1/R2 fixture loops automatically, selected deterministic codes block, and the R3 fixture remains pending without an effect.
+  required: true
+- id: VER-005
+  layer: integration
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_models.py tests/test_system_graph_snapshots.py tests/test_system_graph_planned.py tests/test_system_graph_integration_plans.py tests/test_system_graph_pilot.py
+  proves: S3 facts remain compatible with the S4-S6 deterministic chain.
+  required: true
+- id: VER-006
+  layer: ci-contract
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_planned.py
+  proves: The CI warning command is covered by a deterministic negative/positive fixture before it is wired to the convergence job.
+  required: true
+- id: VER-007
+  layer: rest-api
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_integration_router.py
+  proves: Local owner permissions, explicit confirmation, snapshot staleness, revision persistence, and no-product-write impact drafts work through the REST boundary.
+  required: true
+- id: VER-008
+  layer: mcp-doctor
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_mcp_registration.py
+  proves: S5 MCP tools are registered and included in the MCP doctor contract without tool invocation or external effects.
+  required: true
+- id: VER-009
+  layer: bff
+  command: npm run lint -- --file src/app/api/omni/system-graph/[[...path]]/route.ts
+  proves: The same-domain BFF proxy has a typed, restricted route surface for the plan API.
+  required: true
+- id: VER-010
+  layer: isolated-vertical-pilot
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_vertical.py
+  proves: R1/R2 fixture changes run in noncanonical runtime allocations with commit-mode contract checks, fixture-labeled CI receipt, transcript, release/rollback evidence, and an inert R3 pre-approval check.
+  required: true
+- id: VER-011
+  layer: graph-fact-binding
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_system_graph_s4_s6_feature.py
+  proves: The S4-S6 FeatureDefinition, generated projection, REST-to-service fact, MCP decorator fact, and explicit test edges are observed from source rather than inferred by name similarity.
+  required: true
+- id: VER-012
+  layer: graph-after-scan
+  command: python -B scripts/system_graph.py verify --feature system-convergence-s4-s6 --ref HEAD
+  proves: The committed S4-S6 feature scan is deterministic, its required edges are present, and all fact evidence coordinates are valid.
+  required: true
+lock:
+  locked_at: '2026-08-01T13:10:00Z'
+  locked_by: codex
+  rationale: Scope was re-locked after graph binding review to add only R2 canonical FeatureDefinition and static collector evidence for the already-declared adapters. The separately frozen R3 ownership and runtime Gate remains excluded.

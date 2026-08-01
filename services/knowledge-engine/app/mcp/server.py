@@ -57,4 +57,6 @@ from app.mcp.tools import experiment as _experiment  # noqa: E402, F401  # 2026-
 
 # 单例：mount 与 lifespan 必须共用同一 ASGI 实例
 # path="/" 使子应用内路由为 "/"，挂载到 /mcp 后完整路径即 /mcp
+from app.mcp.tools import system_graph as _system_graph  # noqa: E402, F401
+
 mcp_http_app = mcp.http_app(path="/")

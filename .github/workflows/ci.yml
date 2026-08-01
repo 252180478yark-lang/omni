@@ -452,7 +452,7 @@ jobs:
   # service 都使用顶层 `app` 包时产生测试顺序污染；不连接外部服务或共享数据库。
   # ---------------------------------------------------------------------------
   convergence-foundation-gate:
-    name: S2-S3 Convergence Foundation（门禁）
+    name: S2-S6 Convergence Foundation（门禁）
     runs-on: ubuntu-latest
     env:
       PYTHONDONTWRITEBYTECODE: "1"
@@ -502,6 +502,22 @@ jobs:
           tests/test_system_graph_collectors.py
           tests/test_system_graph_snapshots.py
           tests/test_system_graph_redaction.py
+
+      - name: 实跑 S4-S6 planned/fact、候选计划与试点校准
+        working-directory: services/knowledge-engine
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_system_graph_planned.py
+          tests/test_system_graph_integration_plans.py
+          tests/test_system_graph_pilot.py
+          tests/test_system_graph_integration_router.py
+          tests/test_system_graph_mcp_registration.py
+          tests/test_system_graph_s4_s6_feature.py
+
+      - name: 实跑 S6 隔离运行时与候选收据竖切
+        run: >-
+          python -B -m pytest -q -p no:cacheprovider
+          tests/test_system_convergence_s6_vertical.py
 
       - name: 实跑 RuntimeAllocation 启动前预检
         working-directory: services/knowledge-engine
