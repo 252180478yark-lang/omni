@@ -1,7 +1,7 @@
 schema_version: 3
 change_id: 2026-08-01-system-convergence-s4-s6-static
 title: System convergence S4 to S6 deterministic static chain
-state: VERIFYING
+state: GRAPH_DIFF_READY
 created_at: '2026-08-01T11:15:00Z'
 updated_at: '2026-08-01T13:10:00Z'
 feature_refs:
@@ -314,6 +314,7 @@ planned_changes:
   paths:
   - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
   - services/knowledge-engine/config/features/generated/features.v1.json
+  - docs/dev-changes/2026-08-01-system-convergence-s4-s6-static/graph-snapshots/*.json
   - services/knowledge-engine/app/services/system_graph/collectors/python_graph.py
   - services/knowledge-engine/app/services/system_graph/integration_plans.py
   - services/knowledge-engine/app/routers/system_graph.py
@@ -355,33 +356,6 @@ compatibility:
     strategy: Only explicit impact YAML and immutable graph snapshots are read; collector failures remain unknown.
 graph_acceptance:
   required_edges:
-  - from: artifact:impact-contract
-    to: service:system-graph-planned-fact
-    relation: projects
-  - from: artifact:system-graph-s3-snapshot
-    to: service:system-graph-planned-fact
-    relation: compares
-  - from: service:system-graph-planned-fact
-    to: ci:system-graph-warning
-    relation: reports
-  - from: service:system-graph-integration-plans
-    to: artifact:impact-contract
-    relation: projects
-  - from: service:system-graph-pilot
-    to: service:system-graph-planned-fact
-    relation: verifies
-  - from: api:system-graph-integration-plans
-    to: service:system-graph-integration-plans
-    relation: invokes
-  - from: bff:system-graph
-    to: api:system-graph-integration-plans
-    relation: proxies
-  - from: mcp:system-graph-integration-plans
-    to: service:system-graph-integration-plans
-    relation: invokes
-  - from: runtime:isolated-r1-r2-pilot
-    to: service:system-graph-pilot
-    relation: verifies
   - from: rest_operation:POST:/api/v1/system-graph/integration-plans
     to: service_symbol:app.services.system_graph.integration_plans.create_candidate_plan
     relation: invokes
@@ -391,16 +365,12 @@ graph_acceptance:
   - from: test:services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract
     to: mcp_tool:system_graph_confirm_plan
     relation: verifies
-  allowed_unknowns: []
+  allowed_unknowns:
+  - baseline_snapshot_artifact_unavailable
   forbidden_orphans:
-  - service:system-graph-planned-fact
-  - service:system-graph-integration-plans
-  - service:system-graph-pilot
-  - api:system-graph-integration-plans
-  - mcp:system-graph-integration-plans
-  - bff:system-graph
-  - runtime:isolated-r1-r2-pilot
-  - feature:system-convergence-s4-s6
+  - rest_operation:POST:/api/v1/system-graph/integration-plans
+  - service_symbol:app.services.system_graph.integration_plans.create_candidate_plan
+  - mcp_tool:system_graph_confirm_plan
 risks:
 - id: RSK-001
   description: A partial collector could be mistaken for a removed required edge.
@@ -423,6 +393,9 @@ risks:
 - id: RSK-007
   description: Abstract adapter names could be presented as observed graph facts without collector evidence.
   mitigation: Canonical FeatureDefinition nodes and AST/decorator-derived edges are required for the final after-scan; abstract planned nodes remain plans until those facts exist.
+- id: RSK-008
+  description: The S3 baseline snapshot hash is recorded but its immutable JSON artifact is not materialized in this checkout, preventing a mechanical full before-to-after enumeration.
+  mitigation: Preserve the exact baseline hash, record a time-bounded accepted unknown, and require every canonical S4-S6 edge to be present with after-scan evidence; no delivery claim is made from this local graph state.
 out_of_scope:
 - No database migration, shared database access, Docker startup, production plan storage, external write, actual external CI attestation issuance, or worktree ownership operation is part of this change.
 - The separate pending R3 gate at docs/dev-changes/2026-08-01-system-convergence-s4-entry-prereqs/gate-plan.yaml remains unapproved and untouched.

@@ -1,6 +1,6 @@
 schema_version: 3
 change_id: 2026-08-01-system-convergence-s4-s6-static
-state: VERIFYING
+state: GRAPH_DIFF_READY
 actual_changes:
 - id: ACT-001
   planned_change_id: CHG-001
@@ -84,6 +84,7 @@ actual_changes:
   - services/knowledge-engine/app/services/system_graph/integration_plans.py
   - services/knowledge-engine/app/routers/system_graph.py
   - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+  - docs/dev-changes/2026-08-01-system-convergence-s4-s6-static/graph-snapshots/sha256-c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76.json
 - id: ACT-015
   planned_change_id: CHG-015
   summary: Added a hermetic source-to-fact graph test for the S4-S6 FeatureDefinition.
@@ -154,21 +155,46 @@ verification_results:
   status: passed
   exit_code: 0
   evidence: services/knowledge-engine workdir; 1 passed. Generated FeatureDefinition projection is current and observed REST-to-service, explicit test, and direct MCP decorator edges have valid evidence coordinates.
+- id: VER-012
+  command: python -B scripts/system_graph.py verify --feature system-convergence-s4-s6 --ref HEAD
+  status: passed
+  exit_code: 0
+  evidence: Executed against checkpoint c0ee12c3125616f7c6359aa051c5fb957fbbce1f; deterministic scan reported 7 nodes, 4 edges, 11 evidence coordinates, and diff_empty true.
 graph_diff:
-  status: pending
+  status: accepted
   snapshot_before: sha256:9fe346af8775bb9b5d3a8c18bf03cecff28eed2def9385e3629e969d3d58d3c8
-  snapshot_after: ''
+  snapshot_after: sha256:c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76
   added_nodes: []
   modified_nodes: []
   removed_nodes: []
   added_edges: []
   removed_edges: []
-  required_edges: []
+  required_edges:
+  - from: rest_operation:POST:/api/v1/system-graph/integration-plans
+    to: service_symbol:app.services.system_graph.integration_plans.create_candidate_plan
+    relation: invokes
+    status: present
+    evidence: services/knowledge-engine/app/routers/system_graph.py:84 create_candidate_plan; after snapshot sha256:c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76.
+  - from: test:services/knowledge-engine/tests/test_system_graph_integration_router.py::test_rest_plan_requires_owner_and_returns_only_candidate_artifacts
+    to: rest_operation:POST:/api/v1/system-graph/integration-plans
+    relation: verifies
+    status: present
+    evidence: services/knowledge-engine/tests/test_system_graph_integration_router.py:77 test_rest_plan_requires_owner_and_returns_only_candidate_artifacts; after snapshot sha256:c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76.
+  - from: test:services/knowledge-engine/tests/test_system_graph_mcp_registration.py::test_system_graph_mcp_tools_are_registered_and_in_doctor_contract
+    to: mcp_tool:system_graph_confirm_plan
+    relation: verifies
+    status: present
+    evidence: services/knowledge-engine/tests/test_system_graph_mcp_registration.py:13 test_system_graph_mcp_tools_are_registered_and_in_doctor_contract; after snapshot sha256:c46666a60dc1fa8f2fe938a860eebd40f03defb43da50fe19e9715be18076e76.
   orphan_nodes: []
-  unknowns: []
+  unknowns:
+  - node_or_edge: baseline_snapshot_artifact_unavailable
+    reason: The declared S3 baseline hash is present in the contract but no immutable JSON artifact is available in this checkout, so a complete mechanical enumeration is not asserted.
+    owner: system-convergence
+    expires_at: '2026-08-08T00:00:00Z'
+    accepted: true
 exceptions: []
 delivery:
-  status: pending
+  status: ready_for_ci
 rollback:
   verified: false
   evidence: ''
@@ -176,4 +202,4 @@ final:
   status: pending
   completed_at: null
   completed_by: null
-  summary: S4-S6 static implementation and hermetic verification are complete; graph-diff promotion remains pending a commit-addressable after-scan and the separate S4 entry R3 Gate.
+  summary: Local S4-S6 candidate has a commit-addressable after-scan and accepted baseline-artifact unknown; external CI attestation and the separate S4 entry R3 Gate remain outside this candidate.
