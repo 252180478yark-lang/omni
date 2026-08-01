@@ -14,7 +14,7 @@ capabilities:
   - {capability_id: issue-repair-history, kind: read}
   - {capability_id: repository-pilot-calibration, kind: admin}
 expected_edges:
-  - from: ui_route:/workspace/development
+  - from: ui_route:/system-graph
     to: bff_operation:GET:/api/omni/system-graph/integration-plans
     relation: calls
     required: true
@@ -48,7 +48,7 @@ checks:
   - check_id: system-graph-owner-page
     kind: command
     target: frontend/tests/system-graph-plan.test.tsx
-    verifies: ui_route:/workspace/development
+    verifies: ui_route:/system-graph
     required: true
 aliases:
   - {href: /system-graph, target: /workspace/development}

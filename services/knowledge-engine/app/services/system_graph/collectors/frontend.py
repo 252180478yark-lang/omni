@@ -60,7 +60,21 @@ class FrontendCollector:
                 for match in _EXPORT_RE.finditer(text):
                     route_index[(match.group(1), route)] = (route_file, _line(text, match.start()), route)
 
+        definitions = list(context.definitions)
         for definition in context.definitions:
+            for alias in definition.aliases:
+                definitions.append(
+                    definition.model_copy(
+                        update={
+                            "routes": definition.routes.model_copy(
+                                update={"canonical": alias.href, "visible": False}
+                            ),
+                            "aliases": [],
+                        }
+                    )
+                )
+
+        for definition in definitions:
             definition_path = context.repo / definition.source_path
             definition_evidence = [
                 evidence_ref(context.repo, definition_path, 1, definition.feature_id)

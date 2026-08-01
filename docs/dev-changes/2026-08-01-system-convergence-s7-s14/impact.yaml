@@ -3,7 +3,7 @@ change_id: 2026-08-01-system-convergence-s7-s14
 title: System convergence S7 through S14 completion candidate
 state: GRAPH_DIFF_READY
 created_at: '2026-08-01T14:23:01Z'
-updated_at: '2026-08-01T16:05:00Z'
+updated_at: '2026-08-01T16:24:00Z'
 feature_refs:
 - feature_id: system-command-center
   feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S7
@@ -78,6 +78,15 @@ risk:
     - services/knowledge-engine/tests/test_system_graph_snapshots.py
     required_level: R2
     risk_change: none; the scanner will materialize the requested immutable Git tree for static collection and retain unknown semantics for unavailable dynamic sources.
+  - id: DELTA-006
+    discovered_at: '2026-08-01T16:24:00Z'
+    reason: The S11 route convergence kept /system-graph as a compatibility page but the static frontend collector only scanned the new canonical page, incorrectly reporting the still-reachable candidate-plan BFF chain as removed.
+    added_paths:
+    - services/knowledge-engine/app/services/system_graph/collectors/frontend.py
+    - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+    - services/knowledge-engine/tests/test_system_graph_collectors.py
+    required_level: R2
+    risk_change: none; alias pages remain explicit compatibility facts and the canonical command-center route is observed independently.
   approval:
     required: false
     gate_ref: ''
@@ -511,7 +520,7 @@ rollback:
 verification_plan:
 - id: VER-001
   layer: knowledge-engine
-  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_snapshots.py services/knowledge-engine/tests/test_system_graph_persistence.py services/knowledge-engine/tests/test_system_graph_s7_router.py services/knowledge-engine/tests/test_tool_execution.py services/knowledge-engine/tests/test_metric_ownership.py services/knowledge-engine/tests/test_compatibility_retirement.py services/knowledge-engine/tests/test_runtime_trace.py services/knowledge-engine/tests/test_runtime_trace_router.py services/knowledge-engine/tests/test_runtime_radar.py services/knowledge-engine/tests/test_agent_contracts.py services/knowledge-engine/tests/test_host_contract.py
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_snapshots.py services/knowledge-engine/tests/test_system_graph_collectors.py services/knowledge-engine/tests/test_system_graph_s4_s6_feature.py services/knowledge-engine/tests/test_system_graph_persistence.py services/knowledge-engine/tests/test_system_graph_s7_router.py services/knowledge-engine/tests/test_tool_execution.py services/knowledge-engine/tests/test_metric_ownership.py services/knowledge-engine/tests/test_compatibility_retirement.py services/knowledge-engine/tests/test_runtime_trace.py services/knowledge-engine/tests/test_runtime_trace_router.py services/knowledge-engine/tests/test_runtime_radar.py services/knowledge-engine/tests/test_agent_contracts.py services/knowledge-engine/tests/test_host_contract.py
   proves: Graph/API, executor, metric, compatibility, runtime, session, and Host service boundaries pass deterministic fixtures.
   required: true
 - id: VER-002
