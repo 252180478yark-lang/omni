@@ -8,6 +8,15 @@ routes:
   canonical: /chat
   visible: true
   placements: [home, onboarding, direct]
+  owned_surfaces: [/chat]
+ia:
+  mode: development
+  primary_group: agents
+  primary_order: 0
+  contextual_groups:
+    - {mode: development, group: prompt-eval, order: 10}
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: agent-task-session, kind: generate}
 expected_edges: []
@@ -22,7 +31,8 @@ checks:
     target: /api/v1/system/health/features/chat
     verifies: health_registration:service:ai-provider-hub
     required: true
-aliases: []
+aliases:
+  - {href: /qa, target: /chat}
 dependencies:
   - {ref: health_registration:service:knowledge-engine, required: true}
   - {ref: health_registration:service:ai-provider-hub, required: true}

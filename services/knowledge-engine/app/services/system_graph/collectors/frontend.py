@@ -6,7 +6,11 @@ import re
 from pathlib import Path
 
 from app.schemas.system_graph import SourceStatus
-from app.services.system_graph.canonical import evidence_ref, make_node_id, normalize_route
+from app.services.system_graph.canonical import (
+    evidence_ref,
+    make_node_id,
+    normalize_route,
+)
 from app.services.system_graph.collectors.base import (
     CollectorContext,
     CollectorOutput,
@@ -22,9 +26,7 @@ _FETCH_RE = re.compile(
 _EXPORT_RE = re.compile(
     r"export\s+async\s+function\s+(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s*\("
 )
-_KNOWLEDGE_RE = re.compile(
-    r"\$\{base\.knowledge\}(?P<path>/api/v1[^`'\"\s,)]*)"
-)
+_KNOWLEDGE_RE = re.compile(r"\$\{base\.knowledge\}(?P<path>/api/v1[^`'\"\s,)]*)")
 
 
 def _line(text: str, offset: int) -> int:
@@ -47,7 +49,7 @@ def _method_after_fetch(text: str, match_end: int) -> str:
 
 class FrontendCollector:
     collector_id = "frontend.static"
-    version = "1"
+    version = "2"
 
     def collect(self, context: CollectorContext) -> CollectorOutput:
         output = CollectorOutput()
@@ -58,16 +60,20 @@ class FrontendCollector:
                 text = route_file.read_text(encoding="utf-8")
                 route = _route_from_file(api_root, route_file)
                 for match in _EXPORT_RE.finditer(text):
-                    route_index[(match.group(1), route)] = (route_file, _line(text, match.start()), route)
+                    route_index[(match.group(1), route)] = (
+                        route_file,
+                        _line(text, match.start()),
+                        route,
+                    )
 
-        definitions = list(context.definitions)
+        definitions = []
         for definition in context.definitions:
-            for alias in definition.aliases:
+            for owned_surface in sorted(definition.routes.owned_surfaces):
                 definitions.append(
                     definition.model_copy(
                         update={
                             "routes": definition.routes.model_copy(
-                                update={"canonical": alias.href, "visible": False}
+                                update={"canonical": owned_surface}
                             ),
                             "aliases": [],
                         }
@@ -95,12 +101,7 @@ class FrontendCollector:
             route = definition.routes.canonical
             page_relative = route.strip("/") or "page"
             page_path = (
-                context.repo
-                / "frontend"
-                / "src"
-                / "app"
-                / page_relative
-                / "page.tsx"
+                context.repo / "frontend" / "src" / "app" / page_relative / "page.tsx"
             )
             if route == "/":
                 page_path = context.repo / "frontend" / "src" / "app" / "page.tsx"
@@ -140,10 +141,15 @@ class FrontendCollector:
                     indexed = next(
                         (
                             value
-                            for (candidate_method, candidate_route), value in route_index.items()
+                            for (
+                                candidate_method,
+                                candidate_route,
+                            ), value in route_index.items()
                             if candidate_method == method
                             and "{path*}" in candidate_route
-                            and fetched_route.startswith(candidate_route.split("/{path*}", 1)[0] + "/")
+                            and fetched_route.startswith(
+                                candidate_route.split("/{path*}", 1)[0] + "/"
+                            )
                         ),
                         None,
                     )
@@ -153,7 +159,9 @@ class FrontendCollector:
                 bff_key = f"{method}:{fetched_route}"
                 bff_id = make_node_id("bff_operation", bff_key)
                 bff_evidence = [
-                    evidence_ref(context.repo, bff_path, bff_line, f"{method} {fetched_route}")
+                    evidence_ref(
+                        context.repo, bff_path, bff_line, f"{method} {fetched_route}"
+                    )
                 ]
                 output.nodes.append(
                     observed_node(
@@ -187,7 +195,11 @@ class FrontendCollector:
                 for index, export in enumerate(exports):
                     if export.group(1) != method:
                         continue
-                    end = exports[index + 1].start() if index + 1 < len(exports) else len(bff_text)
+                    end = (
+                        exports[index + 1].start()
+                        if index + 1 < len(exports)
+                        else len(bff_text)
+                    )
                     function_text = bff_text[export.start() : end]
                     delegated = re.search(r"\bproxy\(", function_text) is not None
                     outbound_text = bff_text if delegated else function_text

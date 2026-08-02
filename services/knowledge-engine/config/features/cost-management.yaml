@@ -12,6 +12,15 @@ routes:
   placements:
     - sidebar
     - direct
+  owned_surfaces:
+    - /cost
+ia:
+  mode: work
+  primary_group: products
+  primary_order: 10
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - capability_id: cost-query
     kind: read

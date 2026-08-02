@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, Archive, CheckCircle2, GitBranch, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { SystemGraphView } from '@/components/system-command-center/SystemGraphView'
 
 type PlanState = 'draft' | 'reviewing' | 'frozen' | 'stale' | 'archived'
 type Decision = 'reuse' | 'modify' | 'add' | 'not_do' | 'unknown'
@@ -81,7 +82,6 @@ function evidenceLabel(value: EvidenceClass) {
 }
 
 export default function SystemGraphPlanPage() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const legacyPlan = searchParams.get('legacy_plan') === '1'
   const [plans, setPlans] = useState<Plan[]>([])
@@ -122,11 +122,12 @@ export default function SystemGraphPlanPage() {
   }, [legacyPlan])
 
   useEffect(() => {
-    if (!legacyPlan) router.replace('/workspace?mode=development')
-    else void load()
-  }, [legacyPlan, load, router])
+    if (legacyPlan) void load()
+  }, [legacyPlan, load])
 
-  if (!legacyPlan) return <div className="p-8 text-sm text-slate-500">正在进入统一系统指挥中心…</div>
+  if (!legacyPlan) {
+    return <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6"><SystemGraphView /></div>
+  }
 
   const replacePlan = (plan: Plan, nextSummary?: PlanSummary) => {
     setPlans((current) => [plan, ...current.filter((item) => item.plan_id !== plan.plan_id)])
@@ -244,14 +245,12 @@ export default function SystemGraphPlanPage() {
     }
   }
 
-  const canConfirm = useMemo(() => {
-    if (!selected || selected.state !== 'reviewing') return false
-    return selected.items.every((item) => {
+  const canConfirm = selected !== null && selected.state === 'reviewing'
+    && selected.items.every((item) => {
       if (item.critical && item.decision === 'unknown') return false
       if (['add', 'modify'].includes(item.decision)) return ['accepted', 'rewritten'].includes(item.review_status)
       return true
     })
-  }, [selected])
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-6 py-6">

@@ -1,6 +1,6 @@
 schema_version: 1
 feature_id: sku-pipeline
-title: SKU Pipeline
+title: SKU 圈包链路
 domain: commerce.pipeline
 owner: {kind: team, id: omni}
 lifecycle: active
@@ -8,6 +8,15 @@ routes:
   canonical: /sku-pipeline
   visible: true
   placements: [sidebar, direct]
+  owned_surfaces: [/sku-pipeline]
+ia:
+  mode: work
+  primary_group: products
+  primary_order: 20
+  contextual_groups:
+    - {mode: development, group: workflows, order: 0}
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: sku-pipeline, kind: generate}
 expected_edges: []

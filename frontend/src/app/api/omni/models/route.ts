@@ -1,4 +1,12 @@
-import { fetchJson, serviceBase } from '../_shared'
+import {
+  approvalServiceHeaders,
+  fetchJson,
+  requireApprovalActor,
+  requireSameOrigin,
+  ServiceFetchError,
+  serviceBase,
+  type ApprovalActor,
+} from '../_shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -56,10 +64,19 @@ function mergeProviderModels(
   return providers.map((p) => (p.id === providerId ? { ...p, models: deduped } : p))
 }
 
-async function readProvidersSnapshot(base: ReturnType<typeof serviceBase>): Promise<ProviderItem[]> {
+async function readProvidersSnapshot(
+  base: ReturnType<typeof serviceBase>,
+  actor: ApprovalActor,
+): Promise<ProviderItem[]> {
+  const providersUrl = `${base.aiHub}/api/v1/ai/providers`
+  const modelsUrl = `${base.aiHub}/api/v1/ai/models?quick=true`
   const [providersResp, modelsResp] = await Promise.all([
-    fetchJson<ProvidersResp>(`${base.aiHub}/api/v1/ai/providers`),
-    fetchJson<ModelsResp>(`${base.aiHub}/api/v1/ai/models?quick=true`),
+    fetchJson<ProvidersResp>(providersUrl, {
+      headers: approvalServiceHeaders('GET', providersUrl, actor),
+    }),
+    fetchJson<ModelsResp>(modelsUrl, {
+      headers: approvalServiceHeaders('GET', modelsUrl, actor),
+    }),
   ])
 
   const modelMap = new Map<string, string[]>()
@@ -79,19 +96,28 @@ async function readProvidersSnapshot(base: ReturnType<typeof serviceBase>): Prom
   }))
 }
 
-export async function GET() {
+function developerBoundaryError(error: unknown, fallback: string): Response {
+  const status = error instanceof ServiceFetchError ? error.status : 502
+  const code = error instanceof ServiceFetchError ? error.code : fallback
+  return Response.json({ success: false, error: code }, { status })
+}
+
+export async function GET(request: Request) {
   try {
+    const actor = await requireApprovalActor(request)
     const base = serviceBase()
-    const providers = await readProvidersSnapshot(base)
+    const providers = await readProvidersSnapshot(base, actor)
 
     return Response.json({ success: true, data: { providers } })
   } catch (error) {
-    return Response.json({ success: false, error: String(error) }, { status: 500 })
+    return developerBoundaryError(error, 'model_status_unavailable')
   }
 }
 
 export async function POST(request: Request) {
   try {
+    requireSameOrigin(request)
+    const actor = await requireApprovalActor(request)
     const body = (await request.json()) as {
       action?: 'refresh' | 'update-provider' | 'test-connection'
       providerId?: string
@@ -106,15 +132,20 @@ export async function POST(request: Request) {
       if (!body.providerId) {
         return Response.json({ success: false, error: 'providerId is required' }, { status: 400 })
       }
-      const updateResp = await fetch(`${base.aiHub}/api/v1/ai/config`, {
+      const url = `${base.aiHub}/api/v1/ai/config`
+      const upstreamBody = JSON.stringify({
+        provider: body.providerId,
+        api_key: body.apiKey,
+        default_chat_model: body.defaultChatModel,
+        default_embedding_model: body.defaultEmbeddingModel,
+      })
+      const updateResp = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: body.providerId,
-          api_key: body.apiKey,
-          default_chat_model: body.defaultChatModel,
-          default_embedding_model: body.defaultEmbeddingModel,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...approvalServiceHeaders('POST', url, actor, upstreamBody),
+        },
+        body: upstreamBody,
         cache: 'no-store',
       })
       if (!updateResp.ok) {
@@ -127,15 +158,20 @@ export async function POST(request: Request) {
       if (!body.providerId) {
         return Response.json({ success: false, error: 'providerId is required' }, { status: 400 })
       }
-      const testResp = await fetch(`${base.aiHub}/api/v1/ai/test-connection`, {
+      const url = `${base.aiHub}/api/v1/ai/test-connection`
+      const upstreamBody = JSON.stringify({
+        provider: body.providerId,
+        api_key: body.apiKey,
+        default_chat_model: body.defaultChatModel,
+        smoke_image: true,
+      })
+      const testResp = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: body.providerId,
-          api_key: body.apiKey,
-          default_chat_model: body.defaultChatModel,
-          smoke_image: true,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...approvalServiceHeaders('POST', url, actor, upstreamBody),
+        },
+        body: upstreamBody,
         cache: 'no-store',
       })
       const testJson = (await testResp.json()) as {
@@ -151,7 +187,7 @@ export async function POST(request: Request) {
           model?: string
         } | null
       }
-      let providers = await readProvidersSnapshot(base)
+      let providers = await readProvidersSnapshot(base, actor)
       providers = mergeProviderModels(providers, body.providerId, testJson.models)
       return Response.json({
         success: true,
@@ -163,15 +199,20 @@ export async function POST(request: Request) {
     }
 
     if (body.action === 'refresh') {
-      let providers = await readProvidersSnapshot(base)
+      let providers = await readProvidersSnapshot(base, actor)
       if (body.providerId) {
-        const testResp = await fetch(`${base.aiHub}/api/v1/ai/test-connection`, {
+        const url = `${base.aiHub}/api/v1/ai/test-connection`
+        const upstreamBody = JSON.stringify({
+          provider: body.providerId,
+          api_key: body.apiKey,
+        })
+        const testResp = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider: body.providerId,
-            api_key: body.apiKey,
-          }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...approvalServiceHeaders('POST', url, actor, upstreamBody),
+          },
+          body: upstreamBody,
           cache: 'no-store',
         })
         const testJson = (await testResp.json()) as { success: boolean; provider: string; message: string; models?: string[] }
@@ -188,9 +229,9 @@ export async function POST(request: Request) {
     }
 
     // refresh/default behavior: return latest snapshot
-    const providers = await readProvidersSnapshot(base)
+    const providers = await readProvidersSnapshot(base, actor)
     return Response.json({ success: true, data: { providers } })
   } catch (error) {
-    return Response.json({ success: false, error: String(error) }, { status: 500 })
+    return developerBoundaryError(error, 'model_operation_unavailable')
   }
 }

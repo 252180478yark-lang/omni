@@ -92,6 +92,11 @@ export interface ApprovalActor {
   role: 'admin' | 'owner'
 }
 
+export interface AuthenticatedActor {
+  id: string
+  role: 'admin' | 'owner' | 'user'
+}
+
 export const APPROVAL_SESSION_COOKIE = 'omni_approval_session'
 
 function cookieValue(cookieHeader: string | null, name: string): string | null {
@@ -114,7 +119,7 @@ export function approvalAuthorizationFromCookie(cookieHeader: string | null): st
   return token ? `Bearer ${token}` : null
 }
 
-export async function verifyApprovalActor(authorization: string | null): Promise<ApprovalActor> {
+export async function verifyAuthenticatedActor(authorization: string | null): Promise<AuthenticatedActor> {
   if (!authorization || !/^Bearer\s+\S+$/i.test(authorization)) {
     throw new ServiceFetchError('authentication required', {
       status: 401,
@@ -151,20 +156,38 @@ export async function verifyApprovalActor(authorization: string | null): Promise
       code: 'authentication_required',
     })
   }
-  if (role !== 'admin' && role !== 'owner') {
+  if (role !== 'admin' && role !== 'owner' && role !== 'user') {
+    throw new ServiceFetchError('authentication required', {
+      status: 401,
+      source: 'identity-service:verify',
+      code: 'authentication_required',
+    })
+  }
+  return { id, role }
+}
+
+export async function verifyApprovalActor(authorization: string | null): Promise<ApprovalActor> {
+  const actor = await verifyAuthenticatedActor(authorization)
+  if (actor.role !== 'admin' && actor.role !== 'owner') {
     throw new ServiceFetchError('approval permission required', {
       status: 403,
       source: 'identity-service:verify',
       code: 'approval_admin_required',
     })
   }
-  return { id, role }
+  return { id: actor.id, role: actor.role }
 }
 
 export async function requireApprovalActor(request: Request): Promise<ApprovalActor> {
   const authorization = request.headers.get('authorization')
     || approvalAuthorizationFromCookie(request.headers.get('cookie'))
   return verifyApprovalActor(authorization)
+}
+
+export async function requireAuthenticatedActor(request: Request): Promise<AuthenticatedActor> {
+  const authorization = request.headers.get('authorization')
+    || approvalAuthorizationFromCookie(request.headers.get('cookie'))
+  return verifyAuthenticatedActor(authorization)
 }
 
 export function requireSameOrigin(request: Request): void {

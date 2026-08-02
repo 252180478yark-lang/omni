@@ -1,4 +1,11 @@
-import { fetchJson, serviceBase } from '../../../_shared'
+import {
+  approvalServiceHeaders,
+  fetchJson,
+  requireApprovalActor,
+  requireSameOrigin,
+  ServiceFetchError,
+  serviceBase,
+} from '../../../_shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -8,30 +15,47 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   try {
-    const payload = await request.json()
+    requireSameOrigin(request)
+    const actor = await requireApprovalActor(request)
+    const payload = await request.text()
     const base = serviceBase()
+    const url = `${base.knowledge}/api/v1/prompt/rules/${encodeURIComponent(params.id)}`
     const body = await fetchJson<{ data: { id: string } }>(
-      `${base.knowledge}/api/v1/prompt/rules/${encodeURIComponent(params.id)}`,
-      { method: 'PATCH', body: JSON.stringify(payload) },
+      url,
+      {
+        method: 'PATCH',
+        headers: approvalServiceHeaders('PATCH', url, actor, payload),
+        body: payload,
+      },
     )
     return Response.json({ success: true, data: body.data })
   } catch (error) {
-    return Response.json({ success: false, error: String(error) }, { status: 500 })
+    const status = error instanceof ServiceFetchError ? error.status : 502
+    const code = error instanceof ServiceFetchError ? error.code : 'prompt_rule_update_unavailable'
+    return Response.json({ success: false, error: code }, { status })
   }
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: { id: string } },
 ) {
   try {
+    requireSameOrigin(request)
+    const actor = await requireApprovalActor(request)
     const base = serviceBase()
+    const url = `${base.knowledge}/api/v1/prompt/rules/${encodeURIComponent(params.id)}`
     const body = await fetchJson<{ data: unknown }>(
-      `${base.knowledge}/api/v1/prompt/rules/${encodeURIComponent(params.id)}`,
-      { method: 'DELETE' },
+      url,
+      {
+        method: 'DELETE',
+        headers: approvalServiceHeaders('DELETE', url, actor),
+      },
     )
     return Response.json({ success: true, data: body.data })
   } catch (error) {
-    return Response.json({ success: false, error: String(error) }, { status: 500 })
+    const status = error instanceof ServiceFetchError ? error.status : 502
+    const code = error instanceof ServiceFetchError ? error.code : 'prompt_rule_delete_unavailable'
+    return Response.json({ success: false, error: code }, { status })
   }
 }

@@ -8,6 +8,14 @@ routes:
   canonical: /ad-metrics
   visible: true
   placements: [sidebar, direct]
+  owned_surfaces: [/ad-metrics, /content-leaderboard]
+ia:
+  mode: work
+  primary_group: operations
+  primary_order: 20
+  contextual_groups: []
+  phase: merge
+  flag: unified_shell
 capabilities:
   - {capability_id: commerce-feedback, kind: write}
 expected_edges: []
@@ -17,8 +25,7 @@ checks:
     target: /api/v1/system/health/features/commerce-feedback
     verifies: health_registration:service:knowledge-engine
     required: true
-aliases:
-  - {href: /content-leaderboard, target: /ad-metrics}
+aliases: []
 dependencies:
   - {ref: health_registration:service:knowledge-engine, required: true}
   - {ref: health_registration:service:ad-review-service, required: false}

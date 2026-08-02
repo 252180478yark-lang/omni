@@ -78,9 +78,7 @@ def _absolute_file_path(source: Mapping[str, str], name: str) -> str:
     return value
 
 
-def build_service_environment(
-    service: str, source: Mapping[str, str] | None = None
-) -> dict[str, str]:
+def build_service_environment(service: str, source: Mapping[str, str] | None = None) -> dict[str, str]:
     """Build a child environment bound only to allocated host endpoints."""
 
     if service not in ALLOWED_SERVICES:
@@ -126,8 +124,7 @@ def build_service_environment(
         password = quote(str(inherited.get("POSTGRES_PASSWORD", "changeme_in_production")), safe="")
         database = quote(_required(inherited, "POSTGRES_DB"), safe="")
         environment["DATABASE_URL"] = (
-            f"{DATABASE_SCHEMES[service]}://{user}:{password}@{loopback}:"
-            f"{ports['postgres']}/{database}"
+            f"{DATABASE_SCHEMES[service]}://{user}:{password}@{loopback}:{ports['postgres']}/{database}"
         )
     elif service == "frontend":
         environment.pop("DATABASE_URL", None)
@@ -136,18 +133,14 @@ def build_service_environment(
                 "PGHOST": loopback,
                 "PGPORT": str(ports["postgres"]),
                 "PGUSER": str(inherited.get("POSTGRES_USER", "omni_user")),
-                "PGPASSWORD": str(
-                    inherited.get("POSTGRES_PASSWORD", "changeme_in_production")
-                ),
+                "PGPASSWORD": str(inherited.get("POSTGRES_PASSWORD", "changeme_in_production")),
                 "PGDATABASE": _required(inherited, "POSTGRES_DB"),
             }
         )
 
     if service in REDIS_DATABASES:
         password = quote(str(inherited.get("REDIS_PASSWORD", "changeme_redis")), safe="")
-        environment["REDIS_URL"] = (
-            f"redis://:{password}@{loopback}:{ports['redis']}/{REDIS_DATABASES[service]}"
-        )
+        environment["REDIS_URL"] = f"redis://:{password}@{loopback}:{ports['redis']}/{REDIS_DATABASES[service]}"
     elif service == "frontend":
         password = quote(str(inherited.get("REDIS_PASSWORD", "changeme_redis")), safe="")
         environment["REDIS_URL"] = f"redis://:{password}@{loopback}:{ports['redis']}/1"
@@ -156,9 +149,7 @@ def build_service_environment(
 
     environment.pop("JWT_SECRET_KEY", None)
     if service == "identity-service":
-        environment["JWT_SECRET_KEY_FILE"] = _absolute_file_path(
-            inherited, "OMNI_IDENTITY_JWT_SECRET_FILE"
-        )
+        environment["JWT_SECRET_KEY_FILE"] = _absolute_file_path(inherited, "OMNI_IDENTITY_JWT_SECRET_FILE")
     else:
         environment.pop("JWT_SECRET_KEY_FILE", None)
 
@@ -169,6 +160,12 @@ def build_service_environment(
         )
     else:
         environment.pop("OMNI_APPROVAL_SERVICE_SECRET_FILE", None)
+
+    environment.pop("OMNI_COMPATIBILITY_TOKEN", None)
+    if service == "frontend":
+        environment["OMNI_COMPATIBILITY_TOKEN_FILE"] = _absolute_file_path(inherited, "OMNI_COMPATIBILITY_TOKEN_FILE")
+    else:
+        environment.pop("OMNI_COMPATIBILITY_TOKEN_FILE", None)
     return environment
 
 
@@ -195,7 +192,10 @@ def launch_process(
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     else:  # pragma: no cover - Windows is the primary dev launcher
         kwargs["start_new_session"] = True
-    with stdout_path.open("ab") as stdout_handle, stderr_path.open("ab") as stderr_handle:
+    with (
+        stdout_path.open("ab") as stdout_handle,
+        stderr_path.open("ab") as stderr_handle,
+    ):
         process = subprocess.Popen(
             list(command),
             cwd=cwd,

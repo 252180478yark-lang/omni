@@ -6,8 +6,16 @@ owner: {kind: team, id: omni}
 lifecycle: active
 routes:
   canonical: /workspace/execution
-  visible: false
+  visible: true
   placements: [direct]
+  owned_surfaces: [/workspace/execution]
+ia:
+  mode: development
+  primary_group: runs-system
+  primary_order: 0
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: runtime-execution-read, kind: read}
   - {capability_id: runtime-plan-draft, kind: write}

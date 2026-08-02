@@ -8,6 +8,14 @@ routes:
   canonical: /news
   visible: true
   placements: [home, onboarding, direct]
+  owned_surfaces: [/news, /news/archive]
+ia:
+  mode: work
+  primary_group: knowledge
+  primary_order: 20
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: news-discovery, kind: read}
 expected_edges: []

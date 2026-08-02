@@ -5,6 +5,8 @@ RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
+ARG NEXT_PUBLIC_OMNI_UNIFIED_SHELL=true
+ENV NEXT_PUBLIC_OMNI_UNIFIED_SHELL=${NEXT_PUBLIC_OMNI_UNIFIED_SHELL}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV VIDEO_ANALYSIS_SERVICE_URL=http://video-analysis:8006

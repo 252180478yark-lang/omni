@@ -1,10 +1,18 @@
-import { fetchJson, serviceBase } from '../../_shared'
+import {
+  approvalServiceHeaders,
+  fetchJson,
+  requireApprovalActor,
+  requireSameOrigin,
+  ServiceFetchError,
+  serviceBase,
+} from '../../_shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   try {
+    const actor = await requireApprovalActor(request)
     const url = new URL(request.url)
     const nodeId = url.searchParams.get('node_id') || ''
     const enabledOnly = url.searchParams.get('enabled_only') === 'true'
@@ -13,25 +21,38 @@ export async function GET(request: Request) {
     if (enabledOnly) qs.set('enabled_only', 'true')
 
     const base = serviceBase()
+    const upstreamUrl = `${base.knowledge}/api/v1/prompt/rules${qs.toString() ? '?' + qs.toString() : ''}`
     const body = await fetchJson<{ data: { rules: unknown[] } }>(
-      `${base.knowledge}/api/v1/prompt/rules${qs.toString() ? '?' + qs.toString() : ''}`,
+      upstreamUrl,
+      { headers: approvalServiceHeaders('GET', upstreamUrl, actor) },
     )
     return Response.json({ success: true, data: body.data })
   } catch (error) {
-    return Response.json({ success: false, error: String(error) }, { status: 500 })
+    const status = error instanceof ServiceFetchError ? error.status : 502
+    const code = error instanceof ServiceFetchError ? error.code : 'prompt_rules_unavailable'
+    return Response.json({ success: false, error: code }, { status })
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const payload = await request.json()
+    requireSameOrigin(request)
+    const actor = await requireApprovalActor(request)
+    const payload = await request.text()
     const base = serviceBase()
+    const url = `${base.knowledge}/api/v1/prompt/rules`
     const body = await fetchJson<{ data: { id: string } }>(
-      `${base.knowledge}/api/v1/prompt/rules`,
-      { method: 'POST', body: JSON.stringify(payload) },
+      url,
+      {
+        method: 'POST',
+        headers: approvalServiceHeaders('POST', url, actor, payload),
+        body: payload,
+      },
     )
     return Response.json({ success: true, data: body.data })
   } catch (error) {
-    return Response.json({ success: false, error: String(error) }, { status: 500 })
+    const status = error instanceof ServiceFetchError ? error.status : 502
+    const code = error instanceof ServiceFetchError ? error.code : 'prompt_rule_create_unavailable'
+    return Response.json({ success: false, error: code }, { status })
   }
 }

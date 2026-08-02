@@ -8,6 +8,14 @@ routes:
   canonical: /video-analysis
   visible: true
   placements: [home, onboarding, direct]
+  owned_surfaces: [/video-analysis]
+ia:
+  mode: work
+  primary_group: content
+  primary_order: 20
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: video-analysis, kind: generate}
 expected_edges: []

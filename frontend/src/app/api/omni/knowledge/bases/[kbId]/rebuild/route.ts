@@ -1,27 +1,34 @@
-import { serviceBase } from '../../../../_shared'
+import {
+  approvalServiceHeaders,
+  fetchJson,
+  requireApprovalActor,
+  requireSameOrigin,
+  ServiceFetchError,
+  serviceBase,
+} from '../../../../_shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function POST(_: Request, context: { params: { kbId: string } }) {
+export async function POST(request: Request, context: { params: { kbId: string } }) {
   try {
+    requireSameOrigin(request)
+    const actor = await requireApprovalActor(request)
     const { kbId } = context.params
     const base = serviceBase()
-    const upstream = await fetch(`${base.knowledge}/api/v1/knowledge/bases/${kbId}/rebuild`, {
+    const url = `${base.knowledge}/api/v1/knowledge/bases/${encodeURIComponent(kbId)}/rebuild`
+    const body = '{}'
+    const json = await fetchJson<{ data?: unknown }>(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    })
-    if (!upstream.ok) {
-      const text = await upstream.text()
-      return Response.json(
-        { success: false, error: `${upstream.status}: ${text}` },
-        { status: upstream.status },
-      )
-    }
-    const json = await upstream.json()
+      headers: {
+        ...approvalServiceHeaders('POST', url, actor, body),
+      },
+      body,
+    }, 'knowledge-engine:rebuild')
     return Response.json({ success: true, data: json.data ?? json })
   } catch (error) {
-    return Response.json({ success: false, error: String(error) }, { status: 500 })
+    const status = error instanceof ServiceFetchError ? error.status : 502
+    const code = error instanceof ServiceFetchError ? error.code : 'knowledge_rebuild_unavailable'
+    return Response.json({ success: false, error: code }, { status })
   }
 }

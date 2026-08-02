@@ -1,0 +1,30 @@
+schema_version: 1
+feature_id: agent-log
+title: Agent 运行日志
+domain: agent.observability
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /agent-log
+  visible: true
+  placements: [direct]
+  owned_surfaces: [/agent-log]
+ia:
+  mode: development
+  primary_group: agents
+  primary_order: 10
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
+capabilities:
+  - {capability_id: agent-run-log, kind: read}
+expected_edges: []
+checks:
+  - check_id: knowledge-health
+    kind: health
+    target: /api/v1/system/health/features/agent-log
+    verifies: health_registration:service:knowledge-engine
+    required: true
+aliases: []
+dependencies:
+  - {ref: health_registration:service:knowledge-engine, required: true}
