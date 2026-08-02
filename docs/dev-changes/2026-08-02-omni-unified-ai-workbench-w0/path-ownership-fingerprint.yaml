@@ -1,0 +1,230 @@
+schema_version: 2
+kind: omni_path_ownership_fingerprint
+change_id: 2026-08-02-omni-unified-ai-workbench-w0
+generated_at: '2026-08-02T06:22:51Z'
+lock_status: locked
+collector:
+  workspace_ownership:
+    path: scripts/workspace_ownership.py
+    git_blob: 1bec904e1fc6d722255511270acb81862b20e18d
+    sha256: 5556664899b6391dd5003fdc61404597b38332007acb18891c7945acf00854fd
+  delivery_verifier:
+    path: scripts/generate_implementation_status.py
+    git_blob: 4c76c80498a7dc3164aad6c989f1bd642048f76e
+    sha256: d2a3ac25147d6762df96184c68c871312b14bc83e17eb8dc55eb7e99ae5d8e7a
+  contract_validator:
+    path: .agents/skills/omni-feature-development/scripts/dev_contract.py
+    git_blob: 1c2325107e448daa30d43905b3b24057a9e6d589
+    sha256: cdb15520074cfe95ebe75c9099a60f3b80a13bf25f281c39fb3a2502328799b3
+decision:
+  id: USR-W0-A
+  status: accepted
+  semantic_requirement:
+    label: SKU 圈包链路
+    boundary: SKU -> 卖点矩阵 -> 人群匹配 -> 圈包 SOP -> audience_pack_id
+  preservation_rule: Keep the dirty primary file byte-for-byte untouched; transfer only the confirmed business semantics to W1.
+authorization:
+  source: current_user_request
+  request: 完成 W0
+  recorded_at: '2026-08-02T06:22:51Z'
+  scope: Lock the W0 baseline, fingerprints, predecessor handoff, and successor reservation only.
+  excluded: W1 product edits, push, pull request, merge, shared runtime adoption, migration, and external publication.
+baseline:
+  repository: E:/agent/omni
+  branch: codex/omni-unified-ai-workbench-w0
+  head: c8c8eec71d9d970272de84649cf31f87fd148441
+  origin_main: c8c8eec71d9d970272de84649cf31f87fd148441
+  merge_base: c8c8eec71d9d970272de84649cf31f87fd148441
+  product_tree_clean: true
+  worktree_delta: docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0 only
+  recoverable_anchor:
+    branch: codex/omni-unified-ai-workbench-w0
+    commit: c8c8eec71d9d970272de84649cf31f87fd148441
+  prd:
+    ref: 2026-08-02-omni-unified-ai-workbench-prd-v1.3
+    source_worktree: primary_audit_only
+    sha256: cfdc88d68e985c0801dfbc9ab1bccfc7b5a36059b8d5bd0feab4cf74687622bd
+successor:
+  change_id: 2026-08-02-omni-unified-ai-workbench-w1-shell-ia
+  owner: codex
+  status: reserved_pending_contract_lock
+  product_write_authorized: false
+  handoff_ref: docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/path-ownership-fingerprint.yaml
+  next_gate: Create the separate schema-v3 W1 contract, refresh every fingerprint and attestation, acquire a target-scoped WorkspaceLease, and transition W1 to IMPACT_LOCKED before product edits.
+w0_allowed_paths:
+- docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/impact.yaml
+- docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/completion.yaml
+- docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/path-ownership-fingerprint.yaml
+- docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/parallel-development-order.md
+- docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py
+feature_tree:
+  path: services/knowledge-engine/config/features
+  git_tree: 17c5e5f70a677eb9b1e08e6d3fd2a7c5df8b7692
+target_paths:
+- path: frontend/src/components/app-shell.tsx
+  git_blob: ed620d116291af91cadc8542e4f45c60a1df7c15
+  sha256: 4666f0b349463c3c70b2cd9e5850cabc38af6d5ae22a750e1733caa5d43a31e0
+- path: frontend/src/components/app-sidebar.tsx
+  git_blob: deb7fd4a26dc1352bb28fd90be15d61a165ad236
+  sha256: f00adc3fa2925e6e51017dd5f7f770802f1642cd16021c659a0406893c44acff
+- path: frontend/src/app/layout.tsx
+  git_blob: bec65a459f5f4c46c0d504d594910aed3c70d841
+  sha256: 4087cb36ec570775b8d2c128d26108f0e682bab01a1aa9db358e9af73e4e1541
+- path: frontend/src/app/globals.css
+  git_blob: a4c655a4b3b154f5c75e7a0e99283aa63ebdf4f9
+  sha256: 3f1758b0d9c6de3fbacb84cacd32034046a3092e5266fc40174b3b715cf8e2a1
+- path: frontend/src/app/page.tsx
+  git_blob: 5b26aace2227f5da8ee6a0d1a53c21de902505ea
+  sha256: 7a15bb0330014048959fd96d75a4ff5f7b9cd903c882376173838edab9f5d0f3
+- path: frontend/src/components/beginner-guide.tsx
+  git_blob: 593bfb3fcbf56a1100e3daf5ec2af2ad632741d2
+  sha256: 4b8bdecb997de5991a1a11b63911a10a4915cf5e1cd61b285563a6cf9d5c8724
+- path: frontend/src/lib/feature-registry.ts
+  git_blob: e7dfb7fe362bfa292cc7a8bd691df41236c277e0
+  sha256: bca2257da87c0b6d423f683ad4dd44225110ee99a338b9ebf5291cc8626fccc3
+- path: frontend/src/generated/feature-registry.v1.json
+  git_blob: 657f5b48415505f4f947abac67d3d163426d9986
+  sha256: 230c9f706049c99cd29cdcfe75b15e42be6ed33de0d036e11edd0016a1c155e7
+- path: services/knowledge-engine/config/features/ad-review.yaml
+  git_blob: 55d9afdc8cbc0e46d37a810b99e43f385495a08c
+  sha256: 6558683f452f2cce4e452e5197b3e70237345aa1734f95044d72c593e497b7ef
+- path: services/knowledge-engine/config/features/approval-inbox.yaml
+  git_blob: b4977ac79e722e61a2b10992c1c51cea003fb2a7
+  sha256: b4202039bbcf260d05447f3d1381a0f71189a97b57b4e1b853fc45d8f030a032
+- path: services/knowledge-engine/config/features/chat.yaml
+  git_blob: 2d0a1d2760c0a7b63eab2306f6730c27415ae147
+  sha256: 22379930cb1b592bdc2e839617d47ce9a64c4fa7ed5f10efd72f8b97b547ee8e
+- path: services/knowledge-engine/config/features/commerce-feedback.yaml
+  git_blob: fe4ec4ac8cab3a90c145285e9dc31d0157c8a547
+  sha256: 0290953989f36643be48100ca376eb90abba78b9621af91b58cb113652f5eb8f
+- path: services/knowledge-engine/config/features/content-studio.yaml
+  git_blob: 5f27ed8b243c6d17f74adf022d5f65acc613cb0b
+  sha256: 0f50ca966f6676a73a1f3a098da5eadcfb6bedb50c5f35e74f3c89cd40cab89c
+- path: services/knowledge-engine/config/features/cost-management.yaml
+  git_blob: ba5c69aad87fa33abb0a294175dc0081019f2508
+  sha256: 6e2312b70c275c3967e0491b412ec6e9cdf65f112bb8c82db320590c443cd3d5
+- path: services/knowledge-engine/config/features/feature-definition.schema.json
+  git_blob: 81dc5e560e9d976c59ab57a8acc9815e1a6160c1
+  sha256: a955f8e14c799b6269ba346f15f907a0036eff7b13fe0e35a7e318111cc64435
+- path: services/knowledge-engine/config/features/generated/features.v1.json
+  git_blob: 657f5b48415505f4f947abac67d3d163426d9986
+  sha256: 230c9f706049c99cd29cdcfe75b15e42be6ed33de0d036e11edd0016a1c155e7
+- path: services/knowledge-engine/config/features/knowledge-harvester.yaml
+  git_blob: 88d44e1c1ffcad4f9762f9bc4a9ac31d3f1720e1
+  sha256: ec81d917a56c37c21032fa5c7bce20bebd72fa7347b1003208debb1c635f1346
+- path: services/knowledge-engine/config/features/knowledge.yaml
+  git_blob: ed7239c826327c6b49306ff697ad1ce278ce8a50
+  sha256: 9949a77f47aeeffcddb9d0d7e1749f78bbdc1aaabc539dc3102f5928dd6f7275
+- path: services/knowledge-engine/config/features/livestream-analysis.yaml
+  git_blob: 89406a356189a64e5991427109c29a637a1b97f6
+  sha256: f668676b5119e26aee0e9c0f28d40a688b02e90af677e5c62605766701f1d806
+- path: services/knowledge-engine/config/features/news.yaml
+  git_blob: 06879c660a6dd02c09423588a98c4afa9d05bc85
+  sha256: 863882c7596401e7a66e2028e62732694a657d70b3e0db8175d1884b27d52930
+- path: services/knowledge-engine/config/features/product-management.yaml
+  git_blob: 04a8f4dd271424bac33cbf161220b310b23e386c
+  sha256: 19b9a95df2e1f69303e2dfab8dca6d0c0b4a5b432ea3c46e277c52f51a1a2885
+- path: services/knowledge-engine/config/features/reverse-engineer.yaml
+  git_blob: 7d4b0b126244b91c0086dca0e89354064e130ff9
+  sha256: 55570876672ff9860a25ceae4950ff267ee2ec4a0f5678c35aa042d42a0454d5
+- path: services/knowledge-engine/config/features/scout-monitoring.yaml
+  git_blob: 28db80a15aa0551af7f4959dbea7a7b3d5729d75
+  sha256: c97c88b03330a18d3b76aeb5761a71e93b40f9ea9b99a53f9ea6179a3f51ed5e
+- path: services/knowledge-engine/config/features/sku-pipeline.yaml
+  git_blob: 0915e573faf1bbab9f1361145de942764adfdf93
+  sha256: 967a195c13324ad39156db334ff1ecb24652d4765780872b8907298d08ed3826
+- path: services/knowledge-engine/config/features/system-console.yaml
+  git_blob: d25f6e4387b2a1fc0dfb82ccb055d1e30f9957a2
+  sha256: 2b1762838d0cb6b2b97f9e94feddf1bd045166c219e60afbaec0377829cc77f8
+- path: services/knowledge-engine/config/features/system-convergence-runtime-execution.yaml
+  git_blob: 4ae1bcb6f39b1d7bd721e6ef3c507a1e9de98253
+  sha256: 6ced9e08804aa3a439b3fff54a3dddbf7168b41a8a39e79af428a7232f80dd1a
+- path: services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+  git_blob: 9234002ad1aa84cfbb872e8638b21f925c344f3c
+  sha256: 1f20287b229902d571289c55882e13da434254d91da67a20e23b55b6a854b680
+- path: services/knowledge-engine/config/features/video-analysis.yaml
+  git_blob: fdf1f21d74d28f69120ef3c040c2240b3d07ae79
+  sha256: 2210a91759e9d24ea4a0ccde7d7ac1a9793b8cc1b17664dc7b89120186f46a79
+- path: services/knowledge-engine/config/features/workspace-operations.yaml
+  git_blob: 47ef409d86575b2615f2405a8dce74ddd501eefc
+  sha256: b4ef3e2c64b2664d0e3cd0a7ccb6783e1d38c63f4cf9018a52b57018d8432a64
+verified_deliveries:
+- change_id: 2026-07-30-system-convergence-s0-s3-foundation
+  subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+  workflow_run_id: '30688798400'
+  artifact_id: '8814940928'
+  artifact_name: delivery-attestation-041f05d931967d3ab014f031e684d1b02765c684
+  artifact_digest: sha256:f6d196487027ab2cd4c2c0896ac386e8c624ec499e6fb9fa7eaa6b372fa84fcf
+  cache_path: omni-delivery/verified-receipts/w0/30688798400-041f05d931967d3ab014f031e684d1b02765c684.json
+  raw_sha256: 49cafd772c00d7f32e9195827a325ae44a13f12021645ca2d6e1481fad69e52c
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/30688798400
+- change_id: 2026-08-01-system-convergence-s4-s6-static
+  subject_commit: af11294eeadc84a45284c3265ddf623826edb1f7
+  workflow_run_id: '30703198969'
+  artifact_id: '8819498174'
+  artifact_name: delivery-attestation-af11294eeadc84a45284c3265ddf623826edb1f7
+  artifact_digest: sha256:8bf61970183c6fa9c7b84b32841d78d4a8515af4d33af3bb24fd52b0db89021a
+  cache_path: omni-delivery/verified-receipts/w0/30703198969-af11294eeadc84a45284c3265ddf623826edb1f7.json
+  raw_sha256: 65449402269b0bb9bd059c8b9f3dbbbb47ea9e15c5db85c828604e276270affd
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/30703198969
+- change_id: 2026-08-01-system-convergence-s4-s6-gap-closure
+  subject_commit: 5d760f733aeb976c5b88419c5406383bf272ca86
+  workflow_run_id: '30709405646'
+  artifact_id: '8821387408'
+  artifact_name: delivery-attestation-5d760f733aeb976c5b88419c5406383bf272ca86
+  artifact_digest: sha256:754aaa08b8c82140b298da4a5059c3afaa5b390e9af05fad83c0cafa7d1dd09f
+  cache_path: omni-delivery/verified-receipts/w0/30709405646-5d760f733aeb976c5b88419c5406383bf272ca86.json
+  raw_sha256: bfa2bcfd174c53a12a4b00a59f95af89ec09e6f0947551fcd974c0a616f8d50f
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/30709405646
+- change_id: 2026-08-01-system-convergence-s7-s14
+  subject_commit: c8c8eec71d9d970272de84649cf31f87fd148441
+  workflow_run_id: '30709994820'
+  artifact_id: '8821567739'
+  artifact_name: delivery-attestation-c8c8eec71d9d970272de84649cf31f87fd148441
+  artifact_digest: sha256:ccafef633f2fd2723f8da30c81f3950a0e3ccf8854d6917ba866a3b53678c9de
+  cache_path: omni-delivery/verified-receipts/w0/30709994820-c8c8eec71d9d970272de84649cf31f87fd148441.json
+  raw_sha256: c3cfdae984ad08f27a388af5e7cac903a446d1c575a2f378f0ceb61202bf6eae
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/30709994820
+superseded_predecessors:
+- change_id: 2026-08-01-system-convergence-s8-s10
+  contract_state: GRAPH_DIFF_READY
+  delivery_claim: VERIFIED_NOT_DELIVERED
+  disposition: superseded_for_exact_target_paths
+  superseded_by_delivery: 2026-08-01-system-convergence-s7-s14
+  paths:
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - services/knowledge-engine/config/features/system-convergence-runtime-execution.yaml
+  candidate:
+    worktree: E:/agent/omni/.worktrees/system-convergence-s8-s10
+    branch: codex/system-convergence-s8-s10
+    head: 8df227bc1be5dee02bea8006d596e30aae802539
+    status: clean
+    active_lease: false
+  governance_decision:
+    authority: current_user_request_complete_w0
+    effect: Release only these two path claims to the W1 successor because the later S7-S14 mainline delivery contains both paths; do not describe the S8-S10 contract itself as delivered and do not alter its worktree.
+primary_dirty_evidence:
+  worktree_id: primary
+  path: frontend/src/components/app-sidebar.tsx
+  disposition: preserve_in_place
+  ownership: preserved_external_user
+  status: ' M frontend/src/components/app-sidebar.tsx'
+  head_blob: 7ad55121d0efd4d662138a4e615947bdd5afa9fe
+  index_blob: 7ad55121d0efd4d662138a4e615947bdd5afa9fe
+  worktree_blob: c3584678ec5bac31bab7c91e3c6e8e7899473b7f
+  worktree_sha256: 33b411f70489a97cfc7c05fe610245ca96e031aa2386063b26490af921224759
+  scoped_diff_sha256: 24525214230c4b78a5057f4300e542ba025998bff2154730d0123ebcbddab65f
+  mtime_utc: '2026-07-05T04:27:19Z'
+  import_policy: semantic_reference_only
+ownership_gate:
+  current_result: passed
+  target_path_count: 29
+  verified_delivery_count: 4
+  known_superseded_claim_count: 2
+  unknown_shared_writer_count: 0
+  target_active_lease_count: 0
+  w0_product_dirty_path_count: 0
+  primary_sidebar_scope_conflict_after_live_delivery: false
+  w1_write_gate: closed_until_separate_w1_contract_and_workspace_lease
+  release_condition: Satisfied for W0 baseline locking only; it does not authorize W1 product edits.
+  on_drift: Stop before W1 product edits, preserve every worktree, and record a new contract delta plus refreshed evidence; never move the contract state backward or use reset, clean, force, or stash drop.
