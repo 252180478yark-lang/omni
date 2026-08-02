@@ -1,0 +1,188 @@
+schema_version: 3
+change_id: 2026-08-02-omni-unified-ai-workbench-g1-foundation
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: G1-ACT-001
+  planned_change_id: G1-CHG-001
+  summary: Added the canonical Workbench Foundation v1 JSON Schema with ten strict public wire contracts, safe identifiers, RFC3339 timestamps, provider coherence, artifact/run projections, IA ownership, and fixed extension slots.
+  paths:
+  - config/schemas/workbench-foundation.v1.schema.json
+- id: G1-ACT-002
+  planned_change_id: G1-CHG-002
+  summary: Added a frozen Pydantic mirror with exact field manifests, strict scalar handling, safe-reference and path-redaction guards, timezone normalization, and provider-state validation.
+  paths:
+  - services/knowledge-engine/app/schemas/workbench_foundation.py
+- id: G1-ACT-003
+  planned_change_id: G1-CHG-003
+  summary: Added the TypeScript wire mirror and runtime field manifest consumed by downstream frontend lanes.
+  paths:
+  - frontend/src/lib/workbench/contracts.ts
+- id: G1-ACT-004
+  planned_change_id: G1-CHG-004
+  summary: Added migration 104 with one append-only context store and additive immutable context, provider, lineage, opaque-project, idempotency, runtime, and approval bindings on existing truth sources.
+  paths:
+  - migrations/104_workbench_context_and_agent_binding.sql
+- id: G1-ACT-005
+  planned_change_id: G1-CHG-005
+  summary: Froze consumer ownership, compatibility-only paths, the workbench.v1 database token, lane restrictions, and the W5 handoff boundary.
+  paths:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/consumer-matrix.yaml
+- id: G1-ACT-006
+  planned_change_id: G1-CHG-006
+  summary: Added cross-language field, enum, path-safety, datetime, provider, surface/context, migration-shape, and PRD naming parity tests.
+  paths:
+  - tests/test_workbench_foundation_contract.py
+  - frontend/tests/workbench-foundation-contract.test.ts
+- id: G1-ACT-007
+  planned_change_id: G1-CHG-007
+  summary: Added a self-cleaning disposable PostgreSQL verifier for clean, existing, restart/rerun, legacy compatibility, and database invariant evidence.
+  paths:
+  - scripts/verify_workbench_g1_migration.ps1
+- id: G1-ACT-008
+  planned_change_id: G1-CHG-008
+  summary: Preserved post-104 compatibility by making the legacy strict session store project only its original ten columns and testing extra-column rows.
+  paths:
+  - services/knowledge-engine/app/services/agent_contracts.py
+  - services/knowledge-engine/tests/test_agent_contracts.py
+contract_delta:
+- description: Added a deterministic disposable PostgreSQL verifier to the locked G1 scope.
+  reason: Independent review proved static migration checks could not execute the clean, existing, restart, checksum-parity, legacy-row, and immutability-trigger acceptance required by the W0 G1 gate.
+  effect: G1-CHG-007 and G1-VERIFY-008 now require an isolated temporary PostgreSQL container; no shared database is addressed or mutated.
+  accepted: true
+- description: Corrected the frontend typecheck command to name the repository's frontend tsconfig explicitly.
+  reason: npm exec preserves the repository working directory even with --prefix, so the locked command without -p printed TypeScript help and exited 1 instead of compiling the frontend.
+  effect: G1-VERIFY-004 now runs the same strict TypeScript compiler against frontend/tsconfig.json without changing product scope.
+  accepted: true
+- description: Added a minimal explicit-column compatibility projection for the legacy database session store.
+  reason: Migration 104 adds nullable columns, while the existing SELECT and RETURNING star queries pass every column into an extra-forbid legacy record and would fail immediately after upgrade.
+  effect: G1-CHG-008 preserves existing get/upsert behavior without adopting or writing new W5 fields; the disposable PostgreSQL verifier exercises the post-104 path.
+  accepted: true
+- description: Aligned locked projection details with the PRD and existing runtime truth sources during independent review.
+  reason: The PRD names safe_diff_summary, existing runtime rows do not all carry an idempotency digest, and the current FeatureDefinition route contract rejects query and fragment characters.
+  effect: Artifact projection uses safe_diff_summary, idempotency_key_hash remains a required wire key with a nullable legacy value and an additive runtime column, and IA routes share the existing route grammar.
+  accepted: true
+- description: Hardened JSON, Python, and PostgreSQL validation to one path-safe and migration-compatible contract.
+  reason: Review and live request modeling exposed RFC3339 parsing, raw reference encodings, whitespace, uniqueness, lineage, and once-set binding cases that static field-name parity alone did not cover.
+  effect: Public payloads accept timezone-bearing JSON timestamps while rejecting raw absolute paths, and migration 104 enforces the same safe refs, reason codes, evidence uniqueness, display names, self-parent, provider, runtime, and approval immutability invariants.
+  accepted: true
+- description: Sequenced the Git-derived index check after the GRAPH_DIFF_READY transition while retaining it as a mandatory local release action.
+  reason: check_feature_contracts index mode intentionally rejects schema-v3 contracts in VERIFYING, while the state transition validator cannot advance when a required verification result is absent, creating a circular Gate if the index check itself is marked required.
+  effect: G1-VERIFY-006 is schema-optional like the W0 precedent, but this candidate is not committed or pushed unless the exact staged-index command passes and is recorded.
+  accepted: true
+verification_results:
+- id: G1-VERIFY-001
+  command: python -B -X utf8 scripts/apply_migrations.py --dry-run --verify
+  status: passed
+  exit_code: 0
+  evidence: Repository-only verification found 95 migrations at head 104_workbench_context_and_agent_binding.sql with digest 3addfa9fc80de49853dd308321f493e0b5196531da177ea72c2428099ab3bbb1.
+- id: G1-VERIFY-002
+  command: python -B -X utf8 -m pytest -q -p no:cacheprovider tests/test_workbench_foundation_contract.py services/knowledge-engine/tests/test_agent_contracts.py services/knowledge-engine/tests/test_host_contract.py services/knowledge-engine/tests/test_runtime_trace.py tests/test_migration_runner_contract.py
+  status: passed
+  exit_code: 0
+  evidence: 73 tests passed; only one pre-existing Starlette PendingDeprecationWarning was emitted. Coverage includes field/enum parity, RFC3339 wire parsing, path safety, provider coherence, legacy extra-column projection, and migration runner compatibility.
+- id: G1-VERIFY-003
+  command: npm --prefix frontend run test:unit -- tests/workbench-foundation-contract.test.ts
+  status: passed
+  exit_code: 0
+  evidence: Vitest passed 1 file and 5 contract tests for exact fields/enums, PRD naming, nullable legacy idempotency, opaque identity, fixed slots, and surface/context separation.
+- id: G1-VERIFY-004
+  command: npm --prefix frontend exec -- tsc --noEmit -p frontend/tsconfig.json
+  status: passed
+  exit_code: 0
+  evidence: TypeScript strict compilation completed with no diagnostics.
+- id: G1-VERIFY-005
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/completion.yaml --expect-state VERIFYING
+  status: passed
+  exit_code: 0
+  evidence: Schema-v3 impact and completion validated at VERIFYING after all implementation and accepted contract deltas were recorded.
+- id: G1-VERIFY-006
+  command: python -B -X utf8 scripts/check_feature_contracts.py --mode index --base 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+  status: passed
+  exit_code: 0
+  evidence: Git-derived staged-index validation reported 6 protected files covered by exactly 1 delivery-ready schema-v3 candidate with no uncontracted path or second owner.
+- id: G1-VERIFY-007
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  status: passed
+  exit_code: 0
+  evidence: Strict schema-v3 validation returned OK at the repository-authored endpoint GRAPH_DIFF_READY; formal completion remains external CI attestation only.
+- id: G1-VERIFY-008
+  command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_g1_migration.ps1
+  status: passed
+  exit_code: 0
+  evidence: Disposable pgvector/pgvector:pg16 verification reached clean head 104, upgraded an existing head-103 database, preserved three legacy row classes, restarted PostgreSQL, explicitly reran 104, and passed 9 immutability plus 6 contract-rejection assertions. Migration SHA-256 4e99b93e156ea4eb45f4efc1b0d9fefc7f26036571be96e6c0c074a0162b4b04 and mtime stayed fixed; container, temp directory, verifier process, and allocation residue were zero.
+graph_diff:
+  status: accepted
+  snapshot_before: 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+  snapshot_after: git-index-tree:3a5ef7df2eed390572aa67f6b68eeccdc7f5a1ca
+  added_nodes:
+  - schema:config/workbench-foundation-v1
+  - schema:python/workbench-foundation-v1
+  - schema:typescript/workbench-foundation-v1
+  - db:mcp.workbench_context_snapshots
+  - migration:104_workbench_context_and_agent_binding.sql
+  - governance:g1-consumer-matrix
+  - test:g1-workbench-foundation-parity
+  - test:g1-workbench-foundation-postgres
+  modified_nodes:
+  - db:mcp.agent_session_contracts
+  - db:mcp.runtime_executions
+  - db:mcp.approval_operations
+  - service:agent-contracts-legacy-projection
+  removed_nodes: []
+  added_edges:
+  - edge:g1-json-schema-to-python-mirror
+  - edge:g1-json-schema-to-typescript-mirror
+  - edge:g1-context-to-session
+  - edge:g1-context-to-runtime
+  - edge:g1-context-to-approval
+  - edge:g1-consumer-matrix-to-w5
+  removed_edges: []
+  required_edges:
+  - from: schema:config/workbench-foundation-v1
+    to: schema:python/workbench-foundation-v1
+    relation: mirrors_with_parity_test
+    status: present
+    evidence: Python contract test compared every required field and dynamic invariant against the canonical JSON Schema; the required suite passed.
+  - from: schema:config/workbench-foundation-v1
+    to: schema:typescript/workbench-foundation-v1
+    relation: mirrors_with_parity_test
+    status: present
+    evidence: Vitest compared all ten field manifests and fixed enums against the canonical schema, and strict TypeScript compilation passed.
+  - from: migration:104_workbench_context_and_agent_binding.sql
+    to: db:mcp.workbench_context_snapshots
+    relation: creates_immutable_snapshot_store
+    status: present
+    evidence: Disposable PostgreSQL applied migration 104 from clean and existing baselines and rejected independent UPDATE and DELETE attempts.
+  - from: db:mcp.workbench_context_snapshots
+    to: db:mcp.agent_session_contracts
+    relation: binds_immutably
+    status: present
+    evidence: Foreign key, once-set context/provider/lineage/project trigger, real runner identity requirement, and negative SQL assertions passed.
+  - from: db:mcp.workbench_context_snapshots
+    to: db:mcp.runtime_executions
+    relation: binds_immutably
+    status: present
+    evidence: Runtime context and optional idempotency bindings were accepted once and both rebind attempts were rejected in disposable PostgreSQL.
+  - from: db:mcp.workbench_context_snapshots
+    to: db:mcp.approval_operations
+    relation: binds_immutably
+    status: present
+    evidence: Approval context and agent-session foreign keys accepted legal rows and rejected both in-place rebind attempts.
+  - from: governance:g1-consumer-matrix
+    to: change:2026-08-02-omni-unified-ai-workbench-w5-codex-host
+    relation: grants_consume_only_contract
+    status: present
+    evidence: Consumer matrix freezes workbench.v1, assigns G1 compatibility-only ownership, and requires W5 to consume the delivered fields without a parallel migration or session writer.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: false
+  evidence: ''
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''

@@ -1,0 +1,88 @@
+schema_version: 1
+foundation_change_id: 2026-08-02-omni-unified-ai-workbench-g1-foundation
+base_commit: 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+authority:
+  contract_schema: config/schemas/workbench-foundation.v1.schema.json
+  python_mirror: services/knowledge-engine/app/schemas/workbench_foundation.py
+  typescript_mirror: frontend/src/lib/workbench/contracts.ts
+  migration: migrations/104_workbench_context_and_agent_binding.sql
+contracts:
+- name: WorkbenchContextSnapshot
+  owner: G1-foundation
+  consumers: [W1, W3, W5]
+  rule: Immutable object/task/permission binding; origin_surface_ref is provenance only, while current surface belongs to FrontendAgentBinding.
+- name: FrontendAgentBinding
+  owner: G1-foundation
+  consumers: [W1, W3, W5]
+  rule: Surface changes retain session, operation, context revision, and cursor; object/task/permission changes require a new context revision.
+- name: ResolvedAgentProvider
+  owner: G1-foundation
+  consumers: [W5, W6]
+  rule: Resolution is disclosed before ACTIVE; provider and runner mode are immutable after accepted_at.
+- name: OpaqueProjectIdentity
+  owner: G1-foundation
+  consumers: [W5, W6]
+  rule: Public boundaries expose only project_handle, project_hash, and display_name; raw project_dir remains Host-internal.
+- name: HostCapabilityManifest
+  owner: G1-foundation
+  consumers: [W5, W6]
+  rule: Protocol/build compatibility and provider/file/resume capabilities gate local actions.
+- name: AgentArtifactProjection
+  owner: G1-foundation
+  consumers: [W1, W3, W5]
+  rule: Read-only metadata is derived from existing attachments, runtime events, or formal asset lineage; it is not a second artifact writer and contains no path or raw payload.
+- name: RunOperationProjection
+  owner: G1-foundation
+  consumers: [W3, W5]
+  rule: Maps existing runtime and approval truth sources; Host runs are attempts, not a second operation.
+- name: RunEventProjection
+  owner: G1-foundation
+  consumers: [W3, W5]
+  rule: Cursor/event/checkpoint projection is normalized and redacted; no new event ledger is created by G1.
+- name: WorkbenchIAProjection
+  owner: G1-foundation
+  consumers: [W1, W2, W3, W5, W6]
+  rule: One feature_id, owner, renderer, canonical route, and alias projection; Feature Registry remains the capability source of truth.
+- name: WorkbenchExtensionSlot
+  owner: G1-foundation
+  consumers: [W1, G2]
+  rule: Slots are exactly assistant, blueprint, run-center, approval, and artifact-drawer.
+write_ownership:
+  foundation:
+  - config/schemas/workbench-foundation.v1.schema.json
+  - frontend/src/lib/workbench/contracts.ts
+  - services/knowledge-engine/app/schemas/workbench_foundation.py
+  - migrations/104_workbench_context_and_agent_binding.sql
+  compatibility_only:
+  - services/knowledge-engine/app/services/agent_contracts.py
+  - services/knowledge-engine/tests/test_agent_contracts.py
+  verification_only:
+  - scripts/verify_workbench_g1_migration.ps1
+  boundaries:
+    session_contract_token: workbench.v1
+    compatibility_rule: G1 keeps the legacy ten-column session projection readable after migration 104 but does not adopt or write new workbench fields.
+    handoff_rule: W5 may extend the same service from the delivered G1 baseline; it must consume the frozen workbench.v1 fields and must not create a parallel session writer.
+  lane_restrictions:
+    W1: consume_only
+    W3: consume_only
+    W5: consume_only
+    W6: consume_only
+migration:
+  baseline_head: 103_metric_ownership_and_compatibility.sql
+  owner: G1-foundation
+  mode: additive_source_only
+  shared_database_execution: forbidden_without_separate_R3_gate
+  creates:
+  - mcp.workbench_context_snapshots
+  extends:
+  - mcp.agent_session_contracts
+  - mcp.runtime_executions
+  - mcp.approval_operations
+  explicitly_does_not_create:
+  - second_agent_session_table
+  - second_operation_table
+  - second_event_table
+  - second_artifact_writer
+handoff:
+  contract_changes_after_delivery: Stop the consuming lane and route a contract delta through the serial G2 Integration owner.
+  required_delivery: Main-branch CI attestation bound to the immutable G1 commit and tree.

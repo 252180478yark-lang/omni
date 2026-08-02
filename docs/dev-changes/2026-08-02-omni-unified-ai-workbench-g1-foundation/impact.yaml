@@ -1,0 +1,341 @@
+schema_version: 3
+change_id: 2026-08-02-omni-unified-ai-workbench-g1-foundation
+title: Omni workbench G1 shared contract foundation
+state: GRAPH_DIFF_READY
+created_at: '2026-08-02T09:47:35Z'
+updated_at: '2026-08-02T10:29:34Z'
+feature_refs:
+- feature_id: omni-unified-ai-workbench
+  feature_ref: prd:2026-08-02-omni-unified-ai-workbench-prd:v1.3:sha256:cfdc88d68e985c0801dfbc9ab1bccfc7b5a36059b8d5bd0feab4cf74687622bd
+- feature_id: omni-unified-ai-workbench-g1-foundation
+  feature_ref: plan:2026-08-02-omni-unified-ai-workbench-w0:G1
+before_snapshot:
+  ref: 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+delivery:
+  authority: ci_attestation
+  base_commit: 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - G1 freezes a new cross-language public contract consumed by W1, W3, W5, and W6.
+  - The change adds migration 104 and additive bindings across the existing provider-neutral session, runtime execution, and approval operation schemas.
+  - The source migration is verified only against repository and disposable CI databases; no shared database is modified by this change.
+  external_effects: []
+  scope_deltas:
+  - id: G1-DELTA-001
+    discovered_at: '2026-08-02T10:05:50Z'
+    reason: Independent review proved repository-only SQL checks cannot demonstrate clean/existing/restart database parity or execute the new immutability triggers required by the W0 G1 gate.
+    added_paths:
+    - scripts/verify_workbench_g1_migration.ps1
+    required_level: R2
+    risk_change: none; the script is restricted to an isolated disposable PostgreSQL container and removes it after verification without touching a shared database.
+  - id: G1-DELTA-002
+    discovered_at: '2026-08-02T10:08:44Z'
+    reason: Post-migration review proved the legacy database session store uses SELECT and RETURNING star with an extra-forbid record model, so additive columns from migration 104 would break every existing get and upsert.
+    added_paths:
+    - services/knowledge-engine/app/services/agent_contracts.py
+    - services/knowledge-engine/tests/test_agent_contracts.py
+    required_level: R2
+    risk_change: none; the compatibility shim projects the existing ten legacy columns explicitly and does not adopt or write any new W5 field.
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: W0 is delivered, but the workbench lanes still lack one machine-readable authority for immutable context, provider resolution, safe project identity, artifact/run projections, IA ownership, and extension slots; W5 is forbidden from inventing those contracts or a shared migration inside its lane.
+  expected_outcome: Deliver one versioned JSON Schema with parity-checked Python and TypeScript mirrors plus one additive migration that binds existing session/runtime/approval truth sources to immutable workbench context without adding a second operation, event, session, or artifact writer.
+  user_visible_behavior:
+  - G1 does not add or change a user-facing page by itself.
+  - Downstream lanes receive stable context, provider, artifact, run, IA, Host capability, extension-slot, and opaque project identity contracts.
+  - Historical sessions remain readable; new bindings can be adopted progressively without raw project paths crossing the Host boundary.
+current_chain:
+  nodes:
+  - governance:g1-foundation-owner
+  - schema:config/workbench-foundation-v1
+  - schema:python/workbench-foundation-v1
+  - schema:typescript/workbench-foundation-v1
+  - db:mcp.runtime_executions
+  - db:mcp.agent_session_contracts
+  - db:mcp.approval_operations
+  - migration:103_metric_ownership_and_compatibility.sql
+  - plan:omni-unified-ai-workbench-g1
+  edges:
+  - plan:omni-unified-ai-workbench-g1 -> governance:g1-foundation-owner
+  - migration:103_metric_ownership_and_compatibility.sql -> db:mcp.agent_session_contracts
+  - db:mcp.runtime_executions -> db:mcp.agent_session_contracts
+  - schema:config/workbench-foundation-v1 -> schema:python/workbench-foundation-v1
+  - schema:config/workbench-foundation-v1 -> schema:typescript/workbench-foundation-v1
+  evidence:
+  - GitHub Actions run 30742236283 completed successfully for main commit 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f and emitted delivery-attestation-16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f with status COMPLETE and delivered tree 79ca1dc5a411f60b1b1fb9bcb6f1f191eb4b9b2f.
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/parallel-development-order.md defines G1 at lines 90-101, reserves shared contracts and migration to one Foundation owner, and forbids W5 from writing a shared migration.
+  - migrations/101_runtime_trace_and_agent_contract.sql already owns mcp.runtime_executions, mcp.runtime_events, mcp.agent_session_contracts, and mcp.agent_attachments; migrations/098_approval_operations.sql owns mcp.approval_operations.
+  - services/knowledge-engine/app/schemas/runtime_trace.py exposes the current S10 provider-neutral session and runtime projections but has no immutable workbench context, provider acceptance, IA, or opaque project identity contract.
+  - Repository-only migration verification on 2026-08-02 returned status verified, count 94, head 103_metric_ownership_and_compatibility.sql, and digest 79a39f50b0fb9493c57b964a7247b27b737d6f4d85854aad3ca051308dc2e32b.
+  - No committed impact contract claims config/schemas/workbench-foundation.v1.schema.json, frontend/src/lib/workbench/contracts.ts, services/knowledge-engine/app/schemas/workbench_foundation.py, migrations/104_workbench_context_and_agent_binding.sql, or the two G1 test paths.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - schema:config/workbench-foundation-v1
+  - schema:python/workbench-foundation-v1
+  - schema:typescript/workbench-foundation-v1
+  - service:agent-contracts-legacy-projection
+  database:
+  - db:mcp.workbench_context_snapshots
+  - db:mcp.agent_session_contracts
+  - db:mcp.runtime_executions
+  - db:mcp.approval_operations
+  data_sources: []
+  states_workflows:
+  - state:workbench-context.immutable-revision
+  - state:agent-provider.preaccept-to-active-lock
+  - state:agent-session.lineage
+  tests:
+  - test:tests/test_workbench_foundation_contract.py
+  - test:frontend/tests/workbench-foundation-contract.test.ts
+  - test:services/knowledge-engine/tests/test_agent_contracts.py
+  docs:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/consumer-matrix.yaml
+planned_changes:
+- id: G1-CHG-001
+  action: add
+  kind: public-schema
+  node_id: schema:config/workbench-foundation-v1
+  paths:
+  - config/schemas/workbench-foundation.v1.schema.json
+  upstream:
+  - prd:2026-08-02-omni-unified-ai-workbench-prd:v1.3
+  downstream:
+  - schema:python/workbench-foundation-v1
+  - schema:typescript/workbench-foundation-v1
+  - change:2026-08-02-omni-unified-ai-workbench-w1-shell-ia
+  - change:2026-08-02-omni-unified-ai-workbench-w5-codex-host
+  contract_change: compatible
+  verification_ids:
+  - G1-VERIFY-002
+  - G1-VERIFY-003
+  - G1-VERIFY-004
+- id: G1-CHG-002
+  action: add
+  kind: service-schema
+  node_id: schema:python/workbench-foundation-v1
+  paths:
+  - services/knowledge-engine/app/schemas/workbench_foundation.py
+  upstream:
+  - schema:config/workbench-foundation-v1
+  downstream:
+  - change:2026-08-02-omni-unified-ai-workbench-w3-run-center
+  - change:2026-08-02-omni-unified-ai-workbench-w5-codex-host
+  contract_change: compatible
+  verification_ids:
+  - G1-VERIFY-002
+- id: G1-CHG-003
+  action: add
+  kind: frontend-schema
+  node_id: schema:typescript/workbench-foundation-v1
+  paths:
+  - frontend/src/lib/workbench/contracts.ts
+  upstream:
+  - schema:config/workbench-foundation-v1
+  downstream:
+  - change:2026-08-02-omni-unified-ai-workbench-w1-shell-ia
+  - change:2026-08-02-omni-unified-ai-workbench-w5-codex-host
+  - change:2026-08-02-omni-unified-ai-workbench-w6-desktop
+  contract_change: compatible
+  verification_ids:
+  - G1-VERIFY-003
+  - G1-VERIFY-004
+- id: G1-CHG-004
+  action: add
+  kind: database-migration
+  node_id: migration:104_workbench_context_and_agent_binding.sql
+  paths:
+  - migrations/104_workbench_context_and_agent_binding.sql
+  upstream:
+  - migration:103_metric_ownership_and_compatibility.sql
+  - db:mcp.runtime_executions
+  - db:mcp.agent_session_contracts
+  - db:mcp.approval_operations
+  downstream:
+  - db:mcp.workbench_context_snapshots
+  - change:2026-08-02-omni-unified-ai-workbench-w3-run-center
+  - change:2026-08-02-omni-unified-ai-workbench-w5-codex-host
+  contract_change: compatible
+  verification_ids:
+  - G1-VERIFY-001
+  - G1-VERIFY-002
+- id: G1-CHG-005
+  action: add
+  kind: ownership-manifest
+  node_id: governance:g1-consumer-matrix
+  paths:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/consumer-matrix.yaml
+  upstream:
+  - governance:g1-foundation-owner
+  downstream:
+  - change:2026-08-02-omni-unified-ai-workbench-w1-shell-ia
+  - change:2026-08-02-omni-unified-ai-workbench-w3-run-center
+  - change:2026-08-02-omni-unified-ai-workbench-w5-codex-host
+  - change:2026-08-02-omni-unified-ai-workbench-w6-desktop
+  contract_change: compatible
+  verification_ids:
+  - G1-VERIFY-002
+- id: G1-CHG-006
+  action: add
+  kind: contract-tests
+  node_id: test:g1-workbench-foundation-parity
+  paths:
+  - tests/test_workbench_foundation_contract.py
+  - frontend/tests/workbench-foundation-contract.test.ts
+  upstream:
+  - schema:config/workbench-foundation-v1
+  - schema:python/workbench-foundation-v1
+  - schema:typescript/workbench-foundation-v1
+  - migration:104_workbench_context_and_agent_binding.sql
+  downstream:
+  - governance:g1-foundation-delivery-gate
+  contract_change: compatible
+  verification_ids:
+  - G1-VERIFY-002
+  - G1-VERIFY-003
+- id: G1-CHG-007
+  action: add
+  kind: disposable-verification
+  node_id: test:g1-workbench-foundation-postgres
+  paths:
+  - scripts/verify_workbench_g1_migration.ps1
+  upstream:
+  - migration:104_workbench_context_and_agent_binding.sql
+  downstream:
+  - governance:g1-foundation-delivery-gate
+  contract_change: compatible
+  verification_ids:
+  - G1-VERIFY-008
+- id: G1-CHG-008
+  action: modify
+  kind: migration-compatibility
+  node_id: service:agent-contracts-legacy-projection
+  paths:
+  - services/knowledge-engine/app/services/agent_contracts.py
+  - services/knowledge-engine/tests/test_agent_contracts.py
+  upstream:
+  - migration:104_workbench_context_and_agent_binding.sql
+  downstream:
+  - governance:g1-foundation-delivery-gate
+  - change:2026-08-02-omni-unified-ai-workbench-w5-codex-host
+  contract_change: compatible
+  verification_ids:
+  - G1-VERIFY-002
+  - G1-VERIFY-008
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: G1 defines additive versioned payload contracts only; no existing route is changed. W5 and later integration lanes must explicitly adopt the v1 wire fields without creating parallel APIs.
+  database:
+    status: compatible
+    strategy: Migration 104 adds one append-only context table and nullable columns/FKs/indexes to existing runtime, session, and approval tables. Existing rows remain valid, and the legacy session store explicitly projects its original columns so strict record parsing ignores additive fields; no table, column, event, session, operation, attachment, or artifact history is renamed or deleted.
+  workflow:
+    status: compatible
+    strategy: Current session/runtime/approval workflows continue unchanged until their owning lanes opt into context and provider acceptance fields. Once provider_accepted_at is set, a database trigger rejects in-place provider, runner mode, context, lineage, or project identity mutation.
+  data_source:
+    status: not_applicable
+    strategy: G1 adds no external source or credential flow.
+graph_acceptance:
+  required_edges:
+  - from: schema:config/workbench-foundation-v1
+    to: schema:python/workbench-foundation-v1
+    relation: mirrors_with_parity_test
+  - from: schema:config/workbench-foundation-v1
+    to: schema:typescript/workbench-foundation-v1
+    relation: mirrors_with_parity_test
+  - from: migration:104_workbench_context_and_agent_binding.sql
+    to: db:mcp.workbench_context_snapshots
+    relation: creates_immutable_snapshot_store
+  - from: db:mcp.workbench_context_snapshots
+    to: db:mcp.agent_session_contracts
+    relation: binds_immutably
+  - from: db:mcp.workbench_context_snapshots
+    to: db:mcp.runtime_executions
+    relation: binds_immutably
+  - from: db:mcp.workbench_context_snapshots
+    to: db:mcp.approval_operations
+    relation: binds_immutably
+  - from: governance:g1-consumer-matrix
+    to: change:2026-08-02-omni-unified-ai-workbench-w5-codex-host
+    relation: grants_consume_only_contract
+  allowed_unknowns: []
+  forbidden_orphans:
+  - schema:config/workbench-foundation-v1
+  - db:mcp.workbench_context_snapshots
+  - governance:g1-foundation-owner
+risks:
+- id: G1-RISK-001
+  description: Python and TypeScript mirrors could drift from the JSON Schema and let lanes disagree about field names or enums.
+  mitigation: Export runtime field manifests in both mirrors and compare them with the same JSON Schema in required Python and Vitest parity tests.
+- id: G1-RISK-002
+  description: A new table or binding could accidentally become a second operation, event, session, or artifact writer.
+  mitigation: Migration 104 creates only the immutable context store, extends existing truth sources, and the consumer matrix explicitly forbids parallel writers; artifact and run contracts remain read-only projections.
+- id: G1-RISK-003
+  description: A provider or page-context change after first run acceptance could silently retarget an active session.
+  mitigation: The provider acceptance and context binding fields are nullable for legacy compatibility, while a database trigger makes provider, runner mode, context, lineage, and opaque project identity immutable after acceptance.
+- id: G1-RISK-004
+  description: A raw project path could be introduced into a supposedly shared public payload.
+  mitigation: The public schema contains only project_handle, project_hash, and display_name; tests reject path-shaped display names and scan the schema/types for project_dir.
+out_of_scope:
+- Agent Chat, Host Bridge, provider command execution, provider event normalization, adoption of new context/artifact/session fields, or UI components; these belong to W5 after G1 delivery. G1 includes only the minimal explicit-column projection needed to keep the existing strict session store compatible with migration 104.
+- AppShell, sidebar, Feature Registry, canonical route wiring, or top-level extension-slot rendering; these belong to W1/G2.
+- A second operation/event table or runtime writer; W3 must project existing runtime_executions/runtime_events and approval_operations truth sources.
+- A persistent agent_artifact_projection table; W5 must derive the read-only projection from existing attachment, runtime event, and formal asset lineage sources.
+- Desktop files, renderer adoption, physical retirement, or AC-FR008-01; these belong to W6.
+- Editing or publishing the untracked PRD v1.3 candidate in the canonical dirty worktree.
+- Executing migration 104 against any shared database, adopting the schema in a shared runtime, or performing any R3 external effect.
+rollback:
+  strategy: Before delivery, revert only the G1 candidate commit. After an additive schema has been applied, disable downstream consumers and revert application code while retaining the context table and nullable columns; do not drop immutable history or rewrite migration 104.
+  data_recovery: G1 writes no business rows and performs no shared migration. Disposable CI databases may be discarded; any future shared adoption retains additive rows and needs a separately authorized forward migration for schema removal.
+verification_plan:
+- id: G1-VERIFY-001
+  layer: migration
+  command: python -B -X utf8 scripts/apply_migrations.py --dry-run --verify
+  proves: The canonical migration runner accepts exactly one new ordered migration after verified head 103 and preserves repository checksum integrity without connecting to a database.
+  required: true
+- id: G1-VERIFY-002
+  layer: python-contract
+  command: python -B -X utf8 -m pytest -q -p no:cacheprovider tests/test_workbench_foundation_contract.py services/knowledge-engine/tests/test_agent_contracts.py services/knowledge-engine/tests/test_host_contract.py services/knowledge-engine/tests/test_runtime_trace.py tests/test_migration_runner_contract.py
+  proves: JSON Schema, Pydantic mirror, migration shape, immutability/provider-lock invariants, and existing session/runtime/migration contracts remain compatible.
+  required: true
+- id: G1-VERIFY-003
+  layer: frontend-contract
+  command: npm --prefix frontend run test:unit -- tests/workbench-foundation-contract.test.ts
+  proves: The TypeScript mirror has the exact v1 fields/enums, extension slots, safe identity, and surface-vs-context semantics frozen by the JSON Schema.
+  required: true
+- id: G1-VERIFY-004
+  layer: frontend-typecheck
+  command: npm --prefix frontend exec -- tsc --noEmit -p frontend/tsconfig.json
+  proves: The shared TypeScript contracts compile with the existing frontend under strict type checking.
+  required: true
+- id: G1-VERIFY-005
+  layer: contract
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/completion.yaml --expect-state VERIFYING
+  proves: The locked schema-v3 impact, actual path mapping, risk, compatibility, and verification evidence remain structurally valid before graph closure.
+  required: true
+- id: G1-VERIFY-006
+  layer: candidate-scope
+  command: python -B -X utf8 scripts/check_feature_contracts.py --mode index --base 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+  proves: The complete staged candidate is derived by Git, exactly owned by this G1 contract, and contains no uncontracted protected path or second v3 owner.
+  required: false
+- id: G1-VERIFY-007
+  layer: final-contract
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  proves: The local G1 repository contract reaches the schema-v3 endpoint without self-authoring delivery.
+  required: false
+- id: G1-VERIFY-008
+  layer: disposable-postgres
+  command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify_workbench_g1_migration.ps1
+  proves: Migration 104 reaches repository head/checksum parity from clean and existing databases, remains idempotent after restart, preserves legacy rows and legacy session-store get/upsert behavior, and enforces append-only context plus immutable session/runtime/approval bindings in a disposable PostgreSQL container.
+  required: true
+lock:
+  locked_at: '2026-08-02T09:51:01Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.
