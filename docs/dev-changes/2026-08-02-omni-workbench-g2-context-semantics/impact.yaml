@@ -3,7 +3,7 @@ change_id: 2026-08-02-omni-workbench-g2-context-semantics
 title: G2 context binding semantic clarification
 state: GRAPH_DIFF_READY
 created_at: '2026-08-02T13:41:08Z'
-updated_at: '2026-08-02T13:48:43Z'
+updated_at: '2026-08-02T13:59:55Z'
 feature_refs:
 - feature_id: omni-workbench-context-binding-semantics
   feature_ref: g2-context-binding-semantics@c1a97f873f9f1c639dd274adcf92ca206a760c11
@@ -18,18 +18,29 @@ risk:
   reasons:
   - Clarifies a frozen public JSON Schema and its Python and TypeScript mirrors at the serial G2 integration boundary.
   - Defines the single-writer and immutability ownership split consumed by W5 without changing a database schema or runtime implementation.
+  - Adds the nullable legacy revision half of the public operation frozen-binding pair so restart recovery cannot silently pair an old snapshot with the current session revision.
   external_effects: []
-  scope_deltas: []
+  scope_deltas:
+  - added_paths:
+    - config/schemas/workbench-foundation.v1.schema.json
+    - services/knowledge-engine/app/schemas/workbench_foundation.py
+    - frontend/src/lib/workbench/contracts.ts
+    - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/consumer-matrix.yaml
+    - tests/test_workbench_foundation_contract.py
+    - frontend/tests/workbench-foundation-contract.test.ts
+    reason: Follow-up audit proved the W5 HostRun persists both context_snapshot_id and context_revision, but the G1/G2 RunOperationProjection exposed only the snapshot and could not reconstruct the complete frozen binding after restart.
+    required_level: R2
   approval:
     required: false
     gate_ref: ''
 intent:
   problem: G1 uses context_snapshot_id for both the accepted agent-session anchor and the per-operation target, while FrontendAgentBinding also carries a current context head. The wire fields are structurally compatible, but their ownership and mutation semantics are not explicit enough to implement AC-FR007-04 without either mutating the accepted session anchor or losing the frozen target of an already-running operation.
-  expected_outcome: 'Freeze one contract-only three-layer interpretation: mcp.agent_session_contracts.context_snapshot_id is the immutable provider-acceptance and security anchor; FrontendAgentBinding.context_snapshot_id plus context_revision projects the Host-owned current head and advances only through a single-writer compare-and-swap; mcp.runtime_executions.context_snapshot_id and RunOperationProjection.context_snapshot_id freeze the target selected when an operation starts.'
+  expected_outcome: 'Freeze one contract-only three-layer interpretation: mcp.agent_session_contracts.context_snapshot_id is the immutable provider-acceptance and security anchor; FrontendAgentBinding.context_snapshot_id plus context_revision projects the Host-owned current head and advances only through a single-writer compare-and-swap; mcp.runtime_executions.context_snapshot_id plus RunOperationProjection.context_snapshot_id and nullable context_revision expose the complete target pair selected when an operation starts. New W5 operations must project a non-null revision while legacy operations explicitly project null.'
   user_visible_behavior:
-  - This integration delta changes no page, payload shape, endpoint, database row, or runtime behavior by itself.
+  - This integration delta changes no page, endpoint, database row, or runtime behavior; it adds only the nullable legacy-safe context_revision key to RunOperationProjection.
   - W5 can preserve the same logical session while the Host advances its current context head, without retargeting an older running or approval-waiting operation.
   - Consumers can distinguish the accepted session security anchor, the current Host head, and an operation's frozen target from authoritative descriptions and tests.
+  - After a frontend or Host restart, an old operation projection carries its own frozen snapshot and revision instead of borrowing the current session revision.
 current_chain:
   nodes:
   - schema:config/workbench-foundation-v1
@@ -42,6 +53,8 @@ current_chain:
   - db:mcp.runtime_executions.context_snapshot_id
   - contract:frontend-agent-binding.context_snapshot_id
   - contract:run-operation-projection.context_snapshot_id
+  - contract:run-operation-projection.context_revision
+  - contract:w5-host-run.context_revision
   edges:
   - schema:config/workbench-foundation-v1 -> schema:python/workbench-foundation-v1
   - schema:config/workbench-foundation-v1 -> schema:typescript/workbench-foundation-v1
@@ -49,15 +62,19 @@ current_chain:
   - contract:host-current-context-head -> contract:frontend-agent-binding.context_snapshot_id
   - contract:host-current-context-head -> db:mcp.runtime_executions.context_snapshot_id
   - db:mcp.runtime_executions.context_snapshot_id -> contract:run-operation-projection.context_snapshot_id
+  - contract:w5-host-run.context_revision -> contract:run-operation-projection.context_revision
   evidence:
   - migrations/104_workbench_context_and_agent_binding.sql:218-266 rejects any in-place change to a non-null agent session context and rechecks the field after provider acceptance.
   - migrations/104_workbench_context_and_agent_binding.sql:294-366 independently rejects retargeting a non-null runtime execution context; its column comment at lines 422-423 already calls that value the frozen execution context.
-  - config/schemas/workbench-foundation.v1.schema.json defines FrontendAgentBinding.context_snapshot_id plus context_revision and separately defines RunOperationProjection.context_snapshot_id, but neither property currently states ownership or compare-and-swap semantics.
-  - services/knowledge-engine/app/schemas/workbench_foundation.py and frontend/src/lib/workbench/contracts.ts mirror those fields without semantic descriptions.
+  - Delivered G1 config/schemas/workbench-foundation.v1.schema.json defined FrontendAgentBinding.context_snapshot_id plus context_revision and separately defined only RunOperationProjection.context_snapshot_id; the first G2 commit clarified ownership but retained that missing operation revision.
+  - The first G2 commit added matching semantic descriptions to services/knowledge-engine/app/schemas/workbench_foundation.py and frontend/src/lib/workbench/contracts.ts without yet exposing the operation revision.
   - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/consumer-matrix.yaml:10-17 gives immutable snapshot and rebind rules, while lines 50-69 freeze the shared authority paths and require W5 to consume rather than create a parallel writer.
   - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/parallel-development-order.md:103-110 requires G2 to update the shared contract and consumer matrix serially before downstream lane fixes.
   - services/knowledge-engine/app/services/agent_contracts.py explicitly projects only the ten legacy session columns and does not adopt or mutate any G1 context field.
   - WorkspaceLease lease-59e502ddeeff450e8da90e6f5580d83d grants one R2 writer for the seven exact contract paths and does not overlap the active W5 leases.
+  - The isolated W5 candidate services/host-bridge/host_bridge/state.py includes context_revision in durable RUN_KEYS, validates it as a positive integer for new runs, and its restart acceptance test proves old and new operations recover revisions 1 and 2 independently.
+  - G2 commit 1a60e42866327a0293e52de41201cc42b4e7e1d7 is clean and reachable but RunOperationProjection still contains only context_snapshot_id, so the serial integration contract requires this follow-up before W5 consumption.
+  - WorkspaceLease lease-ecdf5d4b85bb4739b7c865d76af10676 grants the same seven exact R2 contract paths for the follow-up and does not overlap either active W5 lease.
 scope:
   pages: []
   apis: []
@@ -73,7 +90,7 @@ scope:
   states_workflows:
   - state:agent-session.provider-acceptance-security-anchor
   - state:host-context-head.single-writer-cas
-  - state:runtime-operation.frozen-context-target
+  - state:runtime-operation.frozen-context-target-pair
   tests:
   - test:tests/test_workbench_foundation_contract.py
   - test:frontend/tests/workbench-foundation-contract.test.ts
@@ -82,7 +99,7 @@ scope:
 planned_changes:
 - id: G2-CHG-001
   action: modify
-  kind: public-schema-description
+  kind: public-schema-contract
   node_id: schema:config/workbench-foundation-v1
   paths:
   - config/schemas/workbench-foundation.v1.schema.json
@@ -101,7 +118,7 @@ planned_changes:
   - G2-VERIFY-003
 - id: G2-CHG-002
   action: modify
-  kind: python-schema-description
+  kind: python-schema-contract
   node_id: schema:python/workbench-foundation-v1
   paths:
   - services/knowledge-engine/app/schemas/workbench_foundation.py
@@ -115,7 +132,7 @@ planned_changes:
   - G2-VERIFY-003
 - id: G2-CHG-003
   action: modify
-  kind: typescript-schema-description
+  kind: typescript-schema-contract
   node_id: schema:typescript/workbench-foundation-v1
   paths:
   - frontend/src/lib/workbench/contracts.ts
@@ -163,13 +180,13 @@ allowed_unplanned_paths: []
 compatibility:
   api:
     status: compatible
-    strategy: No wire field, enum, required key, route, request, or response changes. Descriptions clarify the existing context_snapshot_id fields only.
+    strategy: RunOperationProjection adds one required wire key, context_revision, whose value is integer >= 1 or null. Boundary adapters must emit explicit null for legacy operations; every new W5 operation emits its persisted positive revision. No enum, route, request, or other response field changes.
   database:
     status: compatible
     strategy: Migration 104 and every database object, trigger, column, constraint, index, and COMMENT remain byte-identical. The existing agent-session value is interpreted as the accepted security anchor; the existing runtime-execution value remains the immutable per-operation target. Host current-head state is not added to the database in this delta.
   workflow:
     status: compatible
-    strategy: A session's provider-acceptance anchor never moves. W5 may later implement one Host-owned current-head CAS that requires the expected snapshot and revision, advances only to a canonical next revision, and freezes that selected head into each new runtime execution. Existing operations never inherit a later head.
+    strategy: A session's provider-acceptance anchor never moves. The Host-owned current-head CAS freezes both snapshot and revision into each new W5 HostRun; RunOperationProjection exposes both values on restart. Existing legacy operations normalize a missing revision to explicit null and never inherit a later head.
   data_source:
     status: not_applicable
     strategy: No external source, credential, collector, or runtime database is accessed.
@@ -193,6 +210,9 @@ graph_acceptance:
   - from: db:mcp.runtime_executions.context_snapshot_id
     to: contract:run-operation-projection.context_snapshot_id
     relation: projects_immutable_operation_target
+  - from: contract:w5-host-run.context_revision
+    to: contract:run-operation-projection.context_revision
+    relation: projects_immutable_operation_revision
   allowed_unknowns: []
   forbidden_orphans:
   - contract:host-current-context-head
@@ -208,6 +228,9 @@ risks:
 - id: G2-RISK-003
   description: A frontend or secondary service could become another current-head writer.
   mitigation: Define FrontendAgentBinding as a projection of the Host-owned head and require expected snapshot plus expected revision compare-and-swap through the single Host writer.
+- id: G2-RISK-004
+  description: Restart recovery could combine an old operation's frozen snapshot with the session's newer current revision when the public operation projection omits context_revision.
+  mitigation: Add a required nullable context_revision key, require positive non-null values for new W5 operations in the consumer matrix, and test legacy null plus independently frozen old/new revision pairs.
 out_of_scope:
 - Editing, replacing, appending to, or executing migrations/104_workbench_context_and_agent_binding.sql or any other migration.
 - Changing a database COMMENT through an additive migration; the existing metadata is sufficient once the authority matrix disambiguates the three layers.
@@ -216,23 +239,23 @@ out_of_scope:
 - Touching the W5 worktree, Shell/sidebar/Feature Registry files, Desktop, shared runtime resources, or the canonical dirty worktree.
 - Remote push, pull request, merge, default-branch delivery attestation, or shared database adoption.
 rollback:
-  strategy: Revert only this isolated G2 contract commit. Because payload shapes, migration 104, runtime code, and persistent data are unchanged, rollback restores the prior descriptions and tests without any data operation.
+  strategy: Revert the isolated G2 follow-up commit before integration, or revert both G2 commits to return to the G1 authority. The added key is nullable for legacy normalization, and migration 104, runtime code, and persistent data remain unchanged, so rollback requires no data operation.
   data_recovery: Not applicable; this delta does not connect to or write any database or external system.
 verification_plan:
 - id: G2-VERIFY-001
   layer: python-contract
   command: python -B -X utf8 -m pytest -q -p no:cacheprovider tests/test_workbench_foundation_contract.py services/knowledge-engine/tests/test_agent_contracts.py
-  proves: JSON Schema and Pydantic descriptions, consumer-matrix ownership, migration immutability, and legacy session compatibility enforce the three-layer semantics.
+  proves: JSON Schema and Pydantic fields, consumer-matrix ownership, legacy-null normalization, frozen operation revision, migration immutability, and legacy session compatibility enforce the three-layer semantics.
   required: true
 - id: G2-VERIFY-002
   layer: frontend-contract
   command: npm --prefix frontend run test:unit -- tests/workbench-foundation-contract.test.ts
-  proves: The TypeScript authority uses the same session-anchor, Host current-head CAS, and frozen operation-target semantics as the JSON Schema.
+  proves: The TypeScript authority uses the same session-anchor, Host current-head CAS, and nullable-legacy/non-null-new frozen operation target pair as the JSON Schema.
   required: true
 - id: G2-VERIFY-003
   layer: frontend-typecheck
   command: npm --prefix frontend exec -- tsc --noEmit -p frontend/tsconfig.json
-  proves: Description-only TypeScript annotations preserve the existing strict frontend contract.
+  proves: The additive nullable operation revision compiles with the existing strict frontend contract.
   required: true
 - id: G2-VERIFY-004
   layer: migration-ledger

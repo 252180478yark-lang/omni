@@ -174,13 +174,15 @@ export interface AgentArtifactProjection {
   readonly source_ref: string
 }
 
-/** Existing runtime operation whose selected context never follows a later session rebind. */
+/** Existing runtime operation whose frozen snapshot/revision pair never follows a later rebind. */
 export interface RunOperationProjection {
   readonly schema_version: typeof WORKBENCH_CONTRACT_VERSION
   readonly operation_id: string
   readonly session_id: string | null
   /** Immutable operation target backed by mcp.runtime_executions.context_snapshot_id. */
   readonly context_snapshot_id: string | null
+  /** Frozen revision: null only for legacy operations and positive for every new W5 HostRun. */
+  readonly context_revision: number | null
   readonly attempt: number
   readonly risk_level: WorkbenchRiskLevel
   readonly state: WorkbenchOperationState
@@ -317,6 +319,7 @@ const WORKBENCH_CONTRACT_REQUIRED_FIELDS = {
     'operation_id',
     'session_id',
     'context_snapshot_id',
+    'context_revision',
     'attempt',
     'risk_level',
     'state',

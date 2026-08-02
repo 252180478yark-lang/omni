@@ -34,7 +34,7 @@ contracts:
 - name: RunOperationProjection
   owner: G1-foundation
   consumers: [W3, W5]
-  rule: Maps existing runtime and approval truth sources; context_snapshot_id is the frozen target selected when the operation starts, and Host runs are attempts rather than a second operation.
+  rule: Maps existing runtime and approval truth sources; context_snapshot_id plus context_revision is the frozen target pair selected when the operation starts. Legacy projections emit an explicit null revision, every new W5 operation emits a positive persisted revision, and Host runs remain attempts rather than a second operation.
 - name: RunEventProjection
   owner: G1-foundation
   consumers: [W3, W5]
@@ -64,14 +64,19 @@ context_binding_semantics:
   operation_frozen_target:
     authority: mcp.runtime_executions.context_snapshot_id
     projection: RunOperationProjection.context_snapshot_id
-    purpose: Context selected from the Host current head when one operation starts.
+    revision_projection: RunOperationProjection.context_revision
+    revision_source: W5 HostRun.context_revision
+    purpose: Snapshot and revision selected from the Host current head when one operation starts.
     writer: Existing runtime execution writer at operation creation.
-    mutation: Immutable once non-null; resume, approval wait, retry, and recovery retain the original value.
+    mutation: The snapshot/revision pair is immutable; resume, approval wait, retry, and recovery retain both original values.
+    legacy_rule: Pre-W5 operations emit context_revision as explicit null rather than borrowing the session current revision.
+    new_w5_rule: Every new W5 operation requires non-null context_snapshot_id and positive context_revision from its persisted HostRun.
   invariants:
   - Advancing the Host current head never changes the accepted session security anchor.
   - Advancing the Host current head never retargets an existing runtime execution.
   - A FrontendAgentBinding.operation_id may select an older operation whose RunOperationProjection context differs from the current Host head.
-  - Every new operation freezes exactly the Host head accepted at its start boundary.
+  - Every new operation freezes exactly the Host snapshot and revision accepted at its start boundary.
+  - Restart projection never combines an operation snapshot with a different session revision.
 write_ownership:
   foundation:
   - config/schemas/workbench-foundation.v1.schema.json

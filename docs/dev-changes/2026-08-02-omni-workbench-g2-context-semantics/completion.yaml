@@ -4,27 +4,27 @@ state: GRAPH_DIFF_READY
 actual_changes:
 - id: G2-ACT-001
   planned_change_id: G2-CHG-001
-  summary: Clarified the public JSON Schema descriptions for the accepted session anchor, Host-owned current-head CAS, optional older operation selection, and immutable per-operation target without changing any wire field.
+  summary: Clarified the three context layers and added required nullable RunOperationProjection.context_revision so legacy projections emit null and every new W5 operation exposes its persisted positive frozen revision.
   paths:
   - config/schemas/workbench-foundation.v1.schema.json
 - id: G2-ACT-002
   planned_change_id: G2-CHG-002
-  summary: Added matching Pydantic model and field descriptions while preserving every validator, field type, and runtime value contract.
+  summary: Added matching Pydantic semantics plus the nullable positive-integer operation revision field while preserving strict validation and legacy explicit-null compatibility.
   paths:
   - services/knowledge-engine/app/schemas/workbench_foundation.py
 - id: G2-ACT-003
   planned_change_id: G2-CHG-003
-  summary: Added matching TypeScript contract documentation for the Host current head and frozen operation target without changing the interface shape.
+  summary: Added matching TypeScript semantics and the nullable operation revision field to complete the frozen snapshot/revision pair.
   paths:
   - frontend/src/lib/workbench/contracts.ts
 - id: G2-ACT-004
   planned_change_id: G2-CHG-004
-  summary: Added the machine-readable three-layer ownership, writer, mutation, persistence, and invariant matrix to the delivered G1 consumer handoff.
+  summary: Added the machine-readable three-layer matrix and the legacy-null/new-W5-non-null consumer rule for operation context revisions.
   paths:
   - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/consumer-matrix.yaml
 - id: G2-ACT-005
   planned_change_id: G2-CHG-005
-  summary: Added Python and frontend contract tests that prove the authority descriptions agree and migration 104 retains both immutable database guards.
+  summary: Added Python and frontend tests for authority parity, required nullable legacy revision, positive new W5 revision, complete restart binding semantics, and unchanged migration guards.
   paths:
   - tests/test_workbench_foundation_contract.py
   - frontend/tests/workbench-foundation-contract.test.ts
@@ -33,58 +33,63 @@ contract_delta:
   reason: Index mode and strict final validation intentionally require GRAPH_DIFF_READY, while a required result would have to exist before the state transition and create a circular Gate.
   effect: G2-VERIFY-008 and G2-VERIFY-009 are schema-optional like the delivered G1 precedent, but this branch is not committed until both exact commands pass and are recorded.
   accepted: true
+- description: Added RunOperationProjection.context_revision to the existing six-path authority and test scope after the first local G2 commit.
+  reason: Follow-up audit of the isolated W5 HostRun proved it durably freezes context_snapshot_id plus context_revision, while the public operation projection could not recover that complete pair after restart.
+  effect: JSON, Python, and TypeScript add a required nullable revision key; legacy projections emit null, new W5 projections must emit a positive persisted revision, and no database or migration path changes.
+  accepted: true
 verification_results:
 - id: G2-VERIFY-001
   command: python -B -X utf8 -m pytest -q -p no:cacheprovider tests/test_workbench_foundation_contract.py services/knowledge-engine/tests/test_agent_contracts.py
   status: passed
   exit_code: 0
-  evidence: Fresh VERIFYING run passed 55 tests in 0.50 seconds; one pre-existing Starlette PendingDeprecationWarning was emitted. The suite parsed the consumer matrix, compared JSON and Pydantic descriptions, asserted both migration guards, and retained legacy session-store coverage.
+  evidence: Fresh follow-up run passed 55 tests in 0.47 seconds; one pre-existing Starlette PendingDeprecationWarning was emitted. The suite proves required explicit-null legacy revision, positive new W5 revision, JSON/Pydantic parity, consumer rules, migration guards, and legacy session-store compatibility.
 - id: G2-VERIFY-002
   command: npm --prefix frontend run test:unit -- tests/workbench-foundation-contract.test.ts
   status: passed
   exit_code: 0
-  evidence: Fresh Vitest run passed 1 file and 6 tests, including the new three-layer JSON/TypeScript semantic parity assertion.
+  evidence: Fresh follow-up Vitest run passed 1 file and 6 tests, including schema/TypeScript parity plus typed legacy-null and restarted-W5 revision-two projections.
 - id: G2-VERIFY-003
   command: npm --prefix frontend exec -- tsc --noEmit -p frontend/tsconfig.json
   status: passed
   exit_code: 0
-  evidence: Fresh strict TypeScript compilation completed with no diagnostics.
+  evidence: Fresh follow-up strict TypeScript compilation completed with no diagnostics after adding context_revision to the interface and runtime field manifest.
 - id: G2-VERIFY-004
   command: python -B -X utf8 scripts/apply_migrations.py --dry-run --verify
   status: passed
   exit_code: 0
-  evidence: Repository-only verification found 95 migrations at unchanged head 104_workbench_context_and_agent_binding.sql with digest 3addfa9fc80de49853dd308321f493e0b5196531da177ea72c2428099ab3bbb1.
+  evidence: Fresh follow-up repository-only verification found 95 migrations at unchanged head 104_workbench_context_and_agent_binding.sql with digest 3addfa9fc80de49853dd308321f493e0b5196531da177ea72c2428099ab3bbb1.
 - id: G2-VERIFY-005
   command: git diff --exit-code c1a97f873f9f1c639dd274adcf92ca206a760c11 -- migrations/104_workbench_context_and_agent_binding.sql
   status: passed
   exit_code: 0
-  evidence: Git reported no migration 104 diff from the immutable G1 mainline baseline.
+  evidence: Fresh follow-up Git comparison reported no migration 104 diff from the immutable G1 mainline baseline.
 - id: G2-VERIFY-006
   command: git diff --check
   status: passed
   exit_code: 0
-  evidence: Fresh worktree diff hygiene check returned no whitespace errors.
+  evidence: Fresh follow-up worktree diff hygiene check returned no whitespace errors across all eight candidate paths.
 - id: G2-VERIFY-007
   command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-workbench-g2-context-semantics/impact.yaml --completion docs/dev-changes/2026-08-02-omni-workbench-g2-context-semantics/completion.yaml --expect-state VERIFYING
   status: passed
   exit_code: 0
-  evidence: Schema-v3 impact and completion validated at VERIFYING with the exact six modified contract/test paths, one accepted sequencing delta, and every required pre-closure check passed.
+  evidence: The original forward transition validated at VERIFYING with the exact six product paths. The follow-up keeps the mandated forward-only GRAPH_DIFF_READY state, records its accepted scope delta, and is revalidated by the fresh strict final Gate.
 - id: G2-VERIFY-008
   command: python -B -X utf8 scripts/check_feature_contracts.py --mode index --base c1a97f873f9f1c639dd274adcf92ca206a760c11
   status: passed
   exit_code: 0
-  evidence: Git-derived staged-index validation reported 3 protected authority files covered by exactly 1 delivery-ready schema-v3 candidate with no uncontracted path or second owner.
+  evidence: Fresh follow-up staged-index validation reported 3 protected authority files covered by exactly 1 delivery-ready schema-v3 candidate with no uncontracted path or second owner across the cumulative two-commit diff from c1a97f.
 - id: G2-VERIFY-009
   command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-workbench-g2-context-semantics/impact.yaml --completion docs/dev-changes/2026-08-02-omni-workbench-g2-context-semantics/completion.yaml --expect-state GRAPH_DIFF_READY --strict
   status: passed
   exit_code: 0
-  evidence: Strict schema-v3 validation returned OK at GRAPH_DIFF_READY with every required edge present, no unknown or orphan, and ready_for_ci retained as the repository-authored endpoint.
+  evidence: Fresh follow-up strict schema-v3 validation returned OK at GRAPH_DIFF_READY with the new HostRun revision projection edge present, no unknown or orphan, and ready_for_ci retained as the repository-authored endpoint.
 graph_diff:
   status: accepted
   snapshot_before: c1a97f873f9f1c639dd274adcf92ca206a760c11
-  snapshot_after: contract:g2-context-binding-semantics-v1
+  snapshot_after: contract:g2-context-binding-semantics-v2
   added_nodes:
   - contract:host-current-context-head
+  - contract:run-operation-projection.context_revision
   - test:g2-context-binding-semantics
   modified_nodes:
   - schema:config/workbench-foundation-v1
@@ -99,6 +104,7 @@ graph_diff:
   - edge:g2-host-current-head-to-frontend-binding
   - edge:g2-host-current-head-to-runtime-frozen-target
   - edge:g2-runtime-frozen-target-to-operation-projection
+  - edge:g2-host-run-revision-to-operation-projection
   removed_edges: []
   required_edges:
   - from: schema:config/workbench-foundation-v1
@@ -130,7 +136,12 @@ graph_diff:
     to: contract:run-operation-projection.context_snapshot_id
     relation: projects_immutable_operation_target
     status: present
-    evidence: JSON, Python, TypeScript, and migration 104 identify this field as the existing immutable per-operation target; both contract suites passed.
+    evidence: JSON, Python, TypeScript, and migration 104 identify this field as the snapshot half of the immutable per-operation pair; both contract suites passed.
+  - from: contract:w5-host-run.context_revision
+    to: contract:run-operation-projection.context_revision
+    relation: projects_immutable_operation_revision
+    status: present
+    evidence: The consumer matrix binds the revision source to durable W5 HostRun state, requires explicit null for legacy operations and a positive revision for every new W5 operation, while Python and TypeScript contract tests validate both projections.
   orphan_nodes: []
   unknowns: []
 exceptions: []
@@ -138,9 +149,9 @@ delivery:
   status: ready_for_ci
 rollback:
   verified: false
-  evidence: No rollback command was executed because this candidate changes descriptions and tests only; git diff proves no migration or persistent-data path changed, so reverting the isolated commit is the complete recovery action.
+  evidence: No data rollback is required; the follow-up adds one nullable wire key plus tests and governance text, while git diff proves no migration or persistent-data path changed. Reverting the follow-up commit restores the first G2 candidate.
 final:
   status: pending
   completed_at: null
   completed_by: null
-  summary: G2 context binding semantics are verified locally; formal delivery still requires an external CI attestation after integration.
+  summary: G2 context binding semantics now include the complete frozen operation snapshot/revision pair; formal delivery still requires integration and an external CI attestation.

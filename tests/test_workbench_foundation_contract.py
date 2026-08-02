@@ -119,7 +119,7 @@ def test_context_binding_semantics_separate_session_anchor_host_head_and_operati
 
     assert "accepted agent-session security anchor" in schema["description"]
     assert "Host-owned current head" in schema["description"]
-    assert "immutable target frozen for each runtime operation" in schema["description"]
+    assert "immutable snapshot/revision target pair" in schema["description"]
 
     assert "Host-owned current context head" in binding["description"]
     assert "Host-owned current context head" in binding["properties"]["context_snapshot_id"]["description"]
@@ -127,15 +127,24 @@ def test_context_binding_semantics_separate_session_anchor_host_head_and_operati
     assert "expected snapshot and revision" in binding["properties"]["context_revision"]["description"]
     assert "may differ" in binding["properties"]["operation_id"]["description"]
 
-    assert "immutable target selected" in operation["description"]
+    assert "immutable target pair selected" in operation["description"]
     assert "mcp.runtime_executions.context_snapshot_id" in operation["properties"]["context_snapshot_id"]["description"]
     assert "never retargeted" in operation["properties"]["context_snapshot_id"]["description"]
+    assert "context_revision" in operation["required"]
+    assert operation["properties"]["context_revision"]["type"] == ["integer", "null"]
+    assert operation["properties"]["context_revision"]["minimum"] == 1
+    assert "Legacy operations emit explicit null" in operation["properties"]["context_revision"]["description"]
+    assert "new W5 operation" in operation["properties"]["context_revision"]["description"]
 
     assert "accepted agent-session security anchor" in python_binding["description"]
     assert "Host-owned current context head" in python_binding["properties"]["context_snapshot_id"]["description"]
     assert "expected snapshot and revision" in python_binding["properties"]["context_revision"]["description"]
-    assert "frozen independently" in python_operation["description"]
+    assert "snapshot/revision pair frozen" in python_operation["description"]
     assert "mcp.runtime_executions.context_snapshot_id" in python_operation["properties"]["context_snapshot_id"]["description"]
+    python_operation_revision = python_operation["properties"]["context_revision"]
+    assert {"minimum": 1, "type": "integer"} in python_operation_revision["anyOf"]
+    assert {"type": "null"} in python_operation_revision["anyOf"]
+    assert "legacy operations emit explicit null" in python_operation_revision["description"]
 
     assert semantics["session_security_anchor"] == {
         "authority": "mcp.agent_session_contracts.context_snapshot_id",
@@ -155,7 +164,13 @@ def test_context_binding_semantics_separate_session_anchor_host_head_and_operati
     assert semantics["operation_frozen_target"]["projection"] == (
         "RunOperationProjection.context_snapshot_id"
     )
-    assert "retain the original value" in semantics["operation_frozen_target"]["mutation"]
+    assert semantics["operation_frozen_target"]["revision_projection"] == (
+        "RunOperationProjection.context_revision"
+    )
+    assert semantics["operation_frozen_target"]["revision_source"] == "W5 HostRun.context_revision"
+    assert "retain both original values" in semantics["operation_frozen_target"]["mutation"]
+    assert "explicit null" in semantics["operation_frozen_target"]["legacy_rule"]
+    assert "positive context_revision" in semantics["operation_frozen_target"]["new_w5_rule"]
 
     migration = MIGRATION_PATH.read_text(encoding="utf-8")
     assert "agent session context snapshot binding is immutable" in migration
@@ -239,6 +254,7 @@ def test_standard_rfc3339_strings_parse_for_all_four_request_datetime_fields() -
             "operation_id": "operation:one",
             "session_id": "session:one",
             "context_snapshot_id": "context:snapshot-one",
+            "context_revision": 1,
             "attempt": 1,
             "risk_level": "R2",
             "state": "running",
@@ -285,6 +301,7 @@ def test_datetime_parsing_keeps_timezone_and_other_scalar_validation_strict() ->
         "operation_id": "operation:one",
         "session_id": None,
         "context_snapshot_id": None,
+        "context_revision": None,
         "attempt": "1",
         "risk_level": "R0",
         "state": "pending",
@@ -597,12 +614,13 @@ def test_artifact_uses_prd_safe_diff_summary_name() -> None:
     assert "safe_summary" not in AgentArtifactProjection.model_fields
 
 
-def test_legacy_operation_requires_nullable_idempotency_hash_key() -> None:
+def test_operation_requires_nullable_legacy_revision_and_idempotency_keys() -> None:
     payload = {
         "schema_version": 1,
         "operation_id": "operation:legacy",
         "session_id": None,
         "context_snapshot_id": None,
+        "context_revision": None,
         "attempt": 1,
         "risk_level": "R0",
         "state": "unknown",
@@ -612,7 +630,31 @@ def test_legacy_operation_requires_nullable_idempotency_hash_key() -> None:
         "updated_at": "2026-08-02T10:00:00Z",
     }
     operation = RunOperationProjection.model_validate(payload)
+    assert operation.context_revision is None
     assert operation.idempotency_key_hash is None
+
+    missing_revision = dict(payload)
+    missing_revision.pop("context_revision")
+    with pytest.raises(ValidationError, match="context_revision"):
+        RunOperationProjection.model_validate(missing_revision)
+
+    new_operation = RunOperationProjection.model_validate(
+        {
+            **payload,
+            "operation_id": "operation:w5-new",
+            "session_id": "session:w5-new",
+            "context_snapshot_id": "context:w5-revision-two",
+            "context_revision": 2,
+            "state": "running",
+        }
+    )
+    assert (new_operation.context_snapshot_id, new_operation.context_revision) == (
+        "context:w5-revision-two",
+        2,
+    )
+
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        RunOperationProjection.model_validate({**payload, "context_revision": 0})
 
     payload.pop("idempotency_key_hash")
     with pytest.raises(ValidationError, match="idempotency_key_hash"):

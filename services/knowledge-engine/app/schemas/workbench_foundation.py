@@ -313,7 +313,7 @@ class AgentArtifactProjection(FrozenStrictWireModel):
 
 
 class RunOperationProjection(FrozenStrictWireModel):
-    """Existing operation projection with a target frozen independently of later rebinds."""
+    """Existing operation projection with a snapshot/revision pair frozen across rebinds."""
 
     schema_version: Literal[1]
     operation_id: str = Field(pattern=IDENTIFIER)
@@ -323,6 +323,13 @@ class RunOperationProjection(FrozenStrictWireModel):
         description=(
             "Immutable per-operation target backed by mcp.runtime_executions.context_snapshot_id; "
             "nullable only for legacy operations and never retargeted from a later Host current head."
+        ),
+    )
+    context_revision: int | None = Field(
+        ge=1,
+        description=(
+            "Immutable revision paired with context_snapshot_id; legacy operations emit explicit "
+            "null, while every new W5 operation emits the positive revision persisted by HostRun."
         ),
     )
     attempt: int = Field(ge=1)

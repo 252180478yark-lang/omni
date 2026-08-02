@@ -25,6 +25,7 @@ import {
   WORKBENCH_RISK_LEVELS,
   WORKBENCH_RUNNER_MODES,
   type FrontendAgentBinding,
+  type RunOperationProjection,
   type WorkbenchContextSnapshot,
   type WorkbenchContractName,
 } from '@/lib/workbench/contracts'
@@ -36,6 +37,7 @@ interface JsonSchemaNode {
   readonly const?: unknown
   readonly enum?: readonly unknown[]
   readonly pattern?: string
+  readonly minimum?: number
   readonly properties?: Readonly<Record<string, JsonSchemaNode>>
   readonly required?: readonly string[]
   readonly additionalProperties?: boolean
@@ -290,22 +292,58 @@ describe('workbench foundation TypeScript mirror', () => {
     const bindingRevision = binding.properties?.context_revision
     const selectedOperation = binding.properties?.operation_id
     const operationContext = operation.properties?.context_snapshot_id
+    const operationRevision = operation.properties?.context_revision
 
     expect(schema.description).toContain('accepted agent-session security anchor')
     expect(schema.description).toContain('Host-owned current head')
-    expect(schema.description).toContain('immutable target frozen for each runtime operation')
+    expect(schema.description).toContain('immutable snapshot/revision target pair')
     expect(binding.description).toContain('Host-owned current context head')
     expect(bindingContext?.description).toContain('only the Host single writer')
     expect(bindingContext?.description).toContain('successful compare-and-swap')
     expect(bindingRevision?.description).toContain('expected snapshot and revision')
     expect(selectedOperation?.description).toContain('may differ from the Host current head')
-    expect(operation.description).toContain('immutable target selected')
+    expect(operation.description).toContain('immutable target pair selected')
     expect(operationContext?.description).toContain('mcp.runtime_executions.context_snapshot_id')
     expect(operationContext?.description).toContain('never retargeted')
+    expect(operation.required).toContain('context_revision')
+    expect(operationRevision?.type).toEqual(['integer', 'null'])
+    expect(operationRevision?.minimum).toBe(1)
+    expect(operationRevision?.description).toContain('Legacy operations emit explicit null')
+    expect(operationRevision?.description).toContain('new W5 operation')
 
     expect(contractSource).toContain('Projection of the Host-owned current context head')
     expect(contractSource).toContain('accepted agent-session security anchor')
     expect(contractSource).toContain('Host current head, replaced only by the Host single writer')
     expect(contractSource).toContain('Immutable operation target backed by mcp.runtime_executions.context_snapshot_id')
+    expect(contractSource).toContain('Frozen revision: null only for legacy operations')
+
+    const legacyOperation: RunOperationProjection = {
+      schema_version: 1,
+      operation_id: 'operation:legacy',
+      session_id: null,
+      context_snapshot_id: null,
+      context_revision: null,
+      attempt: 1,
+      risk_level: 'R0',
+      state: 'unknown',
+      idempotency_key_hash: null,
+      trace_id: null,
+      checkpoint: null,
+      updated_at: '2026-08-02T00:00:00Z',
+    }
+    const restartedW5Operation: RunOperationProjection = {
+      ...legacyOperation,
+      operation_id: 'operation:w5-revision-two',
+      session_id: 'session:w5',
+      context_snapshot_id: 'context:w5-revision-two',
+      context_revision: 2,
+      state: 'running',
+    }
+
+    expect(legacyOperation.context_revision).toBeNull()
+    expect([
+      restartedW5Operation.context_snapshot_id,
+      restartedW5Operation.context_revision,
+    ]).toEqual(['context:w5-revision-two', 2])
   })
 })

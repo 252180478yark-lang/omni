@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omni.local/schemas/workbench-foundation.v1.schema.json",
   "title": "Omni Workbench Foundation v1",
-  "description": "Provider-neutral, path-safe shared contracts frozen by G1 and clarified at G2. Context binding has three distinct layers: the accepted agent-session security anchor, the Host-owned current head, and the immutable target frozen for each runtime operation.",
+  "description": "Provider-neutral, path-safe shared contracts frozen by G1 and clarified at G2. Context binding has three distinct layers: the accepted agent-session security anchor, the Host-owned current head, and the immutable snapshot/revision target pair frozen for each runtime operation.",
   "oneOf": [
     {"$ref": "#/$defs/WorkbenchContextSnapshot"},
     {"$ref": "#/$defs/FrontendAgentBinding"},
@@ -315,13 +315,14 @@
     },
     "RunOperationProjection": {
       "type": "object",
-      "description": "Projection of an existing runtime operation. Its context_snapshot_id is the immutable target selected from the Host current head when this operation started and never follows a later session rebind.",
+      "description": "Projection of an existing runtime operation. Its context_snapshot_id plus context_revision form the immutable target pair selected from the Host current head when this operation started and never follow a later session rebind.",
       "additionalProperties": false,
       "required": [
         "schema_version",
         "operation_id",
         "session_id",
         "context_snapshot_id",
+        "context_revision",
         "attempt",
         "risk_level",
         "state",
@@ -337,6 +338,11 @@
         "context_snapshot_id": {
           "description": "Immutable per-operation target backed by mcp.runtime_executions.context_snapshot_id; nullable only for legacy operations and never retargeted from a later Host current head.",
           "oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]
+        },
+        "context_revision": {
+          "description": "Immutable revision paired with context_snapshot_id. Legacy operations emit explicit null; every new W5 operation emits the positive revision persisted by its HostRun so restart recovery never borrows the session current revision.",
+          "type": ["integer", "null"],
+          "minimum": 1
         },
         "attempt": {"type": "integer", "minimum": 1},
         "risk_level": {"enum": ["R0", "R1", "R2", "R3"]},
