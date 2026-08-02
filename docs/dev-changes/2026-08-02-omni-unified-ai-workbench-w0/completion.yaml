@@ -1,0 +1,151 @@
+schema_version: 3
+change_id: 2026-08-02-omni-unified-ai-workbench-w0
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: W0-ACT-001
+  planned_change_id: W0-CHG-001
+  summary: Added the R2 governance impact contract that freezes the W0 baseline, successor handoff, risk, graph edges, and deterministic verification plan.
+  paths:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/impact.yaml
+- id: W0-ACT-002
+  planned_change_id: W0-CHG-002
+  summary: Added completion evidence that distinguishes W0 local candidate readiness from CI delivery and keeps W1 closed.
+  paths:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/completion.yaml
+- id: W0-ACT-003
+  planned_change_id: W0-CHG-003
+  summary: Added the exact 29-path fingerprint inventory, four trusted delivery handoffs, preserved primary dirty evidence, and the two-path S8-S10 supersession record.
+  paths:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/path-ownership-fingerprint.yaml
+- id: W0-ACT-004
+  planned_change_id: W0-CHG-004
+  summary: Added the W1-W7 dependency, isolation, ownership, RuntimeAllocation, and delivery ordering plan with W1 product writes still closed.
+  paths:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/parallel-development-order.md
+- id: W0-ACT-005
+  planned_change_id: W0-CHG-005
+  summary: Added a read-only fail-closed verifier for baseline reachability, target and external fingerprints, live receipt provenance, exact ownership, supersession, and leases.
+  paths:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py
+contract_delta:
+- description: Split pre-transition structural validation from post-transition strict and Git-derived candidate validation.
+  reason: The original locked plan made GRAPH_DIFF_READY validation a required prerequisite to the transition that creates GRAPH_DIFF_READY, which is circular under the repository state machine.
+  effect: W0-VERIFY-004 now validates the VERIFYING contract before transition; W0-VERIFY-006 and W0-VERIFY-008 remain exact post-transition checks and are recorded after the local endpoint is reached. Scope, risk, product boundaries, and target paths are unchanged.
+  accepted: true
+- description: Make the W0 baseline verifier reproducible on both the pre-commit worktree and its committed candidate.
+  reason: The original verifier required HEAD to equal the immutable product baseline, so the same required command failed immediately after the five allowed W0 files were committed.
+  effect: The verifier still pins origin/main and merge-base to c8c8eec7, requires the candidate to descend from that baseline, and rejects any committed or worktree path outside the exact W0 contract directory. Product scope and W1 write authority remain unchanged.
+  accepted: true
+- description: Close the committed-candidate completeness and live-provenance reliability gaps found during delivery preflight.
+  reason: The post-commit verifier allowed a subset of the five W0 files, the manifest hash changed without refreshing graph_diff.snapshot_after, mixed committed/worktree evaluation made advisory worktree mode incomplete, and GitHub artifact downloads produced repeatable transient content-unverifiable failures.
+  effect: The candidate must contain all and only the five hard-coded W0 paths, the manifest cannot expand that authority, history must remain linear, every intermediate commit is checked for out-of-scope paths, reserved product mode/type/blob entries must equal the baseline, and all dynamically loaded collectors must match frozen Git/SHA-256 fingerprints. The verifier checks the manifest digest against the completion graph snapshot, confines receipt caches, verifies unique and live run/artifact metadata, replaces mixed worktree discovery with exact index mode, and gives only three enumerated provenance-availability failures one bounded retry. Content, digest, owner, lease, and scope failures remain fail-closed.
+  accepted: true
+verification_results:
+- id: W0-VERIFY-001
+  command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section baseline
+  status: passed
+  exit_code: 0
+  evidence: W0_LOCKED; branch codex/omni-unified-ai-workbench-w0 keeps origin/main and merge-base at c8c8eec71d9d970272de84649cf31f87fd148441, descends linearly from that baseline, preserves immutable five-path and collector authority across every commit, and contains all and only those five paths before or after commit.
+- id: W0-VERIFY-002
+  command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section fingerprints
+  status: passed
+  exit_code: 0
+  evidence: All 29 target paths retained identical baseline/candidate mode, type, and blob entries; the Feature Registry tree and manifest graph snapshot digest matched; the preserved primary sidebar retained its exact head, index, worktree, SHA-256, scoped-diff, and status fingerprints.
+- id: W0-VERIFY-003
+  command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section ownership
+  status: passed
+  exit_code: 0
+  evidence: Four trusted mainline deliveries verified cache containment, unique identities, authoritative content, and live run/artifact metadata, with one bounded retry limited to explicitly enumerated provenance-availability failures; two exact historical claims are known superseded, with zero unknown shared writers and zero active target leases across 29 paths.
+- id: W0-VERIFY-004
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/completion.yaml --expect-state VERIFYING
+  status: passed
+  exit_code: 0
+  evidence: Repository contract validator returned OK at state VERIFYING before the final local transition.
+- id: W0-VERIFY-005
+  command: python -X utf8 -c "from pathlib import Path; p=Path('docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/parallel-development-order.md'); t=p.read_text(encoding='utf-8'); required=['W0','W1','W2','W3','W4','W5','W6','W7','WorkspaceLease','RuntimeAllocation','GRAPH_DIFF_READY','2026-08-02-omni-unified-ai-workbench-w1-shell-ia']; missing=[x for x in required if x not in t]; assert not missing, missing; print('parallel plan structure OK')"
+  status: passed
+  exit_code: 0
+  evidence: The plan contains W0-W7, WorkspaceLease, RuntimeAllocation, GRAPH_DIFF_READY, and the exact reserved W1 successor.
+- id: W0-VERIFY-007
+  command: python -B -X utf8 -m pytest -q -p no:cacheprovider .agents/skills/omni-feature-development/tests/test_dev_contract.py tests/test_feature_contracts.py tests/test_workspace_ownership.py tests/test_implementation_status.py
+  status: passed
+  exit_code: 0
+  evidence: 119 governance regression tests passed in 35.54 seconds.
+- id: W0-VERIFY-006
+  command: python -X utf8 scripts/check_feature_contracts.py --mode index --base c8c8eec71d9d970272de84649cf31f87fd148441
+  status: passed
+  exit_code: 0
+  evidence: Git-derived index validation compared the complete candidate tree with c8c8eec71d9d970272de84649cf31f87fd148441 and reported one delivery-ready schema-v3 candidate with no uncontracted protected path.
+- id: W0-VERIFY-008
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  status: passed
+  exit_code: 0
+  evidence: Strict repository validation returned OK at the schema-v3 local endpoint GRAPH_DIFF_READY.
+graph_diff:
+  status: clean
+  snapshot_before: c8c8eec71d9d970272de84649cf31f87fd148441
+  snapshot_after: sha256:f138149a31e24db007287e35fd90001d3c74827fe516ecd5794b93ad129555c0
+  added_nodes:
+  - governance:w0-impact-contract
+  - governance:w0-completion-evidence
+  - governance:w0-path-ownership-fingerprint
+  - governance:w0-successor-handoff
+  - plan:omni-unified-ai-workbench-parallel-development-order
+  - test:w0-path-ownership-gate
+  modified_nodes: []
+  removed_nodes: []
+  added_edges:
+  - governance:origin-main-c8c8eec7 -> governance:w1-path-ownership-gate (binds_baseline)
+  - governance:predecessor-contract-owners -> governance:w1-path-ownership-gate (clears_via_verified_handoff)
+  - governance:w0-successor-handoff -> governance:w1-path-ownership-gate (reserves_successor_without_write_authority)
+  removed_edges: []
+  required_edges:
+  - from: governance:origin-main-c8c8eec7
+    to: governance:w1-path-ownership-gate
+    relation: binds_baseline
+    status: present
+    evidence: path-ownership-fingerprint.yaml plus W0-VERIFY-001 bind origin/main and merge-base to c8c8eec71d9d970272de84649cf31f87fd148441, require candidate ancestry, and reject any changed path outside the W0 contract directory.
+  - from: governance:predecessor-contract-owners
+    to: governance:w1-path-ownership-gate
+    relation: clears_via_verified_handoff
+    status: present
+    evidence: W0-VERIFY-003 live-validates runs 30688798400, 30703198969, 30709405646, and 30709994820; the manifest records the exact S8-S10 supersession paths.
+  - from: governance:w0-successor-handoff
+    to: governance:w1-path-ownership-gate
+    relation: reserves_successor_without_write_authority
+    status: present
+    evidence: Manifest successor 2026-08-02-omni-unified-ai-workbench-w1-shell-ia is unique and reserved_pending_contract_lock with product_write_authorized=false.
+  orphan_nodes: []
+  unknowns: []
+exceptions:
+- id: W0-DECISION-001
+  status: resolved
+  summary: User selected A; preserve the SKU 圈包链路 business semantics and leave the dirty primary file untouched.
+  disposition: Record the semantic requirement in the fingerprint manifest; W1 may reimplement it only from the isolated baseline after owner handoff.
+- id: W0-PREDECESSOR-DELIVERY-001
+  status: resolved
+  summary: Live trusted-provenance verification closed every delivered predecessor scope that overlaps the 29 target paths.
+  disposition: Retain the external receipts outside Git and re-verify them before W1 contract lock.
+  owners:
+  - 2026-07-30-system-convergence-s0-s3-foundation@041f05d931967d3ab014f031e684d1b02765c684#30688798400
+  - 2026-08-01-system-convergence-s4-s6-static@af11294eeadc84a45284c3265ddf623826edb1f7#30703198969
+  - 2026-08-01-system-convergence-s4-s6-gap-closure
+  - 2026-08-01-system-convergence-s7-s14@c8c8eec71d9d970272de84649cf31f87fd148441#30709994820
+- id: W0-SUPERSESSION-001
+  status: resolved
+  summary: The clean historical S8-S10 candidate retains two exact path claims but the later delivered S7-S14 contract contains both canonical mainline paths.
+  disposition: Supersede only services/knowledge-engine/config/features/generated/features.v1.json and services/knowledge-engine/config/features/system-convergence-runtime-execution.yaml for the W1 handoff; do not claim S8-S10 delivered and do not alter its worktree.
+- id: W0-BOUNDARY-001
+  status: accepted
+  summary: W0 completion does not start W1 or authorize product writes, push, merge, migration, shared runtime adoption, or external effects.
+  disposition: Keep W1 closed until its separate schema-v3 contract, refreshed evidence, and WorkspaceLease are locked.
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: false
+  evidence: No rollback was executed; W0 changes only its exact contract directory and preserves all product worktrees and runtime state.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: W0 local candidate locks the clean baseline, exact ownership handoff, fingerprints, and verifier; W1 has not started and formal delivery still requires an external default-branch CI attestation.
