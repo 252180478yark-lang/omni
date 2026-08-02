@@ -14,6 +14,21 @@ from app.schemas.runtime_trace import (
 )
 
 
+LEGACY_SESSION_COLUMNS = (
+    "session_id",
+    "runner_provider",
+    "runner_session_id",
+    "project_dir_hash",
+    "model",
+    "effort",
+    "status",
+    "trace_id",
+    "created_at",
+    "updated_at",
+)
+LEGACY_SESSION_PROJECTION = ", ".join(LEGACY_SESSION_COLUMNS)
+
+
 def project_hash(project_dir: str) -> str:
     normalized = project_dir.replace("\\", "/").rstrip("/").casefold()
     return "sha256:" + hashlib.sha256(normalized.encode()).hexdigest()
@@ -34,14 +49,18 @@ class DatabaseAgentContractStore:
         from app.database import get_pool
 
         async with get_pool().acquire() as conn, conn.transaction():
-            existing = await conn.fetchrow("SELECT * FROM mcp.agent_session_contracts WHERE session_id=$1 FOR UPDATE", payload.session_id)
+            existing = await conn.fetchrow(
+                f"SELECT {LEGACY_SESSION_PROJECTION} "
+                "FROM mcp.agent_session_contracts WHERE session_id=$1 FOR UPDATE",
+                payload.session_id,
+            )
             if existing is not None:
                 if existing["runner_session_id"] and payload.runner_session_id and existing["runner_session_id"] != payload.runner_session_id:
                     raise ValueError("agent_runner_identity_conflict")
                 if existing["runner_session_id"] and existing["runner_provider"] != payload.runner_provider:
                     raise ValueError("agent_runner_provider_conflict")
             row = await conn.fetchrow(
-                """INSERT INTO mcp.agent_session_contracts
+                f"""INSERT INTO mcp.agent_session_contracts
                    (session_id,runner_provider,runner_session_id,project_dir_hash,model,effort,status,trace_id)
                    VALUES($1,$2,$3,$4,$5,$6,$7,(SELECT trace_id FROM mcp.runtime_executions WHERE trace_id=$8))
                    ON CONFLICT(session_id) DO UPDATE SET
@@ -49,7 +68,7 @@ class DatabaseAgentContractStore:
                      runner_session_id=COALESCE(EXCLUDED.runner_session_id,mcp.agent_session_contracts.runner_session_id),
                      project_dir_hash=EXCLUDED.project_dir_hash,model=EXCLUDED.model,effort=EXCLUDED.effort,
                      status=EXCLUDED.status,trace_id=COALESCE(EXCLUDED.trace_id,mcp.agent_session_contracts.trace_id),updated_at=NOW()
-                   RETURNING *""",
+                   RETURNING {LEGACY_SESSION_PROJECTION}""",
                 payload.session_id, payload.runner_provider, payload.runner_session_id, project_hash(payload.project_dir),
                 payload.model, payload.effort, payload.status, payload.trace_id,
             )
@@ -57,7 +76,11 @@ class DatabaseAgentContractStore:
 
     async def get_session(self, session_id: str) -> AgentSessionContractRecord | None:
         from app.database import get_pool
-        row = await get_pool().fetchrow("SELECT * FROM mcp.agent_session_contracts WHERE session_id=$1", session_id)
+        row = await get_pool().fetchrow(
+            f"SELECT {LEGACY_SESSION_PROJECTION} "
+            "FROM mcp.agent_session_contracts WHERE session_id=$1",
+            session_id,
+        )
         return _session_from_row(row) if row else None
 
     async def record_attachment(self, payload: AgentAttachmentInput) -> AgentAttachmentRecord:
