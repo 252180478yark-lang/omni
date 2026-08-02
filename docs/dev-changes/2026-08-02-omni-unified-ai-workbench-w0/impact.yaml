@@ -200,17 +200,17 @@ verification_plan:
 - id: W0-VERIFY-001
   layer: git-baseline
   command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section baseline
-  proves: Branch, origin/main, merge-base, baseline ancestry, and the union of committed plus worktree changed paths match the locked W0-only candidate policy before and after commit.
+  proves: Branch, origin/main, merge-base, baseline ancestry, immutable five-path and collector authority, per-commit history, and the union of committed plus worktree changed paths equal the exact locked W0 candidate before and after commit.
   required: true
 - id: W0-VERIFY-002
   layer: fingerprint
   command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section fingerprints
-  proves: All 29 W1 target files, the Feature Registry tree, and the preserved primary sidebar diff match their raw Git and SHA-256 fingerprints.
+  proves: All 29 W1 target files retain identical baseline and candidate mode/type/blob entries, the Feature Registry tree and completion graph snapshot digest match, and the preserved primary sidebar diff retains its raw Git and SHA-256 fingerprints.
   required: true
 - id: W0-VERIFY-003
   layer: ownership
   command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section ownership
-  proves: Trusted live receipts close delivered owners, the exact S8-S10 supersession is backed by S7-S14 path coverage, and no target has an unknown writer or active lease.
+  proves: Trusted live receipts, cache containment, unique change/artifact identities, and live run/artifact metadata close delivered owners with one bounded retry for an explicitly enumerated live-provenance availability failure; the exact S8-S10 supersession is backed by S7-S14 path coverage, and no target has an unknown writer or active lease.
   required: true
 - id: W0-VERIFY-004
   layer: contract
@@ -224,8 +224,8 @@ verification_plan:
   required: true
 - id: W0-VERIFY-006
   layer: candidate-scope
-  command: python -X utf8 scripts/check_feature_contracts.py --mode worktree
-  proves: Git-derived advisory candidate validation finds complete W0 path coverage with no uncontracted protected change.
+  command: python -X utf8 scripts/check_feature_contracts.py --mode index --base c8c8eec71d9d970272de84649cf31f87fd148441
+  proves: Git-derived index validation compares the complete staged candidate tree with the immutable W0 base and finds complete W0 path coverage with no uncontracted protected change.
   required: false
 - id: W0-VERIFY-007
   layer: governance-regression
