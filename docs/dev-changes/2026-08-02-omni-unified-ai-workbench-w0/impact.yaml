@@ -47,7 +47,7 @@ current_chain:
   - governance:predecessor-contract-owners -> governance:w0-successor-handoff
   - governance:w0-successor-handoff -> governance:w1-path-ownership-gate
   evidence:
-  - origin/main and W0 HEAD both resolve to c8c8eec71d9d970272de84649cf31f87fd148441 after a fresh fetch on 2026-08-02.
+  - origin/main and the W0 merge-base resolve to c8c8eec71d9d970272de84649cf31f87fd148441 after a fresh fetch on 2026-08-02; a committed W0 candidate may be a descendant only when every changed path stays inside this exact W0 contract directory.
   - Primary frontend/src/components/app-sidebar.tsx is preserved_external_user with worktree blob c3584678ec5bac31bab7c91e3c6e8e7899473b7f; W0 uses baseline blob deb7fd4a26dc1352bb28fd90be15d61a165ad236.
   - User selected A, meaning retain the SKU 圈包链路 business semantics and do not touch the dirty primary file.
   - Live repository verification reports 2026-07-30-system-convergence-s0-s3-foundation delivered at 041f05d9 via run 30688798400, 2026-08-01-system-convergence-s4-s6-static delivered at af11294e via run 30703198969, 2026-08-01-system-convergence-s4-s6-gap-closure delivered at 5d760f73 via run 30709405646, and 2026-08-01-system-convergence-s7-s14 delivered at c8c8eec7 via run 30709994820.
@@ -200,7 +200,7 @@ verification_plan:
 - id: W0-VERIFY-001
   layer: git-baseline
   command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section baseline
-  proves: Branch, HEAD, origin/main, merge-base, reachability, and the W0-only changed-path set match the locked baseline.
+  proves: Branch, origin/main, merge-base, baseline ancestry, and the union of committed plus worktree changed paths match the locked W0-only candidate policy before and after commit.
   required: true
 - id: W0-VERIFY-002
   layer: fingerprint

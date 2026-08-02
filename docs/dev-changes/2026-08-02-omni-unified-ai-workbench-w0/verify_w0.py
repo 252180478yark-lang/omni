@@ -138,7 +138,7 @@ def verify_baseline(root: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
         "origin_main": git(root, "rev-parse", "origin/main"),
         "merge_base": git(root, "merge-base", "HEAD", "origin/main"),
     }
-    for key in ("branch", "head", "origin_main", "merge_base"):
+    for key in ("branch", "origin_main", "merge_base"):
         if observed[key] != str(baseline.get(key) or ""):
             raise W0GateError(
                 f"baseline {key} drift: expected {baseline.get(key)!r}, observed {observed[key]!r}"
@@ -147,26 +147,44 @@ def verify_baseline(root: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
         raise W0GateError("baseline head must be a full commit SHA")
     if run(("git", "merge-base", "--is-ancestor", expected, "origin/main"), cwd=root, check=False).returncode:
         raise W0GateError("frozen baseline is not reachable from origin/main")
+    if run(("git", "merge-base", "--is-ancestor", expected, "HEAD"), cwd=root, check=False).returncode:
+        raise W0GateError("W0 candidate is not descended from the frozen baseline")
 
     allowed = {str(path) for path in manifest.get("w0_allowed_paths") or []}
-    changed = status_paths(root)
+    worktree_changed = status_paths(root)
+    committed_changed = {
+        path.replace("\\", "/")
+        for path in git(root, "diff", "--name-only", f"{expected}..HEAD").splitlines()
+        if path
+    }
+    changed = worktree_changed | committed_changed
     unexpected = sorted(path for path in changed if path not in allowed)
     if unexpected:
-        raise W0GateError(f"W0 worktree has out-of-scope changes: {unexpected}")
+        raise W0GateError(f"W0 candidate has out-of-scope changes: {unexpected}")
     if git(root, "diff", "--name-only", "--", ".", f":(exclude){CONTRACT_REL.as_posix()}/**"):
         raise W0GateError("tracked product-tree diff is not empty")
     if git(root, "diff", "--cached", "--name-only", "--", ".", f":(exclude){CONTRACT_REL.as_posix()}/**"):
         raise W0GateError("staged product-tree diff is not empty")
-    return {**observed, "changed_paths": sorted(changed)}
+    return {
+        **observed,
+        "baseline": expected,
+        "committed_changed_paths": sorted(committed_changed),
+        "worktree_changed_paths": sorted(worktree_changed),
+        "changed_paths": sorted(changed),
+    }
 
 
 def verify_fingerprints(root: Path, manifest: Mapping[str, Any]) -> dict[str, Any]:
+    baseline = manifest.get("baseline") or {}
+    baseline_ref = str(baseline.get("head") or "")
+    if not baseline_ref or len(baseline_ref) != 40:
+        raise W0GateError("baseline head must be a full commit SHA")
     target_items = manifest.get("target_paths") or []
     if not isinstance(target_items, list) or not target_items:
         raise W0GateError("target_paths must be a non-empty list")
     target_by_path = {str(item.get("path")): item for item in target_items if isinstance(item, Mapping)}
     feature_paths = set(
-        git(root, "ls-tree", "-r", "--name-only", "HEAD", FEATURE_ROOT).splitlines()
+        git(root, "ls-tree", "-r", "--name-only", baseline_ref, FEATURE_ROOT).splitlines()
     )
     expected_paths = FIXED_W1_PATHS | feature_paths
     if set(target_by_path) != expected_paths:
@@ -176,7 +194,7 @@ def verify_fingerprints(root: Path, manifest: Mapping[str, Any]) -> dict[str, An
 
     for path in sorted(expected_paths):
         item = target_by_path[path]
-        observed_blob = git(root, "rev-parse", f"HEAD:{path}")
+        observed_blob = git(root, "rev-parse", f"{baseline_ref}:{path}")
         if observed_blob != str(item.get("git_blob") or ""):
             raise W0GateError(f"Git blob drift: {path}")
         observed_sha = sha256_file(root / path)
@@ -186,7 +204,7 @@ def verify_fingerprints(root: Path, manifest: Mapping[str, Any]) -> dict[str, An
             raise W0GateError(f"reserved product path is dirty in W0 worktree: {path}")
 
     feature_tree = manifest.get("feature_tree") or {}
-    observed_tree = git(root, "rev-parse", f"HEAD:{FEATURE_ROOT}")
+    observed_tree = git(root, "rev-parse", f"{baseline_ref}:{FEATURE_ROOT}")
     if observed_tree != str(feature_tree.get("git_tree") or ""):
         raise W0GateError("Feature Registry source tree fingerprint drift")
 

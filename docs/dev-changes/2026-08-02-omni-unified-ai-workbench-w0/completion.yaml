@@ -32,12 +32,16 @@ contract_delta:
   reason: The original locked plan made GRAPH_DIFF_READY validation a required prerequisite to the transition that creates GRAPH_DIFF_READY, which is circular under the repository state machine.
   effect: W0-VERIFY-004 now validates the VERIFYING contract before transition; W0-VERIFY-006 and W0-VERIFY-008 remain exact post-transition checks and are recorded after the local endpoint is reached. Scope, risk, product boundaries, and target paths are unchanged.
   accepted: true
+- description: Make the W0 baseline verifier reproducible on both the pre-commit worktree and its committed candidate.
+  reason: The original verifier required HEAD to equal the immutable product baseline, so the same required command failed immediately after the five allowed W0 files were committed.
+  effect: The verifier still pins origin/main and merge-base to c8c8eec7, requires the candidate to descend from that baseline, and rejects any committed or worktree path outside the exact W0 contract directory. Product scope and W1 write authority remain unchanged.
+  accepted: true
 verification_results:
 - id: W0-VERIFY-001
   command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section baseline
   status: passed
   exit_code: 0
-  evidence: W0_LOCKED; branch codex/omni-unified-ai-workbench-w0 has exactly the five W0 evidence paths changed, with HEAD, origin/main, and merge-base all at c8c8eec71d9d970272de84649cf31f87fd148441.
+  evidence: W0_LOCKED; branch codex/omni-unified-ai-workbench-w0 keeps origin/main and merge-base at c8c8eec71d9d970272de84649cf31f87fd148441, descends from that baseline, and changes only the five W0 evidence paths before or after commit.
 - id: W0-VERIFY-002
   command: python -B -X utf8 docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/verify_w0.py --section fingerprints
   status: passed
@@ -96,7 +100,7 @@ graph_diff:
     to: governance:w1-path-ownership-gate
     relation: binds_baseline
     status: present
-    evidence: path-ownership-fingerprint.yaml baseline plus W0-VERIFY-001 bind HEAD, origin/main, and merge-base to c8c8eec71d9d970272de84649cf31f87fd148441.
+    evidence: path-ownership-fingerprint.yaml plus W0-VERIFY-001 bind origin/main and merge-base to c8c8eec71d9d970272de84649cf31f87fd148441, require candidate ancestry, and reject any changed path outside the W0 contract directory.
   - from: governance:predecessor-contract-owners
     to: governance:w1-path-ownership-gate
     relation: clears_via_verified_handoff

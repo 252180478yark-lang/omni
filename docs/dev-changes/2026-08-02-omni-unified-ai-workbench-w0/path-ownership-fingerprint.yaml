@@ -37,6 +37,7 @@ baseline:
   merge_base: c8c8eec71d9d970272de84649cf31f87fd148441
   product_tree_clean: true
   worktree_delta: docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0 only
+  candidate_policy: HEAD may equal this baseline or descend from it only through changes under w0_allowed_paths; origin/main and merge-base remain pinned to this baseline.
   recoverable_anchor:
     branch: codex/omni-unified-ai-workbench-w0
     commit: c8c8eec71d9d970272de84649cf31f87fd148441
