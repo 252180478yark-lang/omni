@@ -108,11 +108,19 @@ export interface WorkbenchContextSnapshot {
   readonly created_at: string
 }
 
+/**
+ * Projection of the Host-owned current context head for one logical session.
+ * Only the Host single writer advances this head by compare-and-swap; the
+ * accepted agent-session security anchor and existing operation targets stay frozen.
+ */
 export interface FrontendAgentBinding {
   readonly schema_version: typeof WORKBENCH_CONTRACT_VERSION
   readonly session_id: string
+  /** Its frozen RunOperationProjection target may differ after a later current-head rebind. */
   readonly operation_id: string | null
+  /** Host current head, replaced only by the Host single writer after a successful CAS. */
   readonly context_snapshot_id: string
+  /** Monotonic CAS token paired with context_snapshot_id and advanced to the canonical next revision. */
   readonly context_revision: number
   readonly surface_ref: string
   readonly event_cursor: number | null
@@ -166,10 +174,12 @@ export interface AgentArtifactProjection {
   readonly source_ref: string
 }
 
+/** Existing runtime operation whose selected context never follows a later session rebind. */
 export interface RunOperationProjection {
   readonly schema_version: typeof WORKBENCH_CONTRACT_VERSION
   readonly operation_id: string
   readonly session_id: string | null
+  /** Immutable operation target backed by mcp.runtime_executions.context_snapshot_id. */
   readonly context_snapshot_id: string | null
   readonly attempt: number
   readonly risk_level: WorkbenchRiskLevel

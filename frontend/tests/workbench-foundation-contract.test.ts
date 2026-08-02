@@ -31,6 +31,7 @@ import {
 
 interface JsonSchemaNode {
   readonly $ref?: string
+  readonly description?: string
   readonly type?: string | readonly string[]
   readonly const?: unknown
   readonly enum?: readonly unknown[]
@@ -52,12 +53,21 @@ const schemaCandidates = [
   resolve(process.cwd(), '../config/schemas/workbench-foundation.v1.schema.json'),
 ]
 const schemaPath = schemaCandidates.find(existsSync)
+const contractSourceCandidates = [
+  resolve(process.cwd(), 'frontend/src/lib/workbench/contracts.ts'),
+  resolve(process.cwd(), 'src/lib/workbench/contracts.ts'),
+]
+const contractSourcePath = contractSourceCandidates.find(existsSync)
 
 if (!schemaPath) {
   throw new Error(`workbench foundation schema not found from ${process.cwd()}`)
 }
+if (!contractSourcePath) {
+  throw new Error(`workbench TypeScript contract not found from ${process.cwd()}`)
+}
 
 const schema = JSON.parse(readFileSync(schemaPath, 'utf8')) as WorkbenchFoundationSchema
+const contractSource = readFileSync(contractSourcePath, 'utf8')
 
 function contractDefinition(name: WorkbenchContractName): JsonSchemaNode {
   const definition = schema.$defs[name]
@@ -271,5 +281,31 @@ describe('workbench foundation TypeScript mirror', () => {
     expect(reboundContext.snapshot_id).not.toBe(originalContext.snapshot_id)
     expect(reboundContext.revision).toBe(2)
     expect(originalContext.sku_ref).toBe('sku-a')
+  })
+
+  it('separates the accepted session anchor, Host current-head CAS, and frozen operation target', () => {
+    const binding = contractDefinition('FrontendAgentBinding')
+    const operation = contractDefinition('RunOperationProjection')
+    const bindingContext = binding.properties?.context_snapshot_id
+    const bindingRevision = binding.properties?.context_revision
+    const selectedOperation = binding.properties?.operation_id
+    const operationContext = operation.properties?.context_snapshot_id
+
+    expect(schema.description).toContain('accepted agent-session security anchor')
+    expect(schema.description).toContain('Host-owned current head')
+    expect(schema.description).toContain('immutable target frozen for each runtime operation')
+    expect(binding.description).toContain('Host-owned current context head')
+    expect(bindingContext?.description).toContain('only the Host single writer')
+    expect(bindingContext?.description).toContain('successful compare-and-swap')
+    expect(bindingRevision?.description).toContain('expected snapshot and revision')
+    expect(selectedOperation?.description).toContain('may differ from the Host current head')
+    expect(operation.description).toContain('immutable target selected')
+    expect(operationContext?.description).toContain('mcp.runtime_executions.context_snapshot_id')
+    expect(operationContext?.description).toContain('never retargeted')
+
+    expect(contractSource).toContain('Projection of the Host-owned current context head')
+    expect(contractSource).toContain('accepted agent-session security anchor')
+    expect(contractSource).toContain('Host current head, replaced only by the Host single writer')
+    expect(contractSource).toContain('Immutable operation target backed by mcp.runtime_executions.context_snapshot_id')
   })
 })
