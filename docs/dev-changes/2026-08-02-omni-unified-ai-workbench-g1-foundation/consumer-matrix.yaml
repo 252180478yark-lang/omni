@@ -34,7 +34,7 @@ contracts:
 - name: RunOperationProjection
   owner: G1-foundation
   consumers: [W3, W5]
-  rule: Maps existing runtime and approval truth sources; context_snapshot_id plus context_revision is the frozen target pair selected when the operation starts. Legacy projections require both fields to be explicit null, every new W5 operation requires both a non-null snapshot and positive persisted revision, and Host runs remain attempts rather than a second operation.
+  rule: 'Maps existing runtime and approval truth sources; context_snapshot_id plus context_revision is the frozen target pair selected when the operation starts. Raw legacy wire may omit both fields or emit both explicit null, and Pydantic/consumer normalization produces (None, None). Every new W5 operation requires both a non-null snapshot and positive persisted revision; any half-bound pair is rejected, and Host runs remain attempts rather than a second operation.'
 - name: RunEventProjection
   owner: G1-foundation
   consumers: [W3, W5]

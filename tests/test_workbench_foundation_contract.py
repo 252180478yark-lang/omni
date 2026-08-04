@@ -123,6 +123,9 @@ def test_context_binding_semantics_separate_session_anchor_host_head_and_operati
     python_operation = RunOperationProjection.model_json_schema()
     matrix = yaml.safe_load(CONSUMER_MATRIX_PATH.read_text(encoding="utf-8"))
     semantics = matrix["context_binding_semantics"]
+    operation_contract = next(
+        contract for contract in matrix["contracts"] if contract["name"] == "RunOperationProjection"
+    )
 
     assert "accepted agent-session security anchor" in schema["description"]
     assert "Host-owned current head" in schema["description"]
@@ -177,6 +180,11 @@ def test_context_binding_semantics_separate_session_anchor_host_head_and_operati
     assert {"minimum": 1, "type": "integer"} in python_operation_revision["anyOf"]
     assert {"type": "null"} in python_operation_revision["anyOf"]
     assert "legacy omission normalizes to None" in python_operation_revision["description"]
+
+    assert "Raw legacy wire may omit both fields or emit both explicit null" in operation_contract["rule"]
+    assert "normalization produces (None, None)" in operation_contract["rule"]
+    assert "new W5 operation requires both a non-null snapshot and positive persisted revision" in operation_contract["rule"]
+    assert "half-bound pair is rejected" in operation_contract["rule"]
 
     assert semantics["session_security_anchor"] == {
         "authority": "mcp.agent_session_contracts.context_snapshot_id",
