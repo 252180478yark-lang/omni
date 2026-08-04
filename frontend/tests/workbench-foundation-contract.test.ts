@@ -44,6 +44,7 @@ interface JsonSchemaNode {
   readonly items?: JsonSchemaNode
   readonly anyOf?: readonly JsonSchemaNode[]
   readonly oneOf?: readonly JsonSchemaNode[]
+  readonly not?: JsonSchemaNode
 }
 
 interface WorkbenchFoundationSchema extends JsonSchemaNode {
@@ -129,13 +130,13 @@ describe('workbench foundation TypeScript mirror', () => {
     for (const name of WORKBENCH_CONTRACT_NAMES) {
       const definition = contractDefinition(name)
       const manifest = WORKBENCH_CONTRACT_FIELDS[name]
-      const fields = [...manifest.required]
+      const fields = [...manifest.required, ...manifest.optional]
 
       expect(definition.type).toBe('object')
       expect(definition.additionalProperties).toBe(false)
-      expect([...(definition.required || [])].sort()).toEqual([...fields].sort())
+      expect([...(definition.required || [])].sort()).toEqual([...manifest.required].sort())
       expect(Object.keys(definition.properties || {}).sort()).toEqual([...fields].sort())
-      expect(manifest.optional).toEqual([])
+      expect(new Set(fields).size).toBe(fields.length)
       expect(fields.every((field) => /^[a-z][a-z0-9_]*$/.test(field))).toBe(true)
       expect(enumValues(contractProperty(name, 'schema_version'))).toEqual([
         WORKBENCH_CONTRACT_VERSION,
@@ -305,19 +306,30 @@ describe('workbench foundation TypeScript mirror', () => {
     expect(operation.description).toContain('immutable target pair selected')
     expect(operationContext?.description).toContain('mcp.runtime_executions.context_snapshot_id')
     expect(operationContext?.description).toContain('never retargeted')
-    expect(operation.required).toContain('context_revision')
+    expect(operation.required).not.toContain('context_snapshot_id')
+    expect(operation.required).not.toContain('context_revision')
     expect(operationRevision?.type).toEqual(['integer', 'null'])
     expect(operationRevision?.minimum).toBe(1)
-    expect(operationRevision?.description).toContain('Legacy operations emit explicit null')
+    expect(operationRevision?.description).toContain('Legacy operations may omit both pair fields')
     expect(operationRevision?.description).toContain('new W5 operation')
     expect(operation.oneOf).toEqual([
       {
+        not: {
+          anyOf: [
+            { required: ['context_snapshot_id'] },
+            { required: ['context_revision'] },
+          ],
+        },
+      },
+      {
+        required: ['context_snapshot_id', 'context_revision'],
         properties: {
           context_snapshot_id: { type: 'null' },
           context_revision: { type: 'null' },
         },
       },
       {
+        required: ['context_snapshot_id', 'context_revision'],
         properties: {
           context_snapshot_id: { $ref: '#/$defs/Identifier' },
           context_revision: { type: 'integer', minimum: 1 },
@@ -328,7 +340,7 @@ describe('workbench foundation TypeScript mirror', () => {
     expect(contractSource).toContain('Projection of the Host-owned current context head')
     expect(contractSource).toContain('accepted agent-session security anchor')
     expect(contractSource).toContain('Host current head, replaced only by the Host single writer')
-    expect(contractSource).toContain('Complete frozen operation binding: legacy is explicitly null')
+    expect(contractSource).toContain('legacy omits both fields or uses explicit null')
     expect(contractSource).toContain('W5 is a non-null pair')
 
     const legacyOperation: RunOperationProjection = {
@@ -353,12 +365,26 @@ describe('workbench foundation TypeScript mirror', () => {
       context_revision: 2,
       state: 'running',
     }
+    const missingPairLegacyOperation: RunOperationProjection = {
+      schema_version: 1,
+      operation_id: 'operation:legacy-missing-pair',
+      session_id: null,
+      attempt: 1,
+      risk_level: 'R0',
+      state: 'unknown',
+      idempotency_key_hash: null,
+      trace_id: null,
+      checkpoint: null,
+      updated_at: '2026-08-02T00:00:00Z',
+    }
 
     expect(legacyOperation.context_revision).toBeNull()
     expect([
       restartedW5Operation.context_snapshot_id,
       restartedW5Operation.context_revision,
     ]).toEqual(['context:w5-revision-two', 2])
+    expect(missingPairLegacyOperation).not.toHaveProperty('context_snapshot_id')
+    expect(missingPairLegacyOperation).not.toHaveProperty('context_revision')
 
     // @ts-expect-error RunOperationProjection forbids a snapshot without its revision.
     const snapshotOnly: RunOperationProjection = {

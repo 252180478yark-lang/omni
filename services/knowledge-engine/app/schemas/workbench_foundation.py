@@ -313,23 +313,25 @@ class AgentArtifactProjection(FrozenStrictWireModel):
 
 
 class RunOperationProjection(FrozenStrictWireModel):
-    """Existing operation projection with a complete snapshot/revision pair frozen across rebinds."""
+    """Existing operation projection with a snapshot/revision pair frozen across rebinds, legacy-normalized or complete W5."""
 
     schema_version: Literal[1]
     operation_id: str = Field(pattern=IDENTIFIER)
     session_id: str | None = Field(pattern=IDENTIFIER)
     context_snapshot_id: str | None = Field(
+        default=None,
         pattern=IDENTIFIER,
         description=(
             "Immutable per-operation target backed by mcp.runtime_executions.context_snapshot_id; "
-            "nullable only for legacy operations and never retargeted from a later Host current head."
+            "a legacy omission normalizes to None, and the value is never retargeted from a later Host current head."
         ),
     )
     context_revision: int | None = Field(
+        default=None,
         ge=1,
         description=(
-            "Immutable revision paired with context_snapshot_id; legacy operations emit explicit "
-            "null, while every new W5 operation emits the positive revision persisted by HostRun."
+            "Immutable revision paired with context_snapshot_id; a legacy omission normalizes to "
+            "None, while every new W5 operation emits the positive revision persisted by HostRun."
         ),
     )
     attempt: int = Field(ge=1)
@@ -359,7 +361,7 @@ class RunOperationProjection(FrozenStrictWireModel):
     def frozen_context_binding_is_complete(self) -> "RunOperationProjection":
         if (self.context_snapshot_id is None) != (self.context_revision is None):
             raise ValueError(
-                "context_snapshot_id and context_revision must be both null for legacy "
+                "context_snapshot_id and context_revision must be both omitted/null for legacy "
                 "operations or both non-null for new W5 operations"
             )
         return self

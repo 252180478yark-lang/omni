@@ -3,7 +3,7 @@ change_id: 2026-08-02-omni-workbench-g2-context-semantics
 title: G2 context binding semantic clarification
 state: GRAPH_DIFF_READY
 created_at: '2026-08-02T13:41:08Z'
-updated_at: '2026-08-02T13:59:55Z'
+updated_at: '2026-08-04T14:42:10Z'
 feature_refs:
 - feature_id: omni-workbench-context-binding-semantics
   feature_ref: g2-context-binding-semantics@c1a97f873f9f1c639dd274adcf92ca206a760c11
@@ -35,12 +35,12 @@ risk:
     gate_ref: ''
 intent:
   problem: G1 uses context_snapshot_id for both the accepted agent-session anchor and the per-operation target, while FrontendAgentBinding also carries a current context head. The wire fields are structurally compatible, but their ownership and mutation semantics are not explicit enough to implement AC-FR007-04 without either mutating the accepted session anchor or losing the frozen target of an already-running operation.
-  expected_outcome: 'Freeze one contract-only three-layer interpretation: mcp.agent_session_contracts.context_snapshot_id is the immutable provider-acceptance and security anchor; FrontendAgentBinding.context_snapshot_id plus context_revision projects the Host-owned current head and advances only through a single-writer compare-and-swap; mcp.runtime_executions.context_snapshot_id plus RunOperationProjection.context_snapshot_id and nullable context_revision expose the complete target pair selected when an operation starts. The operation pair is iff: legacy projections require both values explicit null, while new W5 operations require both a non-null snapshot and positive revision.'
+  expected_outcome: 'Freeze one contract-only three-layer interpretation: mcp.agent_session_contracts.context_snapshot_id is the immutable provider-acceptance and security anchor; FrontendAgentBinding.context_snapshot_id plus context_revision projects the Host-owned current head and advances only through a single-writer compare-and-swap; mcp.runtime_executions.context_snapshot_id plus RunOperationProjection.context_snapshot_id and nullable context_revision expose the target pair selected when an operation starts. The operation pair is iff: legacy projections may omit both values or provide both explicit null and normalize to None at the Pydantic/consumer boundary, while new W5 operations require both a non-null snapshot and positive revision.'
   user_visible_behavior:
-  - This integration delta changes no page, endpoint, database row, or runtime behavior; it adds only the nullable legacy-safe context_revision key to RunOperationProjection.
+  - This integration delta changes no page, endpoint, database row, or runtime behavior; it adds a backward-compatible nullable context_revision key to RunOperationProjection without requiring it on an existing legacy payload.
   - W5 can preserve the same logical session while the Host advances its current context head, without retargeting an older running or approval-waiting operation.
   - Consumers can distinguish the accepted session security anchor, the current Host head, and an operation's frozen target from authoritative descriptions and tests.
-  - After a frontend or Host restart, an old operation projection carries its own complete frozen snapshot/revision pair instead of borrowing the current session revision; partial pairs are rejected.
+  - After a frontend or Host restart, an old operation projection either preserves its complete frozen snapshot/revision pair or normalizes an entirely absent legacy pair to None instead of borrowing the current session revision; partial pairs are rejected.
 current_chain:
   nodes:
   - schema:config/workbench-foundation-v1
@@ -179,14 +179,14 @@ planned_changes:
 allowed_unplanned_paths: []
 compatibility:
   api:
-    status: breaking
-    strategy: 'This is an additive contract field but a schema-level breaking wire transition: context_revision is now required, so a pre-G2 RunOperationProjection that omits it (or supplies only one frozen-context field) fails strict validation. The W5 boundary normalizes every emitted projection before validation: a legacy operation emits both context_snapshot_id and context_revision as explicit null, while a new W5 HostRun emits its persisted non-null snapshot and positive revision. After that normalization, system-produced projections are compatible; the accepted transition risk is limited to direct legacy or offline producers/consumers, which must upgrade or normalize before strict validation. No enum, route, request, or other response field changes.'
+    status: compatible
+    strategy: 'context_revision is an additive field with a backward-compatible wire transition: a pre-G2 RunOperationProjection that omits both frozen-context fields remains valid, and the Pydantic/consumer boundary normalizes that pair to None. Legacy projections may also emit both fields as explicit null; a new W5 HostRun must emit both its persisted non-null snapshot and positive revision. Any half-bound pair remains invalid. No enum, route, request, or other response field changes; the accepted risk is limited to an unsupported malformed half-bound payload, not an existing legacy payload.'
   database:
     status: compatible
     strategy: Migration 104 and every database object, trigger, column, constraint, index, and COMMENT remain byte-identical. The existing agent-session value is interpreted as the accepted security anchor; the existing runtime-execution value remains the immutable per-operation target. Host current-head state is not added to the database in this delta.
   workflow:
     status: compatible
-    strategy: A session's provider-acceptance anchor never moves. The Host-owned current-head CAS freezes both snapshot and revision into each new W5 HostRun; RunOperationProjection exposes both values on restart. Existing legacy operations normalize a missing revision to explicit null and never inherit a later head.
+    strategy: A session's provider-acceptance anchor never moves. The Host-owned current-head CAS freezes both snapshot and revision into each new W5 HostRun; RunOperationProjection exposes both values on restart. Existing legacy operations preserve an entirely absent pair or normalize it to None at the Pydantic/consumer boundary and never inherit a later head.
   data_source:
     status: not_applicable
     strategy: No external source, credential, collector, or runtime database is accessed.
@@ -230,7 +230,7 @@ risks:
   mitigation: Define FrontendAgentBinding as a projection of the Host-owned head and require expected snapshot plus expected revision compare-and-swap through the single Host writer.
 - id: G2-RISK-004
   description: Restart recovery could combine an old operation's frozen snapshot with the session's newer current revision when the public operation projection omits context_revision.
-  mitigation: 'Enforce the required nullable context_revision as an iff pair with context_snapshot_id in JSON Schema, Pydantic, TypeScript, and contract tests: legacy values are both null; new W5 values are both non-null with a positive revision.'
+  mitigation: 'Enforce context_snapshot_id/context_revision as an iff pair in JSON Schema, Pydantic, TypeScript, and contract tests: legacy values are both absent or both null and normalize to None at the Pydantic/consumer boundary; new W5 values are both non-null with a positive revision.'
 out_of_scope:
 - Editing, replacing, appending to, or executing migrations/104_workbench_context_and_agent_binding.sql or any other migration.
 - Changing a database COMMENT through an additive migration; the existing metadata is sufficient once the authority matrix disambiguates the three layers.
@@ -239,23 +239,23 @@ out_of_scope:
 - Touching the W5 worktree, Shell/sidebar/Feature Registry files, Desktop, shared runtime resources, or the canonical dirty worktree.
 - Remote push, pull request, merge, default-branch delivery attestation, or shared database adoption.
 rollback:
-  strategy: Revert the isolated G2 follow-up commit before integration, or revert both G2 commits to return to the G1 authority. The added key is nullable for legacy normalization, and migration 104, runtime code, and persistent data remain unchanged, so rollback requires no data operation.
+  strategy: Revert the isolated G2 follow-up commit before integration, or revert both G2 commits to return to the G1 authority. The added key is optional as a whole legacy pair and normalizes at the consumer boundary, while migration 104, runtime code, and persistent data remain unchanged, so rollback requires no data operation.
   data_recovery: Not applicable; this delta does not connect to or write any database or external system.
 verification_plan:
 - id: G2-VERIFY-001
   layer: python-contract
   command: python -B -X utf8 -m pytest -q -p no:cacheprovider tests/test_workbench_foundation_contract.py services/knowledge-engine/tests/test_agent_contracts.py
-  proves: JSON Schema and Pydantic enforce the complete frozen operation pair (both-null legacy or both-non-null new W5), while consumer ownership, migration immutability, and legacy session compatibility preserve the three-layer semantics.
+  proves: JSON Schema and Pydantic enforce the complete frozen operation pair (both-absent or both-null legacy, or both-non-null new W5) and normalize the missing legacy pair to None, while consumer ownership, migration immutability, and legacy session compatibility preserve the three-layer semantics.
   required: true
 - id: G2-VERIFY-002
   layer: frontend-contract
   command: npm --prefix frontend run test:unit -- tests/workbench-foundation-contract.test.ts
-  proves: The TypeScript authority rejects both half-bound operation cases and uses the same session-anchor, Host current-head CAS, and iff frozen operation target pair as the JSON Schema.
+  proves: The TypeScript authority accepts both legacy pair representations, rejects both half-bound operation cases, and uses the same session-anchor, Host current-head CAS, and iff frozen operation target pair as the JSON Schema.
   required: true
 - id: G2-VERIFY-003
   layer: frontend-typecheck
   command: npm --prefix frontend exec -- tsc --noEmit -p frontend/tsconfig.json
-  proves: The additive nullable operation revision compiles with the existing strict frontend contract.
+  proves: The backward-compatible optional legacy pair and required complete new-W5 pair compile with the existing strict frontend contract.
   required: true
 - id: G2-VERIFY-004
   layer: migration-ledger

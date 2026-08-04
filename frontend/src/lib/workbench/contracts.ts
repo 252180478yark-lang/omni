@@ -174,8 +174,12 @@ export interface AgentArtifactProjection {
   readonly source_ref: string
 }
 
-/** Complete frozen operation binding: legacy is explicitly null, W5 is a non-null pair. */
+/** Complete frozen operation binding: legacy omits both fields or uses explicit null; W5 is a non-null pair. */
 export type RunOperationContextBinding =
+  | {
+      readonly context_snapshot_id?: never
+      readonly context_revision?: never
+    }
   | {
       readonly context_snapshot_id: null
       readonly context_revision: null
@@ -325,8 +329,6 @@ const WORKBENCH_CONTRACT_REQUIRED_FIELDS = {
     'schema_version',
     'operation_id',
     'session_id',
-    'context_snapshot_id',
-    'context_revision',
     'attempt',
     'risk_level',
     'state',
@@ -369,10 +371,16 @@ const WORKBENCH_CONTRACT_REQUIRED_FIELDS = {
   ],
 } as const satisfies Record<WorkbenchContractName, readonly string[]>
 
+const WORKBENCH_CONTRACT_OPTIONAL_FIELDS: Partial<
+  Record<WorkbenchContractName, readonly string[]>
+> = {
+  RunOperationProjection: ['context_snapshot_id', 'context_revision'],
+}
+
 export type WorkbenchContractFieldManifest = {
   readonly [Name in WorkbenchContractName]: {
     readonly required: (typeof WORKBENCH_CONTRACT_REQUIRED_FIELDS)[Name]
-    readonly optional: readonly []
+    readonly optional: readonly string[]
   }
 }
 
@@ -380,6 +388,9 @@ export type WorkbenchContractFieldManifest = {
 export const WORKBENCH_CONTRACT_FIELDS = Object.fromEntries(
   WORKBENCH_CONTRACT_NAMES.map((name) => [
     name,
-    { required: WORKBENCH_CONTRACT_REQUIRED_FIELDS[name], optional: [] as const },
+    {
+      required: WORKBENCH_CONTRACT_REQUIRED_FIELDS[name],
+      optional: WORKBENCH_CONTRACT_OPTIONAL_FIELDS[name] ?? [],
+    },
   ]),
 ) as WorkbenchContractFieldManifest

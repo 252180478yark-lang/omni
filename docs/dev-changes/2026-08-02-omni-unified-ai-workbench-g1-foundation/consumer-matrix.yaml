@@ -69,7 +69,7 @@ context_binding_semantics:
     purpose: Snapshot and revision selected from the Host current head when one operation starts.
     writer: Existing runtime execution writer at operation creation.
     mutation: The snapshot/revision pair is immutable; resume, approval wait, retry, and recovery retain both original values.
-    legacy_rule: Pre-W5 operations require context_snapshot_id and context_revision to be explicit null rather than borrowing the session current revision.
+    legacy_rule: Pre-W5 operations may omit both context_snapshot_id and context_revision or emit both as explicit null; the Pydantic and consumer boundary normalizes an omitted pair to None and never borrows the session current revision.
     new_w5_rule: Every new W5 operation requires non-null context_snapshot_id and positive context_revision from its persisted HostRun.
   invariants:
   - Advancing the Host current head never changes the accepted session security anchor.
@@ -77,7 +77,7 @@ context_binding_semantics:
   - A FrontendAgentBinding.operation_id may select an older operation whose RunOperationProjection context differs from the current Host head.
   - Every new operation freezes exactly the Host snapshot and revision accepted at its start boundary.
   - Restart projection never combines an operation snapshot with a different session revision.
-  - 'RunOperationProjection context_snapshot_id and context_revision are an iff pair: both null for legacy or both non-null for a new W5 operation.'
+  - 'RunOperationProjection context_snapshot_id and context_revision are an iff pair: both absent or both null for legacy, or both non-null for a new W5 operation.'
 write_ownership:
   foundation:
   - config/schemas/workbench-foundation.v1.schema.json

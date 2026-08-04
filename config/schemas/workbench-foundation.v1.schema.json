@@ -315,14 +315,12 @@
     },
     "RunOperationProjection": {
       "type": "object",
-      "description": "Projection of an existing runtime operation. Its context_snapshot_id plus context_revision form the immutable target pair selected from the Host current head when this operation started and never follow a later session rebind. The two fields are either both explicit null for a legacy operation or both non-null for a new W5 operation.",
+      "description": "Projection of an existing runtime operation. Its context_snapshot_id plus context_revision form the immutable target pair selected from the Host current head when this operation started and never follow a later session rebind. A legacy operation may omit both fields or emit both explicit null; a new W5 operation emits both a non-null snapshot and a positive revision.",
       "additionalProperties": false,
       "required": [
         "schema_version",
         "operation_id",
         "session_id",
-        "context_snapshot_id",
-        "context_revision",
         "attempt",
         "risk_level",
         "state",
@@ -336,11 +334,11 @@
         "operation_id": {"$ref": "#/$defs/Identifier"},
         "session_id": {"oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]},
         "context_snapshot_id": {
-          "description": "Immutable per-operation target backed by mcp.runtime_executions.context_snapshot_id; nullable only for legacy operations and never retargeted from a later Host current head.",
+          "description": "Immutable per-operation target backed by mcp.runtime_executions.context_snapshot_id; omittable or nullable only together with context_revision for legacy operations and never retargeted from a later Host current head.",
           "oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]
         },
         "context_revision": {
-          "description": "Immutable revision paired with context_snapshot_id. Legacy operations emit explicit null; every new W5 operation emits the positive revision persisted by its HostRun so restart recovery never borrows the session current revision.",
+          "description": "Immutable revision paired with context_snapshot_id. Legacy operations may omit both pair fields or emit both explicit null; every new W5 operation emits the positive revision persisted by its HostRun so restart recovery never borrows the session current revision.",
           "type": ["integer", "null"],
           "minimum": 1
         },
@@ -354,12 +352,22 @@
       },
       "oneOf": [
         {
+          "not": {
+            "anyOf": [
+              {"required": ["context_snapshot_id"]},
+              {"required": ["context_revision"]}
+            ]
+          }
+        },
+        {
+          "required": ["context_snapshot_id", "context_revision"],
           "properties": {
             "context_snapshot_id": {"type": "null"},
             "context_revision": {"type": "null"}
           }
         },
         {
+          "required": ["context_snapshot_id", "context_revision"],
           "properties": {
             "context_snapshot_id": {"$ref": "#/$defs/Identifier"},
             "context_revision": {"type": "integer", "minimum": 1}
