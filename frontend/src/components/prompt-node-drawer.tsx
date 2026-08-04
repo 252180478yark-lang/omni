@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -44,15 +44,73 @@ interface NodeDetail {
 export interface PromptNodeDrawerProps {
   nodeId: string | null
   onClose: () => void
+  readOnly?: boolean
 }
 
 /** 节点详情抽屉 — 查看/编辑/删除规则 + 翻阅反馈历史 + 手动加规则 */
-export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
+export function PromptNodeDrawer({ nodeId, onClose, readOnly = false }: PromptNodeDrawerProps) {
   const [detail, setDetail] = useState<NodeDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [newRule, setNewRule] = useState('')
   const [busy, setBusy] = useState(false)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  const titleId = useId()
+  const descriptionId = useId()
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    if (!nodeId) return
+
+    returnFocusRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current?.querySelector<HTMLElement>('[data-prompt-drawer-close]')?.focus()
+    })
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const panel = panelRef.current
+      if (!panel) return
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.getAttribute('aria-hidden') !== 'true')
+      if (focusable.length === 0) {
+        event.preventDefault()
+        panel.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || !panel.contains(active))) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      document.removeEventListener('keydown', handleKeyDown)
+      if (returnFocusRef.current?.isConnected) returnFocusRef.current.focus()
+      returnFocusRef.current = null
+    }
+  }, [nodeId])
 
   const load = useCallback(async (id: string) => {
     setLoading(true)
@@ -81,6 +139,7 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
 
   const toggleRule = useCallback(
     async (rule: Rule) => {
+      if (readOnly) return
       setBusy(true)
       try {
         await fetch(`/api/omni/prompt/rules/${rule.id}`, {
@@ -93,11 +152,12 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
         setBusy(false)
       }
     },
-    [nodeId, load],
+    [nodeId, load, readOnly],
   )
 
   const deleteRule = useCallback(
     async (rule: Rule) => {
+      if (readOnly) return
       if (!confirm(`删除规则: "${rule.rule_text.slice(0, 40)}…"?`)) return
       setBusy(true)
       try {
@@ -107,11 +167,12 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
         setBusy(false)
       }
     },
-    [nodeId, load],
+    [nodeId, load, readOnly],
   )
 
   const editRule = useCallback(
     async (rule: Rule) => {
+      if (readOnly) return
       const next = prompt('编辑规则:', rule.rule_text)?.trim()
       if (!next || next === rule.rule_text) return
       setBusy(true)
@@ -126,11 +187,11 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
         setBusy(false)
       }
     },
-    [nodeId, load],
+    [nodeId, load, readOnly],
   )
 
   const createManualRule = useCallback(async () => {
-    if (!nodeId || !newRule.trim()) return
+    if (readOnly || !nodeId || !newRule.trim()) return
     setBusy(true)
     try {
       await fetch('/api/omni/prompt/rules', {
@@ -147,7 +208,7 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
     } finally {
       setBusy(false)
     }
-  }, [nodeId, newRule, load])
+  }, [nodeId, newRule, load, readOnly])
 
   if (!nodeId) return null
 
@@ -155,17 +216,26 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
     <div className="fixed inset-0 z-50 flex">
       <div
         className="flex-1 bg-black/40 backdrop-blur-[1px]"
+        aria-hidden="true"
         onClick={onClose}
       />
-      <div className="h-full w-full max-w-[560px] overflow-y-auto border-l bg-background p-4 shadow-xl sm:p-6">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={detail?.node.description ? descriptionId : undefined}
+        tabIndex={-1}
+        className="h-full w-full max-w-[560px] overflow-y-auto border-l bg-background p-4 shadow-xl sm:p-6"
+      >
         <div className="flex items-start justify-between">
           <div>
             <div className="text-sm text-muted-foreground">Prompt 节点</div>
-            <div className="text-lg font-semibold">
+            <div id={titleId} className="text-lg font-semibold">
               {detail?.node.title || nodeId}
             </div>
             {detail?.node.description && (
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div id={descriptionId} className="mt-1 text-xs text-muted-foreground">
                 {detail.node.description}
               </div>
             )}
@@ -175,13 +245,19 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
               </div>
             )}
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button data-prompt-drawer-close variant="ghost" size="sm" onClick={onClose}>
             关闭
           </Button>
         </div>
 
-        {loading && <div className="mt-4 text-sm text-muted-foreground">加载中…</div>}
-        {error && <div className="mt-4 text-sm text-red-500">{error}</div>}
+        {loading && <div className="mt-4 text-sm text-muted-foreground" role="status">加载中…</div>}
+        {error && <div className="mt-4 text-sm text-red-500" role="alert">{error}</div>}
+
+        {readOnly ? (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900" role="status">
+            只读检查模式：规则写操作已关闭。
+          </div>
+        ) : null}
 
         {detail && (
           <div className="mt-4 space-y-6">
@@ -222,7 +298,7 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
                           )}
                         </div>
                       </div>
-                      <div className="flex shrink-0 gap-1">
+                      {!readOnly ? <div className="flex shrink-0 gap-1">
                         <button
                           className="text-[11px] text-muted-foreground hover:text-foreground"
                           onClick={() => editRule(r)}
@@ -244,13 +320,13 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
                         >
                           删除
                         </button>
-                      </div>
+                      </div> : null}
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-3 space-y-2">
+              {!readOnly ? <div className="mt-3 space-y-2">
                 <div className="text-xs text-muted-foreground">手动添加规则:</div>
                 <Textarea
                   value={newRule}
@@ -268,7 +344,7 @@ export function PromptNodeDrawer({ nodeId, onClose }: PromptNodeDrawerProps) {
                     添加
                   </Button>
                 </div>
-              </div>
+              </div> : null}
             </section>
 
             {/* 反馈历史 */}

@@ -38,7 +38,7 @@ test('development mode renders partial facts and accessible fallback tree', asyn
   await expect(page.getByText(/frontend\/src\/app\/workspace\/page.tsx:1/)).toBeVisible()
 })
 
-test('old top-level graph route converges to workspace development mode', async ({ page }) => {
+test('top-level graph route remains the canonical Development surface', async ({ page }) => {
   await page.goto('/system-graph')
-  await expect(page).toHaveURL(/\/workspace\?mode=development/)
+  await expect(page).toHaveURL(/\/system-graph$/)
 })

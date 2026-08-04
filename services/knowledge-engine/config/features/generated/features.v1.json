@@ -1,10 +1,10 @@
 {
-  "definition_revision": "sha256:d31c998ec8810c74921874b507e552cf1496849e0a1a1af5095370193e3a4190",
+  "definition_revision": "sha256:b8fe7b19a50e5e85f56fc64bcd18f81654801454a2db21a7d8df32e386fefa19",
   "frontend_registry": [
     {
       "aliases": [
         {
-          "href": "/ad-review/flywheel",
+          "href": "/marketing/review",
           "target": "/ad-review"
         }
       ],
@@ -17,7 +17,22 @@
       "domain": "advertising",
       "feature_id": "ad-review",
       "href": "/ad-review",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "merge",
+        "primary_group": "operations",
+        "primary_order": 10
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/ad-review",
+        "/ad-review/[id]",
+        "/ad-review/[id]/review",
+        "/ad-review/analytics",
+        "/ad-review/flywheel"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -34,6 +49,39 @@
       "aliases": [],
       "capabilities": [
         {
+          "capability_id": "agent-run-log",
+          "kind": "read"
+        }
+      ],
+      "domain": "agent.observability",
+      "feature_id": "agent-log",
+      "href": "/agent-log",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "retain",
+        "primary_group": "agents",
+        "primary_order": 10
+      },
+      "lifecycle": "active",
+      "owned_surfaces": [
+        "/agent-log"
+      ],
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct"
+      ],
+      "title": "Agent 运行日志",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
           "capability_id": "approval-inbox",
           "kind": "admin"
         }
@@ -41,7 +89,24 @@
       "domain": "operations.approval",
       "feature_id": "approval-inbox",
       "href": "/inbox",
+      "ia": {
+        "contextual_groups": [
+          {
+            "group": "operations",
+            "mode": "work",
+            "order": 30
+          }
+        ],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "merge",
+        "primary_group": "today",
+        "primary_order": 10
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/inbox"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -54,7 +119,12 @@
       "visible": true
     },
     {
-      "aliases": [],
+      "aliases": [
+        {
+          "href": "/qa",
+          "target": "/chat"
+        }
+      ],
       "capabilities": [
         {
           "capability_id": "agent-task-session",
@@ -64,7 +134,24 @@
       "domain": "agent",
       "feature_id": "chat",
       "href": "/chat",
+      "ia": {
+        "contextual_groups": [
+          {
+            "group": "prompt-eval",
+            "mode": "development",
+            "order": 10
+          }
+        ],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "retain",
+        "primary_group": "agents",
+        "primary_order": 0
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/chat"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -78,12 +165,7 @@
       "visible": true
     },
     {
-      "aliases": [
-        {
-          "href": "/content-leaderboard",
-          "target": "/ad-metrics"
-        }
-      ],
+      "aliases": [],
       "capabilities": [
         {
           "capability_id": "commerce-feedback",
@@ -93,7 +175,19 @@
       "domain": "commerce.analytics",
       "feature_id": "commerce-feedback",
       "href": "/ad-metrics",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "merge",
+        "primary_group": "operations",
+        "primary_order": 20
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/ad-metrics",
+        "/content-leaderboard"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -106,24 +200,7 @@
       "visible": true
     },
     {
-      "aliases": [
-        {
-          "href": "/content-studio/avatars",
-          "target": "/content-studio"
-        },
-        {
-          "href": "/content-studio/briefs",
-          "target": "/content-studio"
-        },
-        {
-          "href": "/content-studio/guide",
-          "target": "/content-studio"
-        },
-        {
-          "href": "/content-studio/new",
-          "target": "/content-studio"
-        }
-      ],
+      "aliases": [],
       "capabilities": [
         {
           "capability_id": "content-pipeline",
@@ -133,7 +210,24 @@
       "domain": "content.generation",
       "feature_id": "content-studio",
       "href": "/content-studio",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "content",
+        "primary_order": 0
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/content-studio",
+        "/content-studio/avatars",
+        "/content-studio/avatars/[id]",
+        "/content-studio/briefs",
+        "/content-studio/briefs/[id]",
+        "/content-studio/guide",
+        "/content-studio/new"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -161,7 +255,18 @@
       "domain": "accounting",
       "feature_id": "cost-management",
       "href": "/cost",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "products",
+        "primary_order": 10
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/cost"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -177,6 +282,39 @@
       "aliases": [],
       "capabilities": [
         {
+          "capability_id": "knowledge-evaluation",
+          "kind": "read"
+        }
+      ],
+      "domain": "knowledge.evaluation",
+      "feature_id": "knowledge-evaluation",
+      "href": "/knowledge/evaluate",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "retain",
+        "primary_group": "prompt-eval",
+        "primary_order": 20
+      },
+      "lifecycle": "active",
+      "owned_surfaces": [
+        "/knowledge/evaluate"
+      ],
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct"
+      ],
+      "title": "知识评估",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
           "capability_id": "web-harvest",
           "kind": "write"
         }
@@ -184,7 +322,18 @@
       "domain": "knowledge",
       "feature_id": "knowledge-harvester",
       "href": "/knowledge/harvester",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "knowledge",
+        "primary_order": 10
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/knowledge/harvester"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -212,7 +361,18 @@
       "domain": "knowledge",
       "feature_id": "knowledge",
       "href": "/knowledge",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "knowledge",
+        "primary_order": 0
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/knowledge"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -236,7 +396,18 @@
       "domain": "content.analysis",
       "feature_id": "livestream-analysis",
       "href": "/livestream-analysis",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "content",
+        "primary_order": 30
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/livestream-analysis"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -253,6 +424,39 @@
       "aliases": [],
       "capabilities": [
         {
+          "capability_id": "model-inspection",
+          "kind": "read"
+        }
+      ],
+      "domain": "system.models",
+      "feature_id": "model-management",
+      "href": "/models",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "retain",
+        "primary_group": "prompt-eval",
+        "primary_order": 30
+      },
+      "lifecycle": "active",
+      "owned_surfaces": [
+        "/models"
+      ],
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct"
+      ],
+      "title": "模型与 Provider",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
           "capability_id": "news-discovery",
           "kind": "read"
         }
@@ -260,7 +464,19 @@
       "domain": "content.news",
       "feature_id": "news",
       "href": "/news",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "knowledge",
+        "primary_order": 20
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/news",
+        "/news/archive"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -277,6 +493,40 @@
       "aliases": [],
       "capabilities": [
         {
+          "capability_id": "tool-playground",
+          "kind": "admin"
+        }
+      ],
+      "domain": "agent.tools",
+      "feature_id": "playground",
+      "href": "/playground",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "retain",
+        "primary_group": "skills-tools",
+        "primary_order": 0
+      },
+      "lifecycle": "active",
+      "owned_surfaces": [
+        "/playground",
+        "/playground/reverse-storyboard"
+      ],
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct"
+      ],
+      "title": "Skills 与工具试验场",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
           "capability_id": "product-overview",
           "kind": "read"
         }
@@ -284,7 +534,19 @@
       "domain": "commerce.product",
       "feature_id": "product-management",
       "href": "/products",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "products",
+        "primary_order": 0
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/products",
+        "/sku/[id]"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -300,6 +562,39 @@
       "aliases": [],
       "capabilities": [
         {
+          "capability_id": "prompt-inspection",
+          "kind": "read"
+        }
+      ],
+      "domain": "agent.prompt",
+      "feature_id": "prompt-lab",
+      "href": "/prompt-lab",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "retain",
+        "primary_group": "prompt-eval",
+        "primary_order": 0
+      },
+      "lifecycle": "active",
+      "owned_surfaces": [
+        "/prompt-lab"
+      ],
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct"
+      ],
+      "title": "Prompt 实验室",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
           "capability_id": "reverse-storyboard",
           "kind": "generate"
         }
@@ -307,7 +602,18 @@
       "domain": "content.analysis",
       "feature_id": "reverse-engineer",
       "href": "/reverse-engineer",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "content",
+        "primary_order": 10
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/reverse-engineer"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -330,7 +636,18 @@
       "domain": "commerce.scout",
       "feature_id": "scout-monitoring",
       "href": "/scout",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "operations",
+        "primary_order": 0
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/scout"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -353,7 +670,24 @@
       "domain": "commerce.pipeline",
       "feature_id": "sku-pipeline",
       "href": "/sku-pipeline",
+      "ia": {
+        "contextual_groups": [
+          {
+            "group": "workflows",
+            "mode": "development",
+            "order": 0
+          }
+        ],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "products",
+        "primary_order": 20
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/sku-pipeline"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -362,32 +696,11 @@
         "direct",
         "sidebar"
       ],
-      "title": "SKU Pipeline",
+      "title": "SKU 圈包链路",
       "visible": true
     },
     {
-      "aliases": [
-        {
-          "href": "/models",
-          "target": "/"
-        },
-        {
-          "href": "/playground",
-          "target": "/"
-        },
-        {
-          "href": "/playground/reverse-storyboard",
-          "target": "/"
-        },
-        {
-          "href": "/prompt-lab",
-          "target": "/"
-        },
-        {
-          "href": "/tasks",
-          "target": "/"
-        }
-      ],
+      "aliases": [],
       "capabilities": [
         {
           "capability_id": "system-configuration",
@@ -397,7 +710,18 @@
       "domain": "system",
       "feature_id": "system-console",
       "href": "/",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "merge",
+        "primary_group": "runs-system",
+        "primary_order": 10
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -424,7 +748,18 @@
       "domain": "system.runtime",
       "feature_id": "system-convergence-runtime-execution",
       "href": "/workspace/execution",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "retain",
+        "primary_group": "runs-system",
+        "primary_order": 0
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/workspace/execution"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -433,15 +768,10 @@
         "direct"
       ],
       "title": "系统执行中台与运行雷达",
-      "visible": false
+      "visible": true
     },
     {
-      "aliases": [
-        {
-          "href": "/system-graph",
-          "target": "/workspace/development"
-        }
-      ],
+      "aliases": [],
       "capabilities": [
         {
           "capability_id": "candidate-plan-revision",
@@ -462,8 +792,25 @@
       ],
       "domain": "platform.system_graph",
       "feature_id": "system-convergence-s4-s6",
-      "href": "/workspace/development",
+      "href": "/system-graph",
+      "ia": {
+        "contextual_groups": [
+          {
+            "group": "skills-tools",
+            "mode": "development",
+            "order": 10
+          }
+        ],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "merge",
+        "primary_group": "workflows",
+        "primary_order": 10
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/system-graph"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -472,6 +819,72 @@
         "direct"
       ],
       "title": "System graph planning and pilot controls",
+      "visible": true
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "task-list",
+          "kind": "read"
+        }
+      ],
+      "domain": "operations.tasks",
+      "feature_id": "task-management",
+      "href": "/tasks",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "degrade",
+        "primary_group": "today",
+        "primary_order": 20
+      },
+      "lifecycle": "active",
+      "owned_surfaces": [
+        "/tasks"
+      ],
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct"
+      ],
+      "title": "任务列表",
+      "visible": false
+    },
+    {
+      "aliases": [],
+      "capabilities": [
+        {
+          "capability_id": "multi-agent-experiment",
+          "kind": "generate"
+        }
+      ],
+      "domain": "agent.experiments",
+      "feature_id": "tri-mind",
+      "href": "/tri-mind",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "development",
+        "phase": "degrade",
+        "primary_group": "skills-tools",
+        "primary_order": 20
+      },
+      "lifecycle": "active",
+      "owned_surfaces": [
+        "/tri-mind"
+      ],
+      "owner": {
+        "id": "omni",
+        "kind": "team"
+      },
+      "placements": [
+        "direct"
+      ],
+      "title": "多智能体实验",
       "visible": false
     },
     {
@@ -485,7 +898,18 @@
       "domain": "content.analysis",
       "feature_id": "video-analysis",
       "href": "/video-analysis",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "retain",
+        "primary_group": "content",
+        "primary_order": 20
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/video-analysis"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -499,24 +923,7 @@
       "visible": true
     },
     {
-      "aliases": [
-        {
-          "href": "/agent-log",
-          "target": "/workspace"
-        },
-        {
-          "href": "/decisions",
-          "target": "/workspace"
-        },
-        {
-          "href": "/insights",
-          "target": "/workspace"
-        },
-        {
-          "href": "/review",
-          "target": "/workspace"
-        }
-      ],
+      "aliases": [],
       "capabilities": [
         {
           "capability_id": "operations-workspace",
@@ -526,7 +933,22 @@
       "domain": "operations",
       "feature_id": "workspace-operations",
       "href": "/workspace",
+      "ia": {
+        "contextual_groups": [],
+        "flag": "unified_shell",
+        "mode": "work",
+        "phase": "merge",
+        "primary_group": "today",
+        "primary_order": 0
+      },
       "lifecycle": "active",
+      "owned_surfaces": [
+        "/decisions",
+        "/insights",
+        "/review",
+        "/workspace",
+        "/workspace/development"
+      ],
       "owner": {
         "id": "omni",
         "kind": "team"
@@ -562,6 +984,25 @@
       ],
       "expected_edges": [],
       "feature_id": "ad-review"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/agent-log",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "agent-log"
     },
     {
       "checks": [
@@ -755,6 +1196,25 @@
           "check_id": "knowledge-health",
           "kind": "health",
           "required": true,
+          "target": "/api/v1/system/health/features/knowledge-evaluation",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "knowledge-evaluation"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
           "target": "/api/v1/system/health/features/knowledge-harvester",
           "verifies": "health_registration:service:knowledge-engine"
         }
@@ -817,6 +1277,29 @@
     {
       "checks": [
         {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/model-management",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "model-management"
+    },
+    {
+      "checks": [
+        {
           "check_id": "news-service-health",
           "kind": "health",
           "required": true,
@@ -847,6 +1330,29 @@
           "check_id": "knowledge-health",
           "kind": "health",
           "required": true,
+          "target": "/api/v1/system/health/features/playground",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "playground"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
           "target": "/api/v1/system/health/features/product-management",
           "verifies": "health_registration:service:knowledge-engine"
         }
@@ -863,6 +1369,29 @@
       ],
       "expected_edges": [],
       "feature_id": "product-management"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/prompt-lab",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "prompt-lab"
     },
     {
       "checks": [
@@ -1041,6 +1570,48 @@
         }
       ],
       "feature_id": "system-convergence-s4-s6"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/task-management",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "task-management"
+    },
+    {
+      "checks": [
+        {
+          "check_id": "knowledge-health",
+          "kind": "health",
+          "required": true,
+          "target": "/api/v1/system/health/features/tri-mind",
+          "verifies": "health_registration:service:knowledge-engine"
+        }
+      ],
+      "dependencies": [
+        {
+          "ref": "health_registration:service:ai-provider-hub",
+          "required": false
+        },
+        {
+          "ref": "health_registration:service:knowledge-engine",
+          "required": true
+        }
+      ],
+      "expected_edges": [],
+      "feature_id": "tri-mind"
     },
     {
       "checks": [

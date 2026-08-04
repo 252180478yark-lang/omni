@@ -8,6 +8,15 @@ routes:
   canonical: /inbox
   visible: true
   placements: [sidebar, direct]
+  owned_surfaces: [/inbox]
+ia:
+  mode: work
+  primary_group: today
+  primary_order: 10
+  contextual_groups:
+    - {mode: work, group: operations, order: 30}
+  phase: merge
+  flag: unified_shell
 capabilities:
   - {capability_id: approval-inbox, kind: admin}
 expected_edges: []

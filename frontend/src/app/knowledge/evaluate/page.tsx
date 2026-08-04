@@ -115,23 +115,30 @@ const STAGE_LABELS: Record<string, string> = {
 
 export default function EvaluatePage() {
   const [kbs, setKbs] = useState<KBItem[]>([])
+  const [catalogState, setCatalogState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [selectedKb, setSelectedKb] = useState('')
   const [queries, setQueries] = useState<string[]>([''])
   const [running, setRunning] = useState(false)
   const [rebuilding, setRebuilding] = useState(false)
   const [rebuildResult, setRebuildResult] = useState<string>('')
+  const [evalError, setEvalError] = useState<string>('')
   const [result, setResult] = useState<EvalResult | BatchResult | null>(null)
   const [expandedQuery, setExpandedQuery] = useState<number | null>(null)
 
   useEffect(() => {
     fetch('/api/omni/knowledge/bases')
-      .then(r => r.json())
+      .then(async r => {
+        const body = await r.json()
+        if (!r.ok || body?.success === false) throw new Error(body?.error || '知识库目录不可用')
+        return body
+      })
       .then(d => {
         const list = d?.data?.data ?? d?.data ?? []
         setKbs(list)
         if (list.length > 0) setSelectedKb(list[0].id)
+        setCatalogState('ready')
       })
-      .catch(() => {})
+      .catch(() => setCatalogState('error'))
   }, [])
 
   const rebuildKb = useCallback(async () => {
@@ -140,11 +147,15 @@ export default function EvaluatePage() {
     setRebuildResult('')
     try {
       const resp = await fetch(`/api/omni/knowledge/bases/${selectedKb}/rebuild`, { method: 'POST' })
-      const json = await resp.json()
-      const data = json.data ?? json
+      const json = await resp.json().catch(() => null) as { success?: boolean; data?: unknown } | null
+      if (!resp.ok || !json || json.success === false) {
+        setRebuildResult(`重建未执行：请求未获授权或服务不可用（HTTP ${resp.status}）`)
+        return
+      }
+      const data = (json.data ?? json) as { message?: string; data?: { message?: string } }
       setRebuildResult(data?.message || data?.data?.message || '已提交重建任务')
-    } catch (e) {
-      setRebuildResult(`重建失败: ${e}`)
+    } catch {
+      setRebuildResult('重建未执行：无法连接受控服务。')
     } finally {
       setRebuilding(false)
     }
@@ -162,6 +173,7 @@ export default function EvaluatePage() {
     if (validQueries.length === 0) return
     setRunning(true)
     setResult(null)
+    setEvalError('')
     try {
       const body = validQueries.length === 1
         ? { query: validQueries[0], kb_ids: [selectedKb] }
@@ -171,10 +183,19 @@ export default function EvaluatePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const json = await resp.json()
-      setResult(json.data ?? json)
-    } catch (e) {
-      console.error(e)
+      const json = await resp.json().catch(() => null) as { success?: boolean; data?: unknown } | null
+      if (!resp.ok || !json || json.success === false) {
+        setEvalError(`评估未执行：请求未获授权或服务不可用（HTTP ${resp.status}）`)
+        return
+      }
+      const data = json.data ?? json
+      if (!isEvalPayload(data)) {
+        setEvalError('评估未执行：服务返回了无法识别的结果。')
+        return
+      }
+      setResult(data)
+    } catch {
+      setEvalError('评估未执行：无法连接受控服务。')
     } finally {
       setRunning(false)
     }
@@ -189,8 +210,12 @@ export default function EvaluatePage() {
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <Link href="/chat">
-            <Button variant="ghost" size="icon"><ArrowLeft className="w-4 h-4" /></Button>
+          <Link
+            href="/chat"
+            aria-label="返回对话"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
           </Link>
           <div>
             <h1 className="text-2xl font-bold text-slate-800">RAG 优化评估</h1>
@@ -198,35 +223,59 @@ export default function EvaluatePage() {
           </div>
         </div>
 
+        {catalogState === 'loading' ? (
+          <Card aria-busy="true">
+            <CardContent className="flex items-center gap-2 pt-6 text-sm text-slate-600" role="status">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              正在读取可用知识库
+            </CardContent>
+          </Card>
+        ) : catalogState === 'error' ? (
+          <Card className="border-red-200 bg-red-50/40">
+            <CardContent className="pt-6 text-sm text-red-700" role="alert">
+              知识库目录暂不可用，评估与重建操作不会执行。请恢复服务或权限后重试。
+            </CardContent>
+          </Card>
+        ) : kbs.length === 0 ? (
+          <Card className="border-slate-200 bg-white">
+            <CardContent className="pt-6 text-sm text-slate-600">
+              暂无可用于评估的知识库。请先在知识中心创建并完成索引，再返回此页。
+            </CardContent>
+          </Card>
+        ) : null}
+
         {/* Input Panel */}
         <Card>
           <CardContent className="pt-6 space-y-4">
             <div className="flex gap-4 items-end">
               <div className="flex-1">
-                <label className="text-sm font-medium text-slate-700">知识库</label>
+                <label htmlFor="knowledge-eval-kb" className="text-sm font-medium text-slate-700">知识库</label>
                 <select
+                  id="knowledge-eval-kb"
                   value={selectedKb}
                   onChange={e => setSelectedKb(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm bg-white"
+                  disabled={catalogState !== 'ready' || kbs.length === 0}
+                  className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm bg-white disabled:cursor-not-allowed disabled:bg-slate-100"
                 >
                   {kbs.map(kb => <option key={kb.id} value={kb.id}>{kb.name}</option>)}
                 </select>
               </div>
-              <Button onClick={rebuildKb} disabled={rebuilding || !selectedKb} variant="outline" className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50">
+              <Button onClick={rebuildKb} disabled={catalogState !== 'ready' || rebuilding || !selectedKb} variant="outline" className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50">
                 {rebuilding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
                 {rebuilding ? '重建中...' : '重建索引'}
               </Button>
-              <Button onClick={runEval} disabled={running || !selectedKb} className="gap-2">
+              <Button onClick={runEval} disabled={catalogState !== 'ready' || running || !selectedKb} className="gap-2">
                 {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                 {running ? '评估中...' : '开始评估'}
               </Button>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">测试查询</label>
+              <div className="text-sm font-medium text-slate-700">测试查询</div>
               {queries.map((q, i) => (
                 <div key={i} className="flex gap-2">
                   <input
+                    aria-label={`测试查询 ${i + 1}`}
                     value={q}
                     onChange={e => updateQuery(i, e.target.value)}
                     placeholder={`查询 ${i + 1}...`}
@@ -234,8 +283,8 @@ export default function EvaluatePage() {
                     onKeyDown={e => e.key === 'Enter' && runEval()}
                   />
                   {queries.length > 1 && (
-                    <Button variant="ghost" size="icon" onClick={() => removeQuery(i)}>
-                      <X className="w-4 h-4" />
+                    <Button variant="ghost" size="icon" onClick={() => removeQuery(i)} aria-label={`删除查询 ${i + 1}`}>
+                      <X className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   )}
                 </div>
@@ -245,12 +294,32 @@ export default function EvaluatePage() {
               </Button>
             </div>
             {rebuildResult && (
-              <div className="p-3 rounded-md bg-orange-50 border border-orange-200 text-sm text-orange-800">
+              <div className="p-3 rounded-md bg-orange-50 border border-orange-200 text-sm text-orange-800" role="status" aria-live="polite">
                 {rebuildResult}
               </div>
             )}
+            {evalError ? (
+              <div className="p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-800" role="alert">
+                {evalError}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
+
+        {!running && !result ? (
+          <Card className="border-dashed border-blue-200 bg-blue-50/30" data-testid="knowledge-eval-empty-state">
+            <CardContent className="flex gap-3 pt-6">
+              <Target className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" aria-hidden="true" />
+              <div>
+                <h2 className="font-semibold text-slate-800">暂无已登记的评估集</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  当前 P0 仅复用现有 RAG 临时查询对比，不会把高级实验或持久化评估集伪装成已交付能力。
+                  选择知识库并填写查询后可运行一次临时评估。
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* Batch Summary */}
         {batchResult?.summary && (
@@ -313,24 +382,40 @@ export default function EvaluatePage() {
           return (
             <div key={idx}>
               <button
+                type="button"
                 onClick={() => setExpandedQuery(expandedQuery === idx ? null : idx)}
+                aria-expanded={expandedQuery === idx}
+                aria-controls={`knowledge-eval-detail-${idx}`}
                 className="w-full text-left px-4 py-3 bg-white rounded-lg border border-slate-200 flex items-center justify-between hover:bg-slate-50 transition"
               >
                 <span className="text-sm font-medium text-slate-800">{d.query}</span>
-                <div className="flex items-center gap-3">
+                <span className="flex items-center gap-3">
                   <QualityBadge delta={d.comparison.quality_improvement.delta} />
                   <Badge variant="outline" className="text-xs">
                     {Math.round(d.optimized.total_ms)}ms
                   </Badge>
                   {expandedQuery === idx ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                </div>
+                </span>
               </button>
-              {expandedQuery === idx && <ComparisonView result={d} />}
+              {expandedQuery === idx ? <div id={`knowledge-eval-detail-${idx}`}><ComparisonView result={d} /></div> : null}
             </div>
           )
         })}
       </div>
     </div>
+  )
+}
+
+function isEvalPayload(value: unknown): value is EvalResult | BatchResult {
+  if (!value || typeof value !== 'object') return false
+  const payload = value as Record<string, unknown>
+  if ('summary' in payload) {
+    return Boolean(payload.summary && typeof payload.summary === 'object' && Array.isArray(payload.details))
+  }
+  return Boolean(
+    payload.optimized && typeof payload.optimized === 'object'
+    && payload.baseline && typeof payload.baseline === 'object'
+    && payload.comparison && typeof payload.comparison === 'object',
   )
 }
 

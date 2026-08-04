@@ -32,9 +32,7 @@ BUILD_IDENTIFIED_SERVICES = {
 def _compose() -> list[str]:
     if not shutil.which("docker"):
         pytest.skip("Docker CLI is unavailable")
-    check = subprocess.run(
-        ["docker", "compose", "version"], capture_output=True, text=True, check=False
-    )
+    check = subprocess.run(["docker", "compose", "version"], capture_output=True, text=True, check=False)
     if check.returncode != 0:
         pytest.skip("Docker Compose plugin is unavailable")
     return ["docker", "compose"]
@@ -47,6 +45,8 @@ def _environment(tmp_path: Path) -> dict[str, str]:
     approval.write_text("fixture-path-only", encoding="utf-8")
     identity = tmp_path / "identity-secret-ref"
     identity.write_text("fixture-path-only-identity-secret", encoding="utf-8")
+    compatibility = tmp_path / "compatibility-token-ref"
+    compatibility.write_text("fixture-path-only-compatibility-token", encoding="utf-8")
     return {
         **os.environ,
         "COMPOSE_PROJECT_NAME": "omni-contract-fixture",
@@ -65,6 +65,7 @@ def _environment(tmp_path: Path) -> dict[str, str]:
         "OMNI_APPROVAL_WORKER_ROLE": "owner",
         "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval).replace("\\", "/"),
         "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity).replace("\\", "/"),
+        "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility).replace("\\", "/"),
         "POSTGRES_USER": "omni_user",
         "POSTGRES_PASSWORD": "fixture-placeholder",
         "REDIS_PASSWORD": "fixture-placeholder",
@@ -98,14 +99,11 @@ def _depends_on_preflight(services: dict, service: str, seen: set[str] | None = 
     if "runtime-preflight" in dependencies:
         return dependencies["runtime-preflight"].get("condition") == "service_completed_successfully"
     return any(
-        dependency in services and _depends_on_preflight(services, dependency, visited)
-        for dependency in dependencies
+        dependency in services and _depends_on_preflight(services, dependency, visited) for dependency in dependencies
     )
 
 
-def _depends_on_service(
-    services: dict, service: str, required: str, seen: set[str] | None = None
-) -> bool:
+def _depends_on_service(services: dict, service: str, required: str, seen: set[str] | None = None) -> bool:
     if service == required:
         return True
     visited = set(seen or ())
@@ -116,13 +114,14 @@ def _depends_on_service(
     if required in dependencies:
         return dependencies[required].get("condition") == "service_completed_successfully"
     return any(
-        dependency in services
-        and _depends_on_service(services, dependency, required, visited)
+        dependency in services and _depends_on_service(services, dependency, required, visited)
         for dependency in dependencies
     )
 
 
-def test_direct_compose_config_fails_before_runtime_without_allocation(tmp_path: Path) -> None:
+def test_direct_compose_config_fails_before_runtime_without_allocation(
+    tmp_path: Path,
+) -> None:
     env = _environment(tmp_path)
     for name in (
         "COMPOSE_PROJECT_NAME",
@@ -148,15 +147,19 @@ def test_direct_compose_config_fails_before_runtime_without_allocation(tmp_path:
 
 
 @pytest.mark.parametrize("relative", COMPOSE_FILES)
-def test_parsed_compose_requires_preflight_and_bakes_build_identity(
-    relative: str, tmp_path: Path
-) -> None:
+def test_parsed_compose_requires_preflight_and_bakes_build_identity(relative: str, tmp_path: Path) -> None:
     config = _config(relative, _environment(tmp_path))
     services = config["services"]
     preflight = services["runtime-preflight"]
     assert preflight["command"] == ["allocation-preflight", "--json"]
-    assert preflight["entrypoint"] == ["python", "-B", "/workspace/scripts/runtime_guard.py"]
-    assert any(item["target"] == "/runtime-state/allocations.json" and item["read_only"] for item in preflight["volumes"])
+    assert preflight["entrypoint"] == [
+        "python",
+        "-B",
+        "/workspace/scripts/runtime_guard.py",
+    ]
+    assert any(
+        item["target"] == "/runtime-state/allocations.json" and item["read_only"] for item in preflight["volumes"]
+    )
     assert all(_depends_on_preflight(services, name) for name in services)
     for name in ("runtime-preflight", "migrate"):
         arguments = services[name]["build"]["args"]
@@ -171,9 +174,7 @@ def test_parsed_compose_requires_preflight_and_bakes_build_identity(
         assert labels["io.omni.build.source_commit"] == "c" * 40
         assert labels["io.omni.build.source_fingerprint"] == "d" * 64
 
-    migration_dockerfile = (
-        ROOT / "services" / "infra-core" / "migrations" / "Dockerfile"
-    ).read_text(encoding="utf-8")
+    migration_dockerfile = (ROOT / "services" / "infra-core" / "migrations" / "Dockerfile").read_text(encoding="utf-8")
     assert "ARG OMNI_BUILD_COMMIT=" in migration_dockerfile
     assert "OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT}" in migration_dockerfile
 
@@ -196,8 +197,7 @@ def test_parsed_knowledge_engine_environment_is_not_unknown(tmp_path: Path) -> N
         assert environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] == "/run/secrets/omni_approval_hmac"
         assert "OMNI_APPROVAL_SERVICE_TOKEN" not in environment
         assert any(
-            item["target"] == "/run/secrets/omni_approval_hmac" and item["read_only"]
-            for item in engine["volumes"]
+            item["target"] == "/run/secrets/omni_approval_hmac" and item["read_only"] for item in engine["volumes"]
         )
         labels = engine["labels"]
         assert labels["io.omni.worktree_id"] == "worktree-" + "b" * 16
@@ -258,13 +258,19 @@ def test_frontend_uses_container_identity_service_and_file_backed_approval_secre
         frontend = config["services"]["frontend"]
         environment = frontend["environment"]
         assert environment["IDENTITY_SERVICE_URL"] == "http://identity-service:8000"
-        assert environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] == (
-            "/run/secrets/omni_approval_hmac"
-        )
+        assert environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] == ("/run/secrets/omni_approval_hmac")
         assert "OMNI_APPROVAL_SERVICE_TOKEN" not in environment
         assert any(
-            item["target"] == "/run/secrets/omni_approval_hmac" and item["read_only"]
-            for item in frontend["volumes"]
+            item["target"] == "/run/secrets/omni_approval_hmac" and item["read_only"] for item in frontend["volumes"]
+        )
+        assert environment["OMNI_COMPATIBILITY_TOKEN_FILE"] == ("/run/secrets/omni_compatibility")
+        assert any(
+            item["target"] == "/run/secrets/omni_compatibility" and item["read_only"] for item in frontend["volumes"]
+        )
+        knowledge = config["services"]["knowledge-engine"]
+        assert knowledge["environment"]["OMNI_COMPATIBILITY_TOKEN_FILE"] == ("/run/secrets/omni_compatibility")
+        assert any(
+            item["target"] == "/run/secrets/omni_compatibility" and item["read_only"] for item in knowledge["volumes"]
         )
         identity = config["services"]["identity-service"]
         assert frontend["depends_on"]["identity-service"]["condition"] == "service_healthy"
@@ -277,31 +283,41 @@ def test_frontend_uses_container_identity_service_and_file_backed_approval_secre
                 "postgres": {"condition": "service_healthy", "required": True},
                 "redis": {"condition": "service_healthy", "required": True},
             }
-        assert identity["environment"]["JWT_SECRET_KEY_FILE"] == (
-            "/run/secrets/omni_identity_jwt"
-        )
+        assert identity["environment"]["JWT_SECRET_KEY_FILE"] == ("/run/secrets/omni_identity_jwt")
         assert "JWT_SECRET_KEY" not in identity["environment"]
         assert any(
-            item["target"] == "/run/secrets/omni_identity_jwt" and item["read_only"]
-            for item in identity["volumes"]
+            item["target"] == "/run/secrets/omni_identity_jwt" and item["read_only"] for item in identity["volumes"]
         )
 
 
-def test_noncanonical_scheduler_is_disabled_in_all_parsed_surfaces(tmp_path: Path) -> None:
+def test_frontend_build_receives_explicit_unified_shell_rollback_flag(
+    tmp_path: Path,
+) -> None:
+    environment = _environment(tmp_path)
+    environment["NEXT_PUBLIC_OMNI_UNIFIED_SHELL"] = "0"
+    for relative in ("docker-compose.yml", "services/docker-compose.sp1-sp4.yml"):
+        config = _config(relative, environment)
+        assert config["services"]["frontend"]["build"]["args"]["NEXT_PUBLIC_OMNI_UNIFIED_SHELL"] == "0"
+    dockerfile = (ROOT / "frontend" / "Dockerfile").read_text(encoding="utf-8")
+    arg = "ARG NEXT_PUBLIC_OMNI_UNIFIED_SHELL=true"
+    env = "ENV NEXT_PUBLIC_OMNI_UNIFIED_SHELL=${NEXT_PUBLIC_OMNI_UNIFIED_SHELL}"
+    assert arg in dockerfile and env in dockerfile
+    assert dockerfile.index(arg) < dockerfile.index(env) < dockerfile.index("RUN npm run build")
+
+
+def test_noncanonical_scheduler_is_disabled_in_all_parsed_surfaces(
+    tmp_path: Path,
+) -> None:
     manifest = json.loads((ROOT / "config" / "runtime-manifest.yaml").read_text(encoding="utf-8"))
     assert manifest["scheduler"]["default_enabled"] is False
-    assert manifest["scheduler"]["canonical_enablement"] == (
-        "explicit_runtime_allocation_only"
-    )
+    assert manifest["scheduler"]["canonical_enablement"] == ("explicit_runtime_allocation_only")
     assert manifest["services"]["knowledge-engine"]["scheduler_default"] is False
     for relative in ("docker-compose.yml", "services/docker-compose.sp1-sp4.yml"):
         config = _config(relative, _environment(tmp_path))
         for service in config["services"].values():
             environment = service.get("environment") or {}
             scheduler_values = [
-                environment[key]
-                for key in ("OMNI_SCHEDULER_ENABLED", "ENABLE_SCHEDULER")
-                if key in environment
+                environment[key] for key in ("OMNI_SCHEDULER_ENABLED", "ENABLE_SCHEDULER") if key in environment
             ]
             assert all(str(value).casefold() == "false" for value in scheduler_values)
             labels = service.get("labels") or {}
@@ -312,8 +328,17 @@ def test_noncanonical_scheduler_is_disabled_in_all_parsed_surfaces(tmp_path: Pat
     assert root["services"]["scout-agent"]["restart"] == "no"
 
 
-def test_every_writable_application_waits_for_full_migration_runner(tmp_path: Path) -> None:
-    non_writers = {"runtime-preflight", "postgres", "redis", "nginx", "frontend", "migrate"}
+def test_every_writable_application_waits_for_full_migration_runner(
+    tmp_path: Path,
+) -> None:
+    non_writers = {
+        "runtime-preflight",
+        "postgres",
+        "redis",
+        "nginx",
+        "frontend",
+        "migrate",
+    }
     for relative in COMPOSE_FILES:
         config = _config(relative, _environment(tmp_path))
         services = config["services"]

@@ -12,6 +12,7 @@
     "owner",
     "lifecycle",
     "routes",
+    "ia",
     "capabilities",
     "expected_edges",
     "checks",
@@ -36,7 +37,7 @@
     "routes": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["canonical", "visible", "placements"],
+      "required": ["canonical", "visible", "placements", "owned_surfaces"],
       "properties": {
         "canonical": {"$ref": "#/$defs/href"},
         "visible": {"type": "boolean"},
@@ -44,9 +45,16 @@
           "type": "array",
           "uniqueItems": true,
           "items": {"enum": ["sidebar", "home", "onboarding", "direct"]}
+        },
+        "owned_surfaces": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/href"}
         }
       }
     },
+    "ia": {"$ref": "#/$defs/ia"},
     "capabilities": {
       "type": "array",
       "items": {
@@ -78,6 +86,93 @@
   },
   "$defs": {
     "href": {"type": "string", "pattern": "^/[^?#]*$"},
+    "work_group": {
+      "enum": ["today", "products", "operations", "content", "knowledge"]
+    },
+    "development_group": {
+      "enum": ["agents", "skills-tools", "workflows", "prompt-eval", "runs-system"]
+    },
+    "ia_placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "group", "order"],
+      "properties": {
+        "mode": {"enum": ["work", "development"]},
+        "group": {
+          "enum": [
+            "today",
+            "products",
+            "operations",
+            "content",
+            "knowledge",
+            "agents",
+            "skills-tools",
+            "workflows",
+            "prompt-eval",
+            "runs-system"
+          ]
+        },
+        "order": {"type": "integer", "minimum": 0}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "work"}}},
+          "then": {"properties": {"group": {"$ref": "#/$defs/work_group"}}},
+          "else": {"properties": {"group": {"$ref": "#/$defs/development_group"}}}
+        }
+      ]
+    },
+    "ia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "primary_group",
+        "primary_order",
+        "contextual_groups",
+        "phase",
+        "flag"
+      ],
+      "properties": {
+        "mode": {"enum": ["work", "development"]},
+        "primary_group": {
+          "enum": [
+            "today",
+            "products",
+            "operations",
+            "content",
+            "knowledge",
+            "agents",
+            "skills-tools",
+            "workflows",
+            "prompt-eval",
+            "runs-system"
+          ]
+        },
+        "primary_order": {"type": "integer", "minimum": 0},
+        "contextual_groups": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ia_placement"}
+        },
+        "phase": {
+          "enum": ["retain", "merge", "degrade", "host_only", "retirement_candidate"]
+        },
+        "flag": {
+          "anyOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "work"}}},
+          "then": {"properties": {"primary_group": {"$ref": "#/$defs/work_group"}}},
+          "else": {"properties": {"primary_group": {"$ref": "#/$defs/development_group"}}}
+        }
+      ]
+    },
     "node_ref": {"type": "string", "pattern": "^[a-z_]+:.+$"},
     "edge": {
       "type": "object",

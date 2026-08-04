@@ -1,30 +1,34 @@
-import { serviceBase } from '../../../_shared'
+import {
+  approvalServiceHeaders,
+  fetchJson,
+  requireApprovalActor,
+  requireSameOrigin,
+  ServiceFetchError,
+  serviceBase,
+} from '../../../_shared'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    requireSameOrigin(request)
+    const actor = await requireApprovalActor(request)
+    const body = await request.text()
     const base = serviceBase()
+    const url = `${base.knowledge}/api/v1/knowledge/rag/evaluate`
 
-    const upstream = await fetch(`${base.knowledge}/api/v1/knowledge/rag/evaluate`, {
+    const json = await fetchJson<{ data?: unknown }>(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-
-    if (!upstream.ok) {
-      const text = await upstream.text()
-      return Response.json(
-        { success: false, error: `${upstream.status}: ${text}` },
-        { status: upstream.status },
-      )
-    }
-
-    const json = await upstream.json()
+      headers: {
+        ...approvalServiceHeaders('POST', url, actor, body),
+      },
+      body,
+    }, 'knowledge-engine:evaluate')
     return Response.json({ success: true, data: json.data ?? json })
   } catch (error) {
-    return Response.json({ success: false, error: String(error) }, { status: 500 })
+    const status = error instanceof ServiceFetchError ? error.status : 502
+    const code = error instanceof ServiceFetchError ? error.code : 'knowledge_evaluation_unavailable'
+    return Response.json({ success: false, error: code }, { status })
   }
 }

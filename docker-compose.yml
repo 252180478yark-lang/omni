@@ -192,11 +192,14 @@ services:
     build:
       context: ./frontend
       labels: *build-labels
-      args: *build-args
+      args:
+        <<: *build-args
+        NEXT_PUBLIC_OMNI_UNIFIED_SHELL: "${NEXT_PUBLIC_OMNI_UNIFIED_SHELL:-true}"
     labels: *runtime-labels
     environment:
       <<: *runtime-env
       OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
+      OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
       NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
@@ -211,6 +214,7 @@ services:
     command: ["npm", "run", "start"]
     volumes:
       - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
+      - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     depends_on:
@@ -326,6 +330,7 @@ services:
       OMNI_SCHEDULER_ENABLED: "${OMNI_SCHEDULER_ENABLED:-false}"
       OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
       OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
+      OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
       OMNI_APPROVAL_FRONTEND_PRINCIPAL: "service:frontend"
       # P0 owner-facing preflight reads this checkout only to hash the
       # migration/config baseline; it never writes to the mount.
@@ -352,6 +357,7 @@ services:
       - "127.0.0.1:${KNOWLEDGE_ENGINE_PORT:-8002}:8002"
     volumes:
       - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
+      - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
       - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
       - knowledge_data:/app/data
       # The P0 baseline card must compare runtime state with the same checked

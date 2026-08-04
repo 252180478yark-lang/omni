@@ -8,6 +8,21 @@ routes:
   canonical: /content-studio
   visible: true
   placements: [home, onboarding, direct]
+  owned_surfaces:
+    - /content-studio
+    - /content-studio/avatars
+    - /content-studio/avatars/[id]
+    - /content-studio/briefs
+    - /content-studio/briefs/[id]
+    - /content-studio/guide
+    - /content-studio/new
+ia:
+  mode: work
+  primary_group: content
+  primary_order: 0
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: content-pipeline, kind: generate}
 expected_edges: []
@@ -22,11 +37,7 @@ checks:
     target: /api/v1/system/health/features/content-studio
     verifies: health_registration:service:ai-provider-hub
     required: true
-aliases:
-  - {href: /content-studio/guide, target: /content-studio}
-  - {href: /content-studio/new, target: /content-studio}
-  - {href: /content-studio/briefs, target: /content-studio}
-  - {href: /content-studio/avatars, target: /content-studio}
+aliases: []
 dependencies:
   - {ref: health_registration:service:knowledge-engine, required: true}
   - {ref: health_registration:service:ai-provider-hub, required: true}

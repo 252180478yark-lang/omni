@@ -1,324 +1,245 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { cn } from '@/lib/utils'
-import { featuresForPlacement, type FeatureRegistryEntry } from '@/lib/feature-registry'
+import { usePathname, useSearchParams } from 'next/navigation'
 import {
+  Activity,
+  Bot,
   BrainCircuit,
-  BookOpen,
-  Database,
-  Newspaper,
-  Cpu,
-  Download,
-  ListTodo,
-  Clapperboard,
-  Radio,
-  LineChart,
-  Home,
+  CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  RefreshCw,
-  Sparkles,
-  Palette,
-  Wand2,
-  Inbox,
-  Package,
-  ScanSearch,
-  ClipboardCheck,
-  CalendarDays,
-  Calculator,
-  Activity,
-  Brain,
+  CircleGauge,
   FlaskConical,
-  Send,
-  Trophy,
+  Inbox,
+  LineChart,
   Network,
+  Package,
+  Palette,
+  SearchX,
+  Wrench,
+  Workflow,
+  BookOpen,
+  Calculator,
+  ClipboardCheck,
+  ScanSearch,
+  Send,
+  Sparkles,
+  Wand2,
   type LucideIcon,
 } from 'lucide-react'
 
-interface NavItem {
-  href: string
-  icon: LucideIcon
-  label: string
-  /** 一句话讲清楚这个菜单是干嘛的，给小白看 */
-  hint: string
-  badge?: string
+import { featuresForPlacement, type FeatureRegistryEntry } from '@/lib/feature-registry'
+import {
+  resolveWorkbenchLocation,
+  workbenchNavigationForMode,
+  type WorkbenchGroupId,
+  type WorkbenchMode,
+  type WorkbenchNavigationEntry,
+  type WorkbenchNavigationGroup,
+} from '@/lib/workbench-ia'
+import { cn } from '@/lib/utils'
+
+const GROUP_ICONS: Record<WorkbenchGroupId, LucideIcon> = {
+  today: CalendarDays,
+  products: Package,
+  operations: LineChart,
+  content: Palette,
+  knowledge: BookOpen,
+  agents: Bot,
+  'skills-tools': Wrench,
+  workflows: Workflow,
+  'prompt-eval': FlaskConical,
+  'runs-system': Activity,
 }
 
-interface NavGroup {
-  id: string
-  icon: LucideIcon
-  label: string
-  hint: string
-  defaultHref: string
-  children: NavItem[]
-}
-
-interface NavSection {
-  kind: 'section'
-  label: string
-}
-
-type NavEntry = NavItem | NavGroup | NavSection
-
-function isGroup(entry: NavEntry): entry is NavGroup {
-  return 'children' in entry
-}
-
-function isSection(entry: NavEntry): entry is NavSection {
-  return (entry as NavSection).kind === 'section'
-}
-
-const SIDEBAR_PRESENTATION: Record<string, { icon: LucideIcon; hint: string; section: string; order: number }> = {
+const LEGACY_PRESENTATION: Record<string, { icon: LucideIcon; hint: string; section: string; order: number }> = {
   'workspace-operations': { icon: Inbox, hint: '经营、开发与执行共用的统一入口', section: '工作流', order: 10 },
   'product-management': { icon: Package, hint: 'SKU 数据、资产、动作与诊断', section: '工作流', order: 20 },
   'scout-monitoring': { icon: ScanSearch, hint: '自动采集与异动检测', section: '数据与采集', order: 30 },
-  'sku-pipeline': { icon: Sparkles, hint: '按封闭操作契约运行 SKU 前链路', section: '内容生产', order: 40 },
+  'sku-pipeline': { icon: Sparkles, hint: 'SKU → 卖点矩阵 → 人群匹配 → 圈包 SOP', section: '内容生产', order: 40 },
   'reverse-engineer': { icon: Wand2, hint: '把素材拆成可复用镜头和提示词', section: '内容生产', order: 50 },
   'cost-management': { icon: Calculator, hint: '结构化成本与利润核算', section: '投放与复盘', order: 60 },
   'commerce-feedback': { icon: Send, hint: '把投后真实指标写回血缘', section: '投放与复盘', order: 70 },
   'approval-inbox': { icon: ClipboardCheck, hint: '查看和处理显式审批 Gate', section: '投放与复盘', order: 80 },
-  'system-console': { icon: Home, hint: '系统服务、指标与健康监控', section: '系统', order: 90 },
+  'system-console': { icon: CircleGauge, hint: '系统服务、指标与健康监控', section: '系统', order: 90 },
 }
 
-function projectedNavItem(feature: FeatureRegistryEntry): NavItem {
-  const presentation = SIDEBAR_PRESENTATION[feature.feature_id] || { icon: Network, hint: feature.domain, section: '其他', order: 999 }
-  return { href: feature.href, label: feature.title, icon: presentation.icon, hint: presentation.hint }
+export interface WorkbenchNavigationEvent {
+  mode: WorkbenchMode
+  primaryGroup: WorkbenchGroupId
+  featureId: string
+  requestedHref: string
+  canonicalHref: string
+  secondaryDepth: number
+  result: 'selected' | 'opened'
 }
 
-const NAV_ITEMS: NavEntry[] = (() => {
-  const result: NavEntry[] = []
-  let section = ''
-  const features = featuresForPlacement('sidebar').sort((a, b) => (SIDEBAR_PRESENTATION[a.feature_id]?.order ?? 999) - (SIDEBAR_PRESENTATION[b.feature_id]?.order ?? 999))
-  for (const feature of features) {
-    const nextSection = SIDEBAR_PRESENTATION[feature.feature_id]?.section || '其他'
-    if (nextSection !== section) {
-      section = nextSection
-      result.push({ kind: 'section', label: section })
-    }
-    result.push(projectedNavItem(feature))
-  }
-  return result
-})()
+export interface AppSidebarProps {
+  mode?: WorkbenchMode
+  unified?: boolean
+  searchQuery?: string
+  onNavigate?: (event: WorkbenchNavigationEvent) => void
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
+}
 
-export function AppSidebar() {
-  const pathname = usePathname()
-  // 进入"内容工坊"任意子页时，默认展开侧边栏让用户能直接看到 Brief / 数字人脸 / 新建向导
-  const [expanded, setExpanded] = useState(() => (pathname || '').startsWith('/content-studio'))
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {}
-    if ((pathname || '').startsWith('/content-studio')) {
-      initial['content-studio'] = true
-    }
-    return initial
+function normalizeQuery(value: string) {
+  return value.trim().toLocaleLowerCase('zh-CN')
+}
+
+function entryMatches(entry: WorkbenchNavigationEntry, query: string) {
+  if (!query) return true
+  return normalizeQuery(`${entry.title} ${entry.href} ${entry.featureId}`).includes(query)
+}
+
+function filteredGroups(groups: readonly WorkbenchNavigationGroup[], searchQuery: string) {
+  const query = normalizeQuery(searchQuery)
+  if (!query) return groups
+
+  return groups.flatMap((group) => {
+    if (normalizeQuery(`${group.label} ${group.id}`).includes(query)) return [group]
+    const entries = group.entries.filter((entry) => entryMatches(entry, query))
+    return entries.length ? [{ ...group, href: entries[0].href, entries }] : []
   })
+}
 
-  const isActive = (href: string) => {
-    if (href === '/') return pathname === '/'
-    return pathname.startsWith(href)
+export function AppSidebar({
+  mode = 'work',
+  unified = true,
+  searchQuery = '',
+  onNavigate,
+  expanded: controlledExpanded,
+  onExpandedChange,
+}: AppSidebarProps) {
+  const pathname = usePathname() || '/'
+  const searchParams = useSearchParams()
+  const [internalExpanded, setInternalExpanded] = useState(() => pathname.startsWith('/content-studio'))
+  const expanded = controlledExpanded ?? internalExpanded
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
+  const location = useMemo(
+    () => resolveWorkbenchLocation(pathname, searchParams, mode),
+    [mode, pathname, searchParams],
+  )
+  const activeGroupId = useMemo<WorkbenchGroupId | undefined>(() => {
+    if (location.primary?.mode === mode) return location.primary.group
+    return location.contextualGroups.find((group) => group.mode === mode)?.group
+  }, [location.contextualGroups, location.primary, mode])
+  const groups = useMemo(
+    () => filteredGroups(workbenchNavigationForMode(mode), searchQuery),
+    [mode, searchQuery],
+  )
+
+  const toggleGroup = (group: WorkbenchNavigationGroup) => {
+    setOpenGroups((current) => ({ ...current, [group.id]: !(current[group.id] ?? group.id === activeGroupId) }))
   }
 
-  useEffect(() => {
-    if ((pathname || '').startsWith('/content-studio')) {
-      setExpanded(true)
-    }
-    NAV_ITEMS.forEach((entry) => {
-      if (!isGroup(entry)) return
-      const inThis = entry.children.some((c) => isActive(c.href))
-      if (inThis && !openGroups[entry.id]) {
-        setOpenGroups((s) => ({ ...s, [entry.id]: true }))
-      }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname])
-
-  const toggleGroup = (id: string) =>
-    setOpenGroups((s) => ({ ...s, [id]: !s[id] }))
-
-  const renderItem = (item: NavItem, isChild = false) => {
-    const active = isActive(item.href)
-    const Icon = item.icon
+  const renderUnifiedEntry = (group: WorkbenchNavigationGroup, entry: WorkbenchNavigationEntry) => {
+    const active = group.id === activeGroupId && location.featureId === entry.featureId && location.canonicalHref === entry.href
     return (
       <Link
-        key={item.href}
-        href={item.href}
+        key={`${group.id}:${entry.featureId}:${entry.relationship}`}
+        href={entry.href}
+        aria-current={active ? 'page' : undefined}
         className={cn(
-          'group relative flex items-center gap-3 rounded-xl transition-all duration-200',
-          isChild ? 'pl-7 pr-2.5 py-1.5' : 'px-2.5 py-2.5',
-          active
-            ? 'bg-gradient-to-r from-violet-50 to-purple-50 text-violet-700'
-            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900',
+          'workbench-focusable flex items-start gap-2 rounded-lg py-2 pl-9 pr-2 text-xs transition-colors',
+          active ? 'bg-violet-100 text-violet-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
         )}
+        onClick={() => onNavigate?.({ mode, primaryGroup: group.id, featureId: entry.featureId, requestedHref: entry.href, canonicalHref: entry.href, secondaryDepth: 1, result: 'selected' })}
       >
-        {active && !isChild && (
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-violet-600" />
-        )}
-        {!isChild && (
-          <div
-            className={cn(
-              'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-200',
-              active
-                ? 'bg-violet-600 text-white shadow-md shadow-violet-200/50'
-                : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200 group-hover:text-gray-700',
-            )}
-          >
-            <Icon className="w-4 h-4" />
-          </div>
-        )}
-        {isChild && <Icon className="w-3.5 h-3.5 shrink-0" />}
-        {expanded && (
-          <div
-            className={cn(
-              'min-w-0 flex-1 animate-in fade-in slide-in-from-left-2 duration-200',
-            )}
-          >
-            <div
-              className={cn(
-                'truncate',
-                isChild ? 'text-xs' : 'text-sm font-medium',
-              )}
-            >
-              {item.label}
-            </div>
-            {!isChild && item.hint && (
-              <div className="text-[10.5px] text-gray-400 truncate mt-0.5 leading-tight">
-                {item.hint}
-              </div>
-            )}
-            {isChild && item.hint && (
-              <div className="text-[10px] text-gray-400 truncate leading-tight">
-                {item.hint}
-              </div>
-            )}
-          </div>
-        )}
-        {!expanded && !isChild && (
-          <div className="absolute left-full ml-2 px-3 py-2 rounded-lg bg-gray-900 text-white text-xs whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none shadow-lg z-50 max-w-[260px]">
-            <div className="font-medium">{item.label}</div>
-            {item.hint && (
-              <div className="text-[10.5px] text-gray-300 mt-0.5 whitespace-normal leading-snug">
-                {item.hint}
-              </div>
-            )}
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-gray-900 rotate-45" />
-          </div>
-        )}
+        <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+        <span className="min-w-0">
+          <span className="block truncate font-medium">{entry.title}</span>
+          {entry.relationship === 'contextual' ? <span className="block text-[10px] text-slate-600">上下文入口 · 回到同一页面</span> : null}
+        </span>
       </Link>
     )
   }
 
-  const renderSection = (section: NavSection, idx: number) => {
-    if (!expanded) {
-      // 收起态用一条细分隔线代替分组标题
-      return (
-        <div
-          key={`section-${idx}`}
-          className="mx-3 my-1.5 h-px bg-gray-200/60"
-        />
-      )
-    }
+  const renderUnifiedGroup = (group: WorkbenchNavigationGroup) => {
+    const Icon = GROUP_ICONS[group.id]
+    const landing = group.entries[0]
+    const active = group.id === activeGroupId
+    const open = openGroups[group.id] ?? active
+
     return (
-      <div
-        key={`section-${idx}`}
-        className="px-3 pt-3 pb-1 first:pt-1"
-      >
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-          {section.label}
+      <div key={group.id} data-workbench-primary-group={group.id}>
+        <div className="flex items-center gap-1">
+          <Link
+            href={group.href}
+            aria-label={group.label}
+            aria-current={active ? 'page' : undefined}
+            className={cn(
+              'workbench-focusable group relative flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors',
+              active ? 'bg-violet-50 text-violet-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950',
+            )}
+            onClick={() => {
+              if (landing) {
+                onNavigate?.({ mode, primaryGroup: group.id, featureId: landing.featureId, requestedHref: group.href, canonicalHref: group.href, secondaryDepth: 0, result: 'selected' })
+              }
+            }}
+          >
+            {active ? <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-violet-600" aria-hidden="true" /> : null}
+            <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', active ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600')}>
+              <Icon className="h-4 w-4" aria-hidden="true" />
+            </span>
+            {expanded ? <span className="truncate text-sm font-semibold">{group.label}</span> : null}
+            {!expanded ? <span className="sr-only">{group.label}</span> : null}
+          </Link>
+          {expanded ? (
+            <button
+              type="button"
+              className="workbench-focusable rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+              aria-label={`${open ? '收起' : '展开'}${group.label}二级入口`}
+              aria-expanded={open}
+              aria-controls={`workbench-group-${group.id}`}
+              onClick={() => toggleGroup(group)}
+            >
+              {open ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+            </button>
+          ) : null}
         </div>
+        {expanded && open ? (
+          <div id={`workbench-group-${group.id}`} className="mt-1 space-y-0.5">
+            {group.entries.map((entry) => renderUnifiedEntry(group, entry))}
+          </div>
+        ) : null}
       </div>
     )
   }
 
-  const renderGroup = (group: NavGroup) => {
-    const Icon = group.icon
-    const groupActive = group.children.some((c) => isActive(c.href))
-    const open = openGroups[group.id] ?? groupActive
+  const legacyEntries = useMemo(
+    () => featuresForPlacement('sidebar').slice().sort((a, b) => (LEGACY_PRESENTATION[a.feature_id]?.order ?? 999) - (LEGACY_PRESENTATION[b.feature_id]?.order ?? 999)),
+    [],
+  )
 
-    if (!expanded) {
-      return (
-        <Link
-          key={group.id}
-          href={group.defaultHref}
-          className={cn(
-            'group relative flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-all duration-200',
-            groupActive
-              ? 'bg-gradient-to-r from-violet-50 to-purple-50 text-violet-700'
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900',
-          )}
-        >
-          {groupActive && (
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-violet-600" />
-          )}
-          <div
-            className={cn(
-              'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-200',
-              groupActive
-                ? 'bg-violet-600 text-white shadow-md shadow-violet-200/50'
-                : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200 group-hover:text-gray-700',
-            )}
-          >
-            <Icon className="w-4 h-4" />
-          </div>
-          <div className="absolute left-full ml-2 px-3 py-2 rounded-lg bg-gray-900 text-white text-xs whitespace-nowrap opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none shadow-lg z-50 max-w-[260px]">
-            <div className="font-medium">{group.label}</div>
-            {group.hint && (
-              <div className="text-[10.5px] text-gray-300 mt-0.5 whitespace-normal leading-snug">
-                {group.hint}
-              </div>
-            )}
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-2 h-2 bg-gray-900 rotate-45" />
-          </div>
-        </Link>
-      )
-    }
+  const renderLegacyEntry = (feature: FeatureRegistryEntry, index: number) => {
+    const presentation = LEGACY_PRESENTATION[feature.feature_id] || { icon: Network, hint: feature.domain, section: '其他', order: 999 }
+    const previous = index > 0 ? LEGACY_PRESENTATION[legacyEntries[index - 1].feature_id]?.section || '其他' : ''
+    const showSection = previous !== presentation.section
+    const active = location.featureId === feature.feature_id || pathname === feature.href
+    const Icon = presentation.icon
 
     return (
-      <div key={group.id}>
-        <button
-          type="button"
-          onClick={() => toggleGroup(group.id)}
+      <div key={feature.feature_id}>
+        {showSection && expanded ? <p className="px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{presentation.section}</p> : null}
+        {showSection && !expanded && index > 0 ? <div className="mx-3 my-1.5 h-px bg-slate-200" /> : null}
+        <Link
+          href={feature.href}
+          aria-label={feature.title}
+          aria-current={active ? 'page' : undefined}
           className={cn(
-            'w-full group relative flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-all duration-200 text-left',
-            groupActive
-              ? 'bg-gradient-to-r from-violet-50 to-purple-50 text-violet-700'
-              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900',
+            'workbench-focusable group relative flex items-center gap-3 rounded-xl px-2.5 py-2.5 transition-colors',
+            active ? 'bg-violet-50 text-violet-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950',
           )}
         >
-          {groupActive && (
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-violet-600" />
-          )}
-          <div
-            className={cn(
-              'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-200',
-              groupActive
-                ? 'bg-violet-600 text-white shadow-md shadow-violet-200/50'
-                : 'bg-gray-100 text-gray-500 group-hover:bg-gray-200 group-hover:text-gray-700',
-            )}
-          >
-            <Icon className="w-4 h-4" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">{group.label}</div>
-            {group.hint && (
-              <div className="text-[10.5px] text-gray-400 truncate mt-0.5 leading-tight">
-                {group.hint}
-              </div>
-            )}
-          </div>
-          {open ? (
-            <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-          ) : (
-            <ChevronRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-          )}
-        </button>
-        {open && (
-          <div className="mt-0.5 mb-1 space-y-0.5">
-            {group.children.map((c) => renderItem(c, true))}
-          </div>
-        )}
+          <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', active ? 'bg-violet-600 text-white' : 'bg-slate-100')}>
+            <Icon className="h-4 w-4" aria-hidden="true" />
+          </span>
+          {expanded ? <span className="min-w-0"><span className="block truncate text-sm font-medium">{feature.title}</span><span className="block truncate text-[10px] text-slate-400">{presentation.hint}</span></span> : null}
+        </Link>
       </div>
     )
   }
@@ -326,59 +247,48 @@ export function AppSidebar() {
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-[60] h-screen flex flex-col bg-white border-r border-gray-100 transition-all duration-300 ease-in-out shadow-sm',
-        expanded ? 'w-60' : 'w-[68px]',
+        'fixed left-0 top-0 z-[60] flex h-[100dvh] flex-col border-r border-slate-200 bg-white shadow-sm transition-[width] duration-200',
+        expanded ? 'w-64' : 'w-[68px]',
       )}
+      aria-label={unified ? `Omni ${mode === 'work' ? '工作' : '开发'}模式导航` : 'Omni 经典导航'}
+      data-testid={unified ? 'workbench-sidebar' : 'legacy-sidebar'}
     >
-      {/* Logo */}
-      <div className="flex items-center h-16 px-3 shrink-0 border-b border-gray-100">
-        <Link href="/workspace" className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-purple-500 flex items-center justify-center shadow-lg shadow-purple-200/50 shrink-0">
-            <BrainCircuit className="w-5 h-5 text-white" />
-          </div>
-          {expanded && (
-            <div className="flex flex-col min-w-0 animate-in fade-in slide-in-from-left-2 duration-200">
-              <span className="font-bold text-sm text-gray-900 truncate">Omni-Vibe</span>
-              <span className="text-[10px] text-gray-400 truncate">你的 AI 万能小助理</span>
-            </div>
-          )}
+      <div className="flex h-16 shrink-0 items-center border-b border-slate-100 px-3">
+        <Link href="/workspace" className="workbench-focusable flex min-w-0 items-center gap-3 rounded-xl" aria-label="Omni 首页">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-700 to-purple-500 shadow-lg shadow-purple-200/60">
+            <BrainCircuit className="h-5 w-5 text-white" aria-hidden="true" />
+          </span>
+          {expanded ? <span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-950">Omni</span><span className="block truncate text-[10px] text-slate-500">{unified ? '智能蓝图工作台' : '经典导航'}</span></span> : null}
         </Link>
       </div>
 
-      {/* Hint banner when expanded */}
-      {expanded && (
-        <div className="px-3 pt-3 pb-1 animate-in fade-in slide-in-from-top-1 duration-300">
-          <div className="rounded-lg bg-gradient-to-br from-violet-50 to-purple-50 border border-violet-100/60 px-3 py-2">
-            <p className="text-[10.5px] text-gray-500 leading-relaxed">
-              每天先看「工作台」，遇到异动点 SKU 卡片进诊断，做完动作记得登记。
-            </p>
+      <nav
+        className="scrollbar-hide flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-2.5 py-3"
+        aria-label={unified ? `${mode === 'work' ? '工作' : '开发'}模式一级导航` : '经典主导航'}
+      >
+        {unified ? groups.map(renderUnifiedGroup) : legacyEntries.map(renderLegacyEntry)}
+        {unified && groups.length === 0 ? (
+          <div className="mx-1 rounded-xl border border-dashed border-slate-300 p-3 text-center text-xs text-slate-500" role="status">
+            <SearchX className="mx-auto mb-2 h-5 w-5" aria-hidden="true" />
+            {expanded ? '没有匹配的功能或命令' : <span className="sr-only">没有匹配的功能或命令</span>}
           </div>
-        </div>
-      )}
-
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-2.5 space-y-1 scrollbar-hide">
-        {NAV_ITEMS.map((entry, idx) => {
-          if (isSection(entry)) return renderSection(entry, idx)
-          if (isGroup(entry)) return renderGroup(entry)
-          return renderItem(entry)
-        })}
+        ) : null}
       </nav>
 
-      {/* Toggle */}
-      <div className="px-2.5 py-3 border-t border-gray-100 shrink-0">
+      <div className="shrink-0 border-t border-slate-100 px-2.5 py-3">
         <button
-          onClick={() => setExpanded(!expanded)}
-          className="w-full flex items-center justify-center gap-2 rounded-xl px-2.5 py-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all duration-200"
+          type="button"
+          className="workbench-focusable flex w-full items-center justify-center gap-2 rounded-xl px-2.5 py-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+          aria-label={expanded ? '收起侧边导航' : '展开侧边导航'}
+          aria-expanded={expanded}
+          onClick={() => {
+            const nextExpanded = !expanded
+            if (controlledExpanded === undefined) setInternalExpanded(nextExpanded)
+            onExpandedChange?.(nextExpanded)
+          }}
         >
-          {expanded ? (
-            <>
-              <ChevronLeft className="w-4 h-4 shrink-0" />
-              <span className="text-xs font-medium animate-in fade-in duration-200">收起菜单</span>
-            </>
-          ) : (
-            <ChevronRight className="w-4 h-4" />
-          )}
+          {expanded ? <ChevronLeft className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
+          {expanded ? <span className="text-xs font-medium">收起导航</span> : null}
         </button>
       </div>
     </aside>

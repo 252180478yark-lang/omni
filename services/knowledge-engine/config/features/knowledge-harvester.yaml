@@ -8,6 +8,14 @@ routes:
   canonical: /knowledge/harvester
   visible: true
   placements: [home, onboarding, direct]
+  owned_surfaces: [/knowledge/harvester]
+ia:
+  mode: work
+  primary_group: knowledge
+  primary_order: 10
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: web-harvest, kind: write}
 expected_edges: []

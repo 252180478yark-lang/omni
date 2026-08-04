@@ -1,0 +1,645 @@
+schema_version: 3
+change_id: 2026-08-02-omni-unified-ai-workbench-w1-shell-ia
+title: Omni unified AI workbench W1 shell and information architecture
+state: GRAPH_DIFF_READY
+created_at: '2026-08-02T09:44:48Z'
+updated_at: '2026-08-02T12:05:00Z'
+feature_refs:
+- feature_id: omni-unified-ai-workbench
+  feature_ref: prd:2026-08-02-omni-unified-ai-workbench-prd:v1.3:sha256:cfdc88d68e985c0801dfbc9ab1bccfc7b5a36059b8d5bd0feab4cf74687622bd
+before_snapshot:
+  ref: 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+delivery:
+  authority: ci_attestation
+  base_commit: 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - W1 changes the shared FeatureDefinition schema and its generated backend/frontend registry projections.
+  - W1 changes top-level navigation, browser routing, compatibility redirects, and best-effort navigation telemetry.
+  - W1 adds persistent browser preference state and a rollback flag while preserving every existing renderer and feature_id.
+  - The slice is reversible, does not change database schema or adopt shared runtime resources, tightens developer BFF access with the current admin role plus an explicitly supported owner compatibility role, and gives the new evidence-only telemetry BFF a separate ordinary-authenticated identity boundary.
+  external_effects: []
+  scope_deltas:
+  - id: W1-DELTA-001
+    discovered_at: '2026-08-02T09:51:17Z'
+    reason: The W0 29-path projection omitted the exact generator, tests, eight new FeatureDefinition files, shell state, middleware, telemetry BFF, and accessibility evidence required to implement W1 without a second registry.
+    added_paths:
+    - services/knowledge-engine/app/services/system_graph/feature_definitions.py
+    - services/knowledge-engine/tests/test_feature_definitions.py
+    - frontend/tests/feature-registry.test.ts
+    - frontend/src/lib/workbench-ia.ts
+    - frontend/src/middleware.ts
+    - frontend/src/app/api/omni/workbench/navigation-events/route.ts
+    - frontend/src/stores/workbenchStore.ts
+    - frontend/src/lib/workbench-flags.ts
+    - frontend/src/components/workbench-state-badge.tsx
+    - frontend/tests/workbench-ia.test.ts
+    - frontend/tests/workbench-route-inventory.test.ts
+    - frontend/tests/workbench-middleware.test.ts
+    - frontend/tests/workbench-navigation-events.test.ts
+    - frontend/tests/workbench-store.test.ts
+    - frontend/tests/workbench-shell.test.tsx
+    - frontend/tests/agent-chat/e2e/workbench-shell.spec.ts
+    - frontend/tests/agent-chat/e2e/workbench-a11y.spec.ts
+    required_level: R2
+    risk_change: The larger exact scope remains reversible, introduces no database or shared-runtime write during construction, and is covered by deterministic registry, build, browser, and rollback verification.
+  - id: W1-DELTA-002
+    discovered_at: '2026-08-02T10:11:42Z'
+    reason: Integration review found that the registered Prompt & Eval landing renders a blank surface when the existing nodes response is empty, violating AC-FR011-01 and the W1 no-fake-data boundary.
+    added_paths:
+    - frontend/src/app/prompt-lab/page.tsx
+    required_level: R2
+    risk_change: Add only a truthful empty state and executable retry guidance to the existing renderer; no API, data, permission, or experimental-backend behavior changes.
+  - id: W1-DELTA-003
+    discovered_at: '2026-08-02T10:18:00Z'
+    reason: Integration review proved that raw HTML middleware handling does not cover Next App Router RSC/client navigation to an unregistered route and allows anonymous server-side gap telemetry amplification.
+    added_paths:
+    - frontend/src/app/not-found.tsx
+    required_level: R2
+    risk_change: Add one shared-Shell compatibility not-found surface whose client beacon is authenticated, rate-limited, deduplicated, and best-effort; no renderer, API permission, or business data is removed.
+  - id: W1-DELTA-004
+    discovered_at: '2026-08-02T10:25:30Z'
+    reason: Registry correction made /system-graph the canonical renderer for the existing System Graph capability and exposed that FrontendCollector scans canonical routes and aliases but not the new owned_surfaces contract.
+    added_paths:
+    - services/knowledge-engine/app/services/system_graph/collectors/frontend.py
+    - services/knowledge-engine/tests/test_system_graph_collectors.py
+    required_level: R2
+    risk_change: Extend the existing read-only frontend graph collector to emit real owned page surfaces while excluding compatibility aliases as renderers, with a focused regression test; no runtime writer, API, database, or external effect is added.
+  - id: W1-DELTA-005
+    discovered_at: '2026-08-02T10:34:28Z'
+    reason: Browser-level review proved that the canonical /system-graph route immediately redirects to /workspace?mode=development, so its Workflows entry loses the System Graph identity and current-location contract even though the shared SystemGraphView already exists.
+    added_paths:
+    - frontend/src/app/system-graph/page.tsx
+    required_level: R2
+    risk_change: Reuse the existing SystemGraphView component directly at the canonical route while retaining the legacy candidate-plan renderer behind legacy_plan=1; no API, data, permission, or graph writer changes.
+  - id: W1-DELTA-006
+    discovered_at: '2026-08-02T10:34:28Z'
+    reason: Runtime review proved that the compatibility token is not projected into standard host or container runtimes and that NEXT_PUBLIC_OMNI_UNIFIED_SHELL is not injected into the Next builder, making telemetry and the documented rollback non-executable outside tests.
+    added_paths:
+    - .env.example
+    - docker-compose.yml
+    - services/docker-compose.sp1-sp4.yml
+    - frontend/Dockerfile
+    - scripts/runtime_allocation.py
+    - scripts/dev_runtime_environment.py
+    - tests/test_runtime_allocation.py
+    - tests/test_dev_runtime_environment.py
+    - tests/test_compose_runtime_contract.py
+    required_level: R2
+    risk_change: Create only a repository-external dedicated compatibility token reference through RuntimeAllocation, project it to the two host/container consumers, and bind the existing public Shell flag into the frontend build; no secret value enters Git or logs and rollback remains build-and-redeploy only.
+  - id: W1-DELTA-007
+    discovered_at: '2026-08-02T10:59:44Z'
+    reason: Final PRD review found that /qa is not an advertising-review alias, the existing Knowledge Eval page had no explicit no-evaluation-set empty state, the Models and evaluation mutation BFFs lacked the privileged approval-actor gate, and /workspace still exposed a second business/development/execution mode selector inside the new two-mode Shell.
+    added_paths:
+    - frontend/src/app/models/page.tsx
+    - frontend/src/app/knowledge/evaluate/page.tsx
+    - frontend/src/app/workspace/page.tsx
+    - frontend/src/app/api/omni/models/route.ts
+    - frontend/src/app/api/omni/knowledge/bases/[kbId]/rebuild/route.ts
+    - frontend/src/app/api/omni/knowledge/rag/evaluate/route.ts
+    - frontend/tests/workbench-developer-permissions.test.ts
+    required_level: R2
+    risk_change: Add the documented /marketing/review compatibility URL without replacing the real Flywheel renderer, make Models read-only under the unified Shell, fail unauthorized developer BFF requests before upstream access, render an honest evaluation-set empty state, and canonicalize legacy workspace mode URLs while preserving every legacy behavior when the Shell flag is off.
+  - id: W1-DELTA-008
+    discovered_at: '2026-08-02T11:05:22Z'
+    reason: The same final FR-011 audit traced Prompt Lab's read-only inspection capability into an editable drawer and unauthenticated node/rule BFFs, so fixing only Models and Knowledge Eval would leave an equivalent developer-mode permission bypass.
+    added_paths:
+    - frontend/src/components/prompt-node-drawer.tsx
+    - frontend/src/app/api/omni/prompt/nodes/route.ts
+    - frontend/src/app/api/omni/prompt/nodes/[id]/route.ts
+    - frontend/src/app/api/omni/prompt/rules/route.ts
+    - frontend/src/app/api/omni/prompt/rules/[id]/route.ts
+    required_level: R2
+    risk_change: Keep Prompt Lab inspection available to verified admin sessions or the adapter's explicit owner compatibility role, make its unified-Shell drawer explicitly read-only, and deny anonymous or cross-origin node/rule access before any upstream request; existing feedback capture endpoints remain unchanged.
+  - id: W1-DELTA-009
+    discovered_at: '2026-08-02T11:30:00Z'
+    reason: Final acceptance proved that normal authenticated identity sessions use role=user while the telemetry BFF reused the admin-only approval actor verifier, so ordinary alias hits could never reach the compatibility sink; the same review required a visible storage-degradation notice and an executable work/development density token.
+    added_paths:
+    - frontend/src/app/api/omni/_shared.ts
+    required_level: R2
+    risk_change: Add a read-only authenticated-identity verifier for navigation evidence without weakening the separate privileged approval verifier; retain same-origin, rate-limit, deduplication, and service-token isolation, and limit UI changes to visible reversible Shell state semantics.
+  - id: W1-DELTA-010
+    discovered_at: '2026-08-02T11:35:00Z'
+    reason: The complete browser directory exposed a pre-W1 System Command Center regression test that still required /system-graph to redirect to Workspace even though the accepted W1 registry now makes /system-graph the sole canonical renderer.
+    added_paths:
+    - frontend/tests/agent-chat/e2e/system-command-center.spec.ts
+    required_level: R2
+    risk_change: Update only the stale URL assertion and run it together with the W1 browser acceptance; no product route, API, data, permission, or runtime behavior is added by this scope delta.
+  - id: W1-DELTA-011
+    discovered_at: '2026-08-02T12:05:00Z'
+    reason: Final independent accessibility review found that the Prompt detail drawer lacked modal-dialog naming, Escape/focus return and focus containment, while dynamic Models and Knowledge outcomes were visually rendered without explicit live-region semantics.
+    added_paths:
+    - frontend/src/components/prompt-node-drawer.tsx
+    - frontend/src/app/models/page.tsx
+    - frontend/src/app/knowledge/evaluate/page.tsx
+    - frontend/tests/agent-chat/e2e/workbench-a11y.spec.ts
+    - frontend/tests/agent-chat/e2e/workbench-shell.spec.ts
+    required_level: R2
+    risk_change: Complete the existing migrated-page accessibility boundary with semantic dialog and live-region behavior plus keyboard/browser assertions; no API, data, permission, route or runtime contract changes.
+  - id: W1-DELTA-012
+    discovered_at: '2026-08-04T13:18:00Z'
+    reason: Independent rendered-screen review found that the existing SKU Pipeline vertical-tab primitive rendered horizontally inside the unified Shell and overlapped its active form. The same review found that the Shell clipped a wide Playground renderer at mobile width without an explicit affordance.
+    added_paths:
+    - frontend/src/app/globals.css
+    - frontend/src/components/app-shell.tsx
+    - frontend/tests/agent-chat/e2e/workbench-a11y.spec.ts
+    - frontend/tests/agent-chat/e2e/workbench-shell.spec.ts
+    required_level: R2
+    risk_change: Reopen only the existing W1 Shell, CSS, and browser-test ownership to correct vertical-tab layout inside the Shell, provide a mobile wide-content affordance, and prove non-overlap plus bounded scrolling. No API, data, permission, route, runtime, or external behavior changes.
+  approval:
+    required: false
+    gate_ref: user:2026-08-02-pr5-w1-build-review-push
+intent:
+  problem: The web application exposes 45 page routes through a long legacy sidebar, has no unified work/development information architecture, and carries aliases that overlap real renderers without a production resolver or auditable compatibility behavior.
+  expected_outcome: Deliver one reversible web Shell driven only by the generated Feature Registry, with exactly five work groups and five development groups, deterministic route ownership, honest context/provider/status slots, compatibility routing and telemetry, and no deletion or duplication of existing capabilities.
+  user_visible_behavior:
+  - Users can switch between Work and Development modes without remounting page content or losing the current context, operation, or Agent session slots.
+  - Work mode exposes exactly Today, Products, Operations, Content, and Knowledge; Development mode exposes exactly Agents, Skills & Tools, Workflows, Prompt & Eval, and Runs & System.
+  - The existing SKU pipeline is presented as SKU 圈包链路 while retaining the boundary SKU -> selling-point matrix -> audience matching -> audience-pack SOP -> audience_pack_id.
+  - Shell badges report actual known values and otherwise show neutral unknown or unavailable states; W1 does not claim a real resolved provider or context binding.
+  - Registered legacy aliases redirect once to a canonical renderer while preserving query parameters and emitting best-effort compatibility telemetry; unregistered HTML and App Router navigations render one shared-Shell compatibility page and record an authenticated gap when available.
+  - Building and redeploying with NEXT_PUBLIC_OMNI_UNIFIED_SHELL=0 restores the legacy shell and navigation without deleting pages or data.
+current_chain:
+  nodes:
+  - artifact:w0-main-delivery-attestation-30742236283
+  - registry:feature-definition-source
+  - artifact:feature-registry-v1
+  - collector:frontend-route-graph
+  - projection:workbench-ia
+  - page:unified-workbench-shell
+  - state:workbench-session-continuity
+  - router:workbench-compatibility
+  - api:workbench-navigation-events
+  - service:compatibility-telemetry
+  - flag:unified-shell
+  - secret-ref:compatibility-telemetry-token
+  edges:
+  - artifact:w0-main-delivery-attestation-30742236283 -> registry:feature-definition-source
+  - registry:feature-definition-source -> artifact:feature-registry-v1
+  - artifact:feature-registry-v1 -> projection:workbench-ia
+  - artifact:feature-registry-v1 -> collector:frontend-route-graph
+  - projection:workbench-ia -> page:unified-workbench-shell
+  - state:workbench-session-continuity -> page:unified-workbench-shell
+  - artifact:feature-registry-v1 -> router:workbench-compatibility
+  - router:workbench-compatibility -> api:workbench-navigation-events
+  - api:workbench-navigation-events -> service:compatibility-telemetry
+  - flag:unified-shell -> page:unified-workbench-shell
+  - secret-ref:compatibility-telemetry-token -> api:workbench-navigation-events
+  - secret-ref:compatibility-telemetry-token -> service:compatibility-telemetry
+  evidence:
+  - PR 5 merged to main as 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f with tree 79ca1dc5a411f60b1b1fb9bcb6f1f191eb4b9b2f.
+  - Main CI run 30742236283 produced delivery-attestation-16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f with COMPLETE authority, refs/heads/main reachability, the delivered tree, and every required check passed.
+  - The W1 worktree and branch were created from that attested main commit and were clean before this contract was initialized.
+  - The current generator deterministically emits the same Feature Registry JSON to the knowledge-engine and frontend, but its extra-forbid schema lacks W1 IA and owned-surface fields.
+  - The current repository contains 19 FeatureDefinitions and 45 Next page routes; several alias entries overlap real page renderers and resolveFeatureHref has no production consumer.
+  - Existing /api/omni/overview returns honest health and freshness degradation data, and the existing compatibility service already provides the authenticated telemetry sink that the new BFF will proxy.
+scope:
+  pages:
+  - page:unified-workbench-shell
+  - page:work-mode-navigation
+  - page:development-mode-navigation
+  - page:legacy-route-inventory
+  - page:model-management
+  - page:knowledge-evaluation
+  - page:prompt-lab
+  - page:workspace-today
+  - page:system-graph
+  apis:
+  - api:POST:/api/omni/workbench/navigation-events
+  - rest_operation:POST:/api/v1/compatibility/telemetry
+  - api:GET,POST:/api/omni/models
+  - api:POST:/api/omni/knowledge/bases/[kbId]/rebuild
+  - api:POST:/api/omni/knowledge/rag/evaluate
+  - api:GET:/api/omni/prompt/nodes
+  - api:GET:/api/omni/prompt/nodes/[id]
+  - api:GET,POST:/api/omni/prompt/rules
+  - api:PATCH,DELETE:/api/omni/prompt/rules/[id]
+  mcp_tools: []
+  services:
+  - registry:feature-definition-source
+  - artifact:feature-registry-v1
+  - collector:frontend-route-graph
+  - projection:workbench-ia
+  - router:workbench-compatibility
+  - service:compatibility-telemetry
+  - service:identity-authenticated-actor
+  - service:identity-approval-actor
+  - service:approval-hmac-identity
+  database: []
+  data_sources:
+  - data-source:generated-feature-registry-v1
+  - data-source:omni-overview-health
+  - data-source:runtime-allocation-secret-references
+  states_workflows:
+  - state:workbench-mode-preference
+  - state:workbench-session-continuity
+  - state:workbench-context-provider-slots
+  - workflow:legacy-alias-single-hop
+  - workflow:legacy-workspace-mode-canonicalization
+  - state:developer-model-prompt-read-only
+  - state:knowledge-evaluation-empty-and-denied
+  - state:workbench-mode-density
+  tests:
+  - test:w1-feature-schema
+  - test:w1-feature-projection
+  - test:w1-frontend-route-collector
+  - test:w1-route-partition
+  - test:w1-workbench-ia
+  - test:w1-compatibility-routing
+  - test:w1-navigation-telemetry
+  - test:w1-shell-continuity
+  - test:w1-shell-accessibility
+  - test:w1-shell-visual-review
+  - test:w1-developer-permission-boundary
+  - test:w1-knowledge-evaluation-fail-closed
+  - test:w1-migrated-page-accessibility
+  - test:w1-canonical-system-graph-regression
+  - test:w1-flag-off-production-smoke
+  docs:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/impact.yaml
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/completion.yaml
+planned_changes:
+- id: W1-CHG-001
+  action: modify
+  kind: feature-registry-contract
+  node_id: registry:feature-definition-source
+  paths:
+  - services/knowledge-engine/config/features/feature-definition.schema.json
+  - services/knowledge-engine/app/services/system_graph/feature_definitions.py
+  - services/knowledge-engine/config/features/ad-review.yaml
+  - services/knowledge-engine/config/features/approval-inbox.yaml
+  - services/knowledge-engine/config/features/chat.yaml
+  - services/knowledge-engine/config/features/commerce-feedback.yaml
+  - services/knowledge-engine/config/features/content-studio.yaml
+  - services/knowledge-engine/config/features/cost-management.yaml
+  - services/knowledge-engine/config/features/knowledge.yaml
+  - services/knowledge-engine/config/features/knowledge-harvester.yaml
+  - services/knowledge-engine/config/features/livestream-analysis.yaml
+  - services/knowledge-engine/config/features/news.yaml
+  - services/knowledge-engine/config/features/product-management.yaml
+  - services/knowledge-engine/config/features/reverse-engineer.yaml
+  - services/knowledge-engine/config/features/scout-monitoring.yaml
+  - services/knowledge-engine/config/features/sku-pipeline.yaml
+  - services/knowledge-engine/config/features/system-console.yaml
+  - services/knowledge-engine/config/features/system-convergence-runtime-execution.yaml
+  - services/knowledge-engine/config/features/system-convergence-s4-s6.yaml
+  - services/knowledge-engine/config/features/video-analysis.yaml
+  - services/knowledge-engine/config/features/workspace-operations.yaml
+  - services/knowledge-engine/config/features/agent-log.yaml
+  - services/knowledge-engine/config/features/playground.yaml
+  - services/knowledge-engine/config/features/prompt-lab.yaml
+  - services/knowledge-engine/config/features/knowledge-evaluation.yaml
+  - services/knowledge-engine/config/features/model-management.yaml
+  - services/knowledge-engine/config/features/task-management.yaml
+  - services/knowledge-engine/config/features/tri-mind.yaml
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - frontend/src/generated/feature-registry.v1.json
+  upstream:
+  - prd:2026-08-02-omni-unified-ai-workbench-prd:v1.3
+  downstream:
+  - projection:workbench-ia
+  - router:workbench-compatibility
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-001
+  - W1-VERIFY-002
+- id: W1-CHG-002
+  action: modify
+  kind: feature-registry-tests
+  node_id: test:w1-feature-projection
+  paths:
+  - services/knowledge-engine/tests/test_feature_definitions.py
+  - frontend/tests/feature-registry.test.ts
+  upstream:
+  - registry:feature-definition-source
+  - artifact:feature-registry-v1
+  downstream:
+  - test:w1-route-partition
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-002
+  - W1-VERIFY-003
+- id: W1-CHG-003
+  action: add
+  kind: workbench-ia-and-router
+  node_id: projection:workbench-ia
+  paths:
+  - frontend/src/lib/feature-registry.ts
+  - frontend/src/lib/workbench-ia.ts
+  - frontend/src/middleware.ts
+  - frontend/src/app/not-found.tsx
+  - frontend/src/app/api/omni/workbench/navigation-events/route.ts
+  - frontend/tests/workbench-ia.test.ts
+  - frontend/tests/workbench-route-inventory.test.ts
+  - frontend/tests/workbench-middleware.test.ts
+  - frontend/tests/workbench-navigation-events.test.ts
+  upstream:
+  - artifact:feature-registry-v1
+  downstream:
+  - page:unified-workbench-shell
+  - service:compatibility-telemetry
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-003
+  - W1-VERIFY-004
+- id: W1-CHG-004
+  action: add
+  kind: unified-shell
+  node_id: page:unified-workbench-shell
+  paths:
+  - frontend/src/components/app-shell.tsx
+  - frontend/src/components/app-sidebar.tsx
+  - frontend/src/app/globals.css
+  - frontend/src/stores/workbenchStore.ts
+  - frontend/src/lib/workbench-flags.ts
+  - frontend/src/components/workbench-state-badge.tsx
+  - frontend/.env.example
+  - frontend/package.json
+  - frontend/package-lock.json
+  - frontend/tests/workbench-store.test.ts
+  - frontend/tests/workbench-shell.test.tsx
+  - frontend/tests/agent-chat/e2e/workbench-shell.spec.ts
+  - frontend/tests/agent-chat/e2e/workbench-a11y.spec.ts
+  upstream:
+  - projection:workbench-ia
+  - data-source:omni-overview-health
+  downstream:
+  - state:workbench-session-continuity
+  - flag:unified-shell
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-004
+  - W1-VERIFY-005
+  - W1-VERIFY-006A
+  - W1-VERIFY-006
+  - W1-VERIFY-006F
+  - W1-VERIFY-007
+- id: W1-CHG-005
+  action: modify
+  kind: delivery-contract
+  node_id: governance:w1-delivery-contract
+  paths:
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/impact.yaml
+  - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/completion.yaml
+  upstream:
+  - artifact:w0-main-delivery-attestation-30742236283
+  downstream:
+  - change:2026-08-02-omni-unified-ai-workbench-w1-shell-ia
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-008
+  - W1-VERIFY-009
+  - W1-VERIFY-006G
+- id: W1-CHG-006
+  action: modify
+  kind: system-graph-frontend-collector
+  node_id: collector:frontend-route-graph
+  paths:
+  - services/knowledge-engine/app/services/system_graph/collectors/frontend.py
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
+  upstream:
+  - artifact:feature-registry-v1
+  downstream:
+  - test:w1-frontend-route-collector
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-002A
+- id: W1-CHG-007
+  action: modify
+  kind: canonical-system-graph-surface
+  node_id: page:system-graph
+  paths:
+  - frontend/src/app/system-graph/page.tsx
+  - frontend/tests/agent-chat/e2e/system-command-center.spec.ts
+  upstream:
+  - registry:feature-definition-source
+  downstream:
+  - page:unified-workbench-shell
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-005
+  - W1-VERIFY-007
+- id: W1-CHG-008
+  action: modify
+  kind: runtime-secret-and-build-flag-wiring
+  node_id: secret-ref:compatibility-telemetry-token
+  paths:
+  - .env.example
+  - docker-compose.yml
+  - services/docker-compose.sp1-sp4.yml
+  - frontend/Dockerfile
+  - scripts/runtime_allocation.py
+  - scripts/dev_runtime_environment.py
+  - tests/test_runtime_allocation.py
+  - tests/test_dev_runtime_environment.py
+  - tests/test_compose_runtime_contract.py
+  upstream:
+  - data-source:runtime-allocation-secret-references
+  downstream:
+  - api:workbench-navigation-events
+  - service:compatibility-telemetry
+  - flag:unified-shell
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-006C
+  - W1-VERIFY-006D
+- id: W1-CHG-009
+  action: modify
+  kind: developer-mode-boundaries
+  node_id: gate:workbench-developer-boundaries
+  paths:
+  - frontend/src/app/models/page.tsx
+  - frontend/src/app/knowledge/evaluate/page.tsx
+  - frontend/src/app/workspace/page.tsx
+  - frontend/src/app/api/omni/models/route.ts
+  - frontend/src/app/api/omni/_shared.ts
+  - frontend/src/app/api/omni/knowledge/bases/[kbId]/rebuild/route.ts
+  - frontend/src/app/api/omni/knowledge/rag/evaluate/route.ts
+  - frontend/src/app/api/omni/prompt/nodes/route.ts
+  - frontend/src/app/api/omni/prompt/nodes/[id]/route.ts
+  - frontend/src/app/api/omni/prompt/rules/route.ts
+  - frontend/src/app/api/omni/prompt/rules/[id]/route.ts
+  - frontend/src/app/prompt-lab/page.tsx
+  - frontend/src/components/prompt-node-drawer.tsx
+  - frontend/tests/workbench-developer-permissions.test.ts
+  upstream:
+  - projection:workbench-ia
+  - router:workbench-compatibility
+  - service:identity-authenticated-actor
+  - service:identity-approval-actor
+  downstream:
+  - page:model-management
+  - page:knowledge-evaluation
+  - page:workspace-today
+  contract_change: compatible
+  verification_ids:
+  - W1-VERIFY-003
+  - W1-VERIFY-006E
+  - W1-VERIFY-007
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Add one same-origin telemetry BFF with typed unavailable responses, and tighten the existing Models, Knowledge Eval/rebuild, and Prompt node/rule BFFs with the current admin identity plus the adapter's explicit owner compatibility role, same-origin mutation checks, and signed service calls; never expose service tokens or configuration details to the browser.
+  database:
+    status: not_applicable
+    strategy: W1 does not change database schema, migrations, or persisted business data.
+  workflow:
+    status: compatible
+    strategy: Preserve all existing feature_id values and renderers; the generated registry adds IA, deterministic order, owned surfaces, migration phase, and flag metadata. Real aliases are exact, direct-to-canonical, single-hop redirects and cannot overlap owned surfaces.
+  data_source:
+    status: compatible
+    strategy: Continue generating byte-identical backend and frontend registries from the same YAML source; Shell health uses the existing overview response and reports unknown or unavailable when evidence is absent.
+graph_acceptance:
+  required_edges:
+  - from: registry:feature-definition-source
+    to: artifact:feature-registry-v1
+    relation: deterministically_generates
+  - from: artifact:feature-registry-v1
+    to: projection:workbench-ia
+    relation: exclusively_drives
+  - from: projection:workbench-ia
+    to: page:unified-workbench-shell
+    relation: renders_exact_five_plus_five_groups
+  - from: state:workbench-session-continuity
+    to: page:unified-workbench-shell
+    relation: survives_mode_switch
+  - from: router:workbench-compatibility
+    to: service:compatibility-telemetry
+    relation: reports_alias_outcome_via_bff
+  - from: flag:unified-shell
+    to: page:unified-workbench-shell
+    relation: supports_legacy_rollback
+  allowed_unknowns:
+  - Real context revision and resolved provider remain honest unavailable values until W5 binds the frozen contracts.
+  - Desktop cross-surface parity remains a W6 acceptance responsibility; W1 verifies the web Shell and router only.
+  - Historical Path-B documents proposed /ad-review -> /marketing/review, but main has no /marketing/review renderer; W1 only recovers that advertised bookmark back to the real /ad-review canonical and does not claim to implement the historical forward migration direction.
+  - The current identity service has no feature-level entitlement contract; W1 honors the existing registry visibility boundary and does not weaken API or R0-R3 enforcement, but it does not invent client-side ACLs from development ownership metadata.
+  forbidden_orphans:
+  - page:p0-route
+  - registry:visible-feature
+  - projection:workbench-primary-group
+risks:
+- id: W1-RISK-001
+  description: A compatibility alias that overlaps a real Next page could silently swallow the renderer or form a redirect cycle.
+  mitigation: Partition all 45 pages exactly once, prohibit alias/owned overlap, require aliases to target a canonical directly, use exact matching only, prove /qa and the historically advertised but never page-backed /marketing/review bookmark redirect with query preservation, and prove /ad-review/flywheel remains an independently reachable owned renderer.
+- id: W1-RISK-002
+  description: A hard-coded menu or landing table could become a second IA source and drift from FeatureDefinition.
+  mitigation: Generate primary_order and contextual order from the registry, validate uniqueness per mode/group, derive each landing from the minimum order, and keep sidebar presentation data limited to icons and descriptions.
+- id: W1-RISK-003
+  description: Shell status badges could imply that context/provider/runtime contracts are already implemented.
+  mitigation: Freeze continuity slots but default to neutral unknown or unavailable, populate only observed overview health, and leave W3-W5 service contracts out of scope.
+- id: W1-RISK-004
+  description: The new top bar and sidebar can clip full-height chat/playground pages or regress keyboard and contrast behavior.
+  mitigation: Cover responsive viewport behavior, visible focus, reduced motion, semantic status text, axe checks, and screenshot review in self-hosted Playwright.
+- id: W1-RISK-005
+  description: Browser storage or telemetry failure could break navigation.
+  mitigation: Keep mode state in memory with an aria-live degradation notice, make telemetry best-effort, and provide a single environment flag that restores the legacy shell.
+out_of_scope:
+- Real WorkbenchContextSnapshot persistence, provider resolution, fallback, Codex/Host execution, or Agent session backend binding; these belong to W5.
+- AI Blueprint, real run center data, operation lifecycle controls, approval inbox behavior, artifact drawer behavior, and shared runtime adoption; these belong to later slices.
+- Desktop navigation changes or Desktop/Web parity evidence; W6 owns that surface.
+- Database migrations, new entitlement systems, secret values, new model configuration capability or data structures, and business data writes; existing developer write operations remain available only through the current admin role or explicitly supported owner compatibility role, same-origin, and signed-service boundaries.
+- Physical deletion of legacy pages, capabilities, feature definitions, or data.
+- Copying bytes from the dirty primary worktree; only the user-approved SKU audience-pack business semantics are retained.
+- Merging W1 or claiming formal delivery from branch CI; this authorized run stops after the reviewed W1 branch is pushed.
+rollback:
+  strategy: Build and redeploy with NEXT_PUBLIC_OMNI_UNIFIED_SHELL=0 to restore the legacy shell/navigation; before commit revert only exact W1 paths, and after commit revert only the W1 commit without deleting renderers or data.
+  data_recovery: No database or business data changes occur. Compatibility telemetry is append-only best-effort evidence and is not required for navigation recovery.
+verification_plan:
+- id: W1-VERIFY-001
+  layer: generated-registry
+  command: python -B services/knowledge-engine/scripts/system_graph.py generate --check
+  proves: YAML FeatureDefinitions validate against the extra-forbid schema and both generated registry outputs are current and deterministic.
+  required: true
+- id: W1-VERIFY-002
+  layer: feature-schema
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py
+  proves: Existing feature_id stability, IA mode/group/order rules, direct aliases, byte-identical projections, and the exact 45-route partition hold.
+  required: true
+- id: W1-VERIFY-003
+  layer: frontend-registry-routing
+  command: npm --prefix frontend run test:unit -- tests/feature-registry.test.ts tests/workbench-ia.test.ts tests/workbench-route-inventory.test.ts tests/workbench-middleware.test.ts tests/workbench-navigation-events.test.ts
+  proves: The frontend derives 5+5 groups and landings only from the registry, resolves owned and dynamic routes uniquely, redirects exact aliases once, preserves query parameters, and reports typed telemetry outcomes.
+  required: true
+- id: W1-VERIFY-004
+  layer: shell-state
+  command: npm --prefix frontend run test:unit -- tests/workbench-store.test.ts tests/workbench-shell.test.tsx
+  proves: Mode persistence, storage failure degradation, child/context/operation/session continuity, honest badges, feature flag rollback, and legacy navigation remain deterministic.
+  required: true
+- id: W1-VERIFY-005
+  layer: frontend-unit-regression
+  command: npm --prefix frontend run test:unit
+  proves: The complete frontend unit suite retains existing behavior after the registry, router, and Shell changes.
+  required: true
+- id: W1-VERIFY-006
+  layer: frontend-build
+  command: $env:NEXT_PUBLIC_OMNI_UNIFIED_SHELL='1'; Push-Location frontend; try { npm run build -- --no-lint } finally { Pop-Location }
+  proves: TypeScript, Next route compilation, middleware, generated registry consumers, Next type validation, and production bundling succeed independently of the immutable baseline lint debt.
+  required: true
+- id: W1-VERIFY-002A
+  layer: frontend-route-collector
+  command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_collectors.py
+  proves: The System Graph collector emits canonical and owned page surfaces as real UI routes, preserves literal and catch-all routes, and does not model compatibility aliases as second renderers.
+  required: true
+- id: W1-VERIFY-006A
+  layer: frontend-scoped-lint
+  command: $files=@(); $files += git diff --name-only --diff-filter=ACMR 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f -- 'frontend/**/*.ts' 'frontend/**/*.tsx'; $files += git ls-files --others --exclude-standard -- 'frontend/**/*.ts' 'frontend/**/*.tsx'; $files=$files | Sort-Object -Unique | ForEach-Object { $_ -replace '^frontend/','' }; Push-Location frontend; try { npx eslint --max-warnings=0 @files } finally { Pop-Location }
+  proves: Every W1 TypeScript and TSX source, middleware, BFF, unit test, browser test, and accessibility test has zero ESLint error without suppressing a W1 path.
+  required: true
+- id: W1-VERIFY-006B
+  layer: immutable-baseline-lint-audit
+  command: npm --prefix frontend run build
+  proves: The standard command still reaches successful production compile and TypeScript validation, then reports only the immutable mainline lint debt whose error-file set has zero intersection with the W1 diff.
+  required: false
+- id: W1-VERIFY-006C
+  layer: runtime-secret-compose-contract
+  command: python -B -m pytest -q -p no:cacheprovider tests/test_runtime_allocation.py tests/test_dev_runtime_environment.py tests/test_compose_runtime_contract.py
+  proves: RuntimeAllocation creates an independent repository-external compatibility token reference, host and container launch paths project it only to frontend and knowledge-engine, both standard Compose surfaces mount it read-only, and no token value enters tracked configuration.
+  required: true
+- id: W1-VERIFY-006D
+  layer: rollback-production-build
+  command: $env:NEXT_PUBLIC_OMNI_UNIFIED_SHELL='0'; Push-Location frontend; try { npm run build -- --no-lint } finally { Pop-Location }
+  proves: The documented build-and-redeploy rollback value is accepted by the real Next production builder after Docker ARG wiring, while component evidence verifies that value selects the legacy shell.
+  required: true
+- id: W1-VERIFY-006E
+  layer: developer-permission-boundary
+  command: npm --prefix frontend run test:unit -- tests/workbench-developer-permissions.test.ts tests/workbench-middleware.test.ts
+  proves: Anonymous or cross-origin developer-mode mutations fail before upstream access, ordinary authenticated role=user is never promoted to the privileged approval actor, model and Prompt configuration details require admin or the explicit owner compatibility role, Knowledge actions fail closed on non-2xx responses, and legacy workspace mode URLs canonicalize only while the unified Shell is enabled.
+  required: true
+- id: W1-VERIFY-007
+  layer: browser-accessibility-visual
+  command: $env:PLAYWRIGHT_BASE_URL='http://127.0.0.1:20339'; Push-Location frontend; try { npx playwright test tests/agent-chat/e2e/system-command-center.spec.ts tests/agent-chat/e2e/workbench-a11y.spec.ts tests/agent-chat/e2e/workbench-shell.spec.ts } finally { Pop-Location }
+  proves: A self-hosted browser validates the canonical System Graph route, 5+5 navigation, route/query compatibility, responsive Shell geometry and density, keyboard/focus semantics, status non-color cues, automated accessibility checks, and reviewable screenshots.
+  required: true
+- id: W1-VERIFY-008
+  layer: candidate-scope
+  command: python -X utf8 scripts/check_feature_contracts.py --mode index --base 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
+  proves: After the GRAPH_DIFF_READY transition and exact staging, every protected candidate path is covered by the locked W1 contract with no uncontracted path.
+  required: false
+- id: W1-VERIFY-009
+  layer: contract
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/completion.yaml --expect-state VERIFYING
+  proves: The schema-v3 W1 impact and completion evidence are consistent before the local candidate transition.
+  required: true
+- id: W1-VERIFY-006F
+  layer: frontend-typescript
+  command: Push-Location frontend; try { npx tsc --noEmit } finally { Pop-Location }
+  proves: The complete frontend TypeScript program accepts every W1 page, Shell, middleware, BFF, registry, state, and test type without emission.
+  required: true
+- id: W1-VERIFY-006G
+  layer: patch-integrity
+  command: git diff --check
+  proves: The complete W1 patch contains no whitespace errors or conflict markers before staging.
+  required: true
+- id: W1-VERIFY-010
+  layer: final-contract
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  proves: W1 reaches only the local candidate endpoint with no self-authored delivery claim.
+  required: false
+lock:
+  locked_at: '2026-08-02T09:53:00Z'
+  locked_by: codex
+  rationale: W0 main delivery attestation is verified; exact W1 registry, route, shell, test, rollback, and compatibility surfaces are frozen before product writes.

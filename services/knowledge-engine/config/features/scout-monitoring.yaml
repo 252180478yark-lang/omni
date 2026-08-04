@@ -8,6 +8,14 @@ routes:
   canonical: /scout
   visible: true
   placements: [sidebar, direct]
+  owned_surfaces: [/scout]
+ia:
+  mode: work
+  primary_group: operations
+  primary_order: 0
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: store-monitoring, kind: read}
 expected_edges: []

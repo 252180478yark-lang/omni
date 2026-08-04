@@ -1,0 +1,31 @@
+schema_version: 1
+feature_id: tri-mind
+title: 多智能体实验
+domain: agent.experiments
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /tri-mind
+  visible: false
+  placements: [direct]
+  owned_surfaces: [/tri-mind]
+ia:
+  mode: development
+  primary_group: skills-tools
+  primary_order: 20
+  contextual_groups: []
+  phase: degrade
+  flag: unified_shell
+capabilities:
+  - {capability_id: multi-agent-experiment, kind: generate}
+expected_edges: []
+checks:
+  - check_id: knowledge-health
+    kind: health
+    target: /api/v1/system/health/features/tri-mind
+    verifies: health_registration:service:knowledge-engine
+    required: true
+aliases: []
+dependencies:
+  - {ref: health_registration:service:knowledge-engine, required: true}
+  - {ref: health_registration:service:ai-provider-hub, required: false}

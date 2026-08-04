@@ -8,6 +8,14 @@ routes:
   canonical: /workspace
   visible: true
   placements: [sidebar, direct]
+  owned_surfaces: [/workspace, /workspace/development, /decisions, /insights, /review]
+ia:
+  mode: work
+  primary_group: today
+  primary_order: 0
+  contextual_groups: []
+  phase: merge
+  flag: unified_shell
 capabilities:
   - {capability_id: operations-workspace, kind: read}
 expected_edges: []
@@ -17,10 +25,6 @@ checks:
     target: /api/v1/system/health/features/workspace-operations
     verifies: health_registration:service:knowledge-engine
     required: true
-aliases:
-  - {href: /decisions, target: /workspace}
-  - {href: /agent-log, target: /workspace}
-  - {href: /insights, target: /workspace}
-  - {href: /review, target: /workspace}
+aliases: []
 dependencies:
   - {ref: health_registration:service:knowledge-engine, required: true}

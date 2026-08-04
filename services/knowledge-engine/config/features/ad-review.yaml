@@ -8,6 +8,19 @@ routes:
   canonical: /ad-review
   visible: true
   placements: [home, onboarding, direct]
+  owned_surfaces:
+    - /ad-review
+    - /ad-review/[id]
+    - /ad-review/[id]/review
+    - /ad-review/analytics
+    - /ad-review/flywheel
+ia:
+  mode: work
+  primary_group: operations
+  primary_order: 10
+  contextual_groups: []
+  phase: merge
+  flag: unified_shell
 capabilities:
   - {capability_id: campaign-review, kind: generate}
 expected_edges: []
@@ -18,7 +31,7 @@ checks:
     verifies: health_registration:service:ad-review-service
     required: true
 aliases:
-  - {href: /ad-review/flywheel, target: /ad-review}
+  - {href: /marketing/review, target: /ad-review}
 dependencies:
   - {ref: health_registration:service:ad-review-service, required: true}
   - {ref: health_registration:service:ai-provider-hub, required: false}

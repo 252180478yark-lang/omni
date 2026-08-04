@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { RuntimeOverlay } from '@/components/system-command-center/RuntimeOverlay'
 import { SystemGraphView } from '@/components/system-command-center/SystemGraphView'
+import { isWorkbenchFlagEnabled } from '@/lib/workbench-flags'
 
 type WorkspaceMode = 'business' | 'development' | 'execution'
 
@@ -69,6 +70,7 @@ interface StrategyCard {
 }
 
 export default function WorkspacePage() {
+  const unifiedShell = isWorkbenchFlagEnabled('unified_shell')
   const [runs, setRuns] = useState<Run[]>([])
   const [anomalies, setAnomalies] = useState<Anomaly[]>([])
   const [decisions, setDecisions] = useState<Decision[]>([])
@@ -97,9 +99,13 @@ export default function WorkspacePage() {
   }, [])
 
   useEffect(() => {
+    if (unifiedShell) {
+      setMode('business')
+      return
+    }
     const requested = new URLSearchParams(window.location.search).get('mode')
     setMode(requested === 'development' || requested === 'execution' ? requested : 'business')
-  }, [])
+  }, [unifiedShell])
 
   // Summarise today's runbook suite runs
   const today = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-')
@@ -130,9 +136,11 @@ export default function WorkspacePage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <nav aria-label="工作台模式" className="flex rounded-lg border bg-white p-1 text-xs">
-            {(['business', 'development', 'execution'] as WorkspaceMode[]).map((item) => <Link key={item} href={item === 'business' ? '/workspace' : `/workspace?mode=${item}`} onClick={() => setMode(item)} aria-current={mode === item ? 'page' : undefined} className={`rounded px-3 py-1.5 ${mode === item ? 'bg-violet-700 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{item === 'business' ? '经营' : item === 'development' ? '开发' : '执行'}</Link>)}
-          </nav>
+          {!unifiedShell ? (
+            <nav aria-label="工作台模式" className="flex rounded-lg border bg-white p-1 text-xs">
+              {(['business', 'development', 'execution'] as WorkspaceMode[]).map((item) => <Link key={item} href={item === 'business' ? '/workspace' : `/workspace?mode=${item}`} onClick={() => setMode(item)} aria-current={mode === item ? 'page' : undefined} className={`rounded px-3 py-1.5 ${mode === item ? 'bg-violet-700 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>{item === 'business' ? '经营' : item === 'development' ? '开发' : '执行'}</Link>)}
+            </nav>
+          ) : null}
           <span className="text-xs text-gray-400">
             {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}
           </span>

@@ -1,0 +1,30 @@
+schema_version: 1
+feature_id: task-management
+title: 任务列表
+domain: operations.tasks
+owner: {kind: team, id: omni}
+lifecycle: active
+routes:
+  canonical: /tasks
+  visible: false
+  placements: [direct]
+  owned_surfaces: [/tasks]
+ia:
+  mode: work
+  primary_group: today
+  primary_order: 20
+  contextual_groups: []
+  phase: degrade
+  flag: unified_shell
+capabilities:
+  - {capability_id: task-list, kind: read}
+expected_edges: []
+checks:
+  - check_id: knowledge-health
+    kind: health
+    target: /api/v1/system/health/features/task-management
+    verifies: health_registration:service:knowledge-engine
+    required: true
+aliases: []
+dependencies:
+  - {ref: health_registration:service:knowledge-engine, required: true}

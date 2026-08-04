@@ -8,6 +8,14 @@ routes:
   canonical: /knowledge
   visible: true
   placements: [home, onboarding, direct]
+  owned_surfaces: [/knowledge]
+ia:
+  mode: work
+  primary_group: knowledge
+  primary_order: 0
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: knowledge-library, kind: write}
   - {capability_id: grounded-retrieval, kind: read}

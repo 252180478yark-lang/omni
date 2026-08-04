@@ -121,8 +121,14 @@ class RuntimeAllocation:
 def _run(command: Sequence[str], *, cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
     try:
         result = subprocess.run(
-            list(command), cwd=cwd, text=True, encoding="utf-8", errors="replace",
-            capture_output=True, timeout=15, check=False,
+            list(command),
+            cwd=cwd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=15,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise AllocationError(f"cannot run {' '.join(command)}: {exc}") from exc
@@ -194,6 +200,12 @@ def default_identity_jwt_secret_path(root: Path) -> Path:
     return _default_runtime_secret_path(root, "identity-jwt.key", "identity JWT")
 
 
+def default_compatibility_token_path(root: Path) -> Path:
+    """Return an independent repository-external compatibility token reference."""
+
+    return _default_runtime_secret_path(root, "compatibility-token.key", "compatibility token")
+
+
 def _ensure_runtime_secret(
     root: Path,
     *,
@@ -253,6 +265,17 @@ def ensure_identity_jwt_secret(root: Path, *, path: Path | None = None) -> Path:
     )
 
 
+def ensure_compatibility_token(root: Path, *, path: Path | None = None) -> Path:
+    """Create a distinct printable compatibility token without returning its value."""
+
+    return _ensure_runtime_secret(
+        root,
+        target=path or default_compatibility_token_path(root),
+        label="compatibility token",
+        secret_factory=lambda: secrets.token_urlsafe(48).encode("ascii"),
+    )
+
+
 def primary_worktree(root: Path) -> Path:
     common = git_common_dir(root)
     if common.name.casefold() == ".git":
@@ -277,12 +300,32 @@ def worktree_id(root: Path) -> str:
 
 
 FINGERPRINT_EXCLUDED_PARTS = {
-    ".git", ".runtime", ".omni-runtime", "node_modules", "dist", "dist-electron",
-    "release", ".next", "out", "build", "logs", ".dev-logs", ".pytest_cache",
-    ".ruff_cache", "__pycache__", "downloads", "exports", "output",
+    ".git",
+    ".runtime",
+    ".omni-runtime",
+    "node_modules",
+    "dist",
+    "dist-electron",
+    "release",
+    ".next",
+    "out",
+    "build",
+    "logs",
+    ".dev-logs",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "downloads",
+    "exports",
+    "output",
 }
 FINGERPRINT_SECRET_NAMES = {
-    ".env", ".env.local", "credentials.json", "secrets.json", "id_rsa", "id_ed25519",
+    ".env",
+    ".env.local",
+    "credentials.json",
+    "secrets.json",
+    "id_rsa",
+    "id_ed25519",
 }
 
 
@@ -312,8 +355,24 @@ def source_tree_fingerprint(root: Path) -> str:
     head = _run(("git", "rev-parse", "HEAD"), cwd=root).stdout.strip().lower()
     digest.update(f"head:{head}\0".encode())
     for label, names_command in (
-        ("staged", ("git", "-c", "core.quotepath=false", "diff", "--cached", "--name-only", "-z", "HEAD", "--")),
-        ("unstaged", ("git", "-c", "core.quotepath=false", "diff", "--name-only", "-z", "--")),
+        (
+            "staged",
+            (
+                "git",
+                "-c",
+                "core.quotepath=false",
+                "diff",
+                "--cached",
+                "--name-only",
+                "-z",
+                "HEAD",
+                "--",
+            ),
+        ),
+        (
+            "unstaged",
+            ("git", "-c", "core.quotepath=false", "diff", "--name-only", "-z", "--"),
+        ),
     ):
         raw_names = _run_bytes(names_command, cwd=root)
         for raw_path in sorted(item for item in raw_names.split(b"\0") if item):
@@ -334,7 +393,16 @@ def source_tree_fingerprint(root: Path) -> str:
             content_digest = hashlib.sha256(content).digest() if content is not None else b"<deleted>"
             digest.update(label.encode() + b":" + raw_path + b":" + content_digest + b"\0")
     raw_untracked = _run_bytes(
-        ("git", "-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z", "--"),
+        (
+            "git",
+            "-c",
+            "core.quotepath=false",
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "-z",
+            "--",
+        ),
         cwd=root,
     )
     for raw_path in sorted(item for item in raw_untracked.split(b"\0") if item):
@@ -473,7 +541,12 @@ def _file_lock(path: Path, *, timeout_seconds: float = 5.0) -> Iterator[None]:
 
 
 def _empty_state() -> dict[str, Any]:
-    return {"schema_version": SCHEMA_VERSION, "generation": 0, "leases": [], "allocations": []}
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "generation": 0,
+        "leases": [],
+        "allocations": [],
+    }
 
 
 def _read_state(path: Path) -> dict[str, Any]:
@@ -493,7 +566,10 @@ def _read_state(path: Path) -> dict[str, Any]:
 def _write_state(path: Path, value: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
     os.replace(temporary, path)
 
 
@@ -580,25 +656,35 @@ def _conflicts(
     for existing in state.get("leases", []):
         if existing.get("state") not in BLOCKING_STATES or existing.get("repository_id") != lease.repository_id:
             continue
-        if existing.get("owner") == lease.owner and existing.get("change_id") == lease.change_id and existing.get("worktree_id") == lease.worktree_id:
+        if (
+            existing.get("owner") == lease.owner
+            and existing.get("change_id") == lease.change_id
+            and existing.get("worktree_id") == lease.worktree_id
+        ):
             continue
         if existing.get("mode") == "read" and lease.mode == "read":
             continue
         for left in lease.path_globs:
             for right in existing.get("path_globs") or []:
                 if globs_overlap(left, str(right)):
-                    conflicts.append({
-                        "kind": "path",
-                        "resource": f"{left} <-> {right}",
-                        "owner": existing.get("owner"),
-                        "change_id": existing.get("change_id"),
-                        "expires_at": existing.get("expires_at"),
-                        "state": existing.get("state"),
-                    })
+                    conflicts.append(
+                        {
+                            "kind": "path",
+                            "resource": f"{left} <-> {right}",
+                            "owner": existing.get("owner"),
+                            "change_id": existing.get("change_id"),
+                            "expires_at": existing.get("expires_at"),
+                            "state": existing.get("state"),
+                        }
+                    )
     for existing in state.get("allocations", []):
         if existing.get("state") not in BLOCKING_STATES:
             continue
-        if existing.get("owner") == allocation.owner and existing.get("change_id") == allocation.change_id and existing.get("worktree_id") == allocation.worktree_id:
+        if (
+            existing.get("owner") == allocation.owner
+            and existing.get("change_id") == allocation.change_id
+            and existing.get("worktree_id") == allocation.worktree_id
+        ):
             continue
         resources: list[tuple[str, str]] = []
         current_ports = {int(value): key for key, value in allocation.ports.items()}
@@ -614,14 +700,16 @@ def _conflicts(
         if allocation.cron_owner and existing.get("cron_owner"):
             resources.append(("cron_owner", "canonical-writer"))
         for kind, resource in resources:
-            conflicts.append({
-                "kind": kind,
-                "resource": resource,
-                "owner": existing.get("owner"),
-                "change_id": existing.get("change_id"),
-                "expires_at": existing.get("expires_at"),
-                "state": existing.get("state"),
-            })
+            conflicts.append(
+                {
+                    "kind": kind,
+                    "resource": resource,
+                    "owner": existing.get("owner"),
+                    "change_id": existing.get("change_id"),
+                    "expires_at": existing.get("expires_at"),
+                    "state": existing.get("state"),
+                }
+            )
     return conflicts
 
 
@@ -663,12 +751,20 @@ def _build_records(
     ports = dict(canonical_ports) if canonical else _isolated_ports(canonical_ports, state, runtime_id, requested_ports)
     if canonical:
         ports.update({key: int(value) for key, value in requested_ports.items()})
-    database = str(manifest.get("canonical_runtime", {}).get("database", "omni_vibe_db")) if canonical else _pg_identifier(f"omni_verify_{slug}_{sha8}")
+    database = (
+        str(manifest.get("canonical_runtime", {}).get("database", "omni_vibe_db"))
+        if canonical
+        else _pg_identifier(f"omni_verify_{slug}_{sha8}")
+    )
     database_schema = "public" if canonical else _pg_identifier(f"wt_{slug}_{sha8}")
     volumes = (
         ("omni_postgres_data", "omni_redis_data", "omni_knowledge_data")
         if canonical
-        else (f"{compose_project}_postgres_data", f"{compose_project}_redis_data", f"{compose_project}_knowledge_data")
+        else (
+            f"{compose_project}_postgres_data",
+            f"{compose_project}_redis_data",
+            f"{compose_project}_knowledge_data",
+        )
     )
     created = isoformat(now)
     expires = isoformat(now + timedelta(seconds=ttl_seconds))
@@ -678,18 +774,43 @@ def _build_records(
     wt_id = worktree_id(root)
     source_fingerprint = source_tree_fingerprint(root)
     lease = WorkspaceLease(
-        lease_id, repo_id, wt_id, change_id, owner, normalized_globs, mode, risk_level,
-        created, expires, "active", 1,
+        lease_id,
+        repo_id,
+        wt_id,
+        change_id,
+        owner,
+        normalized_globs,
+        mode,
+        risk_level,
+        created,
+        expires,
+        "active",
+        1,
     )
     allocation = RuntimeAllocation(
-        allocation_id, lease_id, repo_id, wt_id, change_id, owner, canonical,
-        runtime_id, compose_project, ports, database, database_schema, volumes,
+        allocation_id,
+        lease_id,
+        repo_id,
+        wt_id,
+        change_id,
+        owner,
+        canonical,
+        runtime_id,
+        compose_project,
+        ports,
+        database,
+        database_schema,
+        volumes,
         "omni-main" if canonical else runtime_id,
         canonical,
         canonical or mode == "write",
         risk_level,
         build_sha,
-        source_fingerprint, created, expires, "active", 1,
+        source_fingerprint,
+        created,
+        expires,
+        "active",
+        1,
     )
     return lease, allocation
 
@@ -736,11 +857,13 @@ def allocation_environment(allocation: Mapping[str, Any], *, worktree: Path | No
         env[PORT_ENV.get(str(service), f"OMNI_{str(service).upper().replace('-', '_')}_PORT")] = str(port)
     volumes = list(allocation.get("volumes") or [])
     if len(volumes) >= 3:
-        env.update({
-            "POSTGRES_VOLUME_NAME": volumes[0],
-            "REDIS_VOLUME_NAME": volumes[1],
-            "KNOWLEDGE_VOLUME_NAME": volumes[2],
-        })
+        env.update(
+            {
+                "POSTGRES_VOLUME_NAME": volumes[0],
+                "REDIS_VOLUME_NAME": volumes[1],
+                "KNOWLEDGE_VOLUME_NAME": volumes[2],
+            }
+        )
     return dict(sorted(env.items()))
 
 
@@ -780,19 +903,23 @@ def acquire(
                 and existing.get("owner") == owner
                 and existing.get("worktree_id") == worktree_id(root)
             ):
-                lease = next((item for item in state["leases"] if item.get("lease_id") == existing.get("lease_id")), None)
+                lease = next(
+                    (item for item in state["leases"] if item.get("lease_id") == existing.get("lease_id")),
+                    None,
+                )
                 requested_globs = tuple(sorted({normalize_glob(value) for value in path_globs}))
                 mismatch = (
                     not isinstance(lease, Mapping)
                     or tuple(lease.get("path_globs") or []) != requested_globs
                     or lease.get("mode") != mode
                     or existing.get("canonical") is not canonical
-                    or existing.get("approval_worker_owner") is not (
-                        canonical or mode == "write"
-                    )
+                    or existing.get("approval_worker_owner") is not (canonical or mode == "write")
                     or existing.get("risk_level", "R1") != risk_level
                     or existing.get("source_fingerprint") != source_tree_fingerprint(root)
-                    or any(int(existing.get("ports", {}).get(key, -1)) != int(value) for key, value in (requested_ports or {}).items())
+                    or any(
+                        int(existing.get("ports", {}).get(key, -1)) != int(value)
+                        for key, value in (requested_ports or {}).items()
+                    )
                 )
                 if mismatch:
                     raise CompareAndSwapConflict(
@@ -800,6 +927,7 @@ def acquire(
                     )
                 approval_secret = ensure_approval_hmac_secret(root)
                 identity_secret = ensure_identity_jwt_secret(root)
+                compatibility_token = ensure_compatibility_token(root)
                 return {
                     "schema_version": SCHEMA_VERSION,
                     "generation": generation,
@@ -813,27 +941,31 @@ def acquire(
                         "OMNI_RUNTIME_ALLOCATION_FILE": "/runtime-state/allocations.json",
                         "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval_secret).replace("\\", "/"),
                         "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity_secret).replace("\\", "/"),
+                        "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility_token).replace("\\", "/"),
                     },
-                    "state_path": "git-common-dir/omni-runtime/allocations.json" if state_dir is None else str(state_path),
+                    "state_path": "git-common-dir/omni-runtime/allocations.json"
+                    if state_dir is None
+                    else str(state_path),
                 }
         lease, allocation = _build_records(
-            root, state, change_id=change_id, owner=owner, path_globs=path_globs,
-            mode=mode, ttl_seconds=ttl_seconds, canonical=canonical,
-            requested_ports=requested_ports or {}, risk_level=risk_level, now=moment,
+            root,
+            state,
+            change_id=change_id,
+            owner=owner,
+            path_globs=path_globs,
+            mode=mode,
+            ttl_seconds=ttl_seconds,
+            canonical=canonical,
+            requested_ports=requested_ports or {},
+            risk_level=risk_level,
+            now=moment,
         )
         conflicts = _conflicts(state, lease, allocation)
         if conflicts:
             raise AllocationConflict(conflicts)
-        approval_secret = (
-            default_approval_secret_path(root)
-            if dry_run
-            else ensure_approval_hmac_secret(root)
-        )
-        identity_secret = (
-            default_identity_jwt_secret_path(root)
-            if dry_run
-            else ensure_identity_jwt_secret(root)
-        )
+        approval_secret = default_approval_secret_path(root) if dry_run else ensure_approval_hmac_secret(root)
+        identity_secret = default_identity_jwt_secret_path(root) if dry_run else ensure_identity_jwt_secret(root)
+        compatibility_token = default_compatibility_token_path(root) if dry_run else ensure_compatibility_token(root)
         new_generation = generation + 1
         if not dry_run:
             state["leases"].append(lease.to_dict())
@@ -854,6 +986,7 @@ def acquire(
                 "OMNI_RUNTIME_ALLOCATION_FILE": "/runtime-state/allocations.json",
                 "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval_secret).replace("\\", "/"),
                 "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity_secret).replace("\\", "/"),
+                "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility_token).replace("\\", "/"),
             },
             "state_path": "git-common-dir/omni-runtime/allocations.json" if state_dir is None else str(state_path),
         }
@@ -930,18 +1063,16 @@ def resolve_path_conflict(
         matches.append(item)
     if not matches:
         return {**empty, "known": True}
-    matches.sort(key=lambda item: (bool(item["derived_stale"]), str(item.get("expires_at"))), reverse=False)
+    matches.sort(
+        key=lambda item: (bool(item["derived_stale"]), str(item.get("expires_at"))),
+        reverse=False,
+    )
     other = next((item for item in matches if item.get("change_id") != change_id), None)
     selected = other or matches[0]
     stale = bool(selected["derived_stale"])
     # Expired leases remain visible for audit but are not an eternal lock. Reads
     # are non-mutating and therefore do not conflict with either lease mode.
-    conflict = bool(
-        other is not None
-        and not read_only
-        and not stale
-        and selected.get("state") == "active"
-    )
+    conflict = bool(other is not None and not read_only and not stale and selected.get("state") == "active")
     return {
         "known": True,
         "conflict": conflict,
@@ -966,7 +1097,10 @@ def release(
     lock_path = store_dir / "allocations.lock"
     with _file_lock(lock_path):
         state = _read_state(state_path)
-        allocation = next((item for item in state["allocations"] if item.get("allocation_id") == allocation_id), None)
+        allocation = next(
+            (item for item in state["allocations"] if item.get("allocation_id") == allocation_id),
+            None,
+        )
         if allocation is None:
             raise AllocationError(f"allocation not found: {allocation_id}")
         if allocation.get("owner") != owner:
@@ -1039,8 +1173,7 @@ def _emit(payload: Mapping[str, Any], as_json: bool) -> None:
     else:
         allocation = payload.get("allocation", payload)
         print(
-            f"runtime_id={allocation.get('runtime_id')} allocation_id={allocation.get('allocation_id')} "
-            f"state={allocation.get('state')}"
+            f"runtime_id={allocation.get('runtime_id')} allocation_id={allocation.get('allocation_id')} state={allocation.get('state')}"
         )
 
 
@@ -1078,7 +1211,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         _emit(payload, args.json)
         return 0
     except AllocationConflict as exc:
-        print(json.dumps({"status": "conflict", "conflicts": list(exc.conflicts)}, ensure_ascii=False, sort_keys=True), file=sys.stderr)
+        print(
+            json.dumps(
+                {"status": "conflict", "conflicts": list(exc.conflicts)},
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
         return 1
     except (AllocationError, ValueError) as exc:
         print(f"[runtime-allocation] ERROR: {exc}", file=sys.stderr)

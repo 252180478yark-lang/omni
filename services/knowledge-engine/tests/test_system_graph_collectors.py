@@ -72,18 +72,22 @@ def test_static_nodes_do_not_claim_health() -> None:
     snapshot = scan_repository(
         ScanRequest(repo=REPO, feature_ids=("cost-management",), dynamic=False)
     )
-    static = next(node for node in snapshot.content.nodes if node.id == "ui_route:/cost")
+    static = next(
+        node for node in snapshot.content.nodes if node.id == "ui_route:/cost"
+    )
     assert static.state.health.value == "unknown"
 
 
-def test_catch_all_bff_preserves_literal_page_and_rest_edges() -> None:
+def test_catch_all_bff_preserves_canonical_page_and_rest_edges() -> None:
     snapshot = scan_repository(
         ScanRequest(repo=REPO, feature_ids=("system-convergence-s4-s6",), dynamic=False)
     )
     nodes = {node.id for node in snapshot.content.nodes}
-    edges = {(edge.source, edge.target, edge.relation) for edge in snapshot.content.edges}
-    assert "ui_route:/workspace/development" in nodes
+    edges = {
+        (edge.source, edge.target, edge.relation) for edge in snapshot.content.edges
+    }
     assert "ui_route:/system-graph" in nodes
+    assert "ui_route:/workspace/development" not in nodes
     assert (
         "ui_route:/system-graph",
         "bff_operation:GET:/api/omni/system-graph/integration-plans",
@@ -94,6 +98,30 @@ def test_catch_all_bff_preserves_literal_page_and_rest_edges() -> None:
         "rest_operation:GET:/api/v1/system-graph/integration-plans",
         "proxies_to",
     ) in edges
+
+
+def test_owned_surfaces_follow_their_feature_owner() -> None:
+    snapshot = scan_repository(
+        ScanRequest(repo=REPO, feature_ids=("workspace-operations",), dynamic=False)
+    )
+    nodes = {node.id for node in snapshot.content.nodes}
+    assert {
+        "ui_route:/workspace",
+        "ui_route:/workspace/development",
+        "ui_route:/decisions",
+        "ui_route:/insights",
+        "ui_route:/review",
+    } <= nodes
+    assert "ui_route:/system-graph" not in nodes
+
+
+def test_compatibility_alias_is_not_collected_as_a_renderer() -> None:
+    snapshot = scan_repository(
+        ScanRequest(repo=REPO, feature_ids=("chat",), dynamic=False)
+    )
+    nodes = {node.id for node in snapshot.content.nodes}
+    assert "ui_route:/chat" in nodes
+    assert "ui_route:/qa" not in nodes
 
 
 def test_every_evidence_has_no_source_snippet_field() -> None:

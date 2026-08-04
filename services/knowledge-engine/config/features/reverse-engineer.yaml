@@ -8,6 +8,14 @@ routes:
   canonical: /reverse-engineer
   visible: true
   placements: [sidebar, direct]
+  owned_surfaces: [/reverse-engineer]
+ia:
+  mode: work
+  primary_group: content
+  primary_order: 10
+  contextual_groups: []
+  phase: retain
+  flag: unified_shell
 capabilities:
   - {capability_id: reverse-storyboard, kind: generate}
 expected_edges: []
