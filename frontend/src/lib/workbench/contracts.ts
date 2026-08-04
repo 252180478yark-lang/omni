@@ -174,15 +174,22 @@ export interface AgentArtifactProjection {
   readonly source_ref: string
 }
 
+/** Complete frozen operation binding: legacy is explicitly null, W5 is a non-null pair. */
+export type RunOperationContextBinding =
+  | {
+      readonly context_snapshot_id: null
+      readonly context_revision: null
+    }
+  | {
+      readonly context_snapshot_id: string
+      readonly context_revision: number
+    }
+
 /** Existing runtime operation whose frozen snapshot/revision pair never follows a later rebind. */
-export interface RunOperationProjection {
+export type RunOperationProjection = Readonly<{
   readonly schema_version: typeof WORKBENCH_CONTRACT_VERSION
   readonly operation_id: string
   readonly session_id: string | null
-  /** Immutable operation target backed by mcp.runtime_executions.context_snapshot_id. */
-  readonly context_snapshot_id: string | null
-  /** Frozen revision: null only for legacy operations and positive for every new W5 HostRun. */
-  readonly context_revision: number | null
   readonly attempt: number
   readonly risk_level: WorkbenchRiskLevel
   readonly state: WorkbenchOperationState
@@ -190,7 +197,7 @@ export interface RunOperationProjection {
   readonly trace_id: string | null
   readonly checkpoint: string | null
   readonly updated_at: string
-}
+}> & RunOperationContextBinding
 
 export interface RunEventProjection {
   readonly schema_version: typeof WORKBENCH_CONTRACT_VERSION

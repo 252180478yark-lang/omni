@@ -315,7 +315,7 @@
     },
     "RunOperationProjection": {
       "type": "object",
-      "description": "Projection of an existing runtime operation. Its context_snapshot_id plus context_revision form the immutable target pair selected from the Host current head when this operation started and never follow a later session rebind.",
+      "description": "Projection of an existing runtime operation. Its context_snapshot_id plus context_revision form the immutable target pair selected from the Host current head when this operation started and never follow a later session rebind. The two fields are either both explicit null for a legacy operation or both non-null for a new W5 operation.",
       "additionalProperties": false,
       "required": [
         "schema_version",
@@ -351,7 +351,21 @@
         "trace_id": {"oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]},
         "checkpoint": {"oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]},
         "updated_at": {"type": "string", "format": "date-time"}
-      }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "context_snapshot_id": {"type": "null"},
+            "context_revision": {"type": "null"}
+          }
+        },
+        {
+          "properties": {
+            "context_snapshot_id": {"$ref": "#/$defs/Identifier"},
+            "context_revision": {"type": "integer", "minimum": 1}
+          }
+        }
+      ]
     },
     "RunEventProjection": {
       "type": "object",

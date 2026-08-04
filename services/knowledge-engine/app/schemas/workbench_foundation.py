@@ -313,7 +313,7 @@ class AgentArtifactProjection(FrozenStrictWireModel):
 
 
 class RunOperationProjection(FrozenStrictWireModel):
-    """Existing operation projection with a snapshot/revision pair frozen across rebinds."""
+    """Existing operation projection with a complete snapshot/revision pair frozen across rebinds."""
 
     schema_version: Literal[1]
     operation_id: str = Field(pattern=IDENTIFIER)
@@ -354,6 +354,15 @@ class RunOperationProjection(FrozenStrictWireModel):
     @classmethod
     def updated_at_is_utc(cls, value: datetime) -> datetime:
         return _as_utc(value, field_name="updated_at")
+
+    @model_validator(mode="after")
+    def frozen_context_binding_is_complete(self) -> "RunOperationProjection":
+        if (self.context_snapshot_id is None) != (self.context_revision is None):
+            raise ValueError(
+                "context_snapshot_id and context_revision must be both null for legacy "
+                "operations or both non-null for new W5 operations"
+            )
+        return self
 
 
 class RunEventProjection(FrozenStrictWireModel):

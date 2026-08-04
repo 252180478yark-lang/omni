@@ -4,27 +4,27 @@ state: GRAPH_DIFF_READY
 actual_changes:
 - id: G2-ACT-001
   planned_change_id: G2-CHG-001
-  summary: Clarified the three context layers and added required nullable RunOperationProjection.context_revision so legacy projections emit null and every new W5 operation exposes its persisted positive frozen revision.
+  summary: 'Clarified the three context layers and enforced RunOperationProjection.context_snapshot_id/context_revision as a complete iff pair: both null for legacy projections and both non-null with a positive revision for new W5 operations.'
   paths:
   - config/schemas/workbench-foundation.v1.schema.json
 - id: G2-ACT-002
   planned_change_id: G2-CHG-002
-  summary: Added matching Pydantic semantics plus the nullable positive-integer operation revision field while preserving strict validation and legacy explicit-null compatibility.
+  summary: Added matching Pydantic semantics that reject either half-bound operation pair while preserving strict validation and legacy explicit-null compatibility.
   paths:
   - services/knowledge-engine/app/schemas/workbench_foundation.py
 - id: G2-ACT-003
   planned_change_id: G2-CHG-003
-  summary: Added matching TypeScript semantics and the nullable operation revision field to complete the frozen snapshot/revision pair.
+  summary: Added matching discriminated TypeScript semantics so callers cannot construct a snapshot-only or revision-only frozen operation projection.
   paths:
   - frontend/src/lib/workbench/contracts.ts
 - id: G2-ACT-004
   planned_change_id: G2-CHG-004
-  summary: Added the machine-readable three-layer matrix and the legacy-null/new-W5-non-null consumer rule for operation context revisions.
+  summary: Added the machine-readable three-layer matrix and the both-null-legacy/both-non-null-new-W5 consumer rule for frozen operation context pairs.
   paths:
   - docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/consumer-matrix.yaml
 - id: G2-ACT-005
   planned_change_id: G2-CHG-005
-  summary: Added Python and frontend tests for authority parity, required nullable legacy revision, positive new W5 revision, complete restart binding semantics, and unchanged migration guards.
+  summary: Added Python and frontend tests for authority parity, both half-bound negative cases, complete restart binding semantics, and unchanged migration guards.
   paths:
   - tests/test_workbench_foundation_contract.py
   - frontend/tests/workbench-foundation-contract.test.ts
@@ -37,37 +37,41 @@ contract_delta:
   reason: Follow-up audit of the isolated W5 HostRun proved it durably freezes context_snapshot_id plus context_revision, while the public operation projection could not recover that complete pair after restart.
   effect: JSON, Python, and TypeScript add a required nullable revision key; legacy projections emit null, new W5 projections must emit a positive persisted revision, and no database or migration path changes.
   accepted: true
+- description: Closed Sol P1 by making the already-scoped frozen operation snapshot/revision semantics executable rather than descriptive.
+  reason: Independent audit found that separately nullable fields accepted a snapshot-only or revision-only projection, which could encode an incomplete frozen binding.
+  effect: Existing JSON Schema, Pydantic, TypeScript, consumer matrix, and contract-test paths now reject either half-bound pair; no paths, APIs, migration, runtime service, or persistent data scope changes.
+  accepted: true
 verification_results:
 - id: G2-VERIFY-001
   command: python -B -X utf8 -m pytest -q -p no:cacheprovider tests/test_workbench_foundation_contract.py services/knowledge-engine/tests/test_agent_contracts.py
   status: passed
   exit_code: 0
-  evidence: Fresh follow-up run passed 55 tests in 0.47 seconds; one pre-existing Starlette PendingDeprecationWarning was emitted. The suite proves required explicit-null legacy revision, positive new W5 revision, JSON/Pydantic parity, consumer rules, migration guards, and legacy session-store compatibility.
+  evidence: Fresh Sol-P1 remediation run passed 55 tests in 0.62 seconds; one pre-existing Starlette PendingDeprecationWarning was emitted. It proves both half-bound operation pairs fail Pydantic validation while both-null legacy and both-non-null positive new-W5 pairs remain valid, alongside JSON/matrix parity and migration guards.
 - id: G2-VERIFY-002
   command: npm --prefix frontend run test:unit -- tests/workbench-foundation-contract.test.ts
   status: passed
   exit_code: 0
-  evidence: Fresh follow-up Vitest run passed 1 file and 6 tests, including schema/TypeScript parity plus typed legacy-null and restarted-W5 revision-two projections.
+  evidence: Fresh Sol-P1 remediation Vitest run passed 1 file and 6 tests, including JSON Schema oneOf parity and TypeScript compile-time rejection of snapshot-only and revision-only projections.
 - id: G2-VERIFY-003
   command: npm --prefix frontend exec -- tsc --noEmit -p frontend/tsconfig.json
   status: passed
   exit_code: 0
-  evidence: Fresh follow-up strict TypeScript compilation completed with no diagnostics after adding context_revision to the interface and runtime field manifest.
+  evidence: Fresh Sol-P1 remediation strict TypeScript compilation completed with no diagnostics after replacing independently nullable fields with the complete frozen-binding union.
 - id: G2-VERIFY-004
   command: python -B -X utf8 scripts/apply_migrations.py --dry-run --verify
   status: passed
   exit_code: 0
-  evidence: Fresh follow-up repository-only verification found 95 migrations at unchanged head 104_workbench_context_and_agent_binding.sql with digest 3addfa9fc80de49853dd308321f493e0b5196531da177ea72c2428099ab3bbb1.
+  evidence: Fresh Sol-P1 remediation repository-only verification found 95 migrations at unchanged head 104_workbench_context_and_agent_binding.sql with digest 3addfa9fc80de49853dd308321f493e0b5196531da177ea72c2428099ab3bbb1.
 - id: G2-VERIFY-005
   command: git diff --exit-code c1a97f873f9f1c639dd274adcf92ca206a760c11 -- migrations/104_workbench_context_and_agent_binding.sql
   status: passed
   exit_code: 0
-  evidence: Fresh follow-up Git comparison reported no migration 104 diff from the immutable G1 mainline baseline.
+  evidence: Fresh Sol-P1 remediation Git comparison reported no migration 104 diff from the immutable G1 mainline baseline.
 - id: G2-VERIFY-006
   command: git diff --check
   status: passed
   exit_code: 0
-  evidence: Fresh follow-up worktree diff hygiene check returned no whitespace errors across all eight candidate paths.
+  evidence: Fresh Sol-P1 remediation diff hygiene check returned no whitespace errors across the same eight candidate paths.
 - id: G2-VERIFY-007
   command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-workbench-g2-context-semantics/impact.yaml --completion docs/dev-changes/2026-08-02-omni-workbench-g2-context-semantics/completion.yaml --expect-state VERIFYING
   status: passed
@@ -111,12 +115,12 @@ graph_diff:
     to: schema:python/workbench-foundation-v1
     relation: mirrors_three_layer_context_semantics
     status: present
-    evidence: JSON Schema and Pydantic field descriptions name the same Host current-head CAS and runtime frozen target; G2-VERIFY-001 passed.
+    evidence: JSON Schema oneOf and Pydantic model validation now enforce the same complete legacy/new-W5 frozen target pair; G2-VERIFY-001 passed.
   - from: schema:config/workbench-foundation-v1
     to: schema:typescript/workbench-foundation-v1
     relation: mirrors_three_layer_context_semantics
     status: present
-    evidence: Vitest reads both authority files and asserts the same three semantic layers; G2-VERIFY-002 and G2-VERIFY-003 passed.
+    evidence: Vitest reads JSON Schema and TypeScript union semantics for the same three layers, including both half-bound negative cases; G2-VERIFY-002 and G2-VERIFY-003 passed.
   - from: db:mcp.agent_session_contracts.context_snapshot_id
     to: contract:host-current-context-head
     relation: anchors_initial_accepted_security_context
@@ -141,7 +145,7 @@ graph_diff:
     to: contract:run-operation-projection.context_revision
     relation: projects_immutable_operation_revision
     status: present
-    evidence: The consumer matrix binds the revision source to durable W5 HostRun state, requires explicit null for legacy operations and a positive revision for every new W5 operation, while Python and TypeScript contract tests validate both projections.
+    evidence: 'The consumer matrix binds the revision source to durable W5 HostRun state and explicitly requires an iff pair: both null for legacy or both non-null with a positive revision for new W5 operations; Python and TypeScript contract tests validate both half-bound rejections.'
   orphan_nodes: []
   unknowns: []
 exceptions: []
@@ -154,4 +158,4 @@ final:
   status: pending
   completed_at: null
   completed_by: null
-  summary: G2 context binding semantics now include the complete frozen operation snapshot/revision pair; formal delivery still requires integration and an external CI attestation.
+  summary: G2 context binding semantics now enforce the complete frozen operation snapshot/revision pair; formal delivery still requires refreshed branch/PR CI, independent Sol re-audit, integration, and an external CI attestation.

@@ -133,6 +133,20 @@ def test_context_binding_semantics_separate_session_anchor_host_head_and_operati
     assert "context_revision" in operation["required"]
     assert operation["properties"]["context_revision"]["type"] == ["integer", "null"]
     assert operation["properties"]["context_revision"]["minimum"] == 1
+    assert operation["oneOf"] == [
+        {
+            "properties": {
+                "context_snapshot_id": {"type": "null"},
+                "context_revision": {"type": "null"},
+            }
+        },
+        {
+            "properties": {
+                "context_snapshot_id": {"$ref": "#/$defs/Identifier"},
+                "context_revision": {"type": "integer", "minimum": 1},
+            }
+        },
+    ]
     assert "Legacy operations emit explicit null" in operation["properties"]["context_revision"]["description"]
     assert "new W5 operation" in operation["properties"]["context_revision"]["description"]
 
@@ -166,6 +180,16 @@ def test_context_binding_semantics_separate_session_anchor_host_head_and_operati
     )
     assert semantics["operation_frozen_target"]["revision_projection"] == (
         "RunOperationProjection.context_revision"
+    )
+    assert (
+        "context_snapshot_id and context_revision to be explicit null"
+        in semantics["operation_frozen_target"]["legacy_rule"]
+    )
+    assert any(
+        "context_snapshot_id and context_revision" in invariant
+        and "both null" in invariant
+        and "both non-null" in invariant
+        for invariant in semantics["invariants"]
     )
     assert semantics["operation_frozen_target"]["revision_source"] == "W5 HostRun.context_revision"
     assert "retain both original values" in semantics["operation_frozen_target"]["mutation"]
@@ -652,6 +676,13 @@ def test_operation_requires_nullable_legacy_revision_and_idempotency_keys() -> N
         "context:w5-revision-two",
         2,
     )
+
+    with pytest.raises(ValidationError, match="both null.*both non-null"):
+        RunOperationProjection.model_validate(
+            {**payload, "context_snapshot_id": "context:partial", "context_revision": None}
+        )
+    with pytest.raises(ValidationError, match="both null.*both non-null"):
+        RunOperationProjection.model_validate({**payload, "context_revision": 2})
 
     with pytest.raises(ValidationError, match="greater than or equal to 1"):
         RunOperationProjection.model_validate({**payload, "context_revision": 0})

@@ -310,12 +310,26 @@ describe('workbench foundation TypeScript mirror', () => {
     expect(operationRevision?.minimum).toBe(1)
     expect(operationRevision?.description).toContain('Legacy operations emit explicit null')
     expect(operationRevision?.description).toContain('new W5 operation')
+    expect(operation.oneOf).toEqual([
+      {
+        properties: {
+          context_snapshot_id: { type: 'null' },
+          context_revision: { type: 'null' },
+        },
+      },
+      {
+        properties: {
+          context_snapshot_id: { $ref: '#/$defs/Identifier' },
+          context_revision: { type: 'integer', minimum: 1 },
+        },
+      },
+    ])
 
     expect(contractSource).toContain('Projection of the Host-owned current context head')
     expect(contractSource).toContain('accepted agent-session security anchor')
     expect(contractSource).toContain('Host current head, replaced only by the Host single writer')
-    expect(contractSource).toContain('Immutable operation target backed by mcp.runtime_executions.context_snapshot_id')
-    expect(contractSource).toContain('Frozen revision: null only for legacy operations')
+    expect(contractSource).toContain('Complete frozen operation binding: legacy is explicitly null')
+    expect(contractSource).toContain('W5 is a non-null pair')
 
     const legacyOperation: RunOperationProjection = {
       schema_version: 1,
@@ -345,5 +359,17 @@ describe('workbench foundation TypeScript mirror', () => {
       restartedW5Operation.context_snapshot_id,
       restartedW5Operation.context_revision,
     ]).toEqual(['context:w5-revision-two', 2])
+
+    // @ts-expect-error RunOperationProjection forbids a snapshot without its revision.
+    const snapshotOnly: RunOperationProjection = {
+      ...legacyOperation,
+      context_snapshot_id: 'context:partial',
+    }
+    // @ts-expect-error RunOperationProjection forbids a revision without its snapshot.
+    const revisionOnly: RunOperationProjection = {
+      ...legacyOperation,
+      context_revision: 2,
+    }
+    expect([snapshotOnly, revisionOnly]).toHaveLength(2)
   })
 })
