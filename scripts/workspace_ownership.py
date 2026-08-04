@@ -266,10 +266,158 @@ def delivered_contracts(
         raise OwnershipInputError(f"delivery receipts cannot be resolved: {exc}") from exc
 
 
+def _git_text(root: Path, subject: str, relative: str) -> str | None:
+    result = _run(("git", "show", f"{subject}:{relative}"), cwd=root, check=False)
+    return result.stdout if result.returncode == 0 else None
+
+
+def _git_head(worktree: Path) -> str | None:
+    result = _run(("git", "rev-parse", "HEAD"), cwd=worktree, check=False)
+    return result.stdout.strip().lower() if result.returncode == 0 else None
+
+
+def _worktree_is_clean(worktree: Path) -> bool:
+    """Read current status without the cached inventory view used for reporting."""
+
+    result = _run(
+        ("git", "status", "--porcelain=v1", "-z", "-uall"),
+        cwd=worktree,
+        check=False,
+    )
+    return result.returncode == 0 and not result.stdout
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def trusted_retirements(
+    root: Path,
+    delivered: Mapping[str, Mapping[str, Any]],
+) -> tuple[dict[str, str], ...]:
+    """Load only CI-attested handoffs; every malformed record is ignored.
+
+    A retirement is deliberately weaker than delivery: it excludes one exact
+    historical candidate from *active ownership* but retains the source commit,
+    contracts, and its own GRAPH_DIFF_READY state as unmerged evidence.
+    """
+
+    records: list[dict[str, str]] = []
+    for handoff_id, proof in sorted(delivered.items()):
+        subject = str(proof.get("subject_commit") or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{40}", subject):
+            continue
+        relative = f"docs/dev-changes/{handoff_id}/impact.yaml"
+        raw = _git_text(root, subject, relative)
+        if raw is None or yaml is None:
+            continue
+        try:
+            impact = yaml.safe_load(raw)
+        except yaml.YAMLError:
+            continue
+        if not isinstance(impact, Mapping):
+            continue
+        handoff = impact.get("ownership_handoff")
+        if not isinstance(handoff, Mapping):
+            continue
+        source = handoff.get("source")
+        successor = handoff.get("successor")
+        if (
+            handoff.get("mode") != "retire_unmerged_candidate"
+            or handoff.get("effective_when") != "this_contract_is_ci_attested"
+            or not isinstance(source, Mapping)
+            or not isinstance(successor, Mapping)
+            or source.get("delivery_status") != "unmerged_not_delivered"
+        ):
+            continue
+        source_id = str(source.get("change_id") or "").strip()
+        candidate = str(source.get("candidate_commit") or "").strip().lower()
+        required_state = str(source.get("required_state") or "").strip()
+        impact_digest = str(source.get("impact_sha256") or "").strip().lower()
+        completion_digest = str(source.get("completion_sha256") or "").strip().lower()
+        successor_id = str(successor.get("change_id") or "").strip()
+        if not (
+            source_id
+            and successor_id
+            and required_state == "GRAPH_DIFF_READY"
+            and re.fullmatch(r"[0-9a-f]{40}", candidate)
+            and re.fullmatch(r"[0-9a-f]{64}", impact_digest)
+            and re.fullmatch(r"[0-9a-f]{64}", completion_digest)
+        ):
+            continue
+        source_dir = f"docs/dev-changes/{source_id}"
+        source_impact = _git_text(root, candidate, f"{source_dir}/impact.yaml")
+        source_completion = _git_text(root, candidate, f"{source_dir}/completion.yaml")
+        if source_impact is None or source_completion is None:
+            continue
+        try:
+            source_mapping = yaml.safe_load(source_impact)
+        except yaml.YAMLError:
+            continue
+        if (
+            not isinstance(source_mapping, Mapping)
+            or str(source_mapping.get("change_id") or "") != source_id
+            or str(source_mapping.get("state") or "") != required_state
+            or _sha256_text(source_impact) != impact_digest
+            or _sha256_text(source_completion) != completion_digest
+        ):
+            continue
+        records.append(
+            {
+                "handoff_change_id": handoff_id,
+                "handoff_subject_commit": subject,
+                "source_change_id": source_id,
+                "source_candidate_commit": candidate,
+                "successor_change_id": successor_id,
+                "delivery_status": "unmerged_not_delivered",
+            }
+        )
+    return tuple(records)
+
+
+def _retirement_applies(
+    worktree: Path,
+    impact_path: Path,
+    impact: Mapping[str, Any],
+    change_id: str,
+    retirements: Iterable[Mapping[str, str]],
+) -> bool:
+    """Require the live historical worktree to remain the exact retired source."""
+
+    head = _git_head(worktree)
+    for retirement in retirements:
+        if change_id != retirement.get("source_change_id"):
+            continue
+        if head != retirement.get("source_candidate_commit"):
+            continue
+        if not _worktree_is_clean(worktree):
+            continue
+        completion_path = impact_path.with_name("completion.yaml")
+        try:
+            current_impact = impact_path.read_text(encoding="utf-8")
+            current_completion = completion_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        source_id = str(retirement["source_change_id"])
+        source_commit = str(retirement["source_candidate_commit"])
+        expected_impact = _git_text(worktree, source_commit, f"docs/dev-changes/{source_id}/impact.yaml")
+        expected_completion = _git_text(worktree, source_commit, f"docs/dev-changes/{source_id}/completion.yaml")
+        if (
+            expected_impact is not None
+            and expected_completion is not None
+            and current_impact == expected_impact
+            and current_completion == expected_completion
+            and str(impact.get("state") or "") == "GRAPH_DIFF_READY"
+        ):
+            return True
+    return False
+
+
 def active_contract_scopes(
     root: Path,
     *,
     delivered_ids: Iterable[str] = (),
+    retirements: Iterable[Mapping[str, str]] = (),
 ) -> tuple[ContractScope, ...]:
     root = repository_root(root)
     primary = primary_worktree(root)
@@ -289,7 +437,9 @@ def active_contract_scopes(
             if state not in ACTIVE_STATES:
                 continue
             change_id = str(impact.get("change_id") or path.parent.name)
-            if change_id in delivered:
+            if change_id in delivered or _retirement_applies(
+                worktree, path, impact, change_id, retirements
+            ):
                 continue
             patterns: set[str] = {f"docs/dev-changes/{change_id}/**"}
             for change in impact.get("planned_changes") or []:
@@ -581,7 +731,12 @@ def inventory_workspace(
         attestation_paths,
         provenance_verifier=provenance_verifier,
     )
-    scopes = active_contract_scopes(root, delivered_ids=delivered)
+    retirements = trusted_retirements(root, delivered)
+    scopes = active_contract_scopes(
+        root,
+        delivered_ids=delivered,
+        retirements=retirements,
+    )
     scope_overlaps = contract_scope_overlaps(scopes)
     owner_ambiguities = contract_owner_ambiguities(scopes)
     scope_source_worktrees = {
@@ -772,6 +927,7 @@ def inventory_workspace(
         "contract_owner_ambiguities": list(owner_ambiguities),
         "runtime_lease_audit": list(lease_audit),
         "delivered_contracts": [delivered[key] for key in sorted(delivered)],
+        "retired_contracts": list(retirements),
         "counts": counts,
         "paths": [asdict(fact) for fact in sorted(facts, key=lambda item: (item.worktree_id, item.path))],
         "secret_scan": secret_scan,

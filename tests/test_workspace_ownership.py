@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import subprocess
 import sys
@@ -578,6 +579,177 @@ def test_only_explicit_trusted_provenance_removes_contract_from_active_ownership
     )
     assert all(item["change_id"] != "change-a" for item in verified["active_contracts"])
     assert verified["delivered_contracts"][0]["change_id"] == "change-a"
+
+
+def test_attested_handoff_retires_only_the_exact_unmerged_historical_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    source = tmp_path / "historical-source"
+    _run(repo, "git", "worktree", "add", "-q", "-b", "historical-source", str(source))
+    source_id = "historical-s8-s10"
+    source_dir = source / "docs" / "dev-changes" / source_id
+    source_dir.mkdir(parents=True)
+    source_impact = {
+        "change_id": source_id,
+        "state": "GRAPH_DIFF_READY",
+        "planned_changes": [{"paths": ["services/runtime/**"]}],
+    }
+    source_completion = {"change_id": source_id, "state": "GRAPH_DIFF_READY"}
+    (source_dir / "impact.yaml").write_text(yaml.safe_dump(source_impact), encoding="utf-8")
+    (source_dir / "completion.yaml").write_text(
+        yaml.safe_dump(source_completion), encoding="utf-8"
+    )
+    _run(source, "git", "add", ".")
+    _run(source, "git", "commit", "-qm", "historical candidate")
+    candidate = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=source, check=True, text=True, capture_output=True
+    ).stdout.strip()
+    impact_text = (source_dir / "impact.yaml").read_text(encoding="utf-8")
+    completion_text = (source_dir / "completion.yaml").read_text(encoding="utf-8")
+
+    handoff_id = "attested-retirement"
+    handoff_path = repo / "docs" / "dev-changes" / handoff_id / "impact.yaml"
+    handoff_path.parent.mkdir(parents=True)
+    handoff = {
+        "change_id": handoff_id,
+        "state": "GRAPH_DIFF_READY",
+        "ownership_handoff": {
+            "mode": "retire_unmerged_candidate",
+            "effective_when": "this_contract_is_ci_attested",
+            "source": {
+                "change_id": source_id,
+                "candidate_commit": candidate,
+                "required_state": "GRAPH_DIFF_READY",
+                "impact_sha256": hashlib.sha256(impact_text.encode("utf-8")).hexdigest(),
+                "completion_sha256": hashlib.sha256(completion_text.encode("utf-8")).hexdigest(),
+                "delivery_status": "unmerged_not_delivered",
+            },
+            "successor": {"change_id": "w5"},
+        },
+    }
+    handoff_path.write_text(yaml.safe_dump(handoff), encoding="utf-8")
+    _run(repo, "git", "add", ".")
+    _run(repo, "git", "commit", "-qm", "attested handoff fixture")
+    handoff_subject = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, text=True, capture_output=True
+    ).stdout.strip()
+
+    monkeypatch.setattr(
+        ownership,
+        "delivered_contracts",
+        lambda *_args, **_kwargs: {
+            handoff_id: {"change_id": handoff_id, "valid": True, "subject_commit": handoff_subject}
+        },
+    )
+    report = ownership.inventory_workspace(repo, include_primary=False, secret_scope="changed")
+    assert all(item["change_id"] != source_id for item in report["active_contracts"])
+    assert report["retired_contracts"] == [
+        {
+            "handoff_change_id": handoff_id,
+            "handoff_subject_commit": handoff_subject,
+            "source_change_id": source_id,
+            "source_candidate_commit": candidate,
+            "successor_change_id": "w5",
+            "delivery_status": "unmerged_not_delivered",
+        }
+    ]
+
+    successor = tmp_path / "w5-successor"
+    _run(repo, "git", "worktree", "add", "-q", "-b", "w5-successor", str(successor))
+    successor_id = "w5"
+    successor_contract = successor / "docs" / "dev-changes" / successor_id / "impact.yaml"
+    successor_contract.parent.mkdir(parents=True)
+    successor_contract.write_text(
+        yaml.safe_dump(
+            {
+                "change_id": successor_id,
+                "state": "IMPLEMENTING",
+                "planned_changes": [{"paths": ["services/runtime/app.py"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    successor_target = successor / "services" / "runtime" / "app.py"
+    successor_target.parent.mkdir(parents=True)
+    successor_target.write_text("w5 = True\n", encoding="utf-8")
+    delivered_predecessor = "delivered-s7-s14"
+    predecessor_contract = repo / "docs" / "dev-changes" / delivered_predecessor / "impact.yaml"
+    predecessor_contract.parent.mkdir(parents=True)
+    predecessor_contract.write_text(
+        yaml.safe_dump(
+            {
+                "change_id": delivered_predecessor,
+                "state": "GRAPH_DIFF_READY",
+                "planned_changes": [{"paths": ["services/runtime/**"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ownership,
+        "delivered_contracts",
+        lambda *_args, **_kwargs: {
+            handoff_id: {"change_id": handoff_id, "valid": True, "subject_commit": handoff_subject},
+            delivered_predecessor: {"change_id": delivered_predecessor, "valid": True},
+        },
+    )
+    successor_report = ownership.inventory_workspace(
+        successor, include_primary=False, secret_scope="changed"
+    )
+    successor_fact = next(
+        item for item in successor_report["paths"] if item["path"] == "services/runtime/app.py"
+    )
+    assert successor_fact["ownership"] == "active_change"
+    assert successor_fact["scope_owners"] == (successor_id,)
+    assert successor_report["counts"]["contract_scope_conflict"] == 0
+
+    source_product = source / "services" / "runtime" / "untracked.py"
+    source_product.parent.mkdir(parents=True)
+    source_product.write_text("unexpected = True\n", encoding="utf-8")
+    dirty_source = ownership.inventory_workspace(repo, include_primary=False, secret_scope="changed")
+    assert any(item["change_id"] == source_id for item in dirty_source["active_contracts"])
+    source_product.unlink()
+
+    (source_dir / "impact.yaml").write_text(impact_text + "# altered\n", encoding="utf-8")
+    altered_impact = ownership.inventory_workspace(repo, include_primary=False, secret_scope="changed")
+    assert any(item["change_id"] == source_id for item in altered_impact["active_contracts"])
+    (source_dir / "impact.yaml").write_text(impact_text, encoding="utf-8")
+
+    (source_dir / "completion.yaml").write_text(completion_text + "# altered\n", encoding="utf-8")
+    altered_completion = ownership.inventory_workspace(repo, include_primary=False, secret_scope="changed")
+    assert any(item["change_id"] == source_id for item in altered_completion["active_contracts"])
+    (source_dir / "completion.yaml").write_text(completion_text, encoding="utf-8")
+
+    handoff["ownership_handoff"]["source"]["candidate_commit"] = "0" * 40
+    handoff_path.write_text(yaml.safe_dump(handoff), encoding="utf-8")
+    _run(repo, "git", "add", ".")
+    _run(repo, "git", "commit", "-qm", "mismatched handoff fixture")
+    bad_subject = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, text=True, capture_output=True
+    ).stdout.strip()
+    monkeypatch.setattr(
+        ownership,
+        "delivered_contracts",
+        lambda *_args, **_kwargs: {
+            handoff_id: {"change_id": handoff_id, "valid": True, "subject_commit": bad_subject}
+        },
+    )
+    blocked = ownership.inventory_workspace(repo, include_primary=False, secret_scope="changed")
+    assert any(item["change_id"] == source_id for item in blocked["active_contracts"])
+    assert blocked["retired_contracts"] == []
+
+
+def test_production_s8_s10_handoff_hashes_bind_to_the_historical_git_blobs() -> None:
+    impact_path = ROOT / "docs" / "dev-changes" / "2026-08-04-s8-s10-supersession-handoff" / "impact.yaml"
+    impact = yaml.safe_load(impact_path.read_text(encoding="utf-8"))
+    source = impact["ownership_handoff"]["source"]
+    candidate = source["candidate_commit"]
+    change_id = source["change_id"]
+    for name, field in (("impact.yaml", "impact_sha256"), ("completion.yaml", "completion_sha256")):
+        text = ownership._git_text(ROOT, candidate, f"docs/dev-changes/{change_id}/{name}")
+        assert text is not None
+        assert ownership._sha256_text(text) == source[field]
 
 
 def test_delivery_resolution_receives_the_explicit_provenance_verifier(
