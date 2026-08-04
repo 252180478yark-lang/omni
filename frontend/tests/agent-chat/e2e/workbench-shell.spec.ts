@@ -250,6 +250,7 @@ test('all five Development group landings open sequentially and Prompt Lab expos
     await expect(page).toHaveURL(new RegExp(`${href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))
     await expect(page.getByTestId('unified-app-shell')).toBeVisible()
     await expect(page.getByRole('button', { name: '开发', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await page.waitForLoadState('networkidle')
     if (group === 'prompt-eval') {
       const empty = page.getByRole('status', { name: '暂无已登记的 Prompt 节点' })
       await expect(empty).toContainText('不会临时生成假节点')
@@ -306,11 +307,13 @@ test('mobile chat and playground consume the actual wrapped-header remainder wit
     await expect(surface).toBeVisible()
     const geometry = await page.evaluate(() => {
       const header = document.querySelector('header[aria-label="Omni 工作台顶栏"]')?.getBoundingClientRect()
+      const scrollHint = document.querySelector('[data-testid="workbench-horizontal-scroll-hint"]')?.getBoundingClientRect()
       const main = document.querySelector('[data-workbench-fullscreen="true"]')
       const surface = main?.getBoundingClientRect()
       const child = main?.firstElementChild?.getBoundingClientRect()
       return {
         headerBottom: header?.bottom || 0,
+        scrollHintBottom: scrollHint?.bottom || 0,
         surfaceTop: surface?.top || 0,
         surfaceBottom: surface?.bottom || 0,
         surfaceHeight: surface?.height || 0,
@@ -322,13 +325,27 @@ test('mobile chat and playground consume the actual wrapped-header remainder wit
         bodyHeight: document.body.scrollHeight,
       }
     })
-    expect(Math.abs(geometry.surfaceTop - geometry.headerBottom)).toBeLessThanOrEqual(1)
+    const expectedSurfaceTop = route === '/playground' ? geometry.scrollHintBottom : geometry.headerBottom
+    expect(Math.abs(geometry.surfaceTop - expectedSurfaceTop)).toBeLessThanOrEqual(1)
     expect(geometry.surfaceHeight).toBeGreaterThan(200)
     expect(geometry.surfaceBottom).toBeLessThanOrEqual(geometry.viewportHeight + 1)
     expect(Math.abs(geometry.childHeight - geometry.surfaceHeight)).toBeLessThanOrEqual(1)
     expect(geometry.documentHeight).toBeLessThanOrEqual(geometry.viewportHeight)
     expect(geometry.bodyHeight).toBeLessThanOrEqual(geometry.viewportHeight)
     expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth)
+    if (route === '/playground') {
+      const mainOverflow = await page.locator('#workbench-main').evaluate((element) => ({
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        overflowX: getComputedStyle(element).overflowX,
+      }))
+      // A renderer may either reflow to the narrow Shell width or retain a
+      // wide surface. In the latter case the Shell, not the document, owns
+      // the horizontal scroll region.
+      expect(mainOverflow.scrollWidth).toBeGreaterThanOrEqual(mainOverflow.clientWidth)
+      expect(mainOverflow.overflowX).toBe('auto')
+      await expect(page.getByTestId('workbench-horizontal-scroll-hint')).toBeVisible()
+    }
     await page.screenshot({ path: testInfo.outputPath(`mobile-${route.slice(1)}.png`) })
   }
 })

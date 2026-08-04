@@ -57,7 +57,7 @@ actual_changes:
   - frontend/tests/workbench-navigation-events.test.ts
 - id: W1-ACT-004
   planned_change_id: W1-CHG-004
-  summary: Implemented the reversible unified Shell, 5+5 responsive navigation, continuity store, honest status semantics, visible storage degradation, real work/development density, complete W1 browser/unit coverage, and axe dependency.
+  summary: Implemented the reversible unified Shell, 5+5 responsive navigation, continuity store, honest status semantics, visible storage degradation, real work/development density, complete W1 browser/unit coverage, and axe dependency. Independent visual review then corrected the Shell-scoped vertical Tabs layout and mobile wide-renderer affordance, with deterministic non-overlap and overflow assertions.
   paths:
   - frontend/src/components/app-shell.tsx
   - frontend/src/components/app-sidebar.tsx
@@ -199,12 +199,12 @@ verification_results:
   command: npm --prefix frontend run test:unit
   status: passed
   exit_code: 0
-  evidence: The complete frontend suite passed 25 files and 134 tests after the final authenticated-actor type correction.
+  evidence: Fresh post-visual-fix run passed 25 files and 134 tests.
 - id: W1-VERIFY-006
   command: $env:NEXT_PUBLIC_OMNI_UNIFIED_SHELL='1'; Push-Location frontend; try { npm run build -- --no-lint } finally { Pop-Location }
   status: passed
   exit_code: 0
-  evidence: A clean single-writer production build compiled, type-checked and generated 47 of 47 static pages with the unified Shell enabled.
+  evidence: Fresh post-visual-fix production build compiled, type-checked and generated 47 of 47 static pages with the unified Shell enabled.
 - id: W1-VERIFY-002A
   command: python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_collectors.py
   status: passed
@@ -236,10 +236,10 @@ verification_results:
   exit_code: 0
   evidence: Vitest passed 2 files and 23 tests; role=user remains non-privileged, admin or the explicit owner compatibility role protects developer reads, mutations and non-2xx knowledge actions fail closed, and flag-off Workspace behavior is preserved.
 - id: W1-VERIFY-007
-  command: $env:PLAYWRIGHT_E2E_SELF_HOSTED='1'; $env:PLAYWRIGHT_BASE_URL='http://127.0.0.1:3101'; $env:NEXT_PUBLIC_OMNI_UNIFIED_SHELL='1'; Push-Location frontend; try { npx playwright test tests/agent-chat/e2e/system-command-center.spec.ts tests/agent-chat/e2e/workbench-a11y.spec.ts tests/agent-chat/e2e/workbench-shell.spec.ts } finally { Pop-Location }
+  command: $env:PLAYWRIGHT_BASE_URL='http://127.0.0.1:20339'; Push-Location frontend; try { npx playwright test tests/agent-chat/e2e/system-command-center.spec.ts tests/agent-chat/e2e/workbench-a11y.spec.ts tests/agent-chat/e2e/workbench-shell.spec.ts } finally { Pop-Location }
   status: passed
   exit_code: 0
-  evidence: Playwright passed 16 of 16 tests in 36.7s; axe reported no scoped violations, the Prompt dialog passed focus/Escape/return and announcement assertions, and five current screenshots were manually inspected for desktop modes, truthful Prompt empty state and mobile chat/playground layout.
+  evidence: Fresh isolated-runtime run against the current-source server on allocated port 20339 passed 16 of 16 tests in 29.2s. Axe reported no scoped violations; the Prompt dialog passed focus/Escape/return and announcement assertions; new screenshots were manually reviewed to prove non-overlapping SKU vertical tabs in Work and Development modes plus the mobile Playground wide-content affordance.
 - id: W1-VERIFY-009
   command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/impact.yaml --completion docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/completion.yaml --expect-state VERIFYING
   status: passed

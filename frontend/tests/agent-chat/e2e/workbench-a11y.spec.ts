@@ -167,6 +167,12 @@ test('shell navigation, status semantics and focus pass accessibility checks', a
   await expect(page.locator('#workbench-main')).toBeFocused()
 
   await page.getByRole('button', { name: '展开侧边导航' }).click()
+  const rendererBounds = await page.evaluate(() => {
+    const tabList = document.querySelector('#workbench-main [data-slot="tabs-list"]')?.getBoundingClientRect()
+    const activePanel = document.querySelector('#workbench-main [data-slot="tabs-content"]')?.getBoundingClientRect()
+    return { tabListRight: tabList?.right || 0, activePanelLeft: activePanel?.left || 0 }
+  })
+  expect(rendererBounds.tabListRight).toBeLessThanOrEqual(rendererBounds.activePanelLeft)
   const shellGeometry = await page.evaluate(() => {
     const sidebar = document.querySelector('[data-testid="workbench-sidebar"]')?.getBoundingClientRect()
     const header = document.querySelector('header[aria-label="Omni 工作台顶栏"]')?.getBoundingClientRect()

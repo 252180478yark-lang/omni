@@ -138,6 +138,16 @@ risk:
     - frontend/tests/agent-chat/e2e/workbench-shell.spec.ts
     required_level: R2
     risk_change: Complete the existing migrated-page accessibility boundary with semantic dialog and live-region behavior plus keyboard/browser assertions; no API, data, permission, route or runtime contract changes.
+  - id: W1-DELTA-012
+    discovered_at: '2026-08-04T13:18:00Z'
+    reason: Independent rendered-screen review found that the existing SKU Pipeline vertical-tab primitive rendered horizontally inside the unified Shell and overlapped its active form. The same review found that the Shell clipped a wide Playground renderer at mobile width without an explicit affordance.
+    added_paths:
+    - frontend/src/app/globals.css
+    - frontend/src/components/app-shell.tsx
+    - frontend/tests/agent-chat/e2e/workbench-a11y.spec.ts
+    - frontend/tests/agent-chat/e2e/workbench-shell.spec.ts
+    required_level: R2
+    risk_change: Reopen only the existing W1 Shell, CSS, and browser-test ownership to correct vertical-tab layout inside the Shell, provide a mobile wide-content affordance, and prove non-overlap plus bounded scrolling. No API, data, permission, route, runtime, or external behavior changes.
   approval:
     required: false
     gate_ref: user:2026-08-02-pr5-w1-build-review-push
@@ -601,7 +611,7 @@ verification_plan:
   required: true
 - id: W1-VERIFY-007
   layer: browser-accessibility-visual
-  command: $env:PLAYWRIGHT_E2E_SELF_HOSTED='1'; $env:PLAYWRIGHT_BASE_URL='http://127.0.0.1:3101'; $env:NEXT_PUBLIC_OMNI_UNIFIED_SHELL='1'; Push-Location frontend; try { npx playwright test tests/agent-chat/e2e/system-command-center.spec.ts tests/agent-chat/e2e/workbench-a11y.spec.ts tests/agent-chat/e2e/workbench-shell.spec.ts } finally { Pop-Location }
+  command: $env:PLAYWRIGHT_BASE_URL='http://127.0.0.1:20339'; Push-Location frontend; try { npx playwright test tests/agent-chat/e2e/system-command-center.spec.ts tests/agent-chat/e2e/workbench-a11y.spec.ts tests/agent-chat/e2e/workbench-shell.spec.ts } finally { Pop-Location }
   proves: A self-hosted browser validates the canonical System Graph route, 5+5 navigation, route/query compatibility, responsive Shell geometry and density, keyboard/focus semantics, status non-color cues, automated accessibility checks, and reviewable screenshots.
   required: true
 - id: W1-VERIFY-008

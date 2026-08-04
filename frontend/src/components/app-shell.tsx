@@ -98,6 +98,7 @@ function AppShellContent({ children, unifiedShellEnabled }: AppShellProps) {
   const queryString = searchParams.toString()
   const unified = unifiedShellEnabled ?? isWorkbenchFlagEnabled('unified_shell')
   const isFullScreen = FULL_SCREEN_ROUTES.some((route) => pathname.startsWith(route))
+  const supportsWideRenderer = pathname === '/playground' || pathname.startsWith('/playground/')
   const [searchQuery, setSearchQuery] = useState('')
   const [sidebarExpanded, setSidebarExpanded] = useState(() => pathname.startsWith('/content-studio'))
 
@@ -397,10 +398,24 @@ function AppShellContent({ children, unifiedShellEnabled }: AppShellProps) {
           </p>
         </header>
 
+        {supportsWideRenderer ? (
+          <p
+            className="border-t border-slate-100 bg-violet-50 px-4 py-1 text-xs text-violet-800 sm:hidden"
+            role="status"
+            data-testid="workbench-horizontal-scroll-hint"
+          >
+            宽内容可在内容区左右滑动查看
+          </p>
+        ) : null}
         <div
           id="workbench-main"
           tabIndex={-1}
-          className={cn('min-h-0 flex-1', isFullScreen ? 'workbench-fullscreen-surface overflow-hidden' : 'overflow-y-auto')}
+          className={cn(
+            'min-h-0 min-w-0 flex-1',
+            isFullScreen
+              ? cn('workbench-fullscreen-surface', supportsWideRenderer ? 'overflow-auto' : 'overflow-hidden')
+              : 'overflow-auto',
+          )}
           data-workbench-fullscreen={isFullScreen ? 'true' : undefined}
         >
           {isFullScreen ? children : <main>{children}</main>}

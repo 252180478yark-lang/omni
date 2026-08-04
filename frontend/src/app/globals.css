@@ -287,6 +287,42 @@
   padding: var(--workbench-card-padding-inline);
 }
 
+/* Base UI annotates vertical Tabs with data-orientation, while its utility
+ * variants target a different attribute. Keep the correction inside the
+ * unified Shell so legacy pages retain their original standalone layout. */
+[data-workbench-shell] [data-slot="tabs"][data-orientation="vertical"] {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+[data-workbench-shell] [data-slot="tabs"][data-orientation="vertical"] > [data-slot="tabs-list"] {
+  width: 100%;
+  flex-direction: row;
+  overflow-x: auto;
+}
+
+[data-workbench-shell] [data-slot="tabs"][data-orientation="vertical"] > [data-slot="tabs-list"] > [data-slot="tabs-trigger"] {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+@media (min-width: 768px) {
+  [data-workbench-shell] [data-slot="tabs"][data-orientation="vertical"] {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  [data-workbench-shell] [data-slot="tabs"][data-orientation="vertical"] > [data-slot="tabs-list"] {
+    width: 10rem;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  [data-workbench-shell] [data-slot="tabs"][data-orientation="vertical"] > [data-slot="tabs-list"] > [data-slot="tabs-trigger"] {
+    width: 100%;
+  }
+}
+
 .workbench-fullscreen-surface > * {
   height: 100% !important;
   min-height: 100% !important;
