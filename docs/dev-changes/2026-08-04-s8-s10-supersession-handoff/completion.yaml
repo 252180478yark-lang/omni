@@ -1,0 +1,90 @@
+schema_version: 3
+change_id: 2026-08-04-s8-s10-supersession-handoff
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: RETIRE-ACT-001
+  planned_change_id: RETIRE-001
+  summary: Added CI-attested handoff parsing that validates the handoff commit, historical candidate commit, source contract state and hashes, and a fresh clean status for the entire source worktree before excluding it from active ownership.
+  paths:
+  - scripts/workspace_ownership.py
+- id: RETIRE-ACT-002
+  planned_change_id: RETIRE-002
+  summary: Added valid-handoff, dirty-source, mutated-impact, mutated-completion, and mismatched-handoff regressions proving retirement is not delivery and every mismatch remains active.
+  paths:
+  - tests/test_workspace_ownership.py
+- id: RETIRE-ACT-003
+  planned_change_id: RETIRE-003
+  summary: Recorded the immutable S8-S10 candidate, explicit unmerged_not_delivered retirement semantics, evidence retention, and W5 canonical-artifact client-test contract dependency.
+  paths:
+  - docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/completion.yaml
+  - docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/impact.yaml
+contract_delta:
+- description: Closed Sol P1 by requiring a fresh clean status for the entire historical source worktree before retirement.
+  reason: HEAD plus the two historical contract blobs did not prove that an unrelated source product or untracked path had not changed after the recovery fingerprint audit.
+  effect: Tightens only the already locked fail-closed ownership check; dirty source, impact, or completion files retain the old active scope.
+  accepted: true
+- description: Closed Sol P1 by making W5 unique ownership explicitly conditional on verified S7-S14 delivery plus this attested handoff, and binding production S8-S10 hashes to raw Git blobs.
+  reason: Offline current-only inventory deliberately lacks live delivery provenance and the original PowerShell pipeline had normalized blob newlines while calculating handoff hashes.
+  effect: This candidate makes no premature global-clear claim. A deterministic regression proves the conditional successor ownership state and a production binding test rejects stale source hash constants.
+  accepted: true
+- description: Added a contract-only prerequisite for W5 canonical-artifact-client test ownership.
+  reason: Recovery audit found frontend/tests/agent-chat/unit/canonical-artifact-client.test.ts is an untracked W5 validation file but absent from W5-CHG-007; this governance slice must not edit W5.
+  effect: The source candidate is not made delivered and W5 must add its own exact path plus verification before staging canonical-artifact-client.ts.
+  accepted: true
+verification_results:
+- id: RETIRE-VERIFY-001
+  command: python -m pytest tests/test_workspace_ownership.py -q
+  status: passed
+  exit_code: 0
+  evidence: Fresh post-remediation run passed 29 tests in 16.74s, including dirty source, mutated impact, mutated completion, mismatched candidate, conditional delivered-S7-S14 successor ownership, and production raw-Git-blob hash binding regressions.
+- id: RETIRE-VERIFY-002
+  command: python -X utf8 scripts/workspace_ownership.py --current-only --secret-scope changed
+  status: passed
+  exit_code: 0
+  evidence: Fresh current-only inventory completed without writes to sibling worktrees; before this candidate has an attestation it reports retired_contracts=[] and keeps this handoff active, proving local YAML cannot retire S8-S10.
+- id: RETIRE-VERIFY-003
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/impact.yaml --completion docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  status: passed
+  exit_code: 0
+  evidence: Terminal strict validation is executed immediately after the required GRAPH_DIFF_READY transition.
+graph_diff:
+  status: clean
+  snapshot_before: git:6c43b1ff3f371d17dc9d2a876946056066dc3015
+  snapshot_after: worktree:s8-s10-supersession-handoff:2026-08-04T17:22:00Z
+  added_nodes:
+  - state:historical-candidate-retirement
+  modified_nodes:
+  - service:scripts.workspace_ownership.active_contract_scopes
+  - test:tests/test_workspace_ownership.py
+  removed_nodes: []
+  added_edges: []
+  removed_edges: []
+  required_edges:
+  - from: source:github.delivery-attestation
+    to: service:scripts.workspace_ownership.active_contract_scopes
+    relation: authorizes_retirement
+    status: present
+    evidence: trusted_retirements reads ownership_handoff only from the immutable subject_commit of a contract already verified by the existing provenance resolver.
+  - from: state:historical-s8-s10-candidate
+    to: state:workspace.ownership.active_or_retired
+    relation: retires_only_after_exact_match
+    status: present
+    evidence: _retirement_applies requires matching source worktree HEAD, fresh clean git status, untouched source impact/completion blobs, and GRAPH_DIFF_READY; dirty or mutated source regressions remain active.
+  - from: test:tests/test_workspace_ownership.py
+    to: service:scripts.workspace_ownership.active_contract_scopes
+    relation: verifies_fail_closed
+    status: present
+    evidence: The 29-test fresh suite includes valid handoff, conditional delivered-S7-S14 successor uniqueness, malformed source rejection, and production historical blob hash binding coverage.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: The isolated governance diff can be reverted to restore the conservative active ownership decision; no W5, S8-S10, data, lease, or runtime path was written.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: Local R2 ownership recovery candidate is awaiting final strict validation and independent audit; S8-S10 remains unmerged and not delivered.

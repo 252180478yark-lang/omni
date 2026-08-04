@@ -1,0 +1,202 @@
+schema_version: 3
+change_id: 2026-08-04-s8-s10-supersession-handoff
+title: Retire unmerged S8-S10 ownership scope for W5 recovery
+state: GRAPH_DIFF_READY
+created_at: '2026-08-04T17:16:19Z'
+updated_at: '2026-08-04T17:21:51Z'
+feature_refs:
+- feature_id: workbench-w5-recovery-ownership
+  feature_ref: prd:2026-08-02-omni-unified-ai-workbench:v1.3:W5:ownership-recovery
+before_snapshot:
+  ref: git:6c43b1ff3f371d17dc9d2a876946056066dc3015
+delivery:
+  authority: ci_attestation
+  base_commit: 6c43b1ff3f371d17dc9d2a876946056066dc3015
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - Governance ownership determines whether the dirty W5 recovery candidate can be safely resumed.
+  - Retirement must distinguish an attested handoff from delivery of the historical S8-S10 candidate.
+  external_effects: []
+  scope_deltas: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The stale 2026-08-01 S8-S10 GRAPH_DIFF_READY candidate still claims 48 W5 dirty product paths, so ownership inventory reports ambiguity after its old lease expires.
+  expected_outcome: A CI-attested governance handoff retires only the verified unmerged S8-S10 candidate from active ownership and preserves its evidence as not delivered. W5 becomes the only active owner of its actual product paths only when its existing S7-S14 delivery receipt and this handoff receipt are both verified by the same provenance path.
+  user_visible_behavior:
+  - Unverified, malformed, mismatched, or locally asserted handoff data leaves the historical S8-S10 scope active.
+  - A valid handoff never marks S8-S10 delivered and never removes its worktree, commit, contract, or test evidence.
+  - W5 cannot stage canonical-artifact client changes until its own contract delta explicitly owns the missing client test and verification.
+current_chain:
+  nodes:
+  - id: service:scripts.workspace_ownership.active_contract_scopes
+    role: Reads active contracts from every linked worktree.
+  - id: state:historical-s8-s10-candidate
+    role: Unmerged GRAPH_DIFF_READY candidate at 8df227bc1be5dee02bea8006d596e30aae802539.
+  - id: state:w5-recovery-candidate
+    role: Dirty W5 implementation whose 48 intersecting product paths require a unique owner before recovery.
+  - id: test:tests/test_workspace_ownership.py
+    role: Regression coverage for ownership and provenance decisions.
+  edges:
+  - from: service:scripts.workspace_ownership.active_contract_scopes
+    to: state:historical-s8-s10-candidate
+    relation: inventories
+  - from: state:historical-s8-s10-candidate
+    to: state:w5-recovery-candidate
+    relation: conflicts_on_actual_paths
+  - from: test:tests/test_workspace_ownership.py
+    to: service:scripts.workspace_ownership.active_contract_scopes
+    relation: verifies
+  evidence:
+  - E:/agent/omni/.worktrees/system-convergence-s8-s10 is clean at 8df227bc1be5dee02bea8006d596e30aae802539 with state GRAPH_DIFF_READY.
+  - E:/agent/omni/.worktrees/omni-unified-ai-workbench-w5 remains dirty and has 48 product paths intersecting the historical candidate.
+  - scripts/workspace_ownership.py currently treats all GRAPH_DIFF_READY schema-v3 contracts as active unless they have a delivery receipt.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - service:scripts.workspace_ownership.active_contract_scopes
+  database: []
+  data_sources:
+  - source:github.delivery-attestation
+  states_workflows:
+  - state:historical-candidate-retirement
+  - state:workspace.ownership.active_or_retired
+  tests:
+  - test:tests/test_workspace_ownership.py
+  docs:
+  - docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/**
+planned_changes:
+- id: RETIRE-001
+  action: modify
+  kind: attested-historical-candidate-retirement
+  node_id: service:scripts.workspace_ownership.active_contract_scopes
+  paths:
+  - scripts/workspace_ownership.py
+  upstream:
+  - source:github.delivery-attestation
+  - state:historical-s8-s10-candidate
+  downstream:
+  - state:workspace.ownership.active_or_retired
+  contract_change: compatible
+  verification_ids:
+  - RETIRE-VERIFY-001
+  - RETIRE-VERIFY-003
+- id: RETIRE-002
+  action: modify
+  kind: ownership-retirement-regression-tests
+  node_id: test:tests/test_workspace_ownership.py
+  paths:
+  - tests/test_workspace_ownership.py
+  upstream:
+  - service:scripts.workspace_ownership.active_contract_scopes
+  downstream:
+  - test:tests/test_workspace_ownership.py
+  contract_change: compatible
+  verification_ids:
+  - RETIRE-VERIFY-001
+  - RETIRE-VERIFY-002
+- id: RETIRE-003
+  action: add
+  kind: traceable-s8-s10-handoff-record
+  node_id: state:historical-candidate-retirement
+  paths:
+  - docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/**
+  upstream:
+  - state:historical-s8-s10-candidate
+  downstream:
+  - state:w5-recovery-candidate
+  contract_change: compatible
+  verification_ids:
+  - RETIRE-VERIFY-002
+  - RETIRE-VERIFY-003
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: No HTTP, WebSocket, MCP, or public contract changes.
+  database:
+    status: not_applicable
+    strategy: No database, schema, migration, or runtime data change.
+  workflow:
+    status: compatible
+    strategy: An old candidate remains active by default. It can be retired only after the handoff contract itself is attested and only when the exact historical commit and contract hashes match in a freshly clean source worktree; W5 delivery remains independent.
+  data_source:
+    status: compatible
+    strategy: Reuses the existing CI-attestation provenance verifier and does not accept caller-supplied delivery or retirement assertions.
+graph_acceptance:
+  required_edges:
+  - from: source:github.delivery-attestation
+    to: service:scripts.workspace_ownership.active_contract_scopes
+    relation: authorizes_retirement
+  - from: state:historical-s8-s10-candidate
+    to: state:workspace.ownership.active_or_retired
+    relation: retires_only_after_exact_match
+  - from: test:tests/test_workspace_ownership.py
+    to: service:scripts.workspace_ownership.active_contract_scopes
+    relation: verifies_fail_closed
+  allowed_unknowns: []
+  forbidden_orphans: []
+ownership_handoff:
+  mode: retire_unmerged_candidate
+  effective_when: this_contract_is_ci_attested
+  source:
+    change_id: 2026-08-01-system-convergence-s8-s10
+    candidate_commit: 8df227bc1be5dee02bea8006d596e30aae802539
+    required_state: GRAPH_DIFF_READY
+    impact_sha256: 62ad4dd2ca63535ecec73af0f52ee11817ee1b75f1247d9f0636115a049d21b8
+    completion_sha256: 6a3990ef74681ab4ba7dd8eb647b6051b7d7c6369ee39003a7e733cb02dcf81e
+    delivery_status: unmerged_not_delivered
+  successor:
+    change_id: 2026-08-02-omni-unified-ai-workbench-w5
+    ownership_effect: Source scope is retired; W5 remains independently active and is never auto-delivered or expanded.
+    required_future_contract_delta:
+      id: W5-DELTA-CANONICAL-ARTIFACT-TEST
+      path: frontend/tests/agent-chat/unit/canonical-artifact-client.test.ts
+      requirement: Before W5 stages canonical-artifact-client.ts, its own impact/completion delta must own this exact test path and a matching verification command.
+  evidence_retention:
+    retain_source_worktree: true
+    retain_source_commit: true
+    retain_source_contracts: true
+    remove_paths: false
+risks:
+- id: RETIRE-RISK-001
+  description: A local or mismatched record could hide an active historical owner.
+  mitigation: Require a verified delivery receipt for this handoff, load its impact blob from the attested commit, and compare the historical candidate commit plus both contract hashes before retirement.
+- id: RETIRE-RISK-002
+  description: Retirement could be misconstrued as formal delivery of S8-S10.
+  mitigation: Record unmerged_not_delivered explicitly, preserve all historical evidence, and expose retirement separately from delivered contracts.
+- id: RETIRE-RISK-003
+  description: W5 could silently inherit an untested canonical artifact client path.
+  mitigation: Record the exact W5-owned future delta dependency without editing W5 or its test files.
+out_of_scope:
+- No change to any W5 dirty product file, its contracts, runtime allocation, database, Docker resource, or lease.
+- No modification, deletion, commit rewrite, merge, or delivery claim for the historical S8-S10 candidate.
+- No shared runtime adoption, migration, provider invocation, or Desktop retirement.
+rollback:
+  strategy: Revert the attested recovery commit to restore conservative active ownership for the historical candidate; no source evidence is deleted.
+  data_recovery: Not applicable; the change only reads Git metadata and contracts.
+verification_plan:
+- id: RETIRE-VERIFY-001
+  layer: unit
+  command: python -m pytest tests/test_workspace_ownership.py -q
+  proves: Attested exact-match retirement removes only the intended historical active scope; once the existing S7-S14 delivery is also verified, W5 is the unique active owner of its actual product path. Absent attestation, wrong commit, wrong hash, or dirty/mismatched source worktree remains blocking.
+  required: true
+- id: RETIRE-VERIFY-002
+  layer: ownership-projection
+  command: python -X utf8 scripts/workspace_ownership.py --current-only --secret-scope changed
+  proves: Current worktree inventory reports retirement evidence separately and never mutates sibling worktrees.
+  required: true
+- id: RETIRE-VERIFY-003
+  layer: contract
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/impact.yaml --completion docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  proves: The R2 candidate has exact scope, executed evidence, retirement semantics, and graph closure before CI.
+  required: true
+lock:
+  locked_at: '2026-08-04T17:18:03Z'
+  locked_by: codex-s8s10-supersession-terra
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.
