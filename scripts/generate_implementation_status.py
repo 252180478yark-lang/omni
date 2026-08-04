@@ -81,6 +81,33 @@ class ProjectionInputError(ValueError):
 
 
 ProvenanceVerifier = Callable[[Path, Mapping[str, Any], Path | None], Mapping[str, Any]]
+PROVENANCE_VERIFIER_INVALID = "trusted_provenance_verifier_invalid"
+PROVENANCE_VERIFIER_FAILED = "trusted_provenance_verifier_failed"
+
+
+def normalize_provenance_result(value: Any) -> dict[str, Any]:
+    """Accept only a well-formed verifier result before reading its fields.
+
+    Delivery evidence is an authorization boundary.  A bad plugin/test double,
+    timeout wrapper, or malformed response must be indistinguishable from
+    unverified evidence rather than crashing ownership projection or granting
+    delivery state.
+    """
+
+    if not isinstance(value, Mapping):
+        return {"valid": False, "reasons": [PROVENANCE_VERIFIER_INVALID]}
+    valid = value.get("valid")
+    reasons = value.get("reasons", [])
+    if not isinstance(valid, bool) or not isinstance(reasons, list):
+        return {"valid": False, "reasons": [PROVENANCE_VERIFIER_INVALID]}
+    if any(not isinstance(reason, str) or not reason.strip() for reason in reasons):
+        return {"valid": False, "reasons": [PROVENANCE_VERIFIER_INVALID]}
+    # A verifier is only a positive authority when it returns literal True
+    # and no failure reasons.  Every other value is a stable fail-closed
+    # rejection, even a superficially well-formed ``valid: false`` payload.
+    if valid is not True or reasons:
+        return {"valid": False, "reasons": [PROVENANCE_VERIFIER_INVALID]}
+    return dict(value)
 
 
 def utc_now() -> str:
@@ -471,9 +498,11 @@ def verify_delivery_receipt(
     provenance: Mapping[str, Any] = {"valid": False, "reasons": ["trusted_provenance_not_verified"]}
     if provenance_verifier is not None:
         try:
-            provenance = provenance_verifier(root, receipt, receipt_path)
+            provenance = normalize_provenance_result(
+                provenance_verifier(root, receipt, receipt_path)
+            )
         except Exception:
-            provenance = {"valid": False, "reasons": ["trusted_provenance_verifier_failed"]}
+            provenance = {"valid": False, "reasons": [PROVENANCE_VERIFIER_FAILED]}
     if provenance.get("valid") is not True:
         reasons.extend(str(item) for item in provenance.get("reasons", ["trusted_provenance_not_verified"]))
     if schema_version == 2:
@@ -521,7 +550,15 @@ def verify_delivery_receipt(
             reasons.append("delivered_tree_missing")
         elif actual_tree != declared_tree:
             reasons.append("delivered_tree_mismatch")
-    if not _checks_passed(receipt) and provenance.get("checks_passed") is not True:
+    if schema_version == 2:
+        # A v2 attestation already carries its own required-check results.  A
+        # successful live workflow lookup can corroborate, never repair, a
+        # failed signed receipt check.
+        if not _checks_passed(receipt) or provenance.get("checks_passed") is not True:
+            reasons.append("required_checks_not_passed")
+    elif not _checks_passed(receipt) and provenance.get("checks_passed") is not True:
+        # Legacy v1 receipts did not consistently include check details; keep
+        # their documented live-provenance compatibility path.
         reasons.append("required_checks_not_passed")
 
     contract_records = receipt.get("contracts")
@@ -747,15 +784,21 @@ def collect_s0_evidence(
     root: Path,
     *,
     attestation_paths: Iterable[Path] = (),
-    delivered_contract_ids: Iterable[str] = (),
+    provenance_verifier: ProvenanceVerifier | None = None,
     migration_baseline: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Collect ownership evidence with the exact verifier used for delivery.
+
+    An unavailable, timed-out, or mismatched live verifier must leave a
+    contract active; inventory may not receive a caller-asserted delivery id.
+    """
+
     scanner = _load_ownership_scanner(root)
     inventory = scanner.inventory_workspace(
         root,
         include_primary=True,
         attestation_paths=attestation_paths,
-        delivered_contract_ids=delivered_contract_ids,
+        provenance_verifier=provenance_verifier,
         secret_scope="tracked",
     )
     return {
@@ -1023,15 +1066,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             return provenance_cache[key]
 
-        delivered = resolve_delivered_contracts(
-            root,
-            receipt_paths,
-            provenance_verifier=provenance_verifier,
-        )
         s0_evidence = collect_s0_evidence(
             root,
             attestation_paths=receipt_paths,
-            delivered_contract_ids=delivered,
+            provenance_verifier=provenance_verifier,
             migration_baseline=migration_evidence,
         )
         payload = build_projection(

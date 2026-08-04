@@ -1,0 +1,87 @@
+schema_version: 3
+change_id: 2026-08-04-w5-ownership-provenance-fail-closed
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: GOV-PROV-ACT-001
+  planned_change_id: GOV-PROV-001
+  summary: Removed the caller-supplied delivered-contract-id bypass and require the inventory to resolve delivery only through its explicit provenance verifier.
+  paths:
+  - scripts/workspace_ownership.py
+- id: GOV-PROV-ACT-002
+  planned_change_id: GOV-PROV-002
+  summary: Passed the one cached projection provenance verifier into ownership collection instead of separately asserting delivered ids, then normalized malformed, false, exception, and timeout verifier results to fail-closed evidence before any field access and required both signed and live checks for v2 receipts.
+  paths:
+  - scripts/generate_implementation_status.py
+- id: GOV-PROV-ACT-003
+  planned_change_id: GOV-PROV-003
+  summary: Added deterministic regression coverage for explicit verifier forwarding, untrusted proof remaining active, and active lease conflict preservation.
+  paths:
+  - tests/test_workspace_ownership.py
+  - tests/test_implementation_status.py
+contract_delta:
+  - description: Corrected the final strict validation command to the only schema-v3 state that permits strict candidate validation.
+    reason: The initial IMPACT_LOCKED strict command was structurally impossible because strict schema-v3 validation requires GRAPH_DIFF_READY.
+    effect: No implementation or path scope changed; the final evidence command now validates the precise terminal candidate.
+    accepted: true
+  - description: Closed Sol P1/P0 verifier-result hardening findings.
+    reason: A non-Mapping or malformed verifier result could raise before ownership resolution; a false result with an empty reasons list could leave no rejection reason and be treated as delivered; a signed v2 failed check could be masked by a live success.
+    effect: Only literal Mapping valid=true with an empty well-formed reasons list is positive provenance. Every other result, exception, or timeout stays active through a stable fail-closed reason. V2 attestation checks and live checks must both pass; the tested v1 compatibility path accepts verified live checks only when signed checks are absent.
+    accepted: true
+verification_results:
+- id: GOV-VERIFY-001
+  command: python -m pytest tests/test_workspace_ownership.py -q
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 27 tests in 11.42s, including malformed-provenance ownership inventory no-crash/active-scope regressions and a valid delivery proof not suppressing an independent foreign active lease conflict.
+- id: GOV-VERIFY-002
+  command: python -m pytest tests/test_implementation_status.py -q
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 29 tests in 22.13s, including False, None, list, false-empty-reasons, false-reasons, None/integer/string reasons, exception, TimeoutError, v2 signed-failure/live-success rejection, v2 signed-success/live-failure rejection, and isolated v1 compatibility proof.
+- id: GOV-VERIFY-003
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-04-w5-ownership-provenance-fail-closed/impact.yaml --completion docs/dev-changes/2026-08-04-w5-ownership-provenance-fail-closed/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  status: passed
+  exit_code: 0
+  evidence: Fresh post-transition strict validation passed at GRAPH_DIFF_READY with the exact locked R2 scope, actual changes, tests, and required graph edges.
+graph_diff:
+  status: clean
+  snapshot_before: git:b82da85bfd7958297cb8389f4c59acafdb00c2f7
+  snapshot_after: worktree:ownership-provenance-fail-closed:2026-08-04T15:06:00Z
+  added_nodes: []
+  modified_nodes:
+  - service:scripts.workspace_ownership.inventory_workspace
+  - service:scripts.generate_implementation_status.collect_s0_evidence
+  - test:tests/test_workspace_ownership.py
+  - test:tests/test_implementation_status.py
+  removed_nodes: []
+  added_edges: []
+  removed_edges: []
+  required_edges:
+  - from: service:scripts.generate_implementation_status.collect_s0_evidence
+    to: service:scripts.workspace_ownership.inventory_workspace
+    relation: calls
+    status: present
+    evidence: collect_s0_evidence now passes the exact provenance_verifier into inventory_workspace; the projection regression asserts object identity and malformed inventory provenance remains active without crashing.
+  - from: service:scripts.workspace_ownership.inventory_workspace
+    to: service:scripts.generate_implementation_status.resolve_delivered_contracts
+    relation: verifies
+    status: present
+    evidence: inventory_workspace calls delivered_contracts with the verifier, and delivered_contracts forwards it to resolve_delivered_contracts; only normalized literal-positive provenance can exclude an active contract.
+  - from: service:scripts.workspace_ownership.inventory_workspace
+    to: state:workspace.runtime_lease
+    relation: checks
+    status: present
+    evidence: Foreign active lease regression passes even after the contract is treated as delivered; lease_conflict remains blocking.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: Reverting the isolated candidate restores the prior internal function signatures; no database, runtime, lease state, or user worktree path was mutated by this code change.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''

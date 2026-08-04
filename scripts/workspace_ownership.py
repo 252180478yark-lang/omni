@@ -241,10 +241,27 @@ def _load_delivery_resolver(root: Path) -> ModuleType:
     return module
 
 
-def delivered_contracts(root: Path, attestation_paths: Iterable[Path] = ()) -> dict[str, dict[str, Any]]:
+def delivered_contracts(
+    root: Path,
+    attestation_paths: Iterable[Path] = (),
+    *,
+    provenance_verifier: Any = None,
+) -> dict[str, dict[str, Any]]:
+    """Return only contracts proved by the caller's explicit verifier.
+
+    Omitting the verifier deliberately uses the projection's offline
+    fail-closed verifier.  Callers cannot declare delivery by supplying ids.
+    """
+
     resolver = _load_delivery_resolver(root)
     try:
-        return dict(resolver.resolve_delivered_contracts(root, attestation_paths))
+        return dict(
+            resolver.resolve_delivered_contracts(
+                root,
+                attestation_paths,
+                provenance_verifier=provenance_verifier,
+            )
+        )
     except (ValueError, OSError) as exc:
         raise OwnershipInputError(f"delivery receipts cannot be resolved: {exc}") from exc
 
@@ -553,28 +570,17 @@ def inventory_workspace(
     *,
     include_primary: bool = True,
     attestation_paths: Iterable[Path] = (),
-    delivered_contract_ids: Iterable[str] = (),
+    provenance_verifier: Any = None,
     secret_scope: str = "tracked",
     secret_allowlist: Iterable[str] = (),
 ) -> dict[str, Any]:
     root = repository_root(root)
     primary = primary_worktree(root)
-    delivered = delivered_contracts(root, attestation_paths)
-    # A caller may have completed a fresh trusted-provenance verification in
-    # the same process.  Passing those verified ids avoids downgrading them
-    # during this intentionally offline inventory pass.
-    for change_id in delivered_contract_ids:
-        normalized = str(change_id).strip()
-        if normalized:
-            delivered.setdefault(
-                normalized,
-                {
-                    "change_id": normalized,
-                    "valid": True,
-                    "delivery_state": "delivered",
-                    "source": "preverified_by_caller",
-                },
-            )
+    delivered = delivered_contracts(
+        root,
+        attestation_paths,
+        provenance_verifier=provenance_verifier,
+    )
     scopes = active_contract_scopes(root, delivered_ids=delivered)
     scope_overlaps = contract_scope_overlaps(scopes)
     owner_ambiguities = contract_owner_ambiguities(scopes)
