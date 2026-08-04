@@ -179,8 +179,8 @@ planned_changes:
 allowed_unplanned_paths: []
 compatibility:
   api:
-    status: compatible
-    strategy: RunOperationProjection adds one required wire key, context_revision, whose value is integer >= 1 or null. Boundary adapters must emit explicit null for legacy operations; every new W5 operation emits its persisted positive revision. No enum, route, request, or other response field changes.
+    status: breaking
+    strategy: 'This is an additive contract field but a schema-level breaking wire transition: context_revision is now required, so a pre-G2 RunOperationProjection that omits it (or supplies only one frozen-context field) fails strict validation. The W5 boundary normalizes every emitted projection before validation: a legacy operation emits both context_snapshot_id and context_revision as explicit null, while a new W5 HostRun emits its persisted non-null snapshot and positive revision. After that normalization, system-produced projections are compatible; the accepted transition risk is limited to direct legacy or offline producers/consumers, which must upgrade or normalize before strict validation. No enum, route, request, or other response field changes.'
   database:
     status: compatible
     strategy: Migration 104 and every database object, trigger, column, constraint, index, and COMMENT remain byte-identical. The existing agent-session value is interpreted as the accepted security anchor; the existing runtime-execution value remains the immutable per-operation target. Host current-head state is not added to the database in this delta.
