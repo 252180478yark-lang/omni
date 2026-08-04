@@ -1,0 +1,229 @@
+schema_version: 3
+change_id: 2026-08-04-w5-recovery-evidence
+title: Preserve W5 recovery evidence
+state: GRAPH_DIFF_READY
+created_at: '2026-08-04T18:17:01Z'
+updated_at: '2026-08-04T18:46:29Z'
+feature_refs:
+- feature_id: workbench-w5-recovery-evidence
+  feature_ref: prd:2026-08-02-omni-unified-ai-workbench:v1.3:W5:recovery-evidence
+before_snapshot:
+  ref: git:fc0192ef4e7c8c113d66d26cf6529ce35f5c49f1
+delivery:
+  authority: ci_attestation
+  base_commit: fc0192ef4e7c8c113d66d26cf6529ce35f5c49f1
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - Recovery evidence controls whether a stale, dirty R3 W5 candidate can be handed to a new writer.
+  - The evidence binds external CI receipts, historical supersession, secret hygiene, and a read-only dirty-worktree fingerprint.
+  external_effects: []
+  scope_deltas:
+  - id: W5-RECOVERY-DELTA-001
+    discovered_at: '2026-08-04T18:34:00Z'
+    reason: Recovery preservation requires retaining a stable external source anchor even when receipt or ownership gates remain blocked; only a disagreeing second source sample is unsafe to persist.
+    added_paths: []
+    required_level: R2
+    risk_change: Tightens evidence retention without broadening source, runtime, lease, receipt, or product authority.
+  - id: W5-RECOVERY-DELTA-002
+    discovered_at: '2026-08-04T18:52:00Z'
+    reason: Strict validation of GRAPH_DIFF_READY is necessarily a post-transition check, so it cannot be a pre-transition required result without creating a circular state gate.
+    added_paths: []
+    required_level: R2
+    risk_change: Keeps the strict check mandatory for the candidate handoff while allowing the state machine to reach the state it validates.
+  - id: W5-RECOVERY-DELTA-003
+    discovered_at: '2026-08-04T19:08:00Z'
+    reason: 'Sol P1 review found six fail-open recovery-evidence seams: external output escape, caller-selected residual and receipt scope, unknown lease state, overwriteable manifests, implicit secret defaults, and absent index-gate proof.'
+    added_paths: []
+    required_level: R2
+    risk_change: Narrows the existing evidence-only behavior. It adds no W5, runtime, lease, receipt, product, or external-system write authority.
+  - id: W5-RECOVERY-DELTA-004
+    discovered_at: '2026-08-05T02:14:00Z'
+    reason: Sol final P1 found that source-row selection could ignore malformed global allocation or lease records, including missing worktree identity, duplicate lease ids, and orphan active allocations.
+    added_paths: []
+    required_level: R2
+    risk_change: Narrows recovery proof further by validating every global allocation and lease schema, identity link, ownership link, and uniqueness constraint before evaluating source activity; it adds no runtime or lease write authority.
+  - id: W5-RECOVERY-DELTA-005
+    discovered_at: '2026-08-05T02:16:00Z'
+    reason: Sol final P1 found that symbolic-link-only output checks can miss Windows junction or other reparse-point redirects beneath the Git common directory.
+    added_paths: []
+    required_level: R2
+    risk_change: Narrows external evidence output to canonical non-reparse Git common-dir layers and rejects redirected .git/omni-runtime paths; it adds no source, runtime, lease, or product write authority.
+  - id: W5-RECOVERY-DELTA-006
+    discovered_at: '2026-08-05T02:22:00Z'
+    reason: Sol final review found that only active leases were required to have a reverse allocation and an expired active lease could appear inactive while its linked allocation remained effectively active.
+    added_paths: []
+    required_level: R2
+    risk_change: Narrows recovery proof by requiring all lease states to map one-to-one to allocations and by comparing raw state, effective expiry-derived state, and expiration values in both directions; it adds no runtime or lease write authority.
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The W5 recovery scene is a 71-path dirty worktree that must be preserved but cannot be safely resumed from a local status assertion, partial receipt set, or an unscoped secret-scan exception.
+  expected_outcome: A read-only evidence tool append-writes only inside the Git common-dir recovery directory, derives required receipts and residual expectation from its authoritative inventory, uses one memoized bounded live provenance verifier across official receipts and ownership projection, validates every allocation and lease record plus their identity, ownership, uniqueness, bidirectional one-to-one links, and matched effective expiry-derived state before proving zero active source allocation, and fails closed until ownership is W5 except for the two declared residuals.
+  user_visible_behavior:
+  - The recovery manifest contains only path, Git-status, digest, and runtime-identity metadata; it never copies source contents or credential values, and its output path cannot traverse a symlink, Windows junction, or other reparse point.
+  - Partial receipts, unavailable live provenance, an unretired historical owner, any malformed or orphan global allocation or lease record, a one-sided active/effective state or expiry mismatch, source fingerprint drift, or secret findings outside an exact path-rule-fingerprint fixture registry prevent a recovery-ready claim. A stable source anchor is append-written as blocked evidence; a double-sample drift is never persisted.
+  - The tool never allocates or releases a runtime, edits W5, stages paths, or injects delivered contract ids.
+current_chain:
+  nodes:
+  - id: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    role: Read-only W5 recovery manifest and ownership projection.
+  - id: service:scripts.workspace_ownership.inventory_workspace
+    role: Provenance-gated cross-worktree ownership inventory.
+  - id: service:scripts.generate_implementation_status.bounded_live_provenance
+    role: Shared deadline provenance verifier for external delivery receipts.
+  - id: state:worktree.w5-recovery-manifest
+    role: Git-common-dir evidence artifact outside the W5 source worktree.
+  - id: test:tests.test_w5_recovery_evidence
+    role: Regression coverage for receipt, verifier, fingerprint, fixture, and supersession fail-closed semantics.
+  edges:
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: service:scripts.workspace_ownership.inventory_workspace
+    relation: inventories
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: service:scripts.generate_implementation_status.bounded_live_provenance
+    relation: verifies
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: state:worktree.w5-recovery-manifest
+    relation: writes_evidence
+  - from: test:tests.test_w5_recovery_evidence
+    to: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    relation: verifies
+  evidence:
+  - scripts/workspace_ownership.py: inventory_workspace accepts only externally verified receipt resolution and validates CI-attested retirement records.
+  - scripts/generate_implementation_status.py: bounded_live_provenance shares one live deadline and the CLI memoizes each receipt verifier result.
+  - E:/agent/omni/.worktrees/omni-unified-ai-workbench-w5: current read-only status is 38 modified plus 33 untracked paths, no staged paths, with source fingerprint dad3f8158fac7143c08ba7f3916a8b3dd72a0a526c60322df11b3539d21635a8.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - service:scripts.w5_recovery_evidence.build_recovery_evidence
+  - service:scripts.workspace_ownership.inventory_workspace
+  - service:scripts.generate_implementation_status.bounded_live_provenance
+  database: []
+  data_sources:
+  - source:github.delivery-attestation
+  states_workflows:
+  - state:worktree.w5-recovery-manifest
+  - state:workspace.ownership.active_or_retired
+  tests:
+  - test:tests.test_w5_recovery_evidence
+  docs:
+  - docs/dev-changes/2026-08-04-w5-recovery-evidence/**
+planned_changes:
+- id: W5-RECOVERY-001
+  action: add
+  kind: read-only-recovery-evidence-tool
+  node_id: service:scripts.w5_recovery_evidence.build_recovery_evidence
+  paths:
+  - scripts/w5_recovery_evidence.py
+  upstream:
+  - service:scripts.workspace_ownership.inventory_workspace
+  - service:scripts.generate_implementation_status.bounded_live_provenance
+  downstream:
+  - state:worktree.w5-recovery-manifest
+  contract_change: compatible
+  verification_ids:
+  - W5-RECOVERY-VERIFY-001
+  - W5-RECOVERY-VERIFY-002
+- id: W5-RECOVERY-002
+  action: add
+  kind: recovery-evidence-regression-tests
+  node_id: test:tests.test_w5_recovery_evidence
+  paths:
+  - tests/test_w5_recovery_evidence.py
+  upstream:
+  - service:scripts.w5_recovery_evidence.build_recovery_evidence
+  downstream:
+  - test:tests.test_w5_recovery_evidence
+  contract_change: compatible
+  verification_ids:
+  - W5-RECOVERY-VERIFY-001
+  - W5-RECOVERY-VERIFY-002
+- id: W5-RECOVERY-003
+  action: add
+  kind: recovery-evidence-contract
+  node_id: state:worktree.w5-recovery-manifest
+  paths:
+  - docs/dev-changes/2026-08-04-w5-recovery-evidence/**
+  upstream:
+  - service:scripts.w5_recovery_evidence.build_recovery_evidence
+  downstream:
+  - state:workspace.ownership.active_or_retired
+  contract_change: compatible
+  verification_ids:
+  - W5-RECOVERY-VERIFY-002
+  - W5-RECOVERY-VERIFY-003
+  - W5-RECOVERY-VERIFY-004
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: No HTTP, IPC, MCP, or public API changes.
+  database:
+    status: not_applicable
+    strategy: No database or migration changes.
+  workflow:
+    status: not_applicable
+    strategy: Recovery evidence is written only to the common Git runtime directory, never into W5. The result is advisory and fail-closed; a separate owner must obtain a fresh W5 lease before writing product paths.
+  data_source:
+    status: not_applicable
+    strategy: GitHub CI attestation receipt schema and existing live verifier are reused without fallback to a local receipt claim.
+graph_acceptance:
+  required_edges:
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: service:scripts.workspace_ownership.inventory_workspace
+    relation: inventories
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: service:scripts.generate_implementation_status.bounded_live_provenance
+    relation: verifies
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: state:worktree.w5-recovery-manifest
+    relation: writes_evidence
+  allowed_unknowns: []
+  forbidden_orphans: []
+risks:
+- id: W5-RECOVERY-RISK-RECEIPT-BYPASS
+  description: A partial or local receipt list could hide an active historical owner.
+  mitigation: Derive the complete authoritative historical delivery ID inventory inside the tool, use one bounded verifier instance, and reject any missing or invalid registry proof.
+- id: W5-RECOVERY-RISK-FIXTURE-BYPASS
+  description: A broad secret allowlist could conceal a real credential in the dirty recovery scene.
+  mitigation: Disable the scanner's default allowlist for recovery, permit only exact test path-plus-rule-plus-fingerprint entries, and record raw versus allowlisted redacted findings; any other finding is blocking.
+- id: W5-RECOVERY-RISK-DRIFT
+  description: A stable status count alone can hide changed recovery content.
+  mitigation: Bind both status-manifest SHA-256 and runtime source fingerprint, and require the expected values before returning recovery_ready.
+out_of_scope:
+- No W5 Host, frontend, Knowledge Engine, Docker, runtime, lease, database, migration, secret, or product-file mutation.
+- No change to historical contracts, delivery receipts, GitHub workflow, S8-S10 retirement, or implementation-status source projection.
+- No claim that W5 is delivered, executable, or safe to run; this only prepares a read-only evidence handoff.
+rollback:
+  strategy: Revert the isolated evidence-tool commit. Existing external manifests remain immutable audit artifacts and W5 remains untouched.
+  data_recovery: No persistent business data is changed. The external manifest contains no source content or secret value and can be retained for recovery audit.
+verification_plan:
+- id: W5-RECOVERY-VERIFY-001
+  layer: unit
+  command: python -m pytest tests/test_w5_recovery_evidence.py -q
+  proves: Recovery evidence is fail-closed for a partial receipt set, a verifier bypass, a stale historical owner, source drift, and non-fixture secret findings; it persists a redacted external manifest only after all guards pass.
+  required: true
+- id: W5-RECOVERY-VERIFY-002
+  layer: governance-regression
+  command: python -m pytest tests/test_workspace_ownership.py tests/test_implementation_status.py tests/test_w5_recovery_evidence.py -q
+  proves: The recovery wrapper shares the existing provenance and retirement gates without weakening their source contracts.
+  required: true
+- id: W5-RECOVERY-VERIFY-003
+  layer: contract
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-04-w5-recovery-evidence/impact.yaml --completion docs/dev-changes/2026-08-04-w5-recovery-evidence/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  proves: The R2 candidate has exact scope, completed evidence, and graph closure before CI.
+  required: false
+- id: W5-RECOVERY-VERIFY-004
+  layer: staged-candidate-gate
+  command: python scripts/check_feature_contracts.py --mode index --base fc0192ef4e7c8c113d66d26cf6529ce35f5c49f1
+  proves: The exact staged candidate has one v3 owner for every protected path and cannot rely on worktree-only coverage.
+  required: true
+lock:
+  locked_at: '2026-08-04T18:19:35Z'
+  locked_by: codex-w5-recovery-evidence-terra
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.

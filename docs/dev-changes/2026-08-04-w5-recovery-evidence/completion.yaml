@@ -1,0 +1,107 @@
+schema_version: 3
+change_id: 2026-08-04-w5-recovery-evidence
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: W5-RECOVERY-ACT-001
+  planned_change_id: W5-RECOVERY-001
+  summary: Added a bounded, read-only W5 recovery-evidence verifier that append-writes only in the dedicated Git common-dir directory and rejects receipt, owner, supersession, globally malformed or unlinked allocation/lease, secret-hygiene, output-escape, and sample-drift failures.
+  paths:
+  - scripts/w5_recovery_evidence.py
+- id: W5-RECOVERY-ACT-002
+  planned_change_id: W5-RECOVERY-002
+  summary: Added regression coverage for stable blocked append-only anchors, authoritative receipt inventory, output and symlink escape, exact fixture fingerprints without implicit defaults, full global lease/allocation schema and linkage validation, historical-owner retirement, mid-run drift, and wrong unique owners.
+  paths:
+  - tests/test_w5_recovery_evidence.py
+- id: W5-RECOVERY-ACT-003
+  planned_change_id: W5-RECOVERY-003
+  summary: Recorded the recovery-evidence contract and its no-mutation, source-anchor, and CI-only delivery boundaries.
+  paths:
+  - docs/dev-changes/2026-08-04-w5-recovery-evidence/impact.yaml
+  - docs/dev-changes/2026-08-04-w5-recovery-evidence/completion.yaml
+contract_delta:
+- description: Stable blocked evidence is retained outside W5 when both source samples agree, instead of requiring every receipt and ownership guard to pass before an anchor can be written.
+  reason: A blocked recovery handoff still needs a durable, content-bound source reference; retaining it does not grant write authority or a recovery-ready state.
+  effect: Source-sample drift remains non-persistent, while all receipt, ownership, runtime-lease, supersession, and secret-hygiene failures continue to block recovery_ready.
+  accepted: true
+- description: The GRAPH_DIFF_READY strict validator is a post-transition check rather than a pre-transition required result.
+  reason: Its expected state is GRAPH_DIFF_READY, which does not exist until the state transition succeeds.
+  effect: The exact strict command is still executed and recorded before candidate handoff, without a circular transition requirement.
+  accepted: true
+- description: Sol P1 recovery-evidence hardening removes all caller approval seams and makes external manifests append-only.
+  reason: The initial candidate allowed a caller-selected receipt/residual expectation, tolerated ambiguous allocation absence, and permitted a custom output directory.
+  effect: Recovery now derives its authoritative receipt and residual sets internally, blocks unknown allocation state, uses exact fixture fingerprints without default policy inheritance, and only appends new common-dir records.
+  accepted: true
+- description: Sol final P1 requires full global allocation and lease validation before a source-worktree activity result is trusted.
+  reason: Selecting matching source rows first could silently ignore a missing worktree_id, malformed allocation, duplicate lease id, or orphan active record elsewhere in the shared runtime store.
+  effect: Every record now must satisfy schema, timestamp, state, uniqueness, and lease-to-allocation identity and ownership links; any violation blocks recovery rather than being filtered out.
+  accepted: true
+- description: Sol final P1 rejects Windows junction and other reparse-point output redirects beneath the Git common directory.
+  reason: Symlink-only checks do not reliably detect a Windows junction at .git/omni-runtime, which could redirect evidence outside its canonical audit location.
+  effect: Every common-dir output layer is checked as a canonical relative path and a non-reparse point before and after directory creation; a junction escape is regression-tested.
+  accepted: true
+- description: Sol final P1 requires every lease state to have exactly one linked allocation with matching raw state, effective expiry-derived state, and expiry value.
+  reason: An orphan released/stale lease and an expired active lease paired with an unexpired active allocation could otherwise bypass the active-only reverse check.
+  effect: Lease/allocation linkage is now bidirectional for all states; any orphan, raw/effective state mismatch, or expiry mismatch blocks recovery even when the source lease alone derives stale.
+  accepted: true
+verification_results:
+- id: W5-RECOVERY-VERIFY-001
+  command: python -m pytest tests/test_w5_recovery_evidence.py -q
+  status: passed
+  exit_code: 0
+  evidence: 17 passed in 13.67s; covers stable blocked append records, authoritative receipts, symlink and Windows-junction output escape, exact fixture fingerprints, global lease/allocation schema, all-state bidirectional linkage, raw/effective expiry-state mismatch, ownership and uniqueness violations, source drift, verifier, and wrong-owner guards.
+- id: W5-RECOVERY-VERIFY-002
+  command: python -m pytest tests/test_workspace_ownership.py tests/test_implementation_status.py tests/test_w5_recovery_evidence.py -q
+  status: passed
+  exit_code: 0
+  evidence: 75 tests, 0 failures, 0 errors, 0 skipped in 62.39s; JUnit evidence is outside the worktree at git-common-dir/omni-runtime/w5-recovery-evidence/governance-regression-pre-commit.xml. Fresh read-only allocation audit validated all 59 lease/allocation records with no W5 active lease.
+- id: W5-RECOVERY-VERIFY-003
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-04-w5-recovery-evidence/impact.yaml --completion docs/dev-changes/2026-08-04-w5-recovery-evidence/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  status: passed
+  exit_code: 0
+  evidence: Strict schema-v3 validation reported GRAPH_DIFF_READY with exact contract scope, required edges, actual-change mapping, and CI-only delivery status.
+- id: W5-RECOVERY-VERIFY-004
+  command: python scripts/check_feature_contracts.py --mode index --base fc0192ef4e7c8c113d66d26cf6529ce35f5c49f1
+  status: passed
+  exit_code: 0
+  evidence: All four candidate files were staged and the Git-derived index gate reported one protected file covered by this one delivery-ready v3 candidate.
+graph_diff:
+  status: clean
+  snapshot_before: git:fc0192ef4e7c8c113d66d26cf6529ce35f5c49f1
+  snapshot_after: worktree:codex/omni-unified-ai-workbench-w5-recovery-evidence:read-only-evidence
+  added_nodes:
+  - service:scripts.w5_recovery_evidence.build_recovery_evidence
+  - test:tests.test_w5_recovery_evidence
+  - state:worktree.w5-recovery-manifest
+  modified_nodes: []
+  removed_nodes: []
+  added_edges: []
+  removed_edges: []
+  required_edges:
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: service:scripts.workspace_ownership.inventory_workspace
+    relation: inventories
+    status: present
+    evidence: scripts/w5_recovery_evidence.py calls trusted retirement, active scope, and source-only ownership primitives.
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: service:scripts.generate_implementation_status.bounded_live_provenance
+    relation: verifies
+    status: present
+    evidence: scripts/w5_recovery_evidence.py creates one memoized bounded live verifier and passes it to explicit receipt verification.
+  - from: service:scripts.w5_recovery_evidence.build_recovery_evidence
+    to: state:worktree.w5-recovery-manifest
+    relation: writes_evidence
+    status: present
+    evidence: Stable source samples write a path-status-digest manifest under the git common-dir runtime; sample drift writes nothing.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: The isolated candidate changes only a new script, test, and contract directory; reverting its commit leaves the W5 source worktree and external evidence artifact untouched.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''
