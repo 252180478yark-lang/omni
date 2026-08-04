@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://omni.local/schemas/workbench-foundation.v1.schema.json",
   "title": "Omni Workbench Foundation v1",
-  "description": "Provider-neutral, path-safe shared contracts frozen by the G1 foundation gate.",
+  "description": "Provider-neutral, path-safe shared contracts frozen by G1 and clarified at G2. Context binding has three distinct layers: the accepted agent-session security anchor, the Host-owned current head, and the immutable snapshot/revision target pair frozen for each runtime operation.",
   "oneOf": [
     {"$ref": "#/$defs/WorkbenchContextSnapshot"},
     {"$ref": "#/$defs/FrontendAgentBinding"},
@@ -105,6 +105,7 @@
     },
     "FrontendAgentBinding": {
       "type": "object",
+      "description": "Projection of the Host-owned current context head for one logical session. Only the single Host writer may advance this head by compare-and-swap; the accepted agent-session security anchor and every existing operation target remain unchanged.",
       "additionalProperties": false,
       "required": [
         "schema_version",
@@ -120,9 +121,19 @@
       "properties": {
         "schema_version": {"const": 1},
         "session_id": {"$ref": "#/$defs/Identifier"},
-        "operation_id": {"oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]},
-        "context_snapshot_id": {"$ref": "#/$defs/Identifier"},
-        "context_revision": {"type": "integer", "minimum": 1},
+        "operation_id": {
+          "description": "Optional operation selected by the surface. Its frozen target is authoritative in RunOperationProjection and may differ from the Host current head after a later rebind.",
+          "oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]
+        },
+        "context_snapshot_id": {
+          "description": "Host-owned current context head. It is a projection, not mcp.agent_session_contracts.context_snapshot_id and not an existing operation target; only the Host single writer may replace it after a successful compare-and-swap.",
+          "$ref": "#/$defs/Identifier"
+        },
+        "context_revision": {
+          "description": "Monotonic compare-and-swap token paired with context_snapshot_id; a rebind supplies the expected snapshot and revision and advances to the canonical next revision.",
+          "type": "integer",
+          "minimum": 1
+        },
         "surface_ref": {"$ref": "#/$defs/Identifier"},
         "event_cursor": {"type": ["integer", "null"], "minimum": 0},
         "presentation_level": {"enum": ["summary", "development"]},
@@ -304,12 +315,12 @@
     },
     "RunOperationProjection": {
       "type": "object",
+      "description": "Projection of an existing runtime operation. Its context_snapshot_id plus context_revision form the immutable target pair selected from the Host current head when this operation started and never follow a later session rebind. A legacy operation may omit both fields or emit both explicit null; a new W5 operation emits both a non-null snapshot and a positive revision.",
       "additionalProperties": false,
       "required": [
         "schema_version",
         "operation_id",
         "session_id",
-        "context_snapshot_id",
         "attempt",
         "risk_level",
         "state",
@@ -322,7 +333,15 @@
         "schema_version": {"const": 1},
         "operation_id": {"$ref": "#/$defs/Identifier"},
         "session_id": {"oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]},
-        "context_snapshot_id": {"oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]},
+        "context_snapshot_id": {
+          "description": "Immutable per-operation target backed by mcp.runtime_executions.context_snapshot_id; omittable or nullable only together with context_revision for legacy operations and never retargeted from a later Host current head.",
+          "oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]
+        },
+        "context_revision": {
+          "description": "Immutable revision paired with context_snapshot_id. Legacy operations may omit both pair fields or emit both explicit null; every new W5 operation emits the positive revision persisted by its HostRun so restart recovery never borrows the session current revision.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
         "attempt": {"type": "integer", "minimum": 1},
         "risk_level": {"enum": ["R0", "R1", "R2", "R3"]},
         "state": {"enum": ["pending", "running", "paused", "awaiting_approval", "succeeded", "failed", "partial_failed", "cancelled", "unknown"]},
@@ -330,7 +349,31 @@
         "trace_id": {"oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]},
         "checkpoint": {"oneOf": [{"$ref": "#/$defs/Identifier"}, {"type": "null"}]},
         "updated_at": {"type": "string", "format": "date-time"}
-      }
+      },
+      "oneOf": [
+        {
+          "not": {
+            "anyOf": [
+              {"required": ["context_snapshot_id"]},
+              {"required": ["context_revision"]}
+            ]
+          }
+        },
+        {
+          "required": ["context_snapshot_id", "context_revision"],
+          "properties": {
+            "context_snapshot_id": {"type": "null"},
+            "context_revision": {"type": "null"}
+          }
+        },
+        {
+          "required": ["context_snapshot_id", "context_revision"],
+          "properties": {
+            "context_snapshot_id": {"$ref": "#/$defs/Identifier"},
+            "context_revision": {"type": "integer", "minimum": 1}
+          }
+        }
+      ]
     },
     "RunEventProjection": {
       "type": "object",

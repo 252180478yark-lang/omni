@@ -14,7 +14,7 @@ contracts:
 - name: FrontendAgentBinding
   owner: G1-foundation
   consumers: [W1, W3, W5]
-  rule: Surface changes retain session, operation, context revision, and cursor; object/task/permission changes require a new context revision.
+  rule: Surface changes retain session, operation, Host current-head revision, and cursor; object/task/permission changes advance only the Host-owned current head through single-writer CAS and never retarget the accepted session anchor or an existing operation.
 - name: ResolvedAgentProvider
   owner: G1-foundation
   consumers: [W5, W6]
@@ -34,7 +34,7 @@ contracts:
 - name: RunOperationProjection
   owner: G1-foundation
   consumers: [W3, W5]
-  rule: Maps existing runtime and approval truth sources; Host runs are attempts, not a second operation.
+  rule: 'Maps existing runtime and approval truth sources; context_snapshot_id plus context_revision is the frozen target pair selected when the operation starts. Raw legacy wire may omit both fields or emit both explicit null, and Pydantic/consumer normalization produces (None, None). Every new W5 operation requires both a non-null snapshot and positive persisted revision; any half-bound pair is rejected, and Host runs remain attempts rather than a second operation.'
 - name: RunEventProjection
   owner: G1-foundation
   consumers: [W3, W5]
@@ -47,6 +47,37 @@ contracts:
   owner: G1-foundation
   consumers: [W1, G2]
   rule: Slots are exactly assistant, blueprint, run-center, approval, and artifact-drawer.
+context_binding_semantics:
+  version: g2-v1
+  session_security_anchor:
+    authority: mcp.agent_session_contracts.context_snapshot_id
+    purpose: Provider-acceptance and security anchor for the logical session.
+    writer: Agent session provider-acceptance owner.
+    mutation: Immutable once non-null; provider acceptance rechecks and freezes the same value.
+    prohibited_use: Do not mutate this column to represent a later page or business-object rebind.
+  host_current_head:
+    authority: FrontendAgentBinding.context_snapshot_id+context_revision
+    purpose: Current canonical context revision for new work in the same logical session.
+    writer: Host single writer only; frontend and Knowledge Engine are requesters or projections, never co-writers.
+    mutation: Compare-and-swap requires expected context_snapshot_id and context_revision and advances only to the canonical next revision.
+    persistence: Host implementation detail; G2 adds no database column, table, or migration.
+  operation_frozen_target:
+    authority: mcp.runtime_executions.context_snapshot_id
+    projection: RunOperationProjection.context_snapshot_id
+    revision_projection: RunOperationProjection.context_revision
+    revision_source: W5 HostRun.context_revision
+    purpose: Snapshot and revision selected from the Host current head when one operation starts.
+    writer: Existing runtime execution writer at operation creation.
+    mutation: The snapshot/revision pair is immutable; resume, approval wait, retry, and recovery retain both original values.
+    legacy_rule: Pre-W5 operations may omit both context_snapshot_id and context_revision or emit both as explicit null; the Pydantic and consumer boundary normalizes an omitted pair to None and never borrows the session current revision.
+    new_w5_rule: Every new W5 operation requires non-null context_snapshot_id and positive context_revision from its persisted HostRun.
+  invariants:
+  - Advancing the Host current head never changes the accepted session security anchor.
+  - Advancing the Host current head never retargets an existing runtime execution.
+  - A FrontendAgentBinding.operation_id may select an older operation whose RunOperationProjection context differs from the current Host head.
+  - Every new operation freezes exactly the Host snapshot and revision accepted at its start boundary.
+  - Restart projection never combines an operation snapshot with a different session revision.
+  - 'RunOperationProjection context_snapshot_id and context_revision are an iff pair: both absent or both null for legacy, or both non-null for a new W5 operation.'
 write_ownership:
   foundation:
   - config/schemas/workbench-foundation.v1.schema.json

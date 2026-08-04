@@ -25,22 +25,26 @@ import {
   WORKBENCH_RISK_LEVELS,
   WORKBENCH_RUNNER_MODES,
   type FrontendAgentBinding,
+  type RunOperationProjection,
   type WorkbenchContextSnapshot,
   type WorkbenchContractName,
 } from '@/lib/workbench/contracts'
 
 interface JsonSchemaNode {
   readonly $ref?: string
+  readonly description?: string
   readonly type?: string | readonly string[]
   readonly const?: unknown
   readonly enum?: readonly unknown[]
   readonly pattern?: string
+  readonly minimum?: number
   readonly properties?: Readonly<Record<string, JsonSchemaNode>>
   readonly required?: readonly string[]
   readonly additionalProperties?: boolean
   readonly items?: JsonSchemaNode
   readonly anyOf?: readonly JsonSchemaNode[]
   readonly oneOf?: readonly JsonSchemaNode[]
+  readonly not?: JsonSchemaNode
 }
 
 interface WorkbenchFoundationSchema extends JsonSchemaNode {
@@ -52,12 +56,21 @@ const schemaCandidates = [
   resolve(process.cwd(), '../config/schemas/workbench-foundation.v1.schema.json'),
 ]
 const schemaPath = schemaCandidates.find(existsSync)
+const contractSourceCandidates = [
+  resolve(process.cwd(), 'frontend/src/lib/workbench/contracts.ts'),
+  resolve(process.cwd(), 'src/lib/workbench/contracts.ts'),
+]
+const contractSourcePath = contractSourceCandidates.find(existsSync)
 
 if (!schemaPath) {
   throw new Error(`workbench foundation schema not found from ${process.cwd()}`)
 }
+if (!contractSourcePath) {
+  throw new Error(`workbench TypeScript contract not found from ${process.cwd()}`)
+}
 
 const schema = JSON.parse(readFileSync(schemaPath, 'utf8')) as WorkbenchFoundationSchema
+const contractSource = readFileSync(contractSourcePath, 'utf8')
 
 function contractDefinition(name: WorkbenchContractName): JsonSchemaNode {
   const definition = schema.$defs[name]
@@ -117,13 +130,13 @@ describe('workbench foundation TypeScript mirror', () => {
     for (const name of WORKBENCH_CONTRACT_NAMES) {
       const definition = contractDefinition(name)
       const manifest = WORKBENCH_CONTRACT_FIELDS[name]
-      const fields = [...manifest.required]
+      const fields = [...manifest.required, ...manifest.optional]
 
       expect(definition.type).toBe('object')
       expect(definition.additionalProperties).toBe(false)
-      expect([...(definition.required || [])].sort()).toEqual([...fields].sort())
+      expect([...(definition.required || [])].sort()).toEqual([...manifest.required].sort())
       expect(Object.keys(definition.properties || {}).sort()).toEqual([...fields].sort())
-      expect(manifest.optional).toEqual([])
+      expect(new Set(fields).size).toBe(fields.length)
       expect(fields.every((field) => /^[a-z][a-z0-9_]*$/.test(field))).toBe(true)
       expect(enumValues(contractProperty(name, 'schema_version'))).toEqual([
         WORKBENCH_CONTRACT_VERSION,
@@ -271,5 +284,118 @@ describe('workbench foundation TypeScript mirror', () => {
     expect(reboundContext.snapshot_id).not.toBe(originalContext.snapshot_id)
     expect(reboundContext.revision).toBe(2)
     expect(originalContext.sku_ref).toBe('sku-a')
+  })
+
+  it('separates the accepted session anchor, Host current-head CAS, and frozen operation target', () => {
+    const binding = contractDefinition('FrontendAgentBinding')
+    const operation = contractDefinition('RunOperationProjection')
+    const bindingContext = binding.properties?.context_snapshot_id
+    const bindingRevision = binding.properties?.context_revision
+    const selectedOperation = binding.properties?.operation_id
+    const operationContext = operation.properties?.context_snapshot_id
+    const operationRevision = operation.properties?.context_revision
+
+    expect(schema.description).toContain('accepted agent-session security anchor')
+    expect(schema.description).toContain('Host-owned current head')
+    expect(schema.description).toContain('immutable snapshot/revision target pair')
+    expect(binding.description).toContain('Host-owned current context head')
+    expect(bindingContext?.description).toContain('only the Host single writer')
+    expect(bindingContext?.description).toContain('successful compare-and-swap')
+    expect(bindingRevision?.description).toContain('expected snapshot and revision')
+    expect(selectedOperation?.description).toContain('may differ from the Host current head')
+    expect(operation.description).toContain('immutable target pair selected')
+    expect(operationContext?.description).toContain('mcp.runtime_executions.context_snapshot_id')
+    expect(operationContext?.description).toContain('never retargeted')
+    expect(operation.required).not.toContain('context_snapshot_id')
+    expect(operation.required).not.toContain('context_revision')
+    expect(operationRevision?.type).toEqual(['integer', 'null'])
+    expect(operationRevision?.minimum).toBe(1)
+    expect(operationRevision?.description).toContain('Legacy operations may omit both pair fields')
+    expect(operationRevision?.description).toContain('new W5 operation')
+    expect(operation.oneOf).toEqual([
+      {
+        not: {
+          anyOf: [
+            { required: ['context_snapshot_id'] },
+            { required: ['context_revision'] },
+          ],
+        },
+      },
+      {
+        required: ['context_snapshot_id', 'context_revision'],
+        properties: {
+          context_snapshot_id: { type: 'null' },
+          context_revision: { type: 'null' },
+        },
+      },
+      {
+        required: ['context_snapshot_id', 'context_revision'],
+        properties: {
+          context_snapshot_id: { $ref: '#/$defs/Identifier' },
+          context_revision: { type: 'integer', minimum: 1 },
+        },
+      },
+    ])
+
+    expect(contractSource).toContain('Projection of the Host-owned current context head')
+    expect(contractSource).toContain('accepted agent-session security anchor')
+    expect(contractSource).toContain('Host current head, replaced only by the Host single writer')
+    expect(contractSource).toContain('legacy omits both fields or uses explicit null')
+    expect(contractSource).toContain('W5 is a non-null pair')
+
+    const legacyOperation: RunOperationProjection = {
+      schema_version: 1,
+      operation_id: 'operation:legacy',
+      session_id: null,
+      context_snapshot_id: null,
+      context_revision: null,
+      attempt: 1,
+      risk_level: 'R0',
+      state: 'unknown',
+      idempotency_key_hash: null,
+      trace_id: null,
+      checkpoint: null,
+      updated_at: '2026-08-02T00:00:00Z',
+    }
+    const restartedW5Operation: RunOperationProjection = {
+      ...legacyOperation,
+      operation_id: 'operation:w5-revision-two',
+      session_id: 'session:w5',
+      context_snapshot_id: 'context:w5-revision-two',
+      context_revision: 2,
+      state: 'running',
+    }
+    const missingPairLegacyOperation: RunOperationProjection = {
+      schema_version: 1,
+      operation_id: 'operation:legacy-missing-pair',
+      session_id: null,
+      attempt: 1,
+      risk_level: 'R0',
+      state: 'unknown',
+      idempotency_key_hash: null,
+      trace_id: null,
+      checkpoint: null,
+      updated_at: '2026-08-02T00:00:00Z',
+    }
+
+    expect(legacyOperation.context_revision).toBeNull()
+    expect([
+      restartedW5Operation.context_snapshot_id,
+      restartedW5Operation.context_revision,
+    ]).toEqual(['context:w5-revision-two', 2])
+    expect(missingPairLegacyOperation).not.toHaveProperty('context_snapshot_id')
+    expect(missingPairLegacyOperation).not.toHaveProperty('context_revision')
+
+    // @ts-expect-error RunOperationProjection forbids a snapshot without its revision.
+    const snapshotOnly: RunOperationProjection = {
+      ...legacyOperation,
+      context_snapshot_id: 'context:partial',
+    }
+    // @ts-expect-error RunOperationProjection forbids a revision without its snapshot.
+    const revisionOnly: RunOperationProjection = {
+      ...legacyOperation,
+      context_revision: 2,
+    }
+    expect([snapshotOnly, revisionOnly]).toHaveLength(2)
   })
 })

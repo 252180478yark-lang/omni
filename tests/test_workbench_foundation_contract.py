@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 
@@ -17,6 +18,7 @@ sys.path.insert(0, str(KNOWLEDGE_ENGINE_ROOT))
 
 from app.schemas.workbench_foundation import (  # noqa: E402
     AgentArtifactProjection,
+    FrontendAgentBinding,
     OpaqueProjectIdentity,
     ResolvedAgentProvider,
     RunEventProjection,
@@ -30,6 +32,13 @@ from app.schemas.workbench_foundation import (  # noqa: E402
 
 SCHEMA_PATH = REPOSITORY_ROOT / "config" / "schemas" / "workbench-foundation.v1.schema.json"
 MIGRATION_PATH = REPOSITORY_ROOT / "migrations" / "104_workbench_context_and_agent_binding.sql"
+CONSUMER_MATRIX_PATH = (
+    REPOSITORY_ROOT
+    / "docs"
+    / "dev-changes"
+    / "2026-08-02-omni-unified-ai-workbench-g1-foundation"
+    / "consumer-matrix.yaml"
+)
 CONTRACT_NAMES = (
     "WorkbenchContextSnapshot",
     "FrontendAgentBinding",
@@ -79,10 +88,17 @@ def test_json_schema_is_draft_2020_12_and_matches_every_python_model_field() -> 
         assert definition["type"] == "object"
         assert definition["additionalProperties"] is False
         assert definition["properties"]["schema_version"] == {"const": 1}
-        assert schema_fields == schema_required == python_fields
+        assert schema_fields == python_fields
+        assert schema_required <= schema_fields
+        expected_optional = (
+            {"context_snapshot_id", "context_revision"}
+            if contract_name == "RunOperationProjection"
+            else set()
+        )
+        assert schema_fields - schema_required == expected_optional
         assert WORKBENCH_CONTRACT_FIELDS[contract_name] == {
             "required": frozenset(schema_required),
-            "optional": frozenset(),
+            "optional": frozenset(expected_optional),
         }
         assert all(re.fullmatch(r"[a-z][a-z0-9_]*", field_name) for field_name in schema_fields)
 
@@ -96,6 +112,119 @@ def test_surface_ref_is_current_binding_while_origin_surface_is_context_provenan
     assert "surface_ref" not in context_fields
     assert "surface_ref" in binding_fields
     assert "origin_surface_ref" not in binding_fields
+
+
+def test_context_binding_semantics_separate_session_anchor_host_head_and_operation_target() -> None:
+    schema = _schema()
+    definitions = schema["$defs"]
+    binding = definitions["FrontendAgentBinding"]
+    operation = definitions["RunOperationProjection"]
+    python_binding = FrontendAgentBinding.model_json_schema()
+    python_operation = RunOperationProjection.model_json_schema()
+    matrix = yaml.safe_load(CONSUMER_MATRIX_PATH.read_text(encoding="utf-8"))
+    semantics = matrix["context_binding_semantics"]
+    operation_contract = next(
+        contract for contract in matrix["contracts"] if contract["name"] == "RunOperationProjection"
+    )
+
+    assert "accepted agent-session security anchor" in schema["description"]
+    assert "Host-owned current head" in schema["description"]
+    assert "immutable snapshot/revision target pair" in schema["description"]
+
+    assert "Host-owned current context head" in binding["description"]
+    assert "Host-owned current context head" in binding["properties"]["context_snapshot_id"]["description"]
+    assert "successful compare-and-swap" in binding["properties"]["context_snapshot_id"]["description"]
+    assert "expected snapshot and revision" in binding["properties"]["context_revision"]["description"]
+    assert "may differ" in binding["properties"]["operation_id"]["description"]
+
+    assert "immutable target pair selected" in operation["description"]
+    assert "mcp.runtime_executions.context_snapshot_id" in operation["properties"]["context_snapshot_id"]["description"]
+    assert "never retargeted" in operation["properties"]["context_snapshot_id"]["description"]
+    assert "context_snapshot_id" not in operation["required"]
+    assert "context_revision" not in operation["required"]
+    assert operation["properties"]["context_revision"]["type"] == ["integer", "null"]
+    assert operation["properties"]["context_revision"]["minimum"] == 1
+    assert operation["oneOf"] == [
+        {
+            "not": {
+                "anyOf": [
+                    {"required": ["context_snapshot_id"]},
+                    {"required": ["context_revision"]},
+                ]
+            }
+        },
+        {
+            "required": ["context_snapshot_id", "context_revision"],
+            "properties": {
+                "context_snapshot_id": {"type": "null"},
+                "context_revision": {"type": "null"},
+            }
+        },
+        {
+            "required": ["context_snapshot_id", "context_revision"],
+            "properties": {
+                "context_snapshot_id": {"$ref": "#/$defs/Identifier"},
+                "context_revision": {"type": "integer", "minimum": 1},
+            }
+        },
+    ]
+    assert "Legacy operations may omit both pair fields" in operation["properties"]["context_revision"]["description"]
+    assert "new W5 operation" in operation["properties"]["context_revision"]["description"]
+
+    assert "accepted agent-session security anchor" in python_binding["description"]
+    assert "Host-owned current context head" in python_binding["properties"]["context_snapshot_id"]["description"]
+    assert "expected snapshot and revision" in python_binding["properties"]["context_revision"]["description"]
+    assert "snapshot/revision pair frozen" in python_operation["description"]
+    assert "mcp.runtime_executions.context_snapshot_id" in python_operation["properties"]["context_snapshot_id"]["description"]
+    python_operation_revision = python_operation["properties"]["context_revision"]
+    assert {"minimum": 1, "type": "integer"} in python_operation_revision["anyOf"]
+    assert {"type": "null"} in python_operation_revision["anyOf"]
+    assert "legacy omission normalizes to None" in python_operation_revision["description"]
+
+    assert "Raw legacy wire may omit both fields or emit both explicit null" in operation_contract["rule"]
+    assert "normalization produces (None, None)" in operation_contract["rule"]
+    assert "new W5 operation requires both a non-null snapshot and positive persisted revision" in operation_contract["rule"]
+    assert "half-bound pair is rejected" in operation_contract["rule"]
+
+    assert semantics["session_security_anchor"] == {
+        "authority": "mcp.agent_session_contracts.context_snapshot_id",
+        "purpose": "Provider-acceptance and security anchor for the logical session.",
+        "writer": "Agent session provider-acceptance owner.",
+        "mutation": "Immutable once non-null; provider acceptance rechecks and freezes the same value.",
+        "prohibited_use": "Do not mutate this column to represent a later page or business-object rebind.",
+    }
+    assert semantics["host_current_head"]["authority"] == (
+        "FrontendAgentBinding.context_snapshot_id+context_revision"
+    )
+    assert semantics["host_current_head"]["writer"].startswith("Host single writer only")
+    assert "expected context_snapshot_id and context_revision" in semantics["host_current_head"]["mutation"]
+    assert semantics["operation_frozen_target"]["authority"] == (
+        "mcp.runtime_executions.context_snapshot_id"
+    )
+    assert semantics["operation_frozen_target"]["projection"] == (
+        "RunOperationProjection.context_snapshot_id"
+    )
+    assert semantics["operation_frozen_target"]["revision_projection"] == (
+        "RunOperationProjection.context_revision"
+    )
+    assert (
+        "may omit both context_snapshot_id and context_revision or emit both as explicit null"
+        in semantics["operation_frozen_target"]["legacy_rule"]
+    )
+    assert any(
+        "context_snapshot_id and context_revision" in invariant
+        and "both absent or both null" in invariant
+        and "both non-null" in invariant
+        for invariant in semantics["invariants"]
+    )
+    assert semantics["operation_frozen_target"]["revision_source"] == "W5 HostRun.context_revision"
+    assert "retain both original values" in semantics["operation_frozen_target"]["mutation"]
+    assert "may omit both context_snapshot_id and context_revision" in semantics["operation_frozen_target"]["legacy_rule"]
+    assert "positive context_revision" in semantics["operation_frozen_target"]["new_w5_rule"]
+
+    migration = MIGRATION_PATH.read_text(encoding="utf-8")
+    assert "agent session context snapshot binding is immutable" in migration
+    assert "runtime execution context snapshot binding is immutable" in migration
 
 
 def test_identifier_rejects_raw_absolute_paths_but_keeps_namespaced_refs() -> None:
@@ -175,6 +304,7 @@ def test_standard_rfc3339_strings_parse_for_all_four_request_datetime_fields() -
             "operation_id": "operation:one",
             "session_id": "session:one",
             "context_snapshot_id": "context:snapshot-one",
+            "context_revision": 1,
             "attempt": 1,
             "risk_level": "R2",
             "state": "running",
@@ -221,6 +351,7 @@ def test_datetime_parsing_keeps_timezone_and_other_scalar_validation_strict() ->
         "operation_id": "operation:one",
         "session_id": None,
         "context_snapshot_id": None,
+        "context_revision": None,
         "attempt": "1",
         "risk_level": "R0",
         "state": "pending",
@@ -533,12 +664,13 @@ def test_artifact_uses_prd_safe_diff_summary_name() -> None:
     assert "safe_summary" not in AgentArtifactProjection.model_fields
 
 
-def test_legacy_operation_requires_nullable_idempotency_hash_key() -> None:
+def test_operation_accepts_legacy_missing_or_null_pair_and_rejects_half_bindings() -> None:
     payload = {
         "schema_version": 1,
         "operation_id": "operation:legacy",
         "session_id": None,
         "context_snapshot_id": None,
+        "context_revision": None,
         "attempt": 1,
         "risk_level": "R0",
         "state": "unknown",
@@ -548,7 +680,39 @@ def test_legacy_operation_requires_nullable_idempotency_hash_key() -> None:
         "updated_at": "2026-08-02T10:00:00Z",
     }
     operation = RunOperationProjection.model_validate(payload)
+    assert operation.context_revision is None
     assert operation.idempotency_key_hash is None
+
+    missing_pair = dict(payload)
+    missing_pair.pop("context_snapshot_id")
+    missing_pair.pop("context_revision")
+    normalized_legacy = RunOperationProjection.model_validate(missing_pair)
+    assert (normalized_legacy.context_snapshot_id, normalized_legacy.context_revision) == (None, None)
+
+    new_operation = RunOperationProjection.model_validate(
+        {
+            **payload,
+            "operation_id": "operation:w5-new",
+            "session_id": "session:w5-new",
+            "context_snapshot_id": "context:w5-revision-two",
+            "context_revision": 2,
+            "state": "running",
+        }
+    )
+    assert (new_operation.context_snapshot_id, new_operation.context_revision) == (
+        "context:w5-revision-two",
+        2,
+    )
+
+    with pytest.raises(ValidationError, match="both omitted/null.*both non-null"):
+        RunOperationProjection.model_validate(
+            {**missing_pair, "context_snapshot_id": "context:partial"}
+        )
+    with pytest.raises(ValidationError, match="both omitted/null.*both non-null"):
+        RunOperationProjection.model_validate({**missing_pair, "context_revision": 2})
+
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        RunOperationProjection.model_validate({**payload, "context_revision": 0})
 
     payload.pop("idempotency_key_hash")
     with pytest.raises(ValidationError, match="idempotency_key_hash"):

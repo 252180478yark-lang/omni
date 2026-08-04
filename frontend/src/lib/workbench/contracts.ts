@@ -108,11 +108,19 @@ export interface WorkbenchContextSnapshot {
   readonly created_at: string
 }
 
+/**
+ * Projection of the Host-owned current context head for one logical session.
+ * Only the Host single writer advances this head by compare-and-swap; the
+ * accepted agent-session security anchor and existing operation targets stay frozen.
+ */
 export interface FrontendAgentBinding {
   readonly schema_version: typeof WORKBENCH_CONTRACT_VERSION
   readonly session_id: string
+  /** Its frozen RunOperationProjection target may differ after a later current-head rebind. */
   readonly operation_id: string | null
+  /** Host current head, replaced only by the Host single writer after a successful CAS. */
   readonly context_snapshot_id: string
+  /** Monotonic CAS token paired with context_snapshot_id and advanced to the canonical next revision. */
   readonly context_revision: number
   readonly surface_ref: string
   readonly event_cursor: number | null
@@ -166,11 +174,26 @@ export interface AgentArtifactProjection {
   readonly source_ref: string
 }
 
-export interface RunOperationProjection {
+/** Complete frozen operation binding: legacy omits both fields or uses explicit null; W5 is a non-null pair. */
+export type RunOperationContextBinding =
+  | {
+      readonly context_snapshot_id?: never
+      readonly context_revision?: never
+    }
+  | {
+      readonly context_snapshot_id: null
+      readonly context_revision: null
+    }
+  | {
+      readonly context_snapshot_id: string
+      readonly context_revision: number
+    }
+
+/** Existing runtime operation whose frozen snapshot/revision pair never follows a later rebind. */
+export type RunOperationProjection = Readonly<{
   readonly schema_version: typeof WORKBENCH_CONTRACT_VERSION
   readonly operation_id: string
   readonly session_id: string | null
-  readonly context_snapshot_id: string | null
   readonly attempt: number
   readonly risk_level: WorkbenchRiskLevel
   readonly state: WorkbenchOperationState
@@ -178,7 +201,7 @@ export interface RunOperationProjection {
   readonly trace_id: string | null
   readonly checkpoint: string | null
   readonly updated_at: string
-}
+}> & RunOperationContextBinding
 
 export interface RunEventProjection {
   readonly schema_version: typeof WORKBENCH_CONTRACT_VERSION
@@ -306,7 +329,6 @@ const WORKBENCH_CONTRACT_REQUIRED_FIELDS = {
     'schema_version',
     'operation_id',
     'session_id',
-    'context_snapshot_id',
     'attempt',
     'risk_level',
     'state',
@@ -349,10 +371,16 @@ const WORKBENCH_CONTRACT_REQUIRED_FIELDS = {
   ],
 } as const satisfies Record<WorkbenchContractName, readonly string[]>
 
+const WORKBENCH_CONTRACT_OPTIONAL_FIELDS: Partial<
+  Record<WorkbenchContractName, readonly string[]>
+> = {
+  RunOperationProjection: ['context_snapshot_id', 'context_revision'],
+}
+
 export type WorkbenchContractFieldManifest = {
   readonly [Name in WorkbenchContractName]: {
     readonly required: (typeof WORKBENCH_CONTRACT_REQUIRED_FIELDS)[Name]
-    readonly optional: readonly []
+    readonly optional: readonly string[]
   }
 }
 
@@ -360,6 +388,9 @@ export type WorkbenchContractFieldManifest = {
 export const WORKBENCH_CONTRACT_FIELDS = Object.fromEntries(
   WORKBENCH_CONTRACT_NAMES.map((name) => [
     name,
-    { required: WORKBENCH_CONTRACT_REQUIRED_FIELDS[name], optional: [] as const },
+    {
+      required: WORKBENCH_CONTRACT_REQUIRED_FIELDS[name],
+      optional: WORKBENCH_CONTRACT_OPTIONAL_FIELDS[name] ?? [],
+    },
   ]),
 ) as WorkbenchContractFieldManifest

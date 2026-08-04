@@ -158,11 +158,35 @@ class WorkbenchContextSnapshot(FrozenStrictWireModel):
 
 
 class FrontendAgentBinding(FrozenStrictWireModel):
+    """Host current-head projection kept separate from the accepted agent-session security anchor.
+
+    Only the Host single writer advances this head by compare-and-swap.
+    """
+
     schema_version: Literal[1]
     session_id: str = Field(pattern=IDENTIFIER)
-    operation_id: str | None = Field(pattern=IDENTIFIER)
-    context_snapshot_id: str = Field(pattern=IDENTIFIER)
-    context_revision: int = Field(ge=1)
+    operation_id: str | None = Field(
+        pattern=IDENTIFIER,
+        description=(
+            "Optional surface-selected operation; its frozen RunOperationProjection target may "
+            "differ from the Host current head after a later rebind."
+        ),
+    )
+    context_snapshot_id: str = Field(
+        pattern=IDENTIFIER,
+        description=(
+            "Host-owned current context head; it is neither the accepted agent-session security "
+            "anchor nor an existing operation target, and only the Host single writer may replace "
+            "it after a successful compare-and-swap."
+        ),
+    )
+    context_revision: int = Field(
+        ge=1,
+        description=(
+            "Monotonic compare-and-swap token paired with context_snapshot_id; rebind supplies the "
+            "expected snapshot and revision and advances to the canonical next revision."
+        ),
+    )
     surface_ref: str = Field(pattern=IDENTIFIER)
     event_cursor: int | None = Field(ge=0)
     presentation_level: Literal["summary", "development"]
@@ -289,10 +313,27 @@ class AgentArtifactProjection(FrozenStrictWireModel):
 
 
 class RunOperationProjection(FrozenStrictWireModel):
+    """Existing operation projection with a snapshot/revision pair frozen across rebinds, legacy-normalized or complete W5."""
+
     schema_version: Literal[1]
     operation_id: str = Field(pattern=IDENTIFIER)
     session_id: str | None = Field(pattern=IDENTIFIER)
-    context_snapshot_id: str | None = Field(pattern=IDENTIFIER)
+    context_snapshot_id: str | None = Field(
+        default=None,
+        pattern=IDENTIFIER,
+        description=(
+            "Immutable per-operation target backed by mcp.runtime_executions.context_snapshot_id; "
+            "a legacy omission normalizes to None, and the value is never retargeted from a later Host current head."
+        ),
+    )
+    context_revision: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Immutable revision paired with context_snapshot_id; a legacy omission normalizes to "
+            "None, while every new W5 operation emits the positive revision persisted by HostRun."
+        ),
+    )
     attempt: int = Field(ge=1)
     risk_level: Literal["R0", "R1", "R2", "R3"]
     state: Literal[
@@ -315,6 +356,15 @@ class RunOperationProjection(FrozenStrictWireModel):
     @classmethod
     def updated_at_is_utc(cls, value: datetime) -> datetime:
         return _as_utc(value, field_name="updated_at")
+
+    @model_validator(mode="after")
+    def frozen_context_binding_is_complete(self) -> "RunOperationProjection":
+        if (self.context_snapshot_id is None) != (self.context_revision is None):
+            raise ValueError(
+                "context_snapshot_id and context_revision must be both omitted/null for legacy "
+                "operations or both non-null for new W5 operations"
+            )
+        return self
 
 
 class RunEventProjection(FrozenStrictWireModel):
