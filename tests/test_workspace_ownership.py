@@ -529,7 +529,7 @@ def test_discovered_copy_does_not_claim_paths_or_create_owner_ambiguity(
     ]
 
 
-def test_preverified_delivery_removes_contract_from_active_ownership(
+def test_only_explicit_trusted_provenance_removes_contract_from_active_ownership(
     tmp_path: Path, monkeypatch
 ) -> None:
     repo = _repo(tmp_path)
@@ -545,17 +545,105 @@ def test_preverified_delivery_removes_contract_from_active_ownership(
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(ownership, "delivered_contracts", lambda *_args, **_kwargs: {})
+    verifier = object()
+    seen: list[object] = []
+
+    def unresolved(*_args, provenance_verifier=None, **_kwargs):
+        seen.append(provenance_verifier)
+        return {}
+
+    monkeypatch.setattr(ownership, "delivered_contracts", unresolved)
 
     report = ownership.inventory_workspace(
         repo,
         include_primary=False,
-        delivered_contract_ids={"change-a"},
+        provenance_verifier=verifier,
         secret_scope="changed",
     )
 
-    assert all(item["change_id"] != "change-a" for item in report["active_contracts"])
-    assert report["delivered_contracts"][0]["change_id"] == "change-a"
+    assert seen == [verifier]
+    assert any(item["change_id"] == "change-a" for item in report["active_contracts"])
+    assert report["delivered_contracts"] == []
+
+    def trusted(*_args, provenance_verifier=None, **_kwargs):
+        assert provenance_verifier is verifier
+        return {"change-a": {"change_id": "change-a", "valid": True}}
+
+    monkeypatch.setattr(ownership, "delivered_contracts", trusted)
+    verified = ownership.inventory_workspace(
+        repo,
+        include_primary=False,
+        provenance_verifier=verifier,
+        secret_scope="changed",
+    )
+    assert all(item["change_id"] != "change-a" for item in verified["active_contracts"])
+    assert verified["delivered_contracts"][0]["change_id"] == "change-a"
+
+
+def test_delivery_resolution_receives_the_explicit_provenance_verifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    verifier = object()
+    seen: list[object] = []
+
+    def resolve(_root: Path, _paths, *, provenance_verifier=None):
+        seen.append(provenance_verifier)
+        return {}
+
+    monkeypatch.setattr(
+        ownership,
+        "_load_delivery_resolver",
+        lambda _root: type("Resolver", (), {"resolve_delivered_contracts": staticmethod(resolve)}),
+    )
+
+    assert ownership.delivered_contracts(
+        repo,
+        [repo / "missing-receipt.json"],
+        provenance_verifier=verifier,
+    ) == {}
+    assert seen == [verifier]
+
+
+@pytest.mark.parametrize("malformed", [False, None, [], {"valid": True, "reasons": None}])
+def test_inventory_keeps_contract_active_when_provenance_is_malformed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, malformed: object
+) -> None:
+    repo = _repo(tmp_path)
+    change_id = "change-a"
+    contract = repo / "docs" / "dev-changes" / change_id / "impact.yaml"
+    contract.parent.mkdir(parents=True)
+    contract.write_text(
+        yaml.safe_dump(
+            {
+                "change_id": change_id,
+                "state": "GRAPH_DIFF_READY",
+                "planned_changes": [{"paths": ["services/a/**"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    receipt = repo / "receipt.json"
+    receipt.write_text(json.dumps({"change_id": change_id}), encoding="utf-8")
+    resolver_spec = importlib.util.spec_from_file_location(
+        "omni_delivery_resolver_fixture", ROOT / "scripts" / "generate_implementation_status.py"
+    )
+    assert resolver_spec is not None and resolver_spec.loader is not None
+    resolver = importlib.util.module_from_spec(resolver_spec)
+    sys.modules[resolver_spec.name] = resolver
+    resolver_spec.loader.exec_module(resolver)
+    monkeypatch.setattr(ownership, "_load_delivery_resolver", lambda _root: resolver)
+
+    report = ownership.inventory_workspace(
+        repo,
+        include_primary=False,
+        attestation_paths=[receipt],
+        provenance_verifier=lambda *_args: malformed,
+        secret_scope="changed",
+    )
+
+    assert report["delivered_contracts"] == []
+    assert any(item["change_id"] == change_id for item in report["active_contracts"])
 
 
 def test_foreign_active_lease_blocks_owned_dirty_path(
@@ -588,7 +676,11 @@ def test_foreign_active_lease_blocks_owned_dirty_path(
         "state": "active",
         "effective_state": "active",
     }
-    monkeypatch.setattr(ownership, "delivered_contracts", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        ownership,
+        "delivered_contracts",
+        lambda *_args, **_kwargs: {"change-a": {"change_id": "change-a", "valid": True}},
+    )
     monkeypatch.setattr(
         ownership, "_runtime_lease_inventory", lambda _root: ((foreign,), (foreign,))
     )
@@ -598,7 +690,7 @@ def test_foreign_active_lease_blocks_owned_dirty_path(
     )
 
     fact = next(item for item in report["paths"] if item["path"] == "services/a/app.py")
-    assert fact["ownership"] == "active_change"
+    assert fact["ownership"] == "unassigned"
     assert fact["lease_conflict"] is True
     assert fact["lease_owners"] == ("change-b@agent-b",)
     assert report["counts"]["lease_conflict"] == 1

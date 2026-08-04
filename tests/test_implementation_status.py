@@ -8,6 +8,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -124,6 +125,94 @@ def test_historical_complete_contracts_remain_compatible_without_v3_receipts() -
     assert status._contract_status("COMPLETE", None, schema_version=3) == "UNKNOWN"
 
 
+def test_collect_s0_evidence_reuses_the_exact_provenance_verifier_for_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    verifier = object()
+    seen: list[object] = []
+
+    def inventory(_root: Path, **kwargs):
+        seen.append(kwargs.get("provenance_verifier"))
+        return {
+            "secret_scan": {"status": "passed", "finding_count": 0},
+            "counts": {},
+        }
+
+    monkeypatch.setattr(
+        status,
+        "_load_ownership_scanner",
+        lambda _root: SimpleNamespace(inventory_workspace=inventory),
+    )
+
+    evidence = status.collect_s0_evidence(
+        tmp_path,
+        attestation_paths=[tmp_path / "receipt.json"],
+        provenance_verifier=verifier,
+        migration_baseline={"status": "ready"},
+    )
+
+    assert seen == [verifier]
+    assert evidence["ownership"]["status"] == "passed"
+
+
+@pytest.mark.parametrize(
+    ("result", "reason"),
+    [
+        (False, "trusted_provenance_verifier_invalid"),
+        (None, "trusted_provenance_verifier_invalid"),
+        ([], "trusted_provenance_verifier_invalid"),
+        ({"valid": False, "reasons": []}, "trusted_provenance_verifier_invalid"),
+        ({"valid": False, "reasons": ["declared-false"]}, "trusted_provenance_verifier_invalid"),
+        ({"valid": True, "reasons": None}, "trusted_provenance_verifier_invalid"),
+        ({"valid": False, "reasons": 7}, "trusted_provenance_verifier_invalid"),
+        ({"valid": False, "reasons": "not-a-list"}, "trusted_provenance_verifier_invalid"),
+    ],
+)
+def test_malformed_provenance_results_are_fail_closed_without_crashing(
+    tmp_path: Path, result: object, reason: str
+) -> None:
+    repo, _base, _subject, receipt = _fixture_repo(tmp_path)
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+    verified = status.verify_delivery_receipt(
+        repo,
+        receipt,
+        "delivery-test",
+        receipt_path=receipt_path,
+        provenance_verifier=lambda *_args: result,
+    )
+    resolved = status.resolve_delivered_contracts(
+        repo,
+        [receipt_path],
+        provenance_verifier=lambda *_args: result,
+    )
+
+    assert verified["valid"] is False
+    assert reason in verified["reasons"]
+    assert resolved == {}
+
+
+@pytest.mark.parametrize("error", [RuntimeError("fixture"), TimeoutError("fixture")])
+def test_provenance_exception_or_timeout_is_fail_closed_without_crashing(
+    tmp_path: Path, error: Exception
+) -> None:
+    repo, _base, _subject, receipt = _fixture_repo(tmp_path)
+
+    def broken(*_args):
+        raise error
+
+    verified = status.verify_delivery_receipt(
+        repo,
+        receipt,
+        "delivery-test",
+        provenance_verifier=broken,
+    )
+
+    assert verified["valid"] is False
+    assert "trusted_provenance_verifier_failed" in verified["reasons"]
+
+
 @pytest.mark.parametrize("migration_status", ["ready", "passed", "verified"])
 def test_s0_accepts_success_statuses_emitted_by_migration_preflight(
     migration_status: str,
@@ -176,6 +265,62 @@ def test_valid_external_receipt_projects_complete_but_tamper_does_not(tmp_path: 
     )
     stale_s05 = next(item for item in stale["slices"] if item["id"] == "S0.5")
     assert stale_s05["status"] == "VERIFIED_NOT_DELIVERED"
+
+
+def test_v2_failed_signed_check_cannot_be_repaired_by_live_provenance(
+    tmp_path: Path,
+) -> None:
+    repo, _base, _subject, receipt = _fixture_repo(tmp_path)
+    receipt["required_checks"]["contract"] = "failed"
+
+    result = status.verify_delivery_receipt(
+        repo,
+        receipt,
+        "delivery-test",
+        provenance_verifier=_trusted,
+    )
+
+    assert result["valid"] is False
+    assert "required_checks_not_passed" in result["reasons"]
+
+
+def test_v2_live_failed_check_cannot_be_repaired_by_signed_receipt(
+    tmp_path: Path,
+) -> None:
+    repo, _base, _subject, receipt = _fixture_repo(tmp_path)
+
+    def live_check_failed(*args):
+        value = _trusted(*args)
+        value["checks_passed"] = False
+        return value
+
+    result = status.verify_delivery_receipt(
+        repo,
+        receipt,
+        "delivery-test",
+        provenance_verifier=live_check_failed,
+    )
+
+    assert result["valid"] is False
+    assert "required_checks_not_passed" in result["reasons"]
+
+
+def test_v1_missing_signed_checks_can_use_verified_live_compatibility(
+    tmp_path: Path,
+) -> None:
+    repo, _base, _subject, receipt = _fixture_repo(tmp_path)
+    receipt["schema_version"] = 1
+    receipt.pop("required_checks")
+
+    result = status.verify_delivery_receipt(
+        repo,
+        receipt,
+        "delivery-test",
+        provenance_verifier=_trusted,
+    )
+
+    assert result["valid"] is True
+    assert "required_checks_not_passed" not in result["reasons"]
 
 
 def test_unreachable_subject_is_rejected(tmp_path: Path) -> None:

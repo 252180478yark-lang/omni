@@ -1,0 +1,192 @@
+schema_version: 3
+change_id: 2026-08-04-w5-ownership-provenance-fail-closed
+title: Fail closed ownership delivery provenance
+state: GRAPH_DIFF_READY
+created_at: '2026-08-04T15:02:02Z'
+updated_at: '2026-08-04T15:08:33Z'
+feature_refs:
+- feature_id: governance-ownership-provenance
+  feature_ref: prd:2026-08-02-omni-unified-ai-workbench:v1.3:W5:ownership-recovery
+before_snapshot:
+  ref: git:b82da85bfd7958297cb8389f4c59acafdb00c2f7
+delivery:
+  authority: ci_attestation
+  base_commit: b82da85bfd7958297cb8389f4c59acafdb00c2f7
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - Governance boundary: ownership state determines whether an existing W5 recovery change is safe to resume.
+  - Trusted CI provenance must remain fail-closed across the status projection and ownership inventory call chain.
+  external_effects: []
+  scope_deltas:
+  - id: GOV-PROV-DELTA-001
+    discovered_at: '2026-08-04T15:06:00Z'
+    reason: The contract validator correctly rejects strict schema-v3 validation before GRAPH_DIFF_READY, so the planned final contract command must target the terminal local candidate state.
+    added_paths: []
+    required_level: R2
+    risk_change: Verification-only correction; no code, runtime, data, or ownership scope expands.
+  - id: GOV-PROV-DELTA-002
+    discovered_at: '2026-08-04T15:18:00Z'
+    reason: Independent Sol audit found malformed or false verifier payloads could be dereferenced or carry no rejection reason, and a failed signed v2 required check could be overwritten by a successful live workflow result.
+    added_paths: []
+    required_level: R2
+    risk_change: Tightens the existing provenance boundary only; v2 receipts now require both signed and live checks to pass while v1's explicitly tested compatibility path remains fail-closed. All changed files are already locked and no runtime, data, or lease state changes.
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: A caller-supplied delivered contract id can bypass provenance verification and suppress an active ownership scope.
+  expected_outcome: Only an attestation validated by the same explicit provenance verifier can exclude a contract from active ownership.
+  user_visible_behavior:
+  - Offline, timeout, malformed, repository, commit, tree, artifact, or check mismatch evidence leaves the contract active.
+  - A currently active runtime lease remains an independent ownership blocker even after valid delivery evidence.
+current_chain:
+  nodes:
+  - id: service:scripts.workspace_ownership.inventory_workspace
+    role: Ownership inventory for dirty linked worktrees.
+  - id: service:scripts.generate_implementation_status.resolve_delivered_contracts
+    role: Attestation resolver that validates a receipt and provenance.
+  - id: service:scripts.generate_implementation_status.collect_s0_evidence
+    role: Projection-to-inventory bridge.
+  - id: test:tests/test_workspace_ownership.py
+    role: Ownership threat-model regression coverage.
+  - id: test:tests/test_implementation_status.py
+    role: Status projection provenance regression coverage.
+  edges:
+  - from: service:scripts.generate_implementation_status.collect_s0_evidence
+    to: service:scripts.workspace_ownership.inventory_workspace
+    relation: calls
+  - from: service:scripts.workspace_ownership.inventory_workspace
+    to: service:scripts.generate_implementation_status.resolve_delivered_contracts
+    relation: verifies
+  - from: service:scripts.workspace_ownership.inventory_workspace
+    to: state:workspace.runtime_lease
+    relation: checks
+  evidence:
+  - scripts/workspace_ownership.py: delivered_contracts and inventory_workspace currently admit delivered_contract_ids.
+  - scripts/generate_implementation_status.py: collect_s0_evidence forwards caller-asserted delivered ids after resolving provenance separately.
+  - tests/test_workspace_ownership.py: preverified delivery test demonstrates the bypass.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - service:scripts.workspace_ownership.inventory_workspace
+  - service:scripts.generate_implementation_status.resolve_delivered_contracts
+  - service:scripts.generate_implementation_status.collect_s0_evidence
+  database: []
+  data_sources:
+  - source:github.delivery-attestation
+  states_workflows:
+  - state:workspace.ownership.active_or_delivered
+  - state:workspace.runtime_lease.active
+  tests:
+  - test:tests/test_workspace_ownership.py
+  - test:tests/test_implementation_status.py
+  docs:
+  - docs/dev-changes/2026-08-04-w5-ownership-provenance-fail-closed/**
+planned_changes:
+- id: GOV-PROV-001
+  action: modify
+  kind: ownership-provenance-gate
+  node_id: service:scripts.workspace_ownership.inventory_workspace
+  paths:
+  - scripts/workspace_ownership.py
+  upstream:
+  - source:github.delivery-attestation
+  downstream:
+  - state:workspace.ownership.active_or_delivered
+  contract_change: compatible
+  verification_ids:
+  - GOV-VERIFY-001
+  - GOV-VERIFY-003
+- id: GOV-PROV-002
+  action: modify
+  kind: status-projection-provenance-bridge
+  node_id: service:scripts.generate_implementation_status.collect_s0_evidence
+  paths:
+  - scripts/generate_implementation_status.py
+  upstream:
+  - source:github.delivery-attestation
+  downstream:
+  - service:scripts.workspace_ownership.inventory_workspace
+  contract_change: compatible
+  verification_ids:
+  - GOV-VERIFY-002
+  - GOV-VERIFY-003
+- id: GOV-PROV-003
+  action: modify
+  kind: governance-threat-model-tests
+  node_id: test:tests/test_workspace_ownership.py
+  paths:
+  - tests/test_workspace_ownership.py
+  - tests/test_implementation_status.py
+  upstream:
+  - service:scripts.workspace_ownership.inventory_workspace
+  - service:scripts.generate_implementation_status.collect_s0_evidence
+  downstream:
+  - test:tests/test_workspace_ownership.py
+  - test:tests/test_implementation_status.py
+  contract_change: compatible
+  verification_ids:
+  - GOV-VERIFY-001
+  - GOV-VERIFY-002
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: Internal Python function signature removes an unsafe optional parameter; all in-repository call sites are updated together.
+  database:
+    status: not_applicable
+    strategy: No database or migration changes.
+  workflow:
+    status: compatible
+    strategy: Runtime allocation remains a separate blocker and no lease state is mutated by this change.
+  data_source:
+    status: compatible
+    strategy: Existing externally supplied CI attestation format is retained and must pass the same verifier.
+graph_acceptance:
+  required_edges:
+  - from: service:scripts.generate_implementation_status.collect_s0_evidence
+    to: service:scripts.workspace_ownership.inventory_workspace
+    relation: calls
+  - from: service:scripts.workspace_ownership.inventory_workspace
+    to: service:scripts.generate_implementation_status.resolve_delivered_contracts
+    relation: verifies
+  - from: service:scripts.workspace_ownership.inventory_workspace
+    to: state:workspace.runtime_lease
+    relation: checks
+  allowed_unknowns: []
+  forbidden_orphans: []
+risks:
+- id: RISK-PROV-FAIL-OPEN
+  mitigation: Remove caller-provided delivery ids; pass and test one explicit verifier through both projection and ownership paths.
+- id: RISK-LEASE-MASKING
+  mitigation: Preserve independent active-lease conflict detection and add an assertion that delivered proof cannot suppress it.
+out_of_scope:
+- No W5 Host, frontend, Knowledge Engine, attachment, runtime, database, or lease-state changes.
+- No delivery-attestation format redesign and no external GitHub action.
+rollback:
+  strategy: Revert the isolated governance commit; no persisted data or runtime allocation is changed by code execution.
+  data_recovery: Not applicable.
+verification_plan:
+- id: GOV-VERIFY-001
+  layer: unit
+  command: python -m pytest tests/test_workspace_ownership.py -q
+  proves: Ownership inventory accepts only verified receipt resolution and preserves an active runtime lease blocker.
+  required: true
+- id: GOV-VERIFY-002
+  layer: unit
+  command: python -m pytest tests/test_implementation_status.py -q
+  proves: The projection reuses one verifier through its ownership evidence bridge and remains fail-closed on verifier failure.
+  required: true
+- id: GOV-VERIFY-003
+  layer: contract
+  command: python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-04-w5-ownership-provenance-fail-closed/impact.yaml --completion docs/dev-changes/2026-08-04-w5-ownership-provenance-fail-closed/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  proves: Final R2 candidate has exact scope, executed evidence, and a clean graph diff before CI.
+  required: true
+lock:
+  locked_at: '2026-08-04T15:04:04Z'
+  locked_by: codex-w5-governance-terra
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.
