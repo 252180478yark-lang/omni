@@ -1,0 +1,219 @@
+schema_version: 3
+change_id: 2026-08-07-prd-receipt-cache-rebuild
+title: PRD delivery receipt cache rebuild and projection recovery
+state: GRAPH_DIFF_READY
+created_at: '2026-08-07T15:02:36Z'
+updated_at: '2026-08-07T15:26:09Z'
+feature_refs:
+- feature_id: system-convergence-delivery-recovery
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S0.5:receipt-cache-rebuild
+before_snapshot:
+  ref: git:0e921256655065cebfa9a54db9970dbff6b6f939
+delivery:
+  authority: ci_attestation
+  base_commit: 0e921256655065cebfa9a54db9970dbff6b6f939
+risk:
+  level: R2
+  reasons:
+  - Changes delivery-governance evidence discovery and rebuild behavior across linked worktrees.
+  - Regenerates the canonical PRD implementation projection from immutable CI receipts.
+  - The local Git common-dir cache is shared by linked worktrees and changes ownership, readiness, and W5 recovery evidence resolution; it is reversible repository-local state, not an external platform mutation.
+  external_effects: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The repository versions exact canonical delivery artifact metadata, but a fresh machine cannot rebuild the missing verified-receipt cache and the projection ignores receipts stored in its documented nested cache directory. The canonical status therefore regresses delivered slices to VERIFIED_NOT_DELIVERED.
+  expected_outcome: A deterministic fail-closed command restores the four versioned canonical receipts, nested receipts are discovered by projection, and the canonical status represents delivered slices without claiming runtime health or bypassing S0 gates.
+  user_visible_behavior:
+  - The PRD implementation status distinguishes already delivered S0-S14 code from unresolved security, migration, hook-trust, and runtime readiness.
+  - Developers can recover delivery evidence on a new machine with one bounded command.
+current_chain:
+  nodes:
+  - manifest:docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/path-ownership-fingerprint.yaml
+  - script:scripts/generate_implementation_status.py
+  - cache:git-common-dir/omni-delivery/verified-receipts/w0
+  - projection:docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - consumer:scripts/workspace_ownership.py
+  - consumer:scripts/check_development_readiness.py
+  - consumer:scripts/w5_recovery_evidence.py
+  edges:
+  - manifest verified_deliveries declares exact artifact IDs, digests, raw hashes, and cache paths
+  - projection currently scans only verified-receipts/*.json and misses the declared w0/*.json location
+  evidence:
+  - Four canonical artifacts remain non-expired and their signed receipts validate against GitHub and repository history.
+  - Fresh projection at the base commit reports S1-S14 VERIFIED_NOT_DELIVERED until explicit receipts are supplied.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - delivery receipt recovery CLI
+  - implementation status receipt discovery
+  database: []
+  data_sources:
+  - GitHub Actions artifact API (read-only)
+  - versioned W0 verified_deliveries manifest
+  states_workflows:
+  - CI attestation -> verified local cache -> PRD delivery projection
+  tests:
+  - tests/test_delivery_receipt_rebuild.py
+  - tests/test_implementation_status.py
+  - tests/test_workspace_ownership.py
+  - tests/test_development_readiness.py
+  - tests/test_prd_status_projection.py
+  docs:
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild
+planned_changes:
+- id: CHG-001
+  action: add
+  kind: service
+  node_id: script:scripts/rebuild_delivery_receipts.py
+  paths:
+  - scripts/rebuild_delivery_receipts.py
+  upstream:
+  - manifest:docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/path-ownership-fingerprint.yaml
+  - source:GitHub Actions artifact API
+  downstream:
+  - cache:git-common-dir/omni-delivery/verified-receipts/w0
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+- id: CHG-002
+  action: modify
+  kind: service
+  node_id: script:scripts/generate_implementation_status.py
+  paths:
+  - scripts/generate_implementation_status.py
+  upstream:
+  - cache:git-common-dir/omni-delivery/verified-receipts
+  downstream:
+  - projection:canonical implementation status
+  - consumer:scripts/workspace_ownership.py
+  - consumer:scripts/check_development_readiness.py
+  - consumer:scripts/w5_recovery_evidence.py
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+- id: CHG-003
+  action: modify
+  kind: test
+  node_id: tests:delivery-receipt-recovery
+  paths:
+  - tests/test_delivery_receipt_rebuild.py
+  - tests/test_implementation_status.py
+  - tests/test_workspace_ownership.py
+  - tests/test_development_readiness.py
+  - tests/test_prd_status_projection.py
+  upstream:
+  - script:scripts/rebuild_delivery_receipts.py
+  - script:scripts/generate_implementation_status.py
+  downstream: []
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-003
+- id: CHG-004
+  action: modify
+  kind: documentation
+  node_id: projection:canonical implementation status
+  paths:
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/impact.yaml
+  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/completion.yaml
+  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/delivery-projection.yaml
+  upstream:
+  - cache:verified canonical receipts
+  downstream:
+  - reader:developers and PRD progress reporting
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: No REST, IPC, or MCP contract changes.
+  database:
+    status: not_applicable
+    strategy: No migration or persistent business-data changes.
+  workflow:
+    status: compatible
+    strategy: Existing explicit external receipt paths remain unchanged. Automatic cache discovery alone becomes recursive, with stable sorting and deduplication, regular-file and containment checks, no symlink or junction traversal, depth 4, at most 256 files, 1 MiB per file, and 8 MiB total; every limit violation fails closed.
+  data_source:
+    status: compatible
+    strategy: Uses authenticated gh CLI against exact committed versioned artifact IDs; missing, modified, expired, oversized, ambiguous, unsafe, or drifting artifacts fail closed. Cache publication and automatic cache reads require no-follow directory-fd support; unsupported platforms fail closed and may still use live dry-run or explicit external receipt inputs without writing shared cache state.
+graph_acceptance:
+  required_edges:
+  - from: manifest:w0-verified-deliveries
+    to: script:rebuild-delivery-receipts
+    relation: configures
+  - from: script:rebuild-delivery-receipts
+    to: cache:verified-receipts-w0
+    relation: writes-verified-evidence
+  - from: cache:verified-receipts
+    to: script:generate-implementation-status
+    relation: read-by
+  - from: script:generate-implementation-status
+    to: projection:canonical-implementation-status
+    relation: generates
+  - from: cache:verified-receipts
+    to: consumer:scripts/workspace_ownership.py
+    relation: read-by
+  - from: cache:verified-receipts
+    to: consumer:scripts/check_development_readiness.py
+    relation: read-by
+  - from: cache:verified-receipts
+    to: consumer:scripts/w5_recovery_evidence.py
+    relation: read-by
+  allowed_unknowns:
+  - Current Docker runtime and frontend reachability remain unknown until the separate runtime recovery change starts services.
+  - S0 secret, migration baseline, and current-user hook trust gates may remain blocked and must not be inferred from delivery receipts.
+  forbidden_orphans:
+  - script:scripts/rebuild_delivery_receipts.py
+risks:
+- A forged or relocated manifest path could overwrite unintended files; constrain resolved targets to the Git common-dir receipt cache and reject symlinks/path escape.
+- A stale artifact could be trusted; verify live artifact metadata, archive safety, signed payload equality, raw hash, immutable commit, and contract hashes before exclusive publication.
+- Recursive discovery could traverse links; do not follow symlinked directories and reject resolved paths outside the cache root.
+- A partially valid manifest could leave a misleading subset; validate every declared artifact and target before writing, then roll back only files created by this invocation whose hashes still match.
+out_of_scope:
+- Starting Docker or asserting current frontend/runtime health.
+- Changing S0 secret fixtures, migration policy, or current-user hook trust.
+- Fixing the separate runtime trace token wiring and Host Bridge container routing gaps.
+- Publishing, migration execution, paid actions, deletion, or other R3 effects.
+rollback:
+  strategy: Revert the commit. Recovery treats identical existing regular files as idempotent success and fails closed on different content, non-regular files, symlinks, or publication races. It validates all four entries before any receipt write, records created paths, and on failure removes only files created by that invocation whose current hash still matches; it never overwrites prior evidence.
+  data_recovery: No business data changes. CI artifacts remain the source of truth and the cache can be rebuilt again while artifacts are available.
+verification_plan:
+- id: VER-001
+  layer: service
+  command: uv run --with 'pyyaml>=6,<7' --with pytest python -m pytest tests/test_delivery_receipt_rebuild.py -q
+  proves: Manifest parsing, safe target resolution, exact hash checks, atomic writes, and fail-closed recovery behavior.
+  required: true
+- id: VER-002
+  layer: integration
+  command: PYTHONDONTWRITEBYTECODE=1 uv run --with 'pyyaml>=6,<7' python -B scripts/rebuild_delivery_receipts.py --dry-run --manifest docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/path-ownership-fingerprint.yaml
+  proves: All four versioned live GitHub artifacts validate without mutating the linked-worktree shared cache; temporary-repository tests prove publication separately.
+  required: true
+- id: VER-003
+  layer: service
+  command: uv run --with 'pyyaml>=6,<7' --with pytest python -m pytest tests/test_implementation_status.py tests/test_workspace_ownership.py tests/test_development_readiness.py -q -k 'not production_s8_s10_handoff_hashes_bind_to_the_historical_git_blobs'
+  proves: Nested receipt discovery is bounded, deterministic, compatible, rejects path escapes and limits, and preserves ownership, readiness, and W5 consumers.
+  required: true
+- id: VER-004
+  layer: workflow
+  command: uv run --with 'pyyaml>=6,<7' --with pytest python -m pytest tests/test_prd_status_projection.py::test_recovered_delivery_projection_preserves_truth_boundaries -q
+  proves: The four canonical contracts project effective_state COMPLETE with manifest subjects and hashes, unresolved secret, migration, hook, and projection gates remain explicit, and no runtime-health claim is inferred.
+  required: true
+- id: VER-005
+  layer: governance
+  command: uv run --with 'pyyaml>=6,<7' python -m py_compile scripts/generate_implementation_status.py scripts/rebuild_delivery_receipts.py && git diff --check
+  proves: Both command entry points parse under the supported Python runtime and the candidate patch has no whitespace or integrity errors.
+  required: true
+lock:
+  locked_at: '2026-08-07T15:03:45Z'
+  locked_by: codex
+  rationale: R2 impact contract complete; user pre-authorized automatic review and approval for non-R3 development
