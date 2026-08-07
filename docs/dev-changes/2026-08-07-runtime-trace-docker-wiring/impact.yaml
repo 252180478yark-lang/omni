@@ -1,0 +1,238 @@
+schema_version: 3
+change_id: 2026-08-07-runtime-trace-docker-wiring
+title: Runtime trace token Docker wiring
+state: GRAPH_DIFF_READY
+created_at: '2026-08-07T15:10:00Z'
+updated_at: '2026-08-07T15:42:34Z'
+feature_refs:
+- feature_id: system-convergence-runtime-execution
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S8-S9
+before_snapshot:
+  ref: git:5b539a0b8d9fe620c530ff43979b536209d1a059
+delivery:
+  authority: ci_attestation
+  base_commit: 5b539a0b8d9fe620c530ff43979b536209d1a059
+risk:
+  level: R2
+  reasons:
+  - Changes the cross-service authentication wiring used by runtime trace readers and publishers.
+  - Adds a repository-external local secret reference to RuntimeAllocation and mounts it read-only into three containers.
+  external_effects: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: Runtime trace APIs and publishers already require file-backed bearer authentication, but RuntimeAllocation and both Compose entry points do not provision or mount a shared token. Real frontend execution views can therefore return unconfigured or unavailable errors while mocked tests pass.
+  expected_outcome: One independent external token file is generated per repository, exposed through server and service aliases, mounted read-only into Frontend, Knowledge Engine, and Scout, and filtered from unrelated host children.
+  user_visible_behavior:
+  - /workspace/execution can call the configured runtime-trace BFF and Knowledge Engine path instead of failing because the service token is absent.
+  - Scout can publish runtime events to the in-network Knowledge Engine using the same opaque token file.
+current_chain:
+  nodes:
+  - page:/workspace/execution
+  - bff:/api/omni/runtime-traces/*
+  - api:knowledge-engine-runtime-trace
+  - service:scout-runtime-trace-publisher
+  - workflow:scripts/runtime_allocation.py
+  - runtime:docker-compose.yml
+  edges:
+  - page:/workspace/execution -> bff:/api/omni/runtime-traces/*
+  - bff:/api/omni/runtime-traces/* -> api:knowledge-engine-runtime-trace
+  - service:scout-runtime-trace-publisher -> api:knowledge-engine-runtime-trace
+  evidence:
+  - Frontend and Knowledge Engine code already consume OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE and OMNI_RUNTIME_TRACE_TOKEN_FILE.
+  - Current Compose contracts mount approval, identity, and compatibility secrets but no runtime trace token.
+scope:
+  pages: []
+  apis:
+  - frontend BFF /api/omni/scout trace-context forwarding
+  mcp_tools: []
+  services:
+  - scripts/runtime_allocation.py
+  - scripts/dev_runtime_environment.py
+  database: []
+  data_sources: []
+  states_workflows:
+  - RuntimeAllocation secret provisioning
+  - Docker Compose secret mounts
+  - host child environment filtering
+  tests:
+  - tests/test_runtime_allocation.py
+  - tests/test_compose_runtime_contract.py
+  - tests/test_dev_runtime_environment.py
+  - frontend/tests/scout-proxy-trace.test.ts
+  docs:
+  - docs/dev-changes/2026-08-07-runtime-trace-docker-wiring
+  - .env.example
+  - docs/multi-device/host-bridge.md
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: service
+  node_id: workflow:scripts/runtime_allocation.py
+  paths:
+  - scripts/runtime_allocation.py
+  - tests/test_runtime_allocation.py
+  upstream: []
+  downstream:
+  - runtime:root-compose
+  - runtime:sp1-sp4-compose
+  - workflow:host-dev-environment
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-002
+  action: modify
+  kind: workflow
+  node_id: runtime:compose-runtime-trace-token
+  paths:
+  - docker-compose.yml
+  - services/docker-compose.sp1-sp4.yml
+  - tests/test_compose_runtime_contract.py
+  upstream:
+  - workflow:scripts/runtime_allocation.py
+  downstream:
+  - runtime:frontend-container
+  - runtime:knowledge-engine-container
+  - runtime:scout-agent-container
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-003
+  action: modify
+  kind: workflow
+  node_id: workflow:host-dev-environment
+  paths:
+  - scripts/dev_runtime_environment.py
+  - tests/test_dev_runtime_environment.py
+  upstream:
+  - workflow:scripts/runtime_allocation.py
+  downstream:
+  - runtime:frontend-host-child
+  - runtime:knowledge-engine-host-child
+  - runtime:scout-agent-host-child
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+- id: CHG-004
+  action: modify
+  kind: documentation
+  node_id: contract:2026-08-07-runtime-trace-docker-wiring
+  paths:
+  - docs/dev-changes/2026-08-07-runtime-trace-docker-wiring/impact.yaml
+  - docs/dev-changes/2026-08-07-runtime-trace-docker-wiring/completion.yaml
+  upstream: []
+  downstream: []
+  contract_change: none
+  verification_ids:
+  - VER-002
+- id: CHG-005
+  action: modify
+  kind: api
+  node_id: bff:/api/omni/scout/*
+  paths:
+  - frontend/src/app/api/omni/scout/[[...path]]/route.ts
+  - frontend/tests/scout-proxy-trace.test.ts
+  upstream:
+  - page:frontend-scout-callers
+  downstream:
+  - runtime:scout-agent-container
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+- id: CHG-006
+  action: modify
+  kind: configuration
+  node_id: config:runtime-trace-token-source
+  paths:
+  - .env.example
+  - docs/multi-device/host-bridge.md
+  - tests/test_compose_runtime_contract.py
+  upstream:
+  - workflow:scripts/runtime_allocation.py
+  downstream:
+  - runtime:root-compose
+  - workflow:host-dev-environment
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Existing REST/BFF schemas and error semantics are unchanged; deployment now supplies their required file-backed credential.
+  database:
+    status: not_applicable
+    strategy: No schema, migration, or business-data changes.
+  workflow:
+    status: compatible
+    strategy: RuntimeAllocation may emit receiver and publisher compatibility aliases, but user configuration exposes only OMNI_RUNTIME_TRACE_TOKEN_FILE as the canonical source; child roles derive their alias from it.
+  data_source:
+    status: not_applicable
+    strategy: No external data source changes.
+graph_acceptance:
+  required_edges:
+  - from: workflow:runtime-allocation
+    to: credential_ref:runtime-trace-token
+    relation: provisions-file-ref
+  - from: credential_ref:runtime-trace-token
+    to: runtime:frontend-container
+    relation: mounts-read-only
+  - from: credential_ref:runtime-trace-token
+    to: runtime:knowledge-engine-container
+    relation: mounts-read-only
+  - from: credential_ref:runtime-trace-token
+    to: runtime:scout-agent-container
+    relation: mounts-read-only
+  - from: runtime:frontend-container
+    to: api:knowledge-engine-runtime-trace
+    relation: authenticates-to
+  - from: runtime:scout-agent-container
+    to: api:knowledge-engine-runtime-trace
+    relation: publishes-to
+  allowed_unknowns:
+  - Docker Engine availability and live browser smoke remain runtime observations, not code-delivery facts.
+  - Frontend callers that do not supply a trace context still receive Scout responses without execution correlation; automatic trace creation belongs to a separate caller/session contract.
+  forbidden_orphans:
+  - credential_ref:runtime-trace-token
+risks:
+- Token value could leak through environment or logs; only file paths may be serialized, mounted, or asserted.
+- Reusing approval, identity, or compatibility secrets would collapse trust boundaries; all four files must be distinct.
+- Host launcher inheritance could expose the token to unrelated children; remove both aliases before selectively adding the receiver alias to Knowledge Engine and publisher alias to Frontend or Scout.
+- Browser-provided trace identifiers could pollute trusted runtime evidence; only validated identifiers from an authenticated actor may be forwarded, and traceparent is not accepted until W3C-to-Omni continuity is implemented.
+out_of_scope:
+- Changing runtime trace APIs, database schema, pages, Host Bridge routing, System Graph Origin behavior, or login UX.
+- Starting shared production containers, executing migrations, publishing externally, or deleting credentials.
+rollback:
+  strategy: Revert the commit to remove the new allocation aliases and Compose mounts. The unused repository-external token file may remain safely unreferenced; no deletion is required.
+  data_recovery: No business data changes.
+verification_plan:
+- id: VER-001
+  layer: workflow
+  command: uv run --with 'pyyaml>=6,<7' --with pytest python -m pytest -q -p no:cacheprovider tests/test_runtime_allocation.py tests/test_compose_runtime_contract.py tests/test_dev_runtime_environment.py
+  proves: Independent secret creation, aliases, Compose mounts, Scout KE URL, host-child filtering, and no inline-token leakage.
+  required: true
+- id: VER-002
+  layer: governance
+  command: git diff --check
+  proves: Candidate patch integrity.
+  required: true
+- id: VER-003
+  layer: api
+  command: cd frontend && npm run test:unit -- --run tests/scout-proxy-trace.test.ts tests/runtime-api-auth.test.ts tests/runtime-trace-publisher.test.ts tests/runtime-overlay.test.tsx
+  proves: Scout BFF forwards only validated Omni trace context from authenticated actors, rejects malformed or unauthenticated trace injection, does not claim unsupported traceparent continuity, and preserves existing runtime frontend contracts.
+  required: true
+- id: VER-004
+  layer: service
+  command: cd services/knowledge-engine && uv run --no-project --with pytest --with pytest-asyncio --with httpx==0.27.0 --with fastapi==0.115.0 python -m pytest -q tests/test_runtime_trace_router.py tests/test_runtime_findings_router.py tests/test_runtime_plan_drafts.py
+  proves: Knowledge Engine receiver authentication-adjacent runtime trace, findings, and plan contracts remain valid.
+  required: true
+- id: VER-005
+  layer: service
+  command: cd services/scout-agent && uv run --no-project --with pytest --with pytest-asyncio --with httpx==0.27.0 --with fastapi==0.115.0 python -m pytest -q tests/test_runtime_trace.py
+  proves: Scout trace context and authenticated publisher behavior remain valid with the deployment wiring.
+  required: true
+lock:
+  locked_at: '2026-08-07T15:28:29Z'
+  locked_by: codex
+  rationale: R2 full-chain deployment contract reviewed; no R3 effect

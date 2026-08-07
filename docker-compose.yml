@@ -200,6 +200,7 @@ services:
       <<: *runtime-env
       OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
       OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
+      OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE: "/run/secrets/omni_runtime_trace"
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
       NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
@@ -215,6 +216,7 @@ services:
     volumes:
       - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
       - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
+      - "${OMNI_RUNTIME_TRACE_TOKEN_FILE:?Runtime trace token file required}:/run/secrets/omni_runtime_trace:ro"
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     depends_on:
@@ -331,6 +333,7 @@ services:
       OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
       OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
       OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
+      OMNI_RUNTIME_TRACE_TOKEN_FILE: "/run/secrets/omni_runtime_trace"
       OMNI_APPROVAL_FRONTEND_PRINCIPAL: "service:frontend"
       # P0 owner-facing preflight reads this checkout only to hash the
       # migration/config baseline; it never writes to the mount.
@@ -358,6 +361,7 @@ services:
     volumes:
       - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
       - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
+      - "${OMNI_RUNTIME_TRACE_TOKEN_FILE:?Runtime trace token file required}:/run/secrets/omni_runtime_trace:ro"
       - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
       - knowledge_data:/app/data
       # The P0 baseline card must compare runtime state with the same checked
@@ -483,6 +487,8 @@ services:
       no_proxy: "*"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       AI_HUB_URL: "http://ai-provider-hub:8001"
+      OMNI_KE_URL: "http://knowledge-engine:8002"
+      OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE: "/run/secrets/omni_runtime_trace"
       DOUYIN_SHOP_ID: "${DOUYIN_SHOP_ID:-}"
       YUNTU_BRAND_ID: "${YUNTU_BRAND_ID:-WADAKAN_HETIANKUAN}"
       YUNTU_INDUSTRY: "${YUNTU_INDUSTRY:-food_beverage}"
@@ -497,12 +503,15 @@ services:
       - ./services/scout-agent/sessions:/app/sessions
       - ./services/scout-agent/downloads:/app/downloads
       - ./services/scout-agent/snapshots:/app/snapshots
+      - "${OMNI_RUNTIME_TRACE_TOKEN_FILE:?Runtime trace token file required}:/run/secrets/omni_runtime_trace:ro"
     depends_on:
       migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
       ai-provider-hub:
+        condition: service_started
+      knowledge-engine:
         condition: service_started
     networks:
       - omni-network

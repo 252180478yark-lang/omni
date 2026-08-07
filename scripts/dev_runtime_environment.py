@@ -38,6 +38,7 @@ PORT_ENV = {
 
 DATABASE_SCHEMES = {
     "identity-service": "postgresql+asyncpg",
+    "knowledge-engine": "postgresql+asyncpg",
     "news-aggregator": "postgresql+asyncpg",
     "video-analysis": "postgresql",
     "livestream-analysis": "postgresql",
@@ -47,6 +48,7 @@ DATABASE_SCHEMES = {
 
 REDIS_DATABASES = {
     "identity-service": 3,
+    "knowledge-engine": 1,
     "news-aggregator": 2,
 }
 
@@ -166,6 +168,16 @@ def build_service_environment(service: str, source: Mapping[str, str] | None = N
         environment["OMNI_COMPATIBILITY_TOKEN_FILE"] = _absolute_file_path(inherited, "OMNI_COMPATIBILITY_TOKEN_FILE")
     else:
         environment.pop("OMNI_COMPATIBILITY_TOKEN_FILE", None)
+
+    environment.pop("OMNI_RUNTIME_TRACE_TOKEN", None)
+    environment.pop("OMNI_RUNTIME_TRACE_SERVICE_TOKEN", None)
+    environment.pop("OMNI_RUNTIME_TRACE_TOKEN_FILE", None)
+    environment.pop("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", None)
+    runtime_trace_token_file = _absolute_file_path(inherited, "OMNI_RUNTIME_TRACE_TOKEN_FILE")
+    if service == "knowledge-engine":
+        environment["OMNI_RUNTIME_TRACE_TOKEN_FILE"] = runtime_trace_token_file
+    elif service in {"frontend", "scout-agent"}:
+        environment["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] = runtime_trace_token_file
     return environment
 
 

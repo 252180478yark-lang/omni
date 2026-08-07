@@ -47,6 +47,8 @@ def _environment(tmp_path: Path) -> dict[str, str]:
     identity.write_text("fixture-path-only-identity-secret", encoding="utf-8")
     compatibility = tmp_path / "compatibility-token-ref"
     compatibility.write_text("fixture-path-only-compatibility-token", encoding="utf-8")
+    runtime_trace = tmp_path / "runtime-trace-token-ref"
+    runtime_trace.write_text("fixture-path-only-runtime-trace-token", encoding="utf-8")
     return {
         **os.environ,
         "COMPOSE_PROJECT_NAME": "omni-contract-fixture",
@@ -66,6 +68,8 @@ def _environment(tmp_path: Path) -> dict[str, str]:
         "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval).replace("\\", "/"),
         "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity).replace("\\", "/"),
         "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility).replace("\\", "/"),
+        "OMNI_RUNTIME_TRACE_TOKEN_FILE": str(runtime_trace).replace("\\", "/"),
+        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE": str(runtime_trace).replace("\\", "/"),
         "POSTGRES_USER": "omni_user",
         "POSTGRES_PASSWORD": "fixture-placeholder",
         "REDIS_PASSWORD": "fixture-placeholder",
@@ -288,6 +292,62 @@ def test_frontend_uses_container_identity_service_and_file_backed_approval_secre
         assert any(
             item["target"] == "/run/secrets/omni_identity_jwt" and item["read_only"] for item in identity["volumes"]
         )
+
+
+def test_runtime_trace_token_is_file_backed_for_only_the_compose_consumers(
+    tmp_path: Path,
+) -> None:
+    for relative in ("docker-compose.yml", "services/docker-compose.sp1-sp4.yml"):
+        fixture_environment = _environment(tmp_path)
+        fixture_environment["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] = str(
+            tmp_path / "must-not-be-mounted-runtime-trace-token"
+        ).replace("\\", "/")
+        config = _config(relative, fixture_environment)
+        services = config["services"]
+        expected_aliases = {
+            "frontend": "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE",
+            "knowledge-engine": "OMNI_RUNTIME_TRACE_TOKEN_FILE",
+        }
+        if relative == "docker-compose.yml":
+            expected_aliases["scout-agent"] = "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"
+
+        for service_name, alias in expected_aliases.items():
+            service = services[service_name]
+            environment = service.get("environment") or {}
+            assert environment[alias] == "/run/secrets/omni_runtime_trace"
+            assert any(
+                item["target"] == "/run/secrets/omni_runtime_trace"
+                and item["read_only"]
+                and item["source"] == fixture_environment["OMNI_RUNTIME_TRACE_TOKEN_FILE"]
+                for item in service.get("volumes", [])
+            ), (relative, service_name)
+
+        if relative == "docker-compose.yml":
+            assert services["scout-agent"]["environment"]["OMNI_KE_URL"] == "http://knowledge-engine:8002"
+            assert services["scout-agent"]["depends_on"]["knowledge-engine"]["condition"] == "service_started"
+
+        for service_name, service in services.items():
+            environment = service.get("environment") or {}
+            aliases = {
+                key for key in environment
+                if key in {"OMNI_RUNTIME_TRACE_TOKEN_FILE", "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"}
+            }
+            expected = {expected_aliases[service_name]} if service_name in expected_aliases else set()
+            assert aliases == expected, (relative, service_name, aliases)
+            assert "OMNI_RUNTIME_TRACE_TOKEN" not in environment
+            assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN" not in environment
+
+        serialized = json.dumps(config, sort_keys=True)
+        assert "fixture-path-only-runtime-trace-token" not in serialized
+
+
+def test_runtime_trace_user_configuration_exposes_only_the_canonical_source() -> None:
+    example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    host_bridge = (ROOT / "docs" / "multi-device" / "host-bridge.md").read_text(encoding="utf-8")
+    assert "OMNI_RUNTIME_TRACE_TOKEN_FILE=" in example
+    assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE=" not in example
+    assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" in host_bridge
+    assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE" not in host_bridge
 
 
 def test_frontend_build_receives_explicit_unified_shell_rollback_flag(

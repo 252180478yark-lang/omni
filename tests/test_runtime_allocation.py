@@ -99,6 +99,13 @@ def test_nonoverlapping_allocations_are_isolated_and_conflicts_fail(
         first["environment"]["OMNI_APPROVAL_HMAC_SECRET_FILE"],
         first["environment"]["OMNI_IDENTITY_JWT_SECRET_FILE"],
     }
+    runtime_trace_path = first["environment"]["OMNI_RUNTIME_TRACE_TOKEN_FILE"]
+    assert runtime_trace_path == first["environment"]["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"]
+    assert runtime_trace_path not in {
+        first["environment"]["OMNI_APPROVAL_HMAC_SECRET_FILE"],
+        first["environment"]["OMNI_IDENTITY_JWT_SECRET_FILE"],
+        first["environment"]["OMNI_COMPATIBILITY_TOKEN_FILE"],
+    }
 
     with pytest.raises(allocation.AllocationConflict) as caught:
         allocation.acquire(
@@ -109,6 +116,36 @@ def test_nonoverlapping_allocations_are_isolated_and_conflicts_fail(
             state_dir=state_dir,
         )
     assert any(item["kind"] == "path" and item["owner"] == "agent-a" for item in caught.value.conflicts)
+
+
+def test_active_allocation_dry_run_does_not_recreate_missing_runtime_secret(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    state_dir = tmp_path / "state"
+    created = allocation.acquire(
+        repo,
+        change_id="change-dry-run",
+        owner="agent-a",
+        path_globs=["services/a/**"],
+        state_dir=state_dir,
+    )
+    runtime_trace_path = Path(created["environment"]["OMNI_RUNTIME_TRACE_TOKEN_FILE"])
+    runtime_trace_path.unlink()
+
+    observed = allocation.acquire(
+        repo,
+        change_id="change-dry-run",
+        owner="agent-a",
+        path_globs=["services/a/**"],
+        state_dir=state_dir,
+        dry_run=True,
+    )
+
+    assert observed["created"] is False
+    assert observed["dry_run"] is True
+    assert observed["environment"]["OMNI_RUNTIME_TRACE_TOKEN_FILE"] == str(runtime_trace_path).replace("\\", "/")
+    assert not runtime_trace_path.exists()
 
 
 def test_real_manifest_allocates_every_host_dev_service_port() -> None:
@@ -378,3 +415,38 @@ def test_compatibility_token_is_independent_external_private_and_reused(
     inside = repo / ".runtime" / "compatibility-token.key"
     with pytest.raises(allocation.AllocationError, match="outside"):
         allocation.ensure_compatibility_token(repo, path=inside)
+
+
+def test_runtime_trace_token_is_independent_external_private_reused_and_aliased(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    directory = tmp_path / "external-secrets"
+    approval_path = directory / "approval-hmac.key"
+    identity_path = directory / "identity-jwt.key"
+    compatibility_path = directory / "compatibility-token.key"
+    runtime_trace_path = directory / "runtime-trace-token.key"
+    allocation.ensure_approval_hmac_secret(repo, path=approval_path)
+    allocation.ensure_identity_jwt_secret(repo, path=identity_path)
+    allocation.ensure_compatibility_token(repo, path=compatibility_path)
+
+    first = allocation.ensure_runtime_trace_token(repo, path=runtime_trace_path)
+    first_bytes = first.read_bytes()
+    second = allocation.ensure_runtime_trace_token(repo, path=runtime_trace_path)
+
+    assert first == second == runtime_trace_path.resolve()
+    assert allocation.default_runtime_trace_token_path(repo).name == "runtime-trace-token.key"
+    assert len(first_bytes) >= 32
+    assert first_bytes.isascii()
+    assert second.read_bytes() == first_bytes
+    assert first_bytes not in {
+        approval_path.read_bytes(),
+        identity_path.read_bytes(),
+        compatibility_path.read_bytes(),
+    }
+    if os.name != "nt":
+        assert second.stat().st_mode & 0o077 == 0
+
+    inside = repo / ".runtime" / "runtime-trace-token.key"
+    with pytest.raises(allocation.AllocationError, match="outside"):
+        allocation.ensure_runtime_trace_token(repo, path=inside)

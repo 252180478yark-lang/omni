@@ -206,6 +206,12 @@ def default_compatibility_token_path(root: Path) -> Path:
     return _default_runtime_secret_path(root, "compatibility-token.key", "compatibility token")
 
 
+def default_runtime_trace_token_path(root: Path) -> Path:
+    """Return an independent repository-external runtime trace token reference."""
+
+    return _default_runtime_secret_path(root, "runtime-trace-token.key", "runtime trace token")
+
+
 def _ensure_runtime_secret(
     root: Path,
     *,
@@ -272,6 +278,17 @@ def ensure_compatibility_token(root: Path, *, path: Path | None = None) -> Path:
         root,
         target=path or default_compatibility_token_path(root),
         label="compatibility token",
+        secret_factory=lambda: secrets.token_urlsafe(48).encode("ascii"),
+    )
+
+
+def ensure_runtime_trace_token(root: Path, *, path: Path | None = None) -> Path:
+    """Create a distinct printable runtime trace token without returning its value."""
+
+    return _ensure_runtime_secret(
+        root,
+        target=path or default_runtime_trace_token_path(root),
+        label="runtime trace token",
         secret_factory=lambda: secrets.token_urlsafe(48).encode("ascii"),
     )
 
@@ -925,13 +942,15 @@ def acquire(
                     raise CompareAndSwapConflict(
                         "active allocation request differs in paths, ports, mode, canonical flag, risk, or source fingerprint; release/renew with CAS"
                     )
-                approval_secret = ensure_approval_hmac_secret(root)
-                identity_secret = ensure_identity_jwt_secret(root)
-                compatibility_token = ensure_compatibility_token(root)
+                approval_secret = default_approval_secret_path(root) if dry_run else ensure_approval_hmac_secret(root)
+                identity_secret = default_identity_jwt_secret_path(root) if dry_run else ensure_identity_jwt_secret(root)
+                compatibility_token = default_compatibility_token_path(root) if dry_run else ensure_compatibility_token(root)
+                runtime_trace_token = default_runtime_trace_token_path(root) if dry_run else ensure_runtime_trace_token(root)
                 return {
                     "schema_version": SCHEMA_VERSION,
                     "generation": generation,
                     "created": False,
+                    "dry_run": dry_run,
                     "lease": lease,
                     "allocation": existing,
                     "environment": {
@@ -942,6 +961,8 @@ def acquire(
                         "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval_secret).replace("\\", "/"),
                         "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity_secret).replace("\\", "/"),
                         "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility_token).replace("\\", "/"),
+                        "OMNI_RUNTIME_TRACE_TOKEN_FILE": str(runtime_trace_token).replace("\\", "/"),
+                        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE": str(runtime_trace_token).replace("\\", "/"),
                     },
                     "state_path": "git-common-dir/omni-runtime/allocations.json"
                     if state_dir is None
@@ -966,6 +987,7 @@ def acquire(
         approval_secret = default_approval_secret_path(root) if dry_run else ensure_approval_hmac_secret(root)
         identity_secret = default_identity_jwt_secret_path(root) if dry_run else ensure_identity_jwt_secret(root)
         compatibility_token = default_compatibility_token_path(root) if dry_run else ensure_compatibility_token(root)
+        runtime_trace_token = default_runtime_trace_token_path(root) if dry_run else ensure_runtime_trace_token(root)
         new_generation = generation + 1
         if not dry_run:
             state["leases"].append(lease.to_dict())
@@ -987,6 +1009,8 @@ def acquire(
                 "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval_secret).replace("\\", "/"),
                 "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity_secret).replace("\\", "/"),
                 "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility_token).replace("\\", "/"),
+                "OMNI_RUNTIME_TRACE_TOKEN_FILE": str(runtime_trace_token).replace("\\", "/"),
+                "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE": str(runtime_trace_token).replace("\\", "/"),
             },
             "state_path": "git-common-dir/omni-runtime/allocations.json" if state_dir is None else str(state_path),
         }
