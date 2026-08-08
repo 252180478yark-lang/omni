@@ -302,6 +302,7 @@ async function handleClientMessage(
       appendSystemPrompt: cfg?.append_system_prompt,
       brainProvider: cfg?.brain_provider,
       traceContext: mcpTraceContext,
+      context: msg.context,
     })
     // 阶段0 块2（tool_use_id 焊归因链）：累积这一轮的 (tool_use_id, tool_name)，
     // 在 task_done（所有 tool 已执行完、KE 的 tool_calls 行已落库）后批量 POST 回填，

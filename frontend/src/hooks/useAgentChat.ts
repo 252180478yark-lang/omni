@@ -4,6 +4,7 @@ import type {
   ChatMessage, SessionState,
   WsClientMessage, WsServerMessage,
 } from '@/lib/agent-chat/types'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 
 interface UseAgentChatResult {
   connected: boolean
@@ -33,6 +34,8 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
   const [error, setError] = useState<string | null>(null)
   const [activeTraceId, setActiveTraceId] = useState<string | null>(null)
   const [traceGapCount, setTraceGapCount] = useState(0)
+  const contextSnapshotId = useWorkbenchStore((state) => state.contextSnapshotId)
+  const contextRevision = useWorkbenchStore((state) => state.contextRevisionNumber)
 
   useEffect(() => {
     optionsRef.current = options
@@ -97,8 +100,13 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
       ...prev,
       { id: `local-${Date.now()}`, session_id: sessionId, role: 'user', text: prompt, created_at: new Date().toISOString() },
     ])
-    wsRef.current.send(JSON.stringify({ kind: 'send_prompt', session_id: sessionId, prompt } satisfies WsClientMessage))
-  }, [sessionId])
+    wsRef.current.send(JSON.stringify({
+      kind: 'send_prompt', session_id: sessionId, prompt,
+      context: contextSnapshotId && contextRevision
+        ? { context_snapshot_id: contextSnapshotId, context_revision: contextRevision }
+        : undefined,
+    } satisfies WsClientMessage))
+  }, [sessionId, contextSnapshotId, contextRevision])
 
   const cancel = useCallback(() => {
     if (!wsRef.current || !sessionId) return

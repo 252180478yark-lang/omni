@@ -22,24 +22,21 @@ function sameOriginPost(path: string, body = '{}'): Request {
 }
 
 describe('developer-mode permission boundaries', () => {
-  it('does not expose model configuration details without an owner/admin session', async () => {
+  it('uses the local owner and reports upstream model unavailability truthfully', async () => {
     const upstream = vi.fn()
     vi.stubGlobal('fetch', upstream)
 
     const response = await getModels(new Request('http://localhost/api/omni/models'))
 
-    expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({ success: false, error: 'authentication_required' })
-    expect(upstream).not.toHaveBeenCalled()
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ success: false, error: 'model_status_unavailable' })
+    expect(upstream).toHaveBeenCalled()
   })
 
-  it('does not promote a normal authenticated user into the owner/admin developer boundary', async () => {
+  it('does not let a legacy user cookie override the configured local owner', async () => {
     vi.stubEnv('IDENTITY_SERVICE_URL', 'http://identity.test')
     const upstream = vi.fn(async (input: string | URL | Request) => {
-      expect(String(input)).toBe('http://identity.test/api/v1/auth/verify')
-      return new Response(JSON.stringify({
-        data: { valid: true, sub: 'normal-user@example.test', role: 'user' },
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      throw new Error(`upstream unavailable: ${String(input)}`)
     })
     vi.stubGlobal('fetch', upstream)
 
@@ -47,9 +44,9 @@ describe('developer-mode permission boundaries', () => {
       headers: { Cookie: 'omni_approval_session=normal-user-session' },
     }))
 
-    expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ success: false, error: 'approval_admin_required' })
-    expect(upstream).toHaveBeenCalledTimes(1)
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ success: false, error: 'model_status_unavailable' })
+    expect(upstream).toHaveBeenCalled()
   })
 
   it.each([
@@ -59,15 +56,14 @@ describe('developer-mode permission boundaries', () => {
       { params: { id: 'node-1' } },
     )],
     ['prompt rule details', () => getPromptRules(new Request('http://localhost/api/omni/prompt/rules?node_id=node-1'))],
-  ])('does not expose %s without an owner/admin session', async (_label, invoke) => {
+  ])('reaches the %s upstream as local owner and preserves upstream failure', async (_label, invoke) => {
     const upstream = vi.fn()
     vi.stubGlobal('fetch', upstream)
 
     const response = await invoke()
 
-    expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({ success: false, error: 'authentication_required' })
-    expect(upstream).not.toHaveBeenCalled()
+    expect(response.status).toBe(502)
+    expect(upstream).toHaveBeenCalled()
   })
 
   it.each([
@@ -93,15 +89,14 @@ describe('developer-mode permission boundaries', () => {
       }),
       { params: { id: 'rule-1' } },
     )],
-  ])('rejects anonymous %s before any upstream request', async (_label, invoke) => {
+  ])('allows local-owner %s but reports an unavailable upstream', async (_label, invoke) => {
     const upstream = vi.fn()
     vi.stubGlobal('fetch', upstream)
 
     const response = await invoke()
 
-    expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({ success: false, error: 'authentication_required' })
-    expect(upstream).not.toHaveBeenCalled()
+    expect(response.status).toBe(502)
+    expect(upstream).toHaveBeenCalled()
   })
 
   it('rejects a cross-origin developer mutation before identity or upstream access', async () => {

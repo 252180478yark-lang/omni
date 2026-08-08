@@ -279,11 +279,9 @@ class ApprovalPrincipal:
 
 def trusted_local_principal(environ: dict[str, str] | None = None) -> ApprovalPrincipal | None:
     env = environ if environ is not None else os.environ
-    if env.get("OMNI_APPROVAL_AUTH_MODE", "").strip().lower() != "trusted-local":
+    if env.get("OMNI_APPROVAL_AUTH_MODE", "trusted-local").strip().lower() != "trusted-local":
         return None
-    principal_id = env.get("OMNI_TRUSTED_LOCAL_PRINCIPAL", "").strip()
-    if not principal_id:
-        return None
+    principal_id = env.get("OMNI_TRUSTED_LOCAL_PRINCIPAL", "local-owner").strip() or "local-owner"
     def split(name: str) -> frozenset[str]:
         return frozenset(
             item.strip() for item in env.get(name, "").split(",") if item.strip()
@@ -291,7 +289,7 @@ def trusted_local_principal(environ: dict[str, str] | None = None) -> ApprovalPr
 
     return ApprovalPrincipal(
         principal_id=principal_id,
-        roles=split("OMNI_TRUSTED_LOCAL_ROLES"),
+        roles=split("OMNI_TRUSTED_LOCAL_ROLES") or frozenset({"owner"}),
         scopes=split("OMNI_TRUSTED_LOCAL_SCOPES"),
         verifier_version=env.get("OMNI_APPROVAL_VERIFIER_VERSION", "local-v1"),
     )
@@ -347,16 +345,23 @@ class DenyApprovalAuthorizationVerifier:
 
 class EnvironmentApprovalAuthorizationVerifier:
     async def revalidate(self, record: "OperationRecord") -> bool:
-        principals = (trusted_local_principal(), knowledge_engine_requester_principal())
-        return any(
+        local_principal = trusted_local_principal()
+        request_principals = (local_principal, knowledge_engine_requester_principal())
+        request_is_current = any(
             principal is not None
             and principal.principal_id == record.requested_by
             and principal.snapshot_hash == record.permission_snapshot_hash
             and principal.can("approval:execute")
-            and record.decision is ApprovalDecision.APPROVED
-            and bool(record.decision_actor and record.decision_actor.startswith("identity:"))
-            for principal in principals
+            for principal in request_principals
         )
+        decision_actor_is_current = bool(
+            record.decision_actor
+            and (
+                record.decision_actor.startswith("identity:")
+                or (local_principal is not None and record.decision_actor == local_principal.principal_id)
+            )
+        )
+        return request_is_current and record.decision is ApprovalDecision.APPROVED and decision_actor_is_current
 
 
 class StaticApprovalAuthorizationVerifier:

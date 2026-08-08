@@ -22,13 +22,13 @@ describe('host bridge runner', () => {
     }) as typeof fetch
     try {
       const runner = startHostBridgeRunner({
-        sessionId: 'session:one', provider: 'codex', traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:one', projectDir: 'E:/agent/omni',
+        sessionId: 'session:one', provider: 'codex', traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:one', projectHandle: 'project:default',
         prompt: 'hello', mcpConfigPath: 'unused',
       })
       const chunks: string[] = []
       runner.on('chunk', (chunk: { type: string }) => chunks.push(chunk.type))
       await new Promise<void>((resolve, reject) => { runner.on('exit', () => resolve()); runner.on('error', reject) })
-      expect(chunks).toEqual(['system', 'result'])
+      expect(chunks).toEqual(['system', 'system', 'result'])
       expect(calls.some((url) => url.includes('/runs/run%3Aone/events?cursor=0'))).toBe(true)
     } finally {
       global.fetch = originalFetch
@@ -44,7 +44,7 @@ describe('host bridge runner', () => {
     global.fetch = vi.fn(async () => new Response('{}', { status: 503 })) as typeof fetch
     const fallback = { proc: { killed: false }, cancel: vi.fn(), on: vi.fn().mockReturnThis() }
     try {
-      startHostBridgeRunner({ sessionId: 'session:one', provider: 'claude', traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:one', projectDir: 'E:/agent/omni', prompt: 'hello', mcpConfigPath: 'unused', fallbackFactory: () => fallback as never })
+      startHostBridgeRunner({ sessionId: 'session:one', provider: 'claude', traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:one', projectHandle: 'project:default', prompt: 'hello', mcpConfigPath: 'unused', fallbackFactory: () => fallback as never })
       await vi.waitFor(() => expect(fallback.on).toHaveBeenCalled())
     } finally {
       global.fetch = originalFetch
@@ -67,7 +67,7 @@ describe('host bridge runner', () => {
     try {
       const runner = startHostBridgeRunner({
         sessionId: 'session:one', provider: 'codex', traceId: 'trace:one', executionId: 'execution:one',
-        parentSpanId: 'ws:one', projectDir: 'E:/agent/omni', prompt: 'hello', mcpConfigPath: 'unused',
+        parentSpanId: 'ws:one', projectHandle: 'project:default', prompt: 'hello', mcpConfigPath: 'unused',
         fallbackFactory: () => fallback as never,
       })
       const error = await new Promise<Error>((resolve) => runner.on('error', resolve))

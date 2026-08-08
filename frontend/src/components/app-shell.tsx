@@ -8,6 +8,7 @@ import { CircleDot, Search } from 'lucide-react'
 import { AppSidebar, type WorkbenchNavigationEvent } from './app-sidebar'
 import { BeginnerGuide } from './beginner-guide'
 import { WorkbenchStateBadge, type WorkbenchViewState } from './workbench-state-badge'
+import { WorkbenchDock } from './workbench/WorkbenchDock'
 import { isWorkbenchFlagEnabled } from '@/lib/workbench-flags'
 import {
   resolveWorkbenchLocation,
@@ -24,8 +25,6 @@ import {
 } from '@/stores/workbenchStore'
 
 const FULL_SCREEN_ROUTES = ['/chat', '/playground']
-const WORKBENCH_SLOT_NAMES = ['assistant', 'blueprint', 'run-center', 'approval', 'artifact-drawer'] as const
-
 function supportsMode(
   location: ReturnType<typeof resolveWorkbenchLocation>,
   mode: WorkbenchMode,
@@ -400,9 +399,8 @@ function AppShellContent({ children, unifiedShellEnabled }: AppShellProps) {
         </div>
       </div>
 
-      {WORKBENCH_SLOT_NAMES.map((slot) => (
-        <div key={slot} id={`workbench-slot-${slot}`} className="contents" data-workbench-slot={slot} />
-      ))}
+      <WorkbenchDock />
+      <div id="workbench-slot-artifact-drawer" className="contents" data-workbench-slot="artifact-drawer" />
     </div>
   )
 }

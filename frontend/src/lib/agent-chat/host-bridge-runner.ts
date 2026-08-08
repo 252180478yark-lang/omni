@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 
 import { codexEventToClaudeChunks } from './codex-runner'
 import type { ClaudeRunner, SpawnOptions } from './claude-runner'
-import type { BrainProvider, ClaudeStreamChunk } from './types'
+import type { AgentContextBinding, AgentProviderResolution, BrainProvider, ClaudeStreamChunk } from './types'
 
 interface HostBridgeEvent {
   cursor: number
@@ -42,7 +42,8 @@ export interface HostBridgeSpawnOptions extends SpawnOptions {
   traceId: string
   executionId: string
   parentSpanId: string
-  projectDir: string
+  projectHandle: string
+  context?: AgentContextBinding
   fallbackFactory?: () => ClaudeRunner
 }
 
@@ -58,6 +59,14 @@ export function startHostBridgeRunner(options: HostBridgeSpawnOptions): ClaudeRu
 
   const forwardFallback = (runner: ClaudeRunner) => {
     fallback = runner
+    emitter.emit('chunk', {
+      type: 'system',
+      provider_resolution: {
+        requested_provider: options.provider, resolved_provider: options.provider,
+        runner_mode: 'local', fallback_reason_code: 'host_unavailable_before_acceptance',
+        accepted_at: new Date().toISOString(),
+      },
+    } satisfies ClaudeStreamChunk)
     runner.on('chunk', (chunk: ClaudeStreamChunk) => emitter.emit('chunk', chunk))
     runner.on('stderr', (message: string) => emitter.emit('stderr', message))
     runner.on('error', (error: Error) => emitter.emit('error', error))
@@ -66,15 +75,28 @@ export function startHostBridgeRunner(options: HostBridgeSpawnOptions): ClaudeRu
 
   ;(async () => {
     try {
-      await hostFetch('/api/v1/host-bridge/sessions', {
+      const created = await hostFetch('/api/v1/host-bridge/sessions', {
         method: 'POST',
         body: JSON.stringify({
           session_id: options.sessionId, runner_provider: options.provider,
-          runner_session_id: options.resumeSessionId || null, project_dir: options.projectDir,
+          runner_session_id: options.resumeSessionId || null, project_handle: options.projectHandle,
           model: options.model || null, effort: options.effort || null, trace_id: options.traceId,
           execution_id: options.executionId, parent_span_id: options.parentSpanId,
+          context_snapshot_id: options.context?.context_snapshot_id || null,
+          context_revision: options.context?.context_revision || null,
+          requested_provider: options.provider, resolved_provider: options.provider, runner_mode: 'host',
         }),
       })
+      const session = await created.json() as AgentProviderResolution & { runner_session_id?: string | null }
+      emitter.emit('chunk', {
+        type: 'system', session_id: session.runner_session_id || options.resumeSessionId,
+        provider_resolution: {
+          requested_provider: session.requested_provider || options.provider,
+          resolved_provider: session.resolved_provider || options.provider,
+          runner_mode: session.runner_mode || 'host', fallback_reason_code: session.fallback_reason_code || null,
+          accepted_at: session.accepted_at || null,
+        },
+      } satisfies ClaudeStreamChunk)
       runSubmissionStarted = true
       const started = await hostFetch(`/api/v1/host-bridge/sessions/${encodeURIComponent(options.sessionId)}/runs`, {
         method: 'POST', body: JSON.stringify({ prompt: [options.appendSystemPrompt, options.prompt].filter(Boolean).join('\n\n'), request_id: `request:${randomUUID()}` }),

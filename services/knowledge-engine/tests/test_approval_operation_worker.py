@@ -541,7 +541,7 @@ async def test_non_persistable_handler_result_moves_to_reconciliation(result_val
 
 
 @pytest.mark.asyncio
-async def test_hmac_create_approve_worker_status_chain_and_audit(tmp_path, monkeypatch):
+async def test_local_owner_create_approve_worker_status_chain_and_audit(tmp_path, monkeypatch):
     secret = b"fixture-hmac-secret-longer-than-thirty-two-bytes"
     secret_path = tmp_path / "approval-secret"
     secret_path.write_bytes(secret)
@@ -599,7 +599,7 @@ async def test_hmac_create_approve_worker_status_chain_and_audit(tmp_path, monke
     completed = await worker.run_once()
     assert completed is not None and completed.state is ApprovalOperationState.SUCCEEDED
     assert completed.requested_by == "service:knowledge-engine"
-    assert completed.decision_actor == "identity:admin@example.com"
+    assert completed.decision_actor == "local-owner"
     actions = [event["action"] for event in repository.audit_events]
     assert actions == ["created", "approved", "claimed", "effect_started", "succeeded"]
     assert all("secret" not in json.dumps(event, default=str).lower() for event in repository.audit_events)

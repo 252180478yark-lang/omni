@@ -29,6 +29,20 @@ export interface ClaudeStreamChunk {
   num_turns?: number
   session_id?: string
   total_cost_usd?: number
+  provider_resolution?: AgentProviderResolution
+}
+
+export interface AgentContextBinding {
+  context_snapshot_id: string
+  context_revision: number
+}
+
+export interface AgentProviderResolution {
+  requested_provider: 'auto' | BrainProvider
+  resolved_provider: BrainProvider
+  runner_mode: 'host' | 'local'
+  fallback_reason_code: string | null
+  accepted_at: string | null
 }
 
 // === 前端渲染用的统一消息结构 ===
@@ -72,6 +86,9 @@ export interface ChatAttachment {
 export interface SessionState {
   id: string                  // PG mcp.agent_sessions.id
   claude_session_id: string   // Claude Code 自己的 session uuid
+  runner_session_id?: string | null
+  provider_resolution?: AgentProviderResolution | null
+  context?: AgentContextBinding | null
   title: string
   sku_id: string | null
   last_message_preview: string | null
@@ -110,6 +127,7 @@ export type WsClientMessage =
       attachments?: ChatAttachment[]
       /** /playground 专用:覆盖 spawn args(model / allowed_tools / append_system_prompt / max_turns) */
       config?: PlaygroundSpawnConfig
+      context?: AgentContextBinding
     }
   | { kind: 'cancel'; session_id: string }
   | { kind: 'human_gate_decide'; short_id: string; decision: 'approved' | 'rejected'; note?: string }

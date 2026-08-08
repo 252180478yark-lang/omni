@@ -143,8 +143,6 @@ services:
         condition: service_started
       ad-review-service:
         condition: service_started
-      identity-service:
-        condition: service_healthy
     ports:
       # W6 multi-device: nginx 绑 0.0.0.0 让 tailnet 内 OPPO/Mac 能访问;
       # 其他服务 (KE/Hub/Frontend) 保持 127.0.0.1, 由 nginx 反代统一出口
@@ -164,6 +162,7 @@ services:
   # ═══ Application Services ═══
 
   identity-service:
+    profiles: ["legacy-identity"]
     build:
       context: ./services/identity-service
       labels: *build-labels
@@ -207,14 +206,12 @@ services:
     labels: *runtime-labels
     environment:
       <<: *runtime-env
-      OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
       OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
-      OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE: "/run/secrets/omni_runtime_trace"
+      OMNI_APPROVAL_AUTH_MODE: "trusted-local"
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
       NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
       AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
-      IDENTITY_SERVICE_URL: "http://identity-service:8000"
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
       LIVESTREAM_ANALYSIS_SERVICE_URL: "http://livestream-analysis:8007"
@@ -223,9 +220,7 @@ services:
       SCOUT_AGENT_URL: "http://scout-agent:8009"
     command: ["npm", "run", "start"]
     volumes:
-      - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
       - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
-      - "${OMNI_RUNTIME_TRACE_TOKEN_FILE:?Runtime trace token file required}:/run/secrets/omni_runtime_trace:ro"
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     healthcheck:
@@ -238,8 +233,6 @@ services:
         condition: service_completed_successfully
       runtime-preflight:
         condition: service_completed_successfully
-      identity-service:
-        condition: service_healthy
       ai-provider-hub:
         condition: service_started
       knowledge-engine:
@@ -347,10 +340,10 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/1"
       OMNI_SCHEDULER_ENABLED: "${OMNI_SCHEDULER_ENABLED:-false}"
       OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
-      OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
       OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
-      OMNI_RUNTIME_TRACE_TOKEN_FILE: "/run/secrets/omni_runtime_trace"
-      OMNI_APPROVAL_FRONTEND_PRINCIPAL: "service:frontend"
+      OMNI_APPROVAL_AUTH_MODE: "trusted-local"
+      OMNI_TRUSTED_LOCAL_PRINCIPAL: "local-owner"
+      OMNI_TRUSTED_LOCAL_ROLES: "owner,admin"
       # P0 owner-facing preflight reads this checkout only to hash the
       # migration/config baseline; it never writes to the mount.
       P0_REPOSITORY_ROOT: "/workspace"
@@ -375,9 +368,7 @@ services:
       # Dev: host 直通访问（Claude Code MCP / 直接 curl 调试）
       - "127.0.0.1:${KNOWLEDGE_ENGINE_PORT:-8002}:8002"
     volumes:
-      - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
       - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
-      - "${OMNI_RUNTIME_TRACE_TOKEN_FILE:?Runtime trace token file required}:/run/secrets/omni_runtime_trace:ro"
       - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
       - knowledge_data:/app/data
       # The P0 baseline card must compare runtime state with the same checked

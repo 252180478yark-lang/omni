@@ -32,7 +32,6 @@ CORE_SERVICES = {
     "postgres",
     "redis",
     "migrate",
-    "identity-service",
     "ai-provider-hub",
     "knowledge-engine",
     "frontend",
@@ -252,7 +251,7 @@ def test_runtime_manifest_is_the_profile_and_required_service_truth() -> None:
     assert runtime_profiles["profiles"]["full"]["compose_profiles"] == ["full"]
 
     services = manifest["services"]
-    assert set(services) == FULL_SERVICES
+    assert set(services) == FULL_SERVICES | {"identity-service"}
     assert {name for name, specification in services.items() if specification["required"]} == (
         CORE_SERVICES - ONE_SHOT_SERVICES
     )
@@ -274,11 +273,6 @@ def test_full_profile_preserves_dependency_contract_except_optional_frontend_edg
         "postgres": {"runtime-preflight": "service_completed_successfully"},
         "redis": {"runtime-preflight": "service_completed_successfully"},
         "migrate": {"postgres": "service_healthy"},
-        "identity-service": {
-            "migrate": "service_completed_successfully",
-            "postgres": "service_healthy",
-            "redis": "service_healthy",
-        },
         "ai-provider-hub": {
             "migrate": "service_completed_successfully",
             "postgres": "service_healthy",
@@ -292,7 +286,6 @@ def test_full_profile_preserves_dependency_contract_except_optional_frontend_edg
         "frontend": {
             "migrate": "service_completed_successfully",
             "runtime-preflight": "service_completed_successfully",
-            "identity-service": "service_healthy",
             "ai-provider-hub": "service_started",
             "knowledge-engine": "service_started",
         },
@@ -337,7 +330,6 @@ def test_full_profile_preserves_dependency_contract_except_optional_frontend_edg
             "video-analysis": "service_started",
             "livestream-analysis": "service_started",
             "ad-review-service": "service_started",
-            "identity-service": "service_healthy",
         },
     }
     assert {name: _dependency_conditions(service) for name, service in services.items()} == expected
@@ -497,11 +489,16 @@ def test_parsed_knowledge_engine_environment_is_not_unknown(tmp_path: Path) -> N
         assert environment["OMNI_APPROVAL_WORKER_ENABLED"] == "true"
         assert environment["OMNI_SCHEDULER_ENABLED"] == "false"
         assert engine["labels"]["io.omni.approval_worker_role"] == "owner"
-        assert environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] == "/run/secrets/omni_approval_hmac"
+        if relative == "docker-compose.yml":
+            assert environment["OMNI_APPROVAL_AUTH_MODE"] == "trusted-local"
+            assert "OMNI_APPROVAL_SERVICE_SECRET_FILE" not in environment
+            assert not any(item["target"] == "/run/secrets/omni_approval_hmac" for item in engine["volumes"])
+        else:
+            assert environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] == "/run/secrets/omni_approval_hmac"
+            assert any(
+                item["target"] == "/run/secrets/omni_approval_hmac" and item["read_only"] for item in engine["volumes"]
+            )
         assert "OMNI_APPROVAL_SERVICE_TOKEN" not in environment
-        assert any(
-            item["target"] == "/run/secrets/omni_approval_hmac" and item["read_only"] for item in engine["volumes"]
-        )
         labels = engine["labels"]
         assert labels["io.omni.worktree_id"] == "worktree-" + "b" * 16
         assert "io.omni.worktree_root" not in labels
@@ -553,44 +550,25 @@ def test_verified_root_compose_does_not_bind_mount_over_baked_application_code(
         assert observed.isdisjoint(targets), (service, observed & targets)
 
 
-def test_frontend_uses_container_identity_service_and_file_backed_approval_secret(
+def test_root_frontend_uses_single_user_local_trust_without_product_identity_or_internal_auth_secrets(
     tmp_path: Path,
 ) -> None:
-    for relative in ("docker-compose.yml", "services/docker-compose.sp1-sp4.yml"):
-        config = _config(relative, _environment(tmp_path))
-        frontend = config["services"]["frontend"]
-        environment = frontend["environment"]
-        assert environment["IDENTITY_SERVICE_URL"] == "http://identity-service:8000"
-        assert environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] == ("/run/secrets/omni_approval_hmac")
-        assert "OMNI_APPROVAL_SERVICE_TOKEN" not in environment
-        assert any(
-            item["target"] == "/run/secrets/omni_approval_hmac" and item["read_only"] for item in frontend["volumes"]
-        )
-        assert environment["OMNI_COMPATIBILITY_TOKEN_FILE"] == ("/run/secrets/omni_compatibility")
-        assert any(
-            item["target"] == "/run/secrets/omni_compatibility" and item["read_only"] for item in frontend["volumes"]
-        )
-        knowledge = config["services"]["knowledge-engine"]
-        assert knowledge["environment"]["OMNI_COMPATIBILITY_TOKEN_FILE"] == ("/run/secrets/omni_compatibility")
-        assert any(
-            item["target"] == "/run/secrets/omni_compatibility" and item["read_only"] for item in knowledge["volumes"]
-        )
-        identity = config["services"]["identity-service"]
-        assert frontend["depends_on"]["identity-service"]["condition"] == "service_healthy"
-        if relative == "docker-compose.yml":
-            assert identity["depends_on"] == {
-                "migrate": {
-                    "condition": "service_completed_successfully",
-                    "required": True,
-                },
-                "postgres": {"condition": "service_healthy", "required": True},
-                "redis": {"condition": "service_healthy", "required": True},
-            }
-        assert identity["environment"]["JWT_SECRET_KEY_FILE"] == ("/run/secrets/omni_identity_jwt")
-        assert "JWT_SECRET_KEY" not in identity["environment"]
-        assert any(
-            item["target"] == "/run/secrets/omni_identity_jwt" and item["read_only"] for item in identity["volumes"]
-        )
+    config = _config("docker-compose.yml", _environment(tmp_path))
+    assert "identity-service" not in config["services"]
+    frontend = config["services"]["frontend"]
+    knowledge = config["services"]["knowledge-engine"]
+    assert "identity-service" not in frontend["depends_on"]
+    assert "IDENTITY_SERVICE_URL" not in frontend["environment"]
+    for service in (frontend, knowledge):
+        environment = service["environment"]
+        assert environment["OMNI_APPROVAL_AUTH_MODE"] == "trusted-local"
+        assert "OMNI_APPROVAL_SERVICE_SECRET_FILE" not in environment
+        assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" not in environment
+        assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE" not in environment
+        targets = {item["target"] for item in service.get("volumes", [])}
+        assert "/run/secrets/omni_approval_hmac" not in targets
+        assert "/run/secrets/omni_runtime_trace" not in targets
+    assert knowledge["environment"]["OMNI_TRUSTED_LOCAL_PRINCIPAL"] == "local-owner"
 
 
 def test_runtime_trace_token_is_file_backed_for_only_the_compose_consumers(
@@ -607,12 +585,11 @@ def test_runtime_trace_token_is_file_backed_for_only_the_compose_consumers(
             profiles=(("full",) if relative == "docker-compose.yml" else ()),
         )
         services = config["services"]
-        expected_aliases = {
-            "frontend": "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE",
-            "knowledge-engine": "OMNI_RUNTIME_TRACE_TOKEN_FILE",
-        }
-        if relative == "docker-compose.yml":
-            expected_aliases["scout-agent"] = "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"
+        expected_aliases = (
+            {"scout-agent": "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"}
+            if relative == "docker-compose.yml"
+            else {"frontend": "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", "knowledge-engine": "OMNI_RUNTIME_TRACE_TOKEN_FILE"}
+        )
 
         for service_name, alias in expected_aliases.items():
             service = services[service_name]
