@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation'
+import { SystemCommandCenter } from '@/components/system-command-center/SystemCommandCenter'
 
-export default function WorkspaceDevelopmentAlias() {
-  redirect('/workspace?mode=development')
+export default function WorkspaceDevelopmentPage() {
+  return <SystemCommandCenter initialView="graph" />
 }

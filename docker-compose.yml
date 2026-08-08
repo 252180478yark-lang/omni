@@ -1,7 +1,9 @@
 # Omni-Vibe OS Ultra — 统一编排
-# 一键启动：docker-compose up -d
-# 单独启动基础设施：docker-compose up -d postgres redis nginx
-# 查看日志：docker-compose logs -f <service>
+# 启动核心运行面：docker compose up -d
+# 启动内容运行面：docker compose --profile content up -d
+# 恢复全量运行面：docker compose --profile full up -d
+# 单独启动基础设施：docker compose up -d postgres redis
+# 查看日志：docker compose logs -f <service>
 #
 # VPN/代理配置：在根目录 .env 中设置 PROXY_URL（不要改这个文件）
 #   PROXY_URL=http://host.docker.internal:12334
@@ -29,6 +31,7 @@ x-runtime-env: &runtime-env
   COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:?RuntimeAllocation compose project required}"
   OMNI_ALLOCATION_ID: "${OMNI_ALLOCATION_ID:?RuntimeAllocation id required}"
   OMNI_RUNTIME_ID: "${OMNI_RUNTIME_ID:?RuntimeAllocation runtime id required}"
+  OMNI_RUNTIME_PROFILE: "${OMNI_RUNTIME_PROFILE:?RuntimeAllocation profile required}"
   OMNI_WORKTREE_ID: "${OMNI_WORKTREE_ID:?RuntimeAllocation worktree id required}"
   OMNI_SOURCE_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
   OMNI_EXPECTED_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
@@ -120,6 +123,7 @@ services:
   nginx:
     image: nginx:1.27-alpine
     labels: *runtime-labels
+    profiles: ["full"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -149,6 +153,11 @@ services:
     volumes:
       - ./services/infra-core/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/infra-core/nginx/conf.d:/etc/nginx/conf.d:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks:
       - omni-network
 
@@ -219,6 +228,11 @@ services:
       - "${OMNI_RUNTIME_TRACE_TOKEN_FILE:?Runtime trace token file required}:/run/secrets/omni_runtime_trace:ro"
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -230,10 +244,6 @@ services:
         condition: service_started
       knowledge-engine:
         condition: service_started
-      ad-review-service:
-        condition: service_started
-      scout-agent:
-        condition: service_started
     networks:
       - omni-network
 
@@ -243,6 +253,7 @@ services:
       labels: *build-labels
       args: *build-args
     labels: *runtime-labels
+    profiles: ["full"]
     environment:
       <<: *proxy-env
       DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
@@ -299,6 +310,11 @@ services:
       - "127.0.0.1:${AI_PROVIDER_HUB_PORT:-8001}:8001"
     volumes:
       - ai_hub_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -373,6 +389,11 @@ services:
       - ./CLAUDE.md:/app/CLAUDE.md:ro
       # reverse_storyboard_video tool 测试用,挂载 host Desktop 让 KE 能访问千川视频测试文件 + 测试日志写回
       - "${OMNI_HOST_DESKTOP_PATH:-./.runtime/host-desktop}:/host/Desktop:rw"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -389,6 +410,7 @@ services:
       labels: *build-labels
       args: *build-args
     labels: *runtime-labels
+    profiles: ["full"]
     env_file:
       - ./services/news-aggregator/.env.example
     environment:
@@ -398,6 +420,11 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
     expose:
       - "8005"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -418,6 +445,7 @@ services:
       labels: *build-labels
       args: *build-args
     labels: *runtime-labels
+    profiles: ["content", "full"]
     env_file:
       - ./services/video-analysis/.env.example
     environment:
@@ -431,6 +459,11 @@ services:
       - "8006"
     volumes:
       - video_analysis_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8006/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -447,6 +480,7 @@ services:
       labels: *build-labels
       args: *build-args
     labels: *runtime-labels
+    profiles: ["content", "full"]
     env_file:
       - ./services/livestream-analysis/.env.example
     environment:
@@ -458,6 +492,11 @@ services:
       - "8007"
     volumes:
       - livestream_analysis_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -476,6 +515,7 @@ services:
     labels:
       <<: *runtime-labels
       io.omni.scheduler_role: "${OMNI_SCHEDULER_ROLE:-disabled}"
+    profiles: ["content", "full"]
     environment:
       # 不走 VPN：scout-agent 只抓国内站（淘宝/罗盘/云图/抖音）+ 内网 ai-hub。
       # 国内站要国内 IP，外国 VPN 机房出口会被淘宝搜索反爬拦 → 清空代理走直连。

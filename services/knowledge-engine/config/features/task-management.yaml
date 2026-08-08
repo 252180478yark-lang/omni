@@ -10,9 +10,9 @@ routes:
   placements: [direct]
   owned_surfaces: [/tasks]
 ia:
-  mode: work
-  primary_group: today
-  primary_order: 20
+  mode: development
+  primary_group: system
+  primary_order: 40
   contextual_groups: []
   phase: degrade
   flag: unified_shell

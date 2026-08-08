@@ -43,6 +43,7 @@ def _raw_container(
     database_url: str = "postgresql+asyncpg://omni_user:top-secret@omni-postgres:5432/omni_vibe_db",
     volume: str | None = "omni_knowledge_data",
     scheduler_role: str = "disabled",
+    health_status: str = "healthy",
 ) -> dict:
     labels = {
         "com.docker.compose.project": "omni",
@@ -82,7 +83,7 @@ def _raw_container(
         "Id": (name.replace("-", "") + "0" * 64)[:64],
         "Name": f"/{name}",
         "Config": {"Image": f"image/{service}", "Labels": labels, "Env": env},
-        "State": {"Status": "running", "Health": {"Status": "healthy"}},
+        "State": {"Status": "running", "Health": {"Status": health_status}},
         "Mounts": mounts,
         "NetworkSettings": {"Ports": ports},
     }
@@ -316,6 +317,190 @@ def test_required_service_gap_is_reported_only_for_verify_mode() -> None:
     assert "required_service_missing" in _codes(verify_issues)
 
 
+def test_verify_uses_exact_profile_services_and_rejects_leftovers() -> None:
+    manifest = _manifest()
+    expected = _expected(manifest)
+    content_services = manifest["runtime_profiles"]["profiles"]["content"]["long_lived_services"]
+    containers = [
+        guard.container_from_inspect(
+            _raw_container(
+                f"fixture-{service}",
+                service=service,
+                worktree="E:/agent/omni",
+                database_url="",
+                volume=None,
+            ),
+            manifest,
+        )
+        for service in content_services
+    ]
+    content_issues = guard.analyze_runtime(
+        containers,
+        manifest,
+        expected,
+        runtime_id="omni-main",
+        runtime_profile="content",
+        check_unknown_listeners=False,
+        require_services=True,
+    )
+    assert "required_service_missing" not in _codes(content_issues)
+    assert "unexpected_profile_service" not in _codes(content_issues)
+
+    core_issues = guard.analyze_runtime(
+        containers,
+        manifest,
+        expected,
+        runtime_id="omni-main",
+        runtime_profile="core",
+        check_unknown_listeners=False,
+        require_services=True,
+    )
+    unexpected = [issue for issue in core_issues if issue.code == "unexpected_profile_service"]
+    assert {issue.containers[0].split("#", 1)[0] for issue in unexpected} == {
+        "fixture-video-analysis",
+        "fixture-livestream-analysis",
+        "fixture-scout-agent",
+    }
+
+    unknown = guard.container_from_inspect(
+        _raw_container(
+            "fixture-unknown",
+            service="unmanaged-sidecar",
+            worktree="E:/agent/omni",
+            database_url="",
+            volume=None,
+        ),
+        manifest,
+    )
+    unknown_issues = guard.analyze_runtime(
+        [*containers, unknown],
+        manifest,
+        expected,
+        runtime_id="omni-main",
+        runtime_profile="content",
+        check_unknown_listeners=False,
+        require_services=True,
+    )
+    assert any(
+        issue.code == "unexpected_profile_service" and "fixture-unknown" in issue.containers[0]
+        for issue in unknown_issues
+    )
+
+
+def test_other_runtime_service_cannot_satisfy_selected_profile() -> None:
+    manifest = _manifest()
+    foreign_frontend = guard.container_from_inspect(
+        _raw_container(
+            "foreign-frontend",
+            service="frontend",
+            worktree="E:/agent/omni",
+            runtime_id="other-runtime",
+            database_url="",
+            volume=None,
+        ),
+        manifest,
+    )
+    issues = guard.analyze_runtime(
+        [foreign_frontend],
+        manifest,
+        _expected(manifest),
+        runtime_id="omni-main",
+        runtime_profile="core",
+        check_unknown_listeners=False,
+        require_services=True,
+    )
+    assert any(
+        issue.code == "required_service_missing" and "frontend" in issue.message
+        for issue in issues
+    )
+
+
+def test_health_checks_only_selected_profile_services() -> None:
+    manifest = _manifest()
+    manifest["services"]["video-analysis"]["health"] = {"kind": "docker"}
+    video = guard.container_from_inspect(
+        _raw_container(
+            "video-unhealthy",
+            service="video-analysis",
+            worktree="E:/agent/omni",
+            database_url="",
+            volume=None,
+            health_status="unhealthy",
+        ),
+        manifest,
+    )
+    assert "service_unhealthy" not in _codes(
+        guard._health_issues(
+            [video], manifest, 0.01, runtime_id="omni-main", runtime_profile="core"
+        )
+    )
+    assert "service_unhealthy" in _codes(
+        guard._health_issues(
+            [video], manifest, 0.01, runtime_id="omni-main", runtime_profile="content"
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("service", "runtime_profile", "port"),
+    (("scout-agent", "content", 28009), ("ad-review-service", "full", 28008)),
+)
+def test_profile_http_health_uses_the_runtime_container_port(
+    monkeypatch, service: str, runtime_profile: str, port: int
+) -> None:
+    manifest = _manifest()
+    container = guard.container_from_inspect(
+        _raw_container(
+            f"healthy-{service}",
+            service=service,
+            worktree="E:/agent/omni",
+            port=port,
+            database_url="",
+            volume=None,
+        ),
+        manifest,
+    )
+    opened: list[str] = []
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    class _Opener:
+        def open(self, url: str, timeout: float):
+            opened.append(url)
+            return _Response()
+
+    monkeypatch.setattr(guard, "build_opener", lambda *_args, **_kwargs: _Opener())
+    issues = guard._health_issues(
+        [container],
+        manifest,
+        0.01,
+        runtime_id="omni-main",
+        runtime_profile=runtime_profile,
+    )
+    assert "service_unhealthy" not in _codes(issues)
+    assert opened == [f"http://127.0.0.1:{port}/health"]
+
+    opened.clear()
+    guard._health_issues(
+        [container], manifest, 0.01, runtime_id="omni-main", runtime_profile="core"
+    )
+    assert opened == []
+
+
+def test_manifest_rejects_inconsistent_profile_membership() -> None:
+    manifest = _manifest()
+    manifest["services"]["scout-agent"]["runtime_profiles"] = ["full"]
+    with pytest.raises(guard.GuardFailure, match="inconsistent profile membership"):
+        guard.runtime_profile_spec(manifest, "content")
+
+
 def test_preflight_blocks_non_primary_long_lived_runtime(tmp_path: Path) -> None:
     manifest = _manifest()
     manifest["compose_files"] = []
@@ -323,6 +508,51 @@ def test_preflight_blocks_non_primary_long_lived_runtime(tmp_path: Path) -> None
     expected["primary_worktree"] = guard.opaque_worktree_id("E:/agent/omni")
     issues = guard.preflight_policy_issues(tmp_path, manifest, expected)
     assert "non_primary_long_lived_runtime" in _codes(issues)
+
+
+def test_preflight_reports_allocation_profile_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest = _manifest()
+    manifest["compose_files"] = []
+    expected = _expected(manifest)
+
+    class _AllocationModule:
+        @staticmethod
+        def list_state(_repo_root: Path, *, state_dir: Path | None = None) -> dict:
+            del state_dir
+            return {
+                "allocations": [
+                    {
+                        "allocation_id": "allocation-test",
+                        "state": "active",
+                        "worktree_id": expected["worktree"],
+                        "runtime_id": "omni-main",
+                        "runtime_profile": "core",
+                        "canonical": True,
+                        "database": manifest["canonical_runtime"]["database"],
+                        "cron_owner": True,
+                    }
+                ]
+            }
+
+        @staticmethod
+        def worktree_id(_repo_root: Path) -> str:
+            return expected["worktree"]
+
+    monkeypatch.setattr(guard, "_load_allocation_module", lambda _repo_root: _AllocationModule)
+    issues = guard.preflight_policy_issues(
+        tmp_path,
+        manifest,
+        expected,
+        allocation_id="allocation-test",
+        runtime_id="omni-main",
+        runtime_profile="content",
+    )
+
+    mismatch = next(issue for issue in issues if issue.code == "allocation_profile_mismatch")
+    assert mismatch.severity == "error"
+    assert mismatch.message == "RuntimeAllocation runtime profile does not match preflight"
 
 
 def test_allocation_evidence_preflight_rejects_missing_stale_and_wrong_identity(
@@ -348,6 +578,7 @@ def test_allocation_evidence_preflight_rejects_missing_stale_and_wrong_identity(
         "change_id": "change-a",
         "owner": "agent-a",
         "runtime_id": "runtime-a",
+        "runtime_profile": "core",
         "worktree_id": worktree_id,
         "build_sha": "a" * 40,
         "source_fingerprint": "b" * 64,
@@ -387,8 +618,34 @@ def test_allocation_evidence_preflight_rejects_missing_stale_and_wrong_identity(
         source_commit="a" * 40,
         source_fingerprint="b" * 64,
         compose_project="omni-a",
+        runtime_profile="core",
     )
     assert verified["allocation_id"] == allocation_id
+
+    with pytest.raises(guard.GuardFailure, match="runtime_profile"):
+        guard.validate_allocation_evidence(
+            path,
+            allocation_id=allocation_id,
+            runtime_id="runtime-a",
+            worktree_id=worktree_id,
+            source_commit="a" * 40,
+            source_fingerprint="b" * 64,
+            runtime_profile="full",
+        )
+
+    del allocation["runtime_profile"]
+    path.write_text(json.dumps(state), encoding="utf-8")
+    with pytest.raises(guard.GuardFailure, match="release/reacquire"):
+        guard.validate_allocation_evidence(
+            path,
+            allocation_id=allocation_id,
+            runtime_id="runtime-a",
+            worktree_id=worktree_id,
+            source_commit="a" * 40,
+            source_fingerprint="b" * 64,
+        )
+    allocation["runtime_profile"] = "core"
+    path.write_text(json.dumps(state), encoding="utf-8")
 
     with pytest.raises(guard.GuardFailure, match="source_fingerprint"):
         guard.validate_allocation_evidence(

@@ -27,6 +27,27 @@ BUILD_IDENTIFIED_SERVICES = {
     "ad-review-service",
     "scout-agent",
 }
+CORE_SERVICES = {
+    "runtime-preflight",
+    "postgres",
+    "redis",
+    "migrate",
+    "identity-service",
+    "ai-provider-hub",
+    "knowledge-engine",
+    "frontend",
+}
+CONTENT_SERVICES = CORE_SERVICES | {
+    "video-analysis",
+    "livestream-analysis",
+    "scout-agent",
+}
+FULL_SERVICES = CONTENT_SERVICES | {
+    "news-aggregator",
+    "ad-review-service",
+    "nginx",
+}
+ONE_SHOT_SERVICES = {"runtime-preflight", "migrate"}
 
 
 def _compose() -> list[str]:
@@ -53,6 +74,8 @@ def _environment(tmp_path: Path) -> dict[str, str]:
         **os.environ,
         "COMPOSE_PROJECT_NAME": "omni-contract-fixture",
         "OMNI_RUNTIME_ID": "runtime-fixture",
+        "OMNI_RUNTIME_PROFILE": "core",
+        "COMPOSE_PROFILES": "",
         "OMNI_ALLOCATION_ID": "allocation-" + "a" * 32,
         "OMNI_WORKTREE_ID": "worktree-" + "b" * 16,
         "OMNI_WORKTREE_ROOT": str(ROOT).replace("\\", "/"),
@@ -76,8 +99,15 @@ def _environment(tmp_path: Path) -> dict[str, str]:
     }
 
 
-def _config(relative: str, env: dict[str, str], *, migration_profile: bool = False) -> dict:
-    profile = ["--profile", "migration"] if migration_profile else []
+def _config(
+    relative: str,
+    env: dict[str, str],
+    *,
+    profiles: tuple[str, ...] = (),
+    migration_profile: bool = False,
+) -> dict:
+    requested_profiles = (*profiles, *(("migration",) if migration_profile else ()))
+    profile = [item for name in requested_profiles for item in ("--profile", name)]
     result = subprocess.run(
         [*_compose(), "-f", relative, *profile, "config", "--format", "json"],
         cwd=ROOT,
@@ -90,6 +120,17 @@ def _config(relative: str, env: dict[str, str], *, migration_profile: bool = Fal
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout.lstrip("\ufeff"))
+
+
+def _root_config(tmp_path: Path, *profiles: str) -> dict:
+    return _config("docker-compose.yml", _environment(tmp_path), profiles=profiles)
+
+
+def _dependency_conditions(service: dict) -> dict[str, str]:
+    return {
+        name: specification["condition"]
+        for name, specification in (service.get("depends_on") or {}).items()
+    }
 
 
 def _depends_on_preflight(services: dict, service: str, seen: set[str] | None = None) -> bool:
@@ -148,6 +189,264 @@ def test_direct_compose_config_fails_before_runtime_without_allocation(
     )
     assert result.returncode != 0
     assert "RuntimeAllocation" in result.stderr or "required variable" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("profiles", "expected_services"),
+    (
+        ((), CORE_SERVICES),
+        (("content",), CONTENT_SERVICES),
+        (("full",), FULL_SERVICES),
+    ),
+)
+def test_root_compose_projects_exact_runtime_service_sets(
+    tmp_path: Path,
+    profiles: tuple[str, ...],
+    expected_services: set[str],
+) -> None:
+    config = _root_config(tmp_path, *profiles)
+    assert set(config["services"]) == expected_services
+    assert set(config["services"]) - ONE_SHOT_SERVICES == expected_services - ONE_SHOT_SERVICES
+
+
+@pytest.mark.parametrize(
+    ("runtime_profile", "compose_profiles", "expected_services"),
+    (
+        ("core", "", CORE_SERVICES),
+        ("content", "content", CONTENT_SERVICES),
+        ("full", "full", FULL_SERVICES),
+    ),
+)
+def test_allocation_profile_environment_selects_exact_compose_projection(
+    tmp_path: Path,
+    runtime_profile: str,
+    compose_profiles: str,
+    expected_services: set[str],
+) -> None:
+    env = _environment(tmp_path)
+    env["OMNI_RUNTIME_PROFILE"] = runtime_profile
+    env["COMPOSE_PROFILES"] = compose_profiles
+    config = _config("docker-compose.yml", env)
+    assert set(config["services"]) == expected_services
+
+
+def test_runtime_manifest_is_the_profile_and_required_service_truth() -> None:
+    manifest = json.loads((ROOT / "config" / "runtime-manifest.yaml").read_text(encoding="utf-8"))
+    runtime_profiles = manifest["runtime_profiles"]
+    assert runtime_profiles["default"] == "core"
+
+    expected_sets = {
+        "core": CORE_SERVICES,
+        "content": CONTENT_SERVICES,
+        "full": FULL_SERVICES,
+    }
+    assert set(runtime_profiles["profiles"]) == set(expected_sets)
+    for profile_name, expected_services in expected_sets.items():
+        specification = runtime_profiles["profiles"][profile_name]
+        assert set(specification["services"]) == expected_services
+        assert set(specification["long_lived_services"]) == expected_services - ONE_SHOT_SERVICES
+        assert set(specification["one_shot_services"]) == ONE_SHOT_SERVICES
+
+    assert runtime_profiles["profiles"]["core"]["compose_profiles"] == []
+    assert runtime_profiles["profiles"]["content"]["compose_profiles"] == ["content"]
+    assert runtime_profiles["profiles"]["full"]["compose_profiles"] == ["full"]
+
+    services = manifest["services"]
+    assert set(services) == FULL_SERVICES
+    assert {name for name, specification in services.items() if specification["required"]} == (
+        CORE_SERVICES - ONE_SHOT_SERVICES
+    )
+    for service_name in FULL_SERVICES:
+        expected_membership = [
+            profile_name
+            for profile_name in ("core", "content", "full")
+            if service_name in expected_sets[profile_name]
+        ]
+        assert services[service_name]["runtime_profiles"] == expected_membership
+
+
+def test_full_profile_preserves_dependency_contract_except_optional_frontend_edges(
+    tmp_path: Path,
+) -> None:
+    services = _root_config(tmp_path, "full")["services"]
+    expected = {
+        "runtime-preflight": {},
+        "postgres": {"runtime-preflight": "service_completed_successfully"},
+        "redis": {"runtime-preflight": "service_completed_successfully"},
+        "migrate": {"postgres": "service_healthy"},
+        "identity-service": {
+            "migrate": "service_completed_successfully",
+            "postgres": "service_healthy",
+            "redis": "service_healthy",
+        },
+        "ai-provider-hub": {
+            "migrate": "service_completed_successfully",
+            "postgres": "service_healthy",
+            "redis": "service_healthy",
+        },
+        "knowledge-engine": {
+            "migrate": "service_completed_successfully",
+            "postgres": "service_healthy",
+            "redis": "service_healthy",
+        },
+        "frontend": {
+            "migrate": "service_completed_successfully",
+            "runtime-preflight": "service_completed_successfully",
+            "identity-service": "service_healthy",
+            "ai-provider-hub": "service_started",
+            "knowledge-engine": "service_started",
+        },
+        "video-analysis": {
+            "migrate": "service_completed_successfully",
+            "postgres": "service_healthy",
+            "ai-provider-hub": "service_started",
+        },
+        "livestream-analysis": {
+            "migrate": "service_completed_successfully",
+            "postgres": "service_healthy",
+            "ai-provider-hub": "service_started",
+        },
+        "scout-agent": {
+            "migrate": "service_completed_successfully",
+            "postgres": "service_healthy",
+            "ai-provider-hub": "service_started",
+            "knowledge-engine": "service_started",
+        },
+        "news-aggregator": {
+            "migrate": "service_completed_successfully",
+            "postgres": "service_healthy",
+            "redis": "service_healthy",
+            "ai-provider-hub": "service_started",
+            "knowledge-engine": "service_started",
+        },
+        "ad-review-service": {
+            "migrate": "service_completed_successfully",
+            "postgres": "service_healthy",
+            "redis": "service_healthy",
+            "ai-provider-hub": "service_started",
+            "knowledge-engine": "service_started",
+            "video-analysis": "service_started",
+        },
+        "nginx": {
+            "postgres": "service_healthy",
+            "redis": "service_healthy",
+            "frontend": "service_started",
+            "ai-provider-hub": "service_started",
+            "knowledge-engine": "service_started",
+            "news-aggregator": "service_started",
+            "video-analysis": "service_started",
+            "livestream-analysis": "service_started",
+            "ad-review-service": "service_started",
+            "identity-service": "service_healthy",
+        },
+    }
+    assert {name: _dependency_conditions(service) for name, service in services.items()} == expected
+    assert "ad-review-service" not in services["frontend"]["depends_on"]
+    assert "scout-agent" not in services["frontend"]["depends_on"]
+
+
+def test_full_profile_preserves_published_ports_and_named_volumes(tmp_path: Path) -> None:
+    config = _root_config(tmp_path, "full")
+    services = config["services"]
+    observed_ports = {
+        (service_name, int(binding["target"])): int(binding["published"])
+        for service_name, service in services.items()
+        for binding in service.get("ports", [])
+    }
+    assert observed_ports == {
+        ("postgres", 5432): 5432,
+        ("redis", 6379): 6379,
+        ("nginx", 80): 80,
+        ("nginx", 443): 443,
+        ("frontend", 3000): 3000,
+        ("ad-review-service", 8008): 8008,
+        ("ai-provider-hub", 8001): 8001,
+        ("knowledge-engine", 8002): 8002,
+        ("scout-agent", 8009): 8009,
+    }
+
+    expected_volume_names = {
+        "postgres_data": "omni_postgres_data",
+        "redis_data": "omni_redis_data",
+        "ai_hub_data": "omni-contract-fixture_ai_hub_data",
+        "knowledge_data": "omni_knowledge_data",
+        "video_analysis_data": "omni-contract-fixture_video_analysis_data",
+        "livestream_analysis_data": "omni-contract-fixture_livestream_analysis_data",
+        "ad_review_data": "omni-contract-fixture_ad_review_data",
+    }
+    assert {name: definition["name"] for name, definition in config["volumes"].items()} == expected_volume_names
+    volume_contract = {
+        "postgres": ("postgres_data", "/var/lib/postgresql/data"),
+        "redis": ("redis_data", "/data"),
+        "ai-provider-hub": ("ai_hub_data", "/app/data"),
+        "knowledge-engine": ("knowledge_data", "/app/data"),
+        "video-analysis": ("video_analysis_data", "/app/data"),
+        "livestream-analysis": ("livestream_analysis_data", "/app/data"),
+        "ad-review-service": ("ad_review_data", "/app/data"),
+    }
+    for service_name, (volume_name, target) in volume_contract.items():
+        assert any(
+            mount["type"] == "volume"
+            and mount["source"] == volume_name
+            and mount["target"] == target
+            for mount in services[service_name].get("volumes", [])
+        ), service_name
+
+
+@pytest.mark.parametrize(
+    ("profile_name", "compose_profiles"),
+    (
+        ("core", ()),
+        ("content", ("content",)),
+        ("full", ("full",)),
+    ),
+)
+def test_every_profile_long_lived_service_has_a_consistent_health_contract(
+    tmp_path: Path,
+    profile_name: str,
+    compose_profiles: tuple[str, ...],
+) -> None:
+    manifest = json.loads((ROOT / "config" / "runtime-manifest.yaml").read_text(encoding="utf-8"))
+    compose_services = _root_config(tmp_path, *compose_profiles)["services"]
+    long_lived_services = manifest["runtime_profiles"]["profiles"][profile_name][
+        "long_lived_services"
+    ]
+    docker_probe_tokens = {
+        "postgres": "pg_isready",
+        "redis": "redis-cli",
+        "identity-service": "127.0.0.1:8000/health",
+        "news-aggregator": "127.0.0.1:8005/health",
+        "video-analysis": "127.0.0.1:8006/health",
+        "livestream-analysis": "127.0.0.1:8007/health",
+        "nginx": "127.0.0.1/health",
+    }
+
+    for service_name in long_lived_services:
+        manifest_health = manifest["services"][service_name].get("health") or {}
+        assert manifest_health.get("kind") in {"docker", "http"}, service_name
+
+        compose_service = compose_services[service_name]
+        compose_healthcheck = compose_service.get("healthcheck") or {}
+        compose_probe = " ".join(compose_healthcheck.get("test") or ())
+        host_published_targets = {
+            int(binding["target"])
+            for binding in compose_service.get("ports", [])
+            if binding.get("published") is not None
+        }
+
+        if manifest_health["kind"] == "docker":
+            assert compose_probe, service_name
+            assert docker_probe_tokens[service_name] in compose_probe, service_name
+            continue
+
+        manifest_ports = {int(port) for port in manifest["services"][service_name]["published_ports"]}
+        assert manifest_ports <= host_published_targets, service_name
+        path = str(manifest_health.get("path") or "").strip("/")
+        if compose_probe:
+            assert any(
+                f"127.0.0.1:{port}/" + path in compose_probe
+                for port in manifest_ports
+            ), service_name
 
 
 @pytest.mark.parametrize("relative", COMPOSE_FILES)
@@ -244,7 +543,7 @@ def test_every_compose_built_application_bakes_observed_source_identity(
 def test_verified_root_compose_does_not_bind_mount_over_baked_application_code(
     tmp_path: Path,
 ) -> None:
-    services = _config("docker-compose.yml", _environment(tmp_path))["services"]
+    services = _root_config(tmp_path, "full")["services"]
     forbidden = {
         "knowledge-engine": {"/app/app", "/app/config", "/app/scripts", "/app/tests"},
         "scout-agent": {"/app/app", "/app/catalog", "/app/scripts"},
@@ -302,7 +601,11 @@ def test_runtime_trace_token_is_file_backed_for_only_the_compose_consumers(
         fixture_environment["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] = str(
             tmp_path / "must-not-be-mounted-runtime-trace-token"
         ).replace("\\", "/")
-        config = _config(relative, fixture_environment)
+        config = _config(
+            relative,
+            fixture_environment,
+            profiles=(("full",) if relative == "docker-compose.yml" else ()),
+        )
         services = config["services"]
         expected_aliases = {
             "frontend": "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE",
@@ -383,7 +686,7 @@ def test_noncanonical_scheduler_is_disabled_in_all_parsed_surfaces(
             labels = service.get("labels") or {}
             if "io.omni.scheduler_role" in labels:
                 assert labels["io.omni.scheduler_role"] == "disabled"
-    root = _config("docker-compose.yml", _environment(tmp_path))
+    root = _root_config(tmp_path, "full")
     assert root["services"]["postgres"]["restart"] == "no"
     assert root["services"]["scout-agent"]["restart"] == "no"
 
@@ -400,7 +703,11 @@ def test_every_writable_application_waits_for_full_migration_runner(
         "migrate",
     }
     for relative in COMPOSE_FILES:
-        config = _config(relative, _environment(tmp_path))
+        config = _config(
+            relative,
+            _environment(tmp_path),
+            profiles=(("full",) if relative == "docker-compose.yml" else ()),
+        )
         services = config["services"]
         assert "migrate" in services
         for name in set(services) - non_writers:

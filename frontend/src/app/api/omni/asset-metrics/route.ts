@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const base = serviceBase()
   try {
     const data = await fetchJson<Record<string, unknown>>(
-      `${base.knowledge}/api/v1/mcp/exec/pipeline_list_asset_performance`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.asset-performance.list`,
       { method: 'POST', body: JSON.stringify({ sku_id, limit }) },
     )
     return Response.json({ success: true, data })
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   const base = serviceBase()
   try {
     const data = await fetchJson<Record<string, unknown>>(
-      `${base.knowledge}/api/v1/mcp/exec/record_ad_metrics`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.ad-metrics.record`,
       {
         method: 'POST',
         body: JSON.stringify({

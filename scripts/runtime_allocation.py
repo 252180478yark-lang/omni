@@ -33,6 +33,7 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 SCHEMA_VERSION = 1
 DEFAULT_TTL_SECONDS = 8 * 60 * 60
 BLOCKING_STATES = {"active"}
+RUNTIME_PROFILES = frozenset({"core", "content", "full"})
 PORT_ENV = {
     "postgres": "POSTGRES_PORT",
     "redis": "REDIS_PORT",
@@ -96,6 +97,7 @@ class RuntimeAllocation:
     canonical: bool
     runtime_id: str
     compose_project: str
+    runtime_profile: str
     ports: Mapping[str, int]
     database: str
     database_schema: str
@@ -620,6 +622,35 @@ def _load_manifest(root: Path) -> dict[str, Any]:
     return value
 
 
+def _resolve_runtime_profile(
+    manifest: Mapping[str, Any], requested: str | None = None
+) -> tuple[str, Mapping[str, Any]]:
+    runtime_profiles = manifest.get("runtime_profiles")
+    if not isinstance(runtime_profiles, Mapping):
+        raise AllocationError("runtime manifest requires runtime_profiles")
+    profiles = runtime_profiles.get("profiles")
+    if not isinstance(profiles, Mapping) or not profiles:
+        raise AllocationError("runtime manifest requires runtime profile definitions")
+    profile = str(requested or runtime_profiles.get("default") or "").strip()
+    if profile not in RUNTIME_PROFILES or profile not in profiles:
+        available = ", ".join(sorted(str(item) for item in profiles))
+        raise AllocationError(f"unknown runtime_profile {profile!r}; expected one of: {available}")
+    specification = profiles[profile]
+    if not isinstance(specification, Mapping):
+        raise AllocationError(f"runtime profile {profile!r} must be a mapping")
+    compose_profiles = specification.get("compose_profiles")
+    if not isinstance(compose_profiles, list) or any(
+        not isinstance(item, str) or not item.strip() for item in compose_profiles
+    ):
+        raise AllocationError(f"runtime profile {profile!r} has invalid compose_profiles")
+    expected_compose_profiles = [] if profile == "core" else [profile]
+    if compose_profiles != expected_compose_profiles:
+        raise AllocationError(
+            f"runtime profile {profile!r} must map to compose profiles {expected_compose_profiles!r}"
+        )
+    return profile, specification
+
+
 def _canonical_ports(manifest: Mapping[str, Any]) -> dict[str, int]:
     ports: dict[str, int] = {}
     for service, config in (manifest.get("services") or {}).items():
@@ -740,6 +771,7 @@ def _build_records(
     mode: str,
     ttl_seconds: int,
     canonical: bool,
+    runtime_profile: str,
     requested_ports: Mapping[str, int],
     risk_level: str,
     now: datetime,
@@ -759,6 +791,7 @@ def _build_records(
         raise AllocationError("canonical allocation is available only from the primary worktree")
 
     manifest = _load_manifest(root)
+    runtime_profile, _ = _resolve_runtime_profile(manifest, runtime_profile)
     canonical_ports = _canonical_ports(manifest)
     build_sha = _run(("git", "rev-parse", "HEAD"), cwd=root).stdout.strip().lower()
     sha8 = build_sha[:8]
@@ -814,6 +847,7 @@ def _build_records(
         canonical,
         runtime_id,
         compose_project,
+        runtime_profile,
         ports,
         database,
         database_schema,
@@ -834,10 +868,17 @@ def _build_records(
 
 def allocation_environment(allocation: Mapping[str, Any], *, worktree: Path | None = None) -> dict[str, str]:
     ports = allocation.get("ports") or {}
+    runtime_profile = str(allocation.get("runtime_profile") or "").strip()
+    if runtime_profile not in RUNTIME_PROFILES:
+        raise AllocationError(
+            "RuntimeAllocation has no valid runtime_profile; release/reacquire the legacy allocation"
+        )
     env = {
         "COMPOSE_PROJECT_NAME": str(allocation["compose_project"]),
+        "COMPOSE_PROFILES": "" if runtime_profile == "core" else runtime_profile,
         "OMNI_RUNTIME_ID": str(allocation["runtime_id"]),
         "OMNI_ALLOCATION_ID": str(allocation["allocation_id"]),
+        "OMNI_RUNTIME_PROFILE": runtime_profile,
         "POSTGRES_DB": str(allocation["database"]),
         "OMNI_DB_SCHEMA": str(allocation["database_schema"]),
         "OMNI_REDIS_NAMESPACE": str(allocation["redis_namespace"]),
@@ -893,6 +934,7 @@ def acquire(
     mode: str = "write",
     ttl_seconds: int = DEFAULT_TTL_SECONDS,
     canonical: bool = False,
+    runtime_profile: str | None = None,
     requested_ports: Mapping[str, int] | None = None,
     risk_level: str = "R1",
     state_dir: Path | None = None,
@@ -901,6 +943,7 @@ def acquire(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     root = repository_root(root)
+    runtime_profile, _ = _resolve_runtime_profile(_load_manifest(root), runtime_profile)
     store_dir = (state_dir or default_state_dir(root)).resolve()
     state_path = store_dir / "allocations.json"
     lock_path = store_dir / "allocations.lock"
@@ -930,6 +973,7 @@ def acquire(
                     or tuple(lease.get("path_globs") or []) != requested_globs
                     or lease.get("mode") != mode
                     or existing.get("canonical") is not canonical
+                    or existing.get("runtime_profile") != runtime_profile
                     or existing.get("approval_worker_owner") is not (canonical or mode == "write")
                     or existing.get("risk_level", "R1") != risk_level
                     or existing.get("source_fingerprint") != source_tree_fingerprint(root)
@@ -940,7 +984,7 @@ def acquire(
                 )
                 if mismatch:
                     raise CompareAndSwapConflict(
-                        "active allocation request differs in paths, ports, mode, canonical flag, risk, or source fingerprint; release/renew with CAS"
+                        "active allocation request differs in paths, ports, mode, canonical flag, runtime profile, risk, or source fingerprint; release/renew with CAS"
                     )
                 approval_secret = default_approval_secret_path(root) if dry_run else ensure_approval_hmac_secret(root)
                 identity_secret = default_identity_jwt_secret_path(root) if dry_run else ensure_identity_jwt_secret(root)
@@ -977,6 +1021,7 @@ def acquire(
             mode=mode,
             ttl_seconds=ttl_seconds,
             canonical=canonical,
+            runtime_profile=runtime_profile,
             requested_ports=requested_ports or {},
             risk_level=risk_level,
             now=moment,
@@ -1176,6 +1221,10 @@ def _parser() -> argparse.ArgumentParser:
     acquire_parser.add_argument("--mode", choices=("read", "write"), default="write")
     acquire_parser.add_argument("--ttl-seconds", type=int, default=DEFAULT_TTL_SECONDS)
     acquire_parser.add_argument("--canonical", action="store_true")
+    acquire_parser.add_argument(
+        "--runtime-profile",
+        help="runtime profile from config/runtime-manifest.yaml (default: manifest default)",
+    )
     acquire_parser.add_argument("--port", action="append", default=[])
     acquire_parser.add_argument("--risk-level", choices=("R0", "R1", "R2", "R3"), default="R1")
     acquire_parser.add_argument("--expected-generation", type=int)
@@ -1213,6 +1262,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=args.mode,
                 ttl_seconds=args.ttl_seconds,
                 canonical=args.canonical,
+                runtime_profile=args.runtime_profile,
                 requested_ports=_parse_ports(args.port),
                 risk_level=args.risk_level,
                 state_dir=args.state_dir,

@@ -33,9 +33,9 @@
 
 ### 2. 后端绑 0.0.0.0 (已做)
 
-`docker-compose.yml` 里 nginx 端口绑定已改为 `${NGINX_PORT:-80}:80` (不带 127.0.0.1),`docker compose up -d nginx` 重启即可。
+Nginx 只属于 `full` profile。先取得 `--runtime-profile full` 的 RuntimeAllocation 并导入环境，再运行 `docker compose --profile full up -d`；不要单独启动 nginx，因为它在加载配置时需要 full 的全部 Docker DNS 上游。端口由 `${NGINX_HTTP_PORT:-80}:80` 分配且不绑定 `127.0.0.1`。
 
-验证: 在 Win 上 `curl http://localhost/health` 应该返 `ok`。
+验证：在 Win 上运行 `python -B scripts/runtime_guard.py verify --runtime-profile full`，再用 `curl http://localhost:${NGINX_HTTP_PORT}/health` 检查入口（canonical 默认端口 80）。
 
 ### 3. (可选) OpenSSH server — 想 SSH 进 Win 跑 Claude Code 时用
 
@@ -135,7 +135,7 @@ Play Store / 国内应用商店搜 "Tailscale" → 装 → 同一账号登录
 
 | 症状 | 原因 + 修复 |
 |---|---|
-| OPPO 打不开 `http://<tailnet-ip>/chat` | Tailscale 没连上或者 nginx 没起; 验证 Win 上 `docker ps` 看 omni-nginx; 看 Tailscale 托盘是否 "Connected" |
+| OPPO 打不开 `http://<tailnet-ip>/chat` | 先确认 active allocation 是 `full`、guard verify 通过且 nginx 在 `NGINX_HTTP_PORT`；再检查 Tailscale 是否 Connected。不得在 core/content 中单独补起 nginx。 |
 | 长任务完成没推送 | `curl http://localhost:8002/api/v1/notify/health` 看 channels_configured 是不是 ["task_done"]; 不是就回去配 WECOM_WEBHOOKS |
 | "添加到主屏" Chrome 没弹选项 | 需要 HTTPS 或者 localhost; 用 tailnet IP HTTP 时 Chrome 有时不允许 PWA 安装。fallback: 长按图标→"添加到主屏"也能用 |
 | omni-desktop Mac 版第一次打开报"未签名" | 右键 → 打开 → 仍要打开 (绕苹果 Gatekeeper) |

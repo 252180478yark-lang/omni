@@ -29,6 +29,7 @@ def _allocation_environment() -> dict[str, str]:
         "OMNI_DATABASE_DISPOSABLE": "true",
         "OMNI_ALLOCATION_ID": "allocation-" + "a" * 32,
         "OMNI_RUNTIME_ID": "runtime-fixture",
+        "OMNI_RUNTIME_PROFILE": "core",
         "OMNI_WORKTREE_ID": "worktree-" + "b" * 16,
         "OMNI_SOURCE_FINGERPRINT": "c" * 64,
         "POSTGRES_USER": "fixture-user",
@@ -396,9 +397,19 @@ print(json.dumps({
 
 def test_dev_start_boots_core_services_in_the_same_root_compose_allocation() -> None:
     script = (ROOT / "dev-start.ps1").read_text(encoding="utf-8")
+    assert '[ValidateSet("core", "content", "full")]' in script
+    assert '"--runtime-profile", $RuntimeProfile' in script
     assert "docker compose -f $composeFile up -d postgres redis" in script
     assert "docker compose -f $composeFile up -d ai-provider-hub knowledge-engine" in script
+    assert "docker compose -f $composeFile --profile $RuntimeProfile up -d" in script
+    assert '$RuntimeProfile -ne "core"' in script
+    assert '$RuntimeProfile -eq "full"' in script
+    assert "$env:NGINX_HTTP_PORT" in script
     assert 'docker-compose.dev.yml" up -d' not in script
     assert "scripts\\dev_runtime_environment.py" in script
     assert "localhost:8001" not in script
     assert "localhost:8002" not in script
+    assert '$env:PORT = "$frontendPort"' in script
+    assert '$env:OMNI_FRONTEND_HOST = "127.0.0.1"' in script
+    assert '"npm", "run", "dev", "--", "-H"' not in script
+    assert 'Optional = $true' not in script

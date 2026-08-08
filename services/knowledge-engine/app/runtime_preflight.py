@@ -16,6 +16,7 @@ from typing import Any, Mapping
 
 
 MAX_EVIDENCE_BYTES = 10_000_000
+RUNTIME_PROFILES = frozenset({"core", "content", "full"})
 
 
 class RuntimePreflightError(RuntimeError):
@@ -67,6 +68,7 @@ def validate_allocation_evidence(
     source_commit: str,
     source_fingerprint: str,
     compose_project: str = "",
+    runtime_profile: str = "",
     ports_sha256: str = "",
     volumes_sha256: str = "",
     now: datetime | None = None,
@@ -135,6 +137,18 @@ def validate_allocation_evidence(
     moment = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     if allocation.get("state") != "active" or _utc_time(allocation.get("expires_at")) <= moment:
         raise RuntimePreflightError("RuntimeAllocation is not active")
+    allocation_profile = str(allocation.get("runtime_profile") or "").strip()
+    if allocation_profile not in RUNTIME_PROFILES:
+        raise RuntimePreflightError(
+            "RuntimeAllocation has no valid runtime_profile; release/reacquire the legacy allocation"
+        )
+    if runtime_profile:
+        if runtime_profile not in RUNTIME_PROFILES:
+            raise RuntimePreflightError("startup runtime_profile is invalid")
+        if allocation_profile != runtime_profile:
+            raise RuntimePreflightError(
+                "RuntimeAllocation runtime_profile does not match startup identity"
+            )
     exact = {
         "runtime_id": runtime_id,
         "worktree_id": worktree_id,
@@ -218,6 +232,7 @@ def validate_runtime_environment(
         "allocation_file": "OMNI_RUNTIME_ALLOCATION_FILE",
         "allocation_id": "OMNI_ALLOCATION_ID",
         "runtime_id": "OMNI_RUNTIME_ID",
+        "runtime_profile": "OMNI_RUNTIME_PROFILE",
         "worktree_id": "OMNI_WORKTREE_ID",
         "source_commit": "OMNI_SOURCE_COMMIT",
         "source_fingerprint": "OMNI_SOURCE_FINGERPRINT",

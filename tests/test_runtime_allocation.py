@@ -40,6 +40,14 @@ def _repo(tmp_path: Path) -> Path:
             "compose_project": "omni",
             "database": "omni_vibe_db",
         },
+        "runtime_profiles": {
+            "default": "core",
+            "profiles": {
+                "core": {"compose_profiles": []},
+                "content": {"compose_profiles": ["content"]},
+                "full": {"compose_profiles": ["full"]},
+            },
+        },
         "services": {
             "postgres": {"published_ports": [5432]},
             "redis": {"published_ports": [6379]},
@@ -92,6 +100,9 @@ def test_nonoverlapping_allocations_are_isolated_and_conflicts_fail(
     assert first["environment"]["OMNI_APPROVAL_WORKER_ENABLED"] == "true"
     assert first["environment"]["OMNI_APPROVAL_WORKER_ROLE"] == "owner"
     assert first["environment"]["OMNI_RESTART_POLICY"] == "no"
+    assert first["allocation"]["runtime_profile"] == "core"
+    assert first["environment"]["OMNI_RUNTIME_PROFILE"] == "core"
+    assert first["environment"]["COMPOSE_PROFILES"] == ""
     assert (
         first["environment"]["OMNI_IDENTITY_JWT_SECRET_FILE"] != first["environment"]["OMNI_APPROVAL_HMAC_SECRET_FILE"]
     )
@@ -169,6 +180,7 @@ def test_real_manifest_allocates_every_host_dev_service_port() -> None:
         {
             "compose_project": "omni-fixture",
             "runtime_id": "runtime-fixture",
+            "runtime_profile": "core",
             "allocation_id": "allocation-" + "a" * 32,
             "database": "omni_verify_fixture",
             "database_schema": "wt_fixture",
@@ -188,6 +200,55 @@ def test_real_manifest_allocates_every_host_dev_service_port() -> None:
         assert allocation.PORT_ENV[service] in projected
     assert projected["OMNI_BUILD_COMMIT"] == "b" * 40
     assert projected["OMNI_BUILD_SOURCE_FINGERPRINT"] == "c" * 64
+    assert projected["OMNI_RUNTIME_PROFILE"] == "core"
+
+
+@pytest.mark.parametrize(
+    ("runtime_profile", "compose_profiles"),
+    (("core", ""), ("content", "content"), ("full", "full")),
+)
+def test_runtime_profile_is_immutable_and_projected_to_compose(
+    tmp_path: Path, runtime_profile: str, compose_profiles: str
+) -> None:
+    repo = _repo(tmp_path)
+    state_dir = tmp_path / "state"
+    result = allocation.acquire(
+        repo,
+        change_id="profile-change",
+        owner="agent-a",
+        path_globs=["services/example/**"],
+        runtime_profile=runtime_profile,
+        state_dir=state_dir,
+    )
+    assert result["allocation"]["runtime_profile"] == runtime_profile
+    assert result["environment"]["OMNI_RUNTIME_PROFILE"] == runtime_profile
+    assert result["environment"]["COMPOSE_PROFILES"] == compose_profiles
+
+    other = "full" if runtime_profile != "full" else "core"
+    with pytest.raises(allocation.CompareAndSwapConflict, match="runtime profile"):
+        allocation.acquire(
+            repo,
+            change_id="profile-change",
+            owner="agent-a",
+            path_globs=["services/example/**"],
+            runtime_profile=other,
+            state_dir=state_dir,
+        )
+
+
+def test_invalid_or_legacy_runtime_profile_fails_closed(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    with pytest.raises(allocation.AllocationError, match="unknown runtime_profile"):
+        allocation.acquire(
+            repo,
+            change_id="bad-profile",
+            owner="agent-a",
+            path_globs=["services/example/**"],
+            runtime_profile="legacy",
+            state_dir=tmp_path / "state",
+        )
+    with pytest.raises(allocation.AllocationError, match="release/reacquire"):
+        allocation.allocation_environment({"ports": {}, "runtime_profile": ""})
 
 
 def test_read_only_allocation_does_not_own_scheduler_or_approval_worker(

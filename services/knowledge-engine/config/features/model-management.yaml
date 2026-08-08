@@ -11,7 +11,7 @@ routes:
   owned_surfaces: [/models]
 ia:
   mode: development
-  primary_group: prompt-eval
+  primary_group: agent-tools
   primary_order: 30
   contextual_groups: []
   phase: retain

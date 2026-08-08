@@ -11,8 +11,8 @@ routes:
   owned_surfaces: [/knowledge/harvester]
 ia:
   mode: work
-  primary_group: knowledge
-  primary_order: 10
+  primary_group: library
+  primary_order: 20
   contextual_groups: []
   phase: retain
   flag: unified_shell

@@ -137,6 +137,24 @@ async def pipeline_get_script(script_id: str) -> dict:
     return {"ok": True, "script": script}
 
 
+@tool_with_audit(mcp, require_approval=False)
+async def pipeline_list_assets(
+    sku_id: str | None = None,
+    script_id: str | None = None,
+    asset_type: str | None = None,
+    limit: int = 50,
+) -> dict:
+    """List persisted pipeline assets through the audited canonical executor."""
+
+    assets = await pipeline_lineage.list_assets(
+        sku_id=sku_id,
+        script_id=script_id,
+        asset_type=asset_type,
+        limit=limit,
+    )
+    return {"ok": True, "count": len(assets), "assets": assets}
+
+
 
 @tool_with_audit(mcp, require_approval=False)
 async def pipeline_adopt(

@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const base = serviceBase()
   try {
     const data = await fetchJson<Record<string, unknown>>(
-      `${base.knowledge}/api/v1/mcp/exec/pipeline_list_assets`,
+      `${base.knowledge}/api/v1/mcp/execute/sku.assets.list`,
       { method: 'POST', body: JSON.stringify({ sku_id, asset_type, limit }) },
     )
     return Response.json({ success: true, data })

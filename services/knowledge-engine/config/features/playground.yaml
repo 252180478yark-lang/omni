@@ -13,8 +13,8 @@ routes:
     - /playground/reverse-storyboard
 ia:
   mode: development
-  primary_group: skills-tools
-  primary_order: 0
+  primary_group: agent-tools
+  primary_order: 10
   contextual_groups: []
   phase: retain
   flag: unified_shell

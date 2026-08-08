@@ -11,16 +11,12 @@ import {
 export type { WorkbenchMode } from '@/lib/feature-registry'
 
 export type WorkbenchGroupId =
-  | 'today'
-  | 'products'
-  | 'operations'
-  | 'content'
-  | 'knowledge'
-  | 'agents'
-  | 'skills-tools'
-  | 'workflows'
-  | 'prompt-eval'
-  | 'runs-system'
+  | 'production'
+  | 'analysis'
+  | 'library'
+  | 'agent-tools'
+  | 'quality'
+  | 'system'
 
 export interface WorkbenchNavigationEntry {
   featureId: string
@@ -61,18 +57,14 @@ type SearchParamsLike = string | URLSearchParams | { get(name: string): string |
 
 const GROUPS: Readonly<Record<WorkbenchMode, ReadonlyArray<{ id: WorkbenchGroupId; label: string }>>> = {
   work: [
-    { id: 'today', label: '今日' },
-    { id: 'products', label: '商品' },
-    { id: 'operations', label: '经营' },
-    { id: 'content', label: '内容' },
-    { id: 'knowledge', label: '知识' },
+    { id: 'production', label: '内容生产' },
+    { id: 'analysis', label: '拆解分析' },
+    { id: 'library', label: '资产资料' },
   ],
   development: [
-    { id: 'agents', label: 'Agents' },
-    { id: 'skills-tools', label: 'Skills & Tools' },
-    { id: 'workflows', label: 'Workflows' },
-    { id: 'prompt-eval', label: 'Prompt & Eval' },
-    { id: 'runs-system', label: 'Runs & System' },
+    { id: 'agent-tools', label: 'Agent 与工具' },
+    { id: 'quality', label: '质量与审批' },
+    { id: 'system', label: '系统中台' },
   ],
 }
 
@@ -156,7 +148,7 @@ function breadcrumbFor(feature: FeatureRegistryEntry, mode: WorkbenchMode): Work
   const group = navigation.find((candidate) => candidate.id === primaryGroup)
   if (!group) return [{ label: feature.title, href: feature.href }]
   return [
-    { label: mode === 'work' ? '工作' : '开发', href: navigation[0].href },
+    { label: mode === 'work' ? '内容' : '开发', href: navigation[0].href },
     { label: group.label, href: group.href },
     { label: feature.title, href: feature.href },
   ]

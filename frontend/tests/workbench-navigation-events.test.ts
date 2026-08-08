@@ -133,7 +133,7 @@ describe('workbench navigation telemetry BFF', () => {
         capability_id: 'legacy-alias:qa:chat',
         route_family: 'workbench-alias:chat',
         exclusive: false,
-        metadata: { state: result, reason_code: 'legacy_alias' },
+        metadata: { state: result, reason_code: 'legacy_alias', version: 'workbench-ia-v2' },
       })
       expect(JSON.stringify(knowledgeBodies[index])).not.toContain('test-compatibility-token')
     }
@@ -154,11 +154,11 @@ describe('workbench navigation telemetry BFF', () => {
     for (const result of ['selected', 'opened'] as const) {
       const response = await POST(request({
         event_type: 'primary_navigation',
-        requested_href: '/sku-pipeline',
-        canonical_href: '/sku-pipeline',
-        feature_id: 'sku-pipeline',
+        requested_href: '/workspace',
+        canonical_href: '/workspace',
+        feature_id: 'workspace-operations',
         mode: 'development',
-        primary_group: 'workflows',
+        primary_group: 'system',
         secondary_depth: 0,
         result,
       }))
@@ -168,17 +168,19 @@ describe('workbench navigation telemetry BFF', () => {
       'selected', 'opened',
     ])
     expect(knowledgeBodies[0]).toMatchObject({
-      capability_id: 'navigation:sku-pipeline',
-      route_family: 'workbench-nav:development:workflows:depth-0',
+      capability_id: 'navigation:workspace-operations',
+      route_family: 'workbench-nav:development:system:depth-0',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
     })
 
     const pollutedDepth = await POST(request({
       event_type: 'primary_navigation',
-      requested_href: '/sku-pipeline',
-      canonical_href: '/sku-pipeline',
-      feature_id: 'sku-pipeline',
+      requested_href: '/workspace',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
       mode: 'development',
-      primary_group: 'workflows',
+      primary_group: 'system',
       secondary_depth: 1,
       result: 'selected',
     }))
@@ -186,16 +188,100 @@ describe('workbench navigation telemetry BFF', () => {
 
     const mismatch = await POST(request({
       event_type: 'primary_navigation',
-      requested_href: '/sku-pipeline',
-      canonical_href: '/sku-pipeline',
-      feature_id: 'sku-pipeline',
+      requested_href: '/workspace',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
       mode: 'development',
-      primary_group: 'agents',
+      primary_group: 'agent-tools',
       secondary_depth: 1,
       result: 'selected',
     }))
     expect(mismatch.status).toBe(400)
     expect(knowledgeBodies).toHaveLength(2)
+  })
+
+  it('dual-reads frozen v1 and current v2 navigation without deduplicating their evidence', async () => {
+    const { knowledgeBodies } = enableServices()
+    const current = await POST(request({
+      event_type: 'primary_navigation',
+      requested_href: '/sku-pipeline',
+      canonical_href: '/sku-pipeline',
+      feature_id: 'sku-pipeline',
+      mode: 'work',
+      primary_group: 'production',
+      secondary_depth: 1,
+      result: 'selected',
+    }))
+    const legacy = await POST(request({
+      event_type: 'primary_navigation',
+      requested_href: '/sku-pipeline',
+      canonical_href: '/sku-pipeline',
+      feature_id: 'sku-pipeline',
+      mode: 'development',
+      primary_group: 'workflows',
+      secondary_depth: 0,
+      result: 'selected',
+    }))
+
+    expect(current.status).toBe(202)
+    expect(legacy.status).toBe(202)
+    expect(knowledgeBodies).toHaveLength(2)
+    expect(knowledgeBodies[0]).toMatchObject({
+      capability_id: 'navigation:sku-pipeline',
+      route_family: 'workbench-nav:work:production:depth-1',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
+    })
+    expect(knowledgeBodies[1]).toMatchObject({
+      capability_id: 'navigation:sku-pipeline',
+      route_family: 'workbench-nav:development:workflows:depth-0',
+      exclusive: true,
+      metadata: { version: 'workbench-ia-v1' },
+    })
+  })
+
+  it('rejects legacy group evidence outside the frozen v1 placement and depth contract', async () => {
+    const { knowledgeBodies } = enableServices()
+    for (const payload of [
+      {
+        event_type: 'primary_navigation', requested_href: '/sku-pipeline',
+        canonical_href: '/sku-pipeline', feature_id: 'sku-pipeline', mode: 'development',
+        primary_group: 'workflows', secondary_depth: 1, result: 'selected',
+      },
+      {
+        event_type: 'primary_navigation', requested_href: '/workspace',
+        canonical_href: '/workspace', feature_id: 'workspace-operations', mode: 'development',
+        primary_group: 'workflows', secondary_depth: 0, result: 'opened',
+      },
+      {
+        event_type: 'primary_navigation', requested_href: '/sku-pipeline',
+        canonical_href: '/sku-pipeline', feature_id: 'sku-pipeline', mode: 'development',
+        primary_group: 'retired-group', secondary_depth: 0, result: 'selected',
+      },
+    ]) {
+      expect((await POST(request(payload))).status).toBe(400)
+    }
+    expect(knowledgeBodies).toHaveLength(0)
+  })
+
+  it('accepts the root workspace alias against the current registry identity', async () => {
+    const { knowledgeBodies } = enableServices()
+    const response = await POST(request({
+      event_type: 'legacy_alias',
+      requested_href: '/',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
+      result: 'redirected',
+    }))
+
+    expect(response.status).toBe(202)
+    expect(knowledgeBodies).toHaveLength(1)
+    expect(knowledgeBodies[0]).toMatchObject({
+      capability_id: 'legacy-alias:root:workspace-operations',
+      route_family: 'workbench-alias:workspace',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
+    })
   })
 
   it('hashes authenticated route gaps rather than persisting arbitrary path content', async () => {

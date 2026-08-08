@@ -1,0 +1,462 @@
+schema_version: 3
+change_id: 2026-08-09-content-development-convergence
+title: Content and development surface convergence
+state: GRAPH_DIFF_READY
+created_at: '2026-08-08T17:59:14Z'
+updated_at: '2026-08-08T19:09:30Z'
+feature_refs:
+- feature_id: workspace-operations
+  feature_ref: services/knowledge-engine/config/features/workspace-operations.yaml@1d3177abb783baf039a94c2c68bde3c50a920f54
+- feature_id: unified-workbench-w1
+  feature_ref: delivery-attestation:b82da85bfd7958297cb8389f4c59acafdb00c2f7
+- feature_id: system-convergence-master-prd
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S11-S12
+before_snapshot:
+  ref: git:1d3177abb783baf039a94c2c68bde3c50a920f54
+delivery:
+  authority: ci_attestation
+  base_commit: 1d3177abb783baf039a94c2c68bde3c50a920f54
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - The change modifies the registry-driven frontend IA, shared shell and three page renderers across frontend and FeatureDefinition contracts.
+  - Docker profile membership and runtime required-service semantics change the default runtime projection while retaining every service, volume, port and API.
+  external_effects: []
+  scope_deltas:
+  - added_paths:
+    - frontend/src/app/api/omni/workbench/navigation-events/route.ts
+    - frontend/tests/workbench-navigation-events.test.ts
+    - frontend/tests/system-health-overview.test.ts
+    reason: Typecheck exposed the existing navigation-event BFF allowlist and retired-homepage rendering tests as direct consumers of the changed IA and root renderer contracts; they must move atomically with those sources.
+    required_level: R2
+  - added_paths:
+    - frontend/Dockerfile
+    - frontend/server.ts
+    - frontend/playwright.config.ts
+    - config/schemas/runtime-allocation.schema.json
+    - scripts/runtime_allocation.py
+    - scripts/runtime_guard.py
+    - dev-start.ps1
+    - tests/test_runtime_allocation.py
+    - tests/test_runtime_guard.py
+    - tests/test_dev_runtime_environment.py
+    - README.md
+    - docs/multi-device/setup.md
+    - frontend/src/app/api/omni/asset-lineage/route.ts
+    - frontend/src/app/api/omni/asset-metrics/route.ts
+    - frontend/src/app/api/omni/assets/route.ts
+    - frontend/src/app/api/omni/mcp-exec/reverse-storyboard/route.ts
+    - frontend/tests/canonical-tool-execution-bffs.test.ts
+    - frontend/src/lib/workbench-ia-compat.ts
+    - frontend/src/middleware.ts
+    - frontend/src/app/workspace/development/page.tsx
+    - frontend/tests/workbench-middleware.test.ts
+    - frontend/tests/workbench-route-inventory.test.ts
+    - services/knowledge-engine/app/mcp/tools/pipeline.py
+    - services/knowledge-engine/app/mcp/doctor.py
+    - services/knowledge-engine/tests/test_tool_execution.py
+    reason: Independent pre-delivery review proved that the slim runtime would otherwise ship an unreachable frontend image, a profile-unaware allocation/guard contract, stale canonical startup guidance, four remaining BFF consumers of the already delivered canonical operation executor, a root-route registry mismatch, and no rolling bridge for old IA telemetry. These blockers were discovered before staging or delivery and are now locked before their product edits.
+    required_level: R2
+  - added_paths:
+    - services/knowledge-engine/app/runtime_preflight.py
+    - services/knowledge-engine/tests/test_runtime_preflight.py
+    reason: Runtime-profile implementation review proved that the one-shot guard could validate the allocation record while the actual Knowledge Engine startup preflight remained unaware of the caller-selected profile. The application preflight and its focused tests are locked before editing so Compose environment, allocation evidence and application startup fail closed on the same profile identity.
+    required_level: R2
+  - added_paths:
+    - frontend/.dockerignore
+    reason: The first real frontend image build transferred a 1.14 GB context because local node_modules, .next and test evidence were not excluded. The Docker context boundary is locked before adding a non-runtime ignore file, then the same image build will be repeated to prove the reduced context still contains the custom server closure.
+    required_level: R1
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The delivered unified shell still exposes ten navigation groups and twenty-four visible features, duplicates the home, workspace, system graph and execution surfaces, uses a dense violet marketing presentation, and forces optional content-analysis services into the default Docker runtime.
+  expected_outcome: Omni presents one calm two-mode web workbench with only content-production and development surfaces in six source-driven groups, one shared system command center, and a canonical Compose runtime that starts a six-service core by default while preserving content and full profiles as reversible projections.
+  user_visible_behavior:
+  - The normal web entry redirects to one workspace, whose Content mode offers production, analysis and library destinations derived from FeatureDefinition.
+  - Development mode uses the same shell and workspace to expose agent tools, quality gates and one shared system command center with system-graph and runtime views.
+  - Legacy and non-core features remain directly addressable but disappear from primary navigation; no page, API, service, database object or data volume is deleted.
+  - The default Compose projection starts core services only; content and full profiles restore optional analysis, review, news and gateway services without renaming endpoints or volumes.
+current_chain:
+  nodes:
+  - id: config:feature-definition-v1
+    role: Canonical source for visible routes, IA groups, phases and dependencies.
+  - id: frontend:feature-registry-v1
+    role: Generated frontend projection consumed by navigation and route resolution.
+  - id: frontend:unified-app-shell
+    role: Delivered W1 shell that currently renders ten groups and duplicated top-level controls.
+  - id: page:/workspace
+    role: Existing Scout-centric operations page that currently overrides unified workspace mode.
+  - id: page:/system-graph
+    role: Existing static system graph and legacy plan renderer.
+  - id: page:/workspace/execution
+    role: Existing runtime radar renderer.
+  - id: runtime:root-compose
+    role: Canonical allocation-aware runtime with all optional application services in the default projection.
+  edges:
+  - from: config:feature-definition-v1
+    to: frontend:feature-registry-v1
+    relation: generates
+  - from: frontend:feature-registry-v1
+    to: frontend:unified-app-shell
+    relation: drives_navigation
+  - from: frontend:unified-app-shell
+    to: page:/workspace
+    relation: renders
+  - from: page:/workspace
+    to: page:/system-graph
+    relation: duplicates_development_view
+  - from: page:/workspace
+    to: page:/workspace/execution
+    relation: duplicates_execution_view
+  evidence:
+  - services/knowledge-engine/config/features/feature-definition.schema.json:$defs.ia
+  - services/knowledge-engine/app/services/system_graph/feature_definitions.py:WorkbenchGroup
+  - frontend/src/lib/workbench-ia.ts:GROUPS
+  - frontend/src/components/app-shell.tsx:AppShellContent
+  - frontend/src/app/workspace/page.tsx:WorkspacePage
+  - docker-compose.yml:services
+  - config/runtime-manifest.yaml:services
+scope:
+  pages:
+  - page:/
+  - page:/workspace
+  - page:/system-graph
+  - page:/workspace/execution
+  - page:/workspace/development
+  apis:
+  - bff:/api/omni/workbench/navigation-events
+  - bff:/api/omni/asset-lineage
+  - bff:/api/omni/asset-metrics
+  - bff:/api/omni/assets
+  - bff:/api/omni/mcp-exec/reverse-storyboard
+  mcp_tools:
+  - mcp_tool:pipeline_list_assets
+  services:
+  - service:feature-definition-loader
+  - service:frontend-unified-shell
+  - runtime:root-compose
+  - config:knowledge-engine-settings
+  - runtime:allocation-and-guard
+  - service:knowledge-engine-runtime-preflight
+  - runtime:frontend-container
+  - service:canonical-tool-execution
+  database: []
+  data_sources:
+  - source:feature-definition-yaml
+  - source:runtime-manifest
+  - source:runtime-allocation
+  states_workflows:
+  - state:workbench-mode
+  - state:runtime-profile
+  - state:feature-navigation-visibility
+  tests:
+  - test:services/knowledge-engine/tests/test_feature_definitions.py
+  - test:services/knowledge-engine/tests/test_config_contract.py
+  - test:frontend/tests/workbench-ia.test.ts
+  - test:frontend/tests/workbench-shell.test.tsx
+  - test:frontend/tests/content-development-convergence.test.tsx
+  - test:tests/test_compose_runtime_contract.py
+  - test:tests/test_runtime_allocation.py
+  - test:tests/test_runtime_guard.py
+  - test:tests/test_dev_runtime_environment.py
+  - test:frontend/tests/canonical-tool-execution-bffs.test.ts
+  - test:frontend/tests/workbench-middleware.test.ts
+  - test:frontend/tests/workbench-route-inventory.test.ts
+  - test:services/knowledge-engine/tests/test_tool_execution.py
+  - test:services/knowledge-engine/tests/test_runtime_preflight.py
+  docs:
+  - docs/dev-changes/2026-08-09-content-development-convergence
+  - docs/runtime-profiles.md
+  - README.md
+  - docs/multi-device/setup.md
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: feature-definition-ia
+  node_id: config:feature-definition-v1
+  paths:
+  - services/knowledge-engine/config/features/*.yaml
+  - services/knowledge-engine/config/features/feature-definition.schema.json
+  - services/knowledge-engine/config/features/generated/features.v1.json
+  - services/knowledge-engine/app/services/system_graph/feature_definitions.py
+  - services/knowledge-engine/tests/test_feature_definitions.py
+  - frontend/src/generated/feature-registry.v1.json
+  - frontend/src/lib/workbench-ia.ts
+  - frontend/tests/feature-registry.test.ts
+  - frontend/tests/workbench-ia.test.ts
+  - frontend/src/app/api/omni/workbench/navigation-events/route.ts
+  - frontend/tests/workbench-navigation-events.test.ts
+  - frontend/src/lib/workbench-ia-compat.ts
+  - frontend/src/middleware.ts
+  - frontend/tests/workbench-middleware.test.ts
+  - frontend/tests/workbench-route-inventory.test.ts
+  upstream:
+  - source:feature-definition-yaml
+  downstream:
+  - frontend:unified-app-shell
+  - service:feature-health-registry
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+- id: CHG-002
+  action: modify
+  kind: frontend-shell-design
+  node_id: frontend:unified-app-shell
+  paths:
+  - frontend/src/components/app-shell.tsx
+  - frontend/src/components/app-sidebar.tsx
+  - frontend/src/app/globals.css
+  - frontend/tests/workbench-shell.test.tsx
+  - frontend/tests/agent-chat/e2e/workbench-shell.spec.ts
+  - frontend/tests/agent-chat/e2e/workbench-a11y.spec.ts
+  - frontend/playwright.config.ts
+  - docs/dev-changes/2026-08-09-content-development-convergence/screenshots/content-workspace.png
+  - docs/dev-changes/2026-08-09-content-development-convergence/screenshots/development-workspace.png
+  - docs/dev-changes/2026-08-09-content-development-convergence/screenshots/content-workspace-mobile.png
+  upstream:
+  - frontend:feature-registry-v1
+  downstream:
+  - page:/workspace
+  - page:/system-graph
+  - page:/workspace/execution
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+  - VER-003
+  - VER-008
+- id: CHG-003
+  action: modify
+  kind: content-workspace
+  node_id: page:/workspace
+  paths:
+  - frontend/src/app/page.tsx
+  - frontend/src/app/workspace/page.tsx
+  - frontend/src/components/content-workspace.tsx
+  - frontend/tests/content-development-convergence.test.tsx
+  - frontend/tests/system-health-overview.test.ts
+  - frontend/src/app/workspace/development/page.tsx
+  upstream:
+  - frontend:unified-app-shell
+  - frontend:feature-registry-v1
+  downstream:
+  - page:/sku-pipeline
+  - page:/content-studio
+  - page:/reverse-engineer
+  - page:/knowledge
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+  - VER-003
+  - VER-008
+- id: CHG-004
+  action: modify
+  kind: shared-system-command-center
+  node_id: component:system-command-center
+  paths:
+  - frontend/src/components/system-command-center/SystemCommandCenter.tsx
+  - frontend/src/app/system-graph/page.tsx
+  - frontend/src/app/workspace/execution/page.tsx
+  - frontend/tests/content-development-convergence.test.tsx
+  upstream:
+  - page:/workspace
+  downstream:
+  - component:SystemGraphView
+  - component:RuntimeOverlay
+  contract_change: compatible
+  verification_ids:
+  - VER-002
+  - VER-003
+- id: CHG-005
+  action: modify
+  kind: runtime-profile-convergence
+  node_id: runtime:root-compose
+  paths:
+  - docker-compose.yml
+  - config/runtime-manifest.yaml
+  - services/knowledge-engine/app/config.py
+  - services/knowledge-engine/tests/test_config_contract.py
+  - tests/test_compose_runtime_contract.py
+  - docs/runtime-profiles.md
+  - frontend/Dockerfile
+  - frontend/.dockerignore
+  - frontend/server.ts
+  - config/schemas/runtime-allocation.schema.json
+  - scripts/runtime_allocation.py
+  - scripts/runtime_guard.py
+  - dev-start.ps1
+  - tests/test_runtime_allocation.py
+  - tests/test_runtime_guard.py
+  - tests/test_dev_runtime_environment.py
+  - README.md
+  - docs/multi-device/setup.md
+  - services/knowledge-engine/app/runtime_preflight.py
+  - services/knowledge-engine/tests/test_runtime_preflight.py
+  upstream:
+  - source:runtime-manifest
+  downstream:
+  - service:frontend
+  - service:knowledge-engine
+  - profile:content
+  - profile:full
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+  - VER-005
+  - VER-006
+  - VER-009
+  - VER-011
+- id: CHG-006
+  action: modify
+  kind: canonical-tool-execution-bffs
+  node_id: service:canonical-tool-execution
+  paths:
+  - frontend/src/app/api/omni/asset-lineage/route.ts
+  - frontend/src/app/api/omni/asset-metrics/route.ts
+  - frontend/src/app/api/omni/assets/route.ts
+  - frontend/src/app/api/omni/mcp-exec/reverse-storyboard/route.ts
+  - frontend/tests/canonical-tool-execution-bffs.test.ts
+  - services/knowledge-engine/app/mcp/tools/pipeline.py
+  - services/knowledge-engine/app/mcp/doctor.py
+  - services/knowledge-engine/tests/test_tool_execution.py
+  upstream:
+  - frontend:content-and-analysis-surfaces
+  downstream:
+  - rest_operation:POST:/api/v1/mcp/execute/{operation_id}
+  contract_change: compatible
+  verification_ids:
+  - VER-007
+  - VER-003
+  - VER-010
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Existing page URLs, BFF/REST/MCP routes, operation IDs and direct links remain unchanged; root becomes a reversible server redirect to the already canonical workspace.
+  database:
+    status: not_applicable
+    strategy: No table, view, field, migration, database name, named volume or persistent data is changed.
+  workflow:
+    status: compatible
+    strategy: Existing feature IDs and physical pages remain available. FeatureDefinition changes only primary navigation visibility and group projection; legacy group identifiers remain accepted during rolling telemetry compatibility, while complete rollback is by immutable candidate revert rather than a shell-only flag.
+  data_source:
+    status: compatible
+    strategy: FeatureDefinition and runtime manifest remain the existing versioned sources. Generated registries are regenerated from YAML and optional runtime services retain their current endpoints.
+graph_acceptance:
+  required_edges:
+  - from: source:feature-definition-yaml
+    to: frontend:feature-registry-v1
+    relation: generates
+  - from: frontend:feature-registry-v1
+    to: frontend:unified-app-shell
+    relation: drives_navigation
+  - from: frontend:unified-app-shell
+    to: page:/workspace
+    relation: renders
+  - from: page:/workspace
+    to: component:system-command-center
+    relation: renders_in_development_mode
+  - from: component:system-command-center
+    to: component:SystemGraphView
+    relation: reuses
+  - from: component:system-command-center
+    to: component:RuntimeOverlay
+    relation: reuses
+  - from: runtime:root-compose
+    to: profile:content
+    relation: projects
+  - from: runtime:root-compose
+    to: profile:full
+    relation: projects
+  allowed_unknowns:
+  - Runtime profile startup is verified structurally in this slice; live adoption remains unknown until an isolated RuntimeAllocation build is available.
+  forbidden_orphans:
+  - page:/workspace
+  - component:system-command-center
+  - frontend:feature-registry-v1
+risks:
+- id: RSK-001
+  description: Hiding a feature from navigation could be mistaken for deleting its route or backend consumer.
+  mitigation: Preserve all FeatureDefinition IDs, owned surfaces, aliases, pages and services; assert the 45-page inventory and direct-route resolution in contract tests.
+- id: RSK-002
+  description: Optional Compose profiles could make a required core dependency unavailable or accidentally change persistent resources.
+  mitigation: Keep identity, hub and knowledge engine in core; assert exact service sets and unchanged named volumes/ports, and provide full-profile rollback without down -v.
+- id: RSK-003
+  description: A visual rewrite could hide unknown or unavailable state behind a cleaner presentation.
+  mitigation: Retain semantic state badges, four-state command-center renderers, keyboard navigation, reduced motion and fail-closed health observations.
+- id: RSK-004
+  description: The branch is based on two local receipt-recovery commits that are not yet externally delivered.
+  mitigation: Record the exact base commit, keep this work in an independent clean worktree, and require a fresh CI attestation for this change after receipt-recovery integration or retargeting.
+- id: RSK-005
+  description: A structurally smaller Compose graph could be declared healthy while its custom Next server is absent, loopback-only, or its selected profile is not the one allocated and verified.
+  mitigation: Copy the custom server closure into the runner image, bind it inside the container, carry runtime_profile through allocation/environment/preflight/verify, assert unexpected profile services, and require a real image build plus host/container HTTP smoke.
+out_of_scope:
+- No physical deletion of frontend pages, BFF routes, services, Compose files, Dockerfiles, images, build cache, databases, named volumes or source directories.
+- No process merger, endpoint rename, authentication or secret change, external publication, remote push, migration execution, scheduler enablement or external platform write.
+- No edits to the dirty macOS recovery worktree, its Dockerfiles, server files, launch scripts or untracked recovery contract.
+- No retirement claim for the legacy shell, old /exec/ compatibility adapters or hidden features until telemetry, consumer and recovery gates are separately satisfied; this slice only moves the four known frontend consumers to canonical operation IDs.
+rollback:
+  strategy: Revert this candidate as one immutable change to restore the prior IA, renderers, BFF consumers and runtime projection. NEXT_PUBLIC_OMNI_UNIFIED_SHELL only restores the legacy shell chrome and is not represented as a complete product rollback. Use docker compose --profile full up -d under a valid full RuntimeAllocation to restore the full service projection.
+  data_recovery: No data transformation occurs. Existing database and named volumes are preserved, and rollback must never use down -v or a prune command.
+verification_plan:
+- id: VER-001
+  layer: feature-definition
+  command: PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=services/knowledge-engine uv run --no-project --with 'pyyaml>=6,<7' --with 'pydantic>=2,<3' --with 'pydantic-settings>=2,<3' --with 'httpx>=0.27,<1' --with 'pytest>=8,<9' python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_config_contract.py
+  proves: Six-group IA, hidden direct-route compatibility, generated registry freshness and the corrected internal ad-review endpoint validate from canonical sources.
+  required: true
+- id: VER-002
+  layer: frontend-unit
+  command: npm --prefix frontend run test:unit -- tests/feature-registry.test.ts tests/workbench-ia.test.ts tests/workbench-shell.test.tsx tests/content-development-convergence.test.tsx tests/workbench-navigation-events.test.ts tests/workbench-middleware.test.ts tests/workbench-route-inventory.test.ts tests/system-health-overview.test.ts
+  proves: The registry-driven two-mode shell exposes three groups per mode, preserves continuity and direct routes, keeps v1/v2 telemetry and root alias ownership aligned, and reuses one content workspace and system command center.
+  required: true
+- id: VER-003
+  layer: frontend-build
+  command: npm --prefix frontend run build -- --no-lint
+  proves: The redesigned Next.js surface type-checks and produces an optimized build with every existing physical page and BFF route retained; pre-existing repository-wide lint debt is reported separately instead of being mistaken for a compilation failure.
+  required: true
+- id: VER-004
+  layer: compose-contract
+  command: PYTHONDONTWRITEBYTECODE=1 uv run --no-project --with 'pytest>=8,<9' python -B -m pytest -q -p no:cacheprovider tests/test_compose_runtime_contract.py
+  proves: Root Compose remains allocation-aware and projects exact core, content and full service sets without optional frontend hard dependencies.
+  required: true
+- id: VER-005
+  layer: repository-policy
+  command: python3 scripts/check_agent_policy.py --require-tracked
+  proves: Agent policy, generated artifacts and tracked-contract requirements remain valid for the candidate tree.
+  required: true
+- id: VER-006
+  layer: runtime-profile-governance
+  command: PYTHONDONTWRITEBYTECODE=1 uv run --no-project --with 'pytest>=8,<9' python -B -m pytest -q -p no:cacheprovider tests/test_runtime_allocation.py tests/test_runtime_guard.py tests/test_dev_runtime_environment.py
+  proves: RuntimeAllocation, environment projection, preflight, live guard and Windows development startup agree on the selected core/content/full profile without changing databases or volumes.
+  required: true
+- id: VER-007
+  layer: canonical-operation-bffs
+  command: npm --prefix frontend run test:unit -- tests/canonical-tool-execution-bffs.test.ts
+  proves: The remaining content/asset BFFs call only registered canonical operation IDs and preserve their public request, response and timeout semantics.
+  required: true
+- id: VER-008
+  layer: frontend-browser-accessibility
+  command: NO_PROXY='127.0.0.1,localhost' no_proxy='127.0.0.1,localhost' PLAYWRIGHT_EXECUTABLE_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' PLAYWRIGHT_E2E_SELF_HOSTED=1 PLAYWRIGHT_BASE_URL='http://127.0.0.1:3137' npm --prefix frontend exec -- playwright test --config frontend/playwright.config.ts workbench-shell.spec.ts workbench-a11y.spec.ts
+  proves: Real Chrome verifies six-group navigation, cross-mode landing, mobile discovery, status semantics, keyboard focus and axe checks on an isolated loopback server.
+  required: true
+- id: VER-009
+  layer: frontend-container
+  command: docker build --file frontend/Dockerfile --tag omni-frontend:content-development-verify --build-arg OMNI_BUILD_COMMIT=1d3177abb783baf039a94c2c68bde3c50a920f54 --build-arg OMNI_BUILD_SOURCE_FINGERPRINT=verification frontend
+  proves: The canonical frontend runner image contains and compiles the custom server closure used by its npm start command; host/container HTTP reachability is recorded as supplemental smoke evidence.
+  required: true
+- id: VER-010
+  layer: canonical-operation-backend
+  command: PYTHONDONTWRITEBYTECODE=1 uv run --no-project --with-editable services/knowledge-engine --with 'pytest>=8,<9' --with 'pytest-asyncio>=0.23,<1' python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_tool_execution.py
+  proves: Every operation ID used by the migrated BFFs resolves to a registered audited MCP wrapper, including sku.assets.list, and the shared executor preserves typed validation.
+  required: true
+- id: VER-011
+  layer: knowledge-engine-runtime-preflight
+  command: PYTHONDONTWRITEBYTECODE=1 uv run --no-project --with-editable services/knowledge-engine --with 'pytest>=8,<9' --with 'pytest-asyncio>=0.23,<1' python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_runtime_preflight.py
+  proves: The actual Knowledge Engine startup preflight requires the selected runtime profile and rejects missing or mismatched profile identity before database, scheduler or filesystem side effects.
+  required: true
+lock:
+  locked_at: '2026-08-08T18:04:45Z'
+  locked_by: codex
+  rationale: Read-only PRD, delivery, frontend, backend and Docker audits fixed the source contracts, compatibility boundary, exact paths and verification evidence before product edits.

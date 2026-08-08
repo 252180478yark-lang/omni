@@ -11,7 +11,10 @@ import { attachWsHandler } from './src/lib/agent-chat/ws-handler'
 import { approvalAuthorizationFromCookie } from './src/app/api/omni/_shared'
 
 const dev = process.env.NODE_ENV !== 'production'
-const hostname = '127.0.0.1'
+// Containers must accept traffic arriving through their published port or
+// nginx network. Do not use Docker's automatic HOSTNAME value here: it is a
+// container id, not a listen-address contract.
+const hostname = process.env.OMNI_FRONTEND_HOST || (dev ? '127.0.0.1' : '0.0.0.0')
 const port = parseInt(process.env.PORT || '3000', 10)
 
 const app = next({ dev, hostname, port })

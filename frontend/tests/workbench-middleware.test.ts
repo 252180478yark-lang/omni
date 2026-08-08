@@ -111,6 +111,35 @@ describe('workbench compatibility middleware', () => {
     })
   })
 
+  it('treats root as the workspace alias while preserving query and recovery identity', async () => {
+    const fetchMock = bffMock()
+    const { ALIAS_RECOVERY_COOKIE, handleWorkbenchMiddleware } = await middlewareWithFlag('1')
+    const collector = eventCollector()
+    const response = handleWorkbenchMiddleware(
+      new NextRequest('http://localhost/?source=desktop&round=2', {
+        headers: { Accept: 'text/html', Cookie: APPROVAL_COOKIE },
+      }),
+      collector.event as never,
+    )
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get('location')).toBe('http://localhost/workspace?source=desktop&round=2')
+    const recovery = response.cookies.get(ALIAS_RECOVERY_COOKIE)
+    expect(JSON.parse(decodeURIComponent(recovery?.value || ''))).toEqual([
+      '/', '/workspace', 'workspace-operations',
+    ])
+    expect(recovery?.value).not.toContain('source')
+    await Promise.all(collector.promises)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      event_type: 'legacy_alias',
+      requested_href: '/',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
+      result: 'redirected',
+    })
+  })
+
   it('consumes recovery on a canonical RSC navigation, emits recovered and clears the cookie', async () => {
     const fetchMock = bffMock()
     const { ALIAS_RECOVERY_COOKIE, handleWorkbenchMiddleware } = await middlewareWithFlag('1')
