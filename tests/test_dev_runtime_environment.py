@@ -36,11 +36,6 @@ def _allocation_environment() -> dict[str, str]:
         "POSTGRES_PASSWORD": "not-printed:/@ password",
         "POSTGRES_DB": "omni_verify_fixture",
         "REDIS_PASSWORD": "redis-not-printed:/@ password",
-        "OMNI_IDENTITY_JWT_SECRET_FILE": str((ROOT / "tests" / "fixtures" / "identity-jwt.key").resolve()),
-        "OMNI_APPROVAL_HMAC_SECRET_FILE": str((ROOT / "tests" / "fixtures" / "approval-hmac.key").resolve()),
-        "OMNI_COMPATIBILITY_TOKEN_FILE": str((ROOT / "tests" / "fixtures" / "compatibility-token.key").resolve()),
-        "OMNI_RUNTIME_TRACE_TOKEN_FILE": str((ROOT / "tests" / "fixtures" / "runtime-trace-token.key").resolve()),
-        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE": str((ROOT / "tests" / "fixtures" / "runtime-trace-token.key").resolve()),
         "POSTGRES_PORT": "25432",
         "REDIS_PORT": "26379",
         "IDENTITY_SERVICE_PORT": "28000",
@@ -72,7 +67,7 @@ def test_service_environment_uses_only_allocated_database_redis_and_service_port
     assert environment["KNOWLEDGE_ENGINE_URL"] == "http://127.0.0.1:28002"
     assert environment["VIDEO_ANALYSIS_SERVICE_URL"] == "http://127.0.0.1:28006"
     assert environment["NEXT_PUBLIC_OMNI_API_BASE_URL"] == "http://127.0.0.1:23000"
-    assert environment["JWT_SECRET_KEY_FILE"] == source["OMNI_IDENTITY_JWT_SECRET_FILE"]
+    assert "JWT_SECRET_KEY_FILE" not in environment
     assert "OMNI_COMPATIBILITY_TOKEN_FILE" not in environment
     assert "JWT_SECRET_KEY" not in environment
     assert database.port != 5432
@@ -104,9 +99,9 @@ def test_frontend_overrides_inherited_canonical_database_and_redis_endpoints() -
     redis = urlsplit(environment["REDIS_URL"])
     assert (redis.hostname, redis.port, redis.path) == ("127.0.0.1", 26379, "/1")
     assert environment["OMNI_KE_URL"] == "http://127.0.0.1:28002"
-    assert environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] == source["OMNI_APPROVAL_HMAC_SECRET_FILE"]
-    assert environment["OMNI_COMPATIBILITY_TOKEN_FILE"] == source["OMNI_COMPATIBILITY_TOKEN_FILE"]
-    assert environment["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] == source["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"]
+    assert "OMNI_APPROVAL_SERVICE_SECRET_FILE" not in environment
+    assert "OMNI_COMPATIBILITY_TOKEN_FILE" not in environment
+    assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE" not in environment
     assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" not in environment
     assert "OMNI_APPROVAL_SERVICE_TOKEN" not in environment
     assert "OMNI_APPROVAL_SERVICE_SECRET_FILE" not in source
@@ -116,25 +111,21 @@ def test_frontend_overrides_inherited_canonical_database_and_redis_endpoints() -
         runtime_env.build_service_environment("frontend", source)
 
 
-@pytest.mark.parametrize(
-    ("service", "source_name"),
-    (
-        ("identity-service", "OMNI_IDENTITY_JWT_SECRET_FILE"),
-        ("frontend", "OMNI_APPROVAL_HMAC_SECRET_FILE"),
-        ("frontend", "OMNI_COMPATIBILITY_TOKEN_FILE"),
-        ("frontend", "OMNI_RUNTIME_TRACE_TOKEN_FILE"),
-        ("knowledge-engine", "OMNI_RUNTIME_TRACE_TOKEN_FILE"),
-        ("scout-agent", "OMNI_RUNTIME_TRACE_TOKEN_FILE"),
-    ),
-)
-def test_host_secret_file_mappings_require_absolute_paths(service: str, source_name: str) -> None:
+def test_internal_auth_inputs_are_removed_from_every_child_environment() -> None:
     source = _allocation_environment()
-    source[source_name] = "relative-secret.key"
-    with pytest.raises(runtime_env.DevEnvironmentError, match="not absolute"):
-        runtime_env.build_service_environment(service, source)
+    forbidden = {
+        "JWT_SECRET_KEY", "JWT_SECRET_KEY_FILE", "OMNI_APPROVAL_SERVICE_TOKEN",
+        "OMNI_APPROVAL_SERVICE_SECRET_FILE", "OMNI_COMPATIBILITY_TOKEN",
+        "OMNI_COMPATIBILITY_TOKEN_FILE", "OMNI_RUNTIME_TRACE_TOKEN",
+        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN", "OMNI_RUNTIME_TRACE_TOKEN_FILE",
+        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE",
+    }
+    source.update({key: "legacy-value" for key in forbidden})
+    for service in runtime_env.ALLOWED_SERVICES:
+        assert not (forbidden & runtime_env.build_service_environment(service, source).keys())
 
 
-def test_cli_stdout_is_pid_only_while_identity_secret_alias_exists_only_in_child(
+def test_cli_stdout_is_pid_only_while_identity_secrets_are_removed_from_child(
     tmp_path: Path,
 ) -> None:
     source = {**os.environ, **_allocation_environment()}
@@ -145,7 +136,7 @@ def test_cli_stdout_is_pid_only_while_identity_secret_alias_exists_only_in_child
         """
 import json, os
 print(json.dumps({
-    'file_alias_matches': os.environ.get('JWT_SECRET_KEY_FILE') == os.environ.get('OMNI_IDENTITY_JWT_SECRET_FILE'),
+    'file_absent': 'JWT_SECRET_KEY_FILE' not in os.environ,
     'inline_absent': 'JWT_SECRET_KEY' not in os.environ,
 }, sort_keys=True), flush=True)
 """.lstrip(),
@@ -181,7 +172,6 @@ print(json.dumps({
     )
     assert result.returncode == 0, result.stderr
     assert set(json.loads(result.stdout)) == {"pid"}
-    assert source["OMNI_IDENTITY_JWT_SECRET_FILE"] not in result.stdout + result.stderr
     assert source["POSTGRES_PASSWORD"] not in result.stdout + result.stderr
     assert "JWT_SECRET_KEY_FILE" not in source
 
@@ -191,11 +181,11 @@ print(json.dumps({
     ):
         time.sleep(0.02)
     observed = json.loads(child_stdout.read_text(encoding="utf-8"))
-    assert observed == {"file_alias_matches": True, "inline_absent": True}
+    assert observed == {"file_absent": True, "inline_absent": True}
     assert child_stderr.read_text(encoding="utf-8") == ""
 
 
-def test_frontend_child_gets_allocated_pg_redis_ke_and_file_backed_approval(
+def test_frontend_child_gets_allocated_pg_redis_ke_without_internal_auth(
     tmp_path: Path,
 ) -> None:
     source = {**os.environ, **_allocation_environment()}
@@ -218,8 +208,8 @@ import json, os
 from urllib.parse import urlsplit
 redis = urlsplit(os.environ['REDIS_URL'])
 print(json.dumps({
-    'approval_file_matches': os.environ.get('OMNI_APPROVAL_SERVICE_SECRET_FILE') == os.environ.get('OMNI_APPROVAL_HMAC_SECRET_FILE'),
-    'compatibility_file_matches': bool(os.environ.get('OMNI_COMPATIBILITY_TOKEN_FILE')),
+    'approval_file_absent': 'OMNI_APPROVAL_SERVICE_SECRET_FILE' not in os.environ,
+    'compatibility_file_absent': 'OMNI_COMPATIBILITY_TOKEN_FILE' not in os.environ,
     'inline_absent': 'OMNI_APPROVAL_SERVICE_TOKEN' not in os.environ,
     'compatibility_inline_absent': 'OMNI_COMPATIBILITY_TOKEN' not in os.environ,
     'pg_host': os.environ.get('PGHOST'),
@@ -264,8 +254,6 @@ print(json.dumps({
     assert result.returncode == 0, result.stderr
     assert set(json.loads(result.stdout)) == {"pid"}
     combined = result.stdout + result.stderr
-    assert source["OMNI_APPROVAL_HMAC_SECRET_FILE"] not in combined
-    assert source["OMNI_COMPATIBILITY_TOKEN_FILE"] not in combined
     assert source["POSTGRES_PASSWORD"] not in combined
     assert source["REDIS_PASSWORD"] not in combined
     assert "OMNI_APPROVAL_SERVICE_SECRET_FILE" not in source
@@ -277,8 +265,8 @@ print(json.dumps({
         time.sleep(0.02)
     observed = json.loads(child_stdout.read_text(encoding="utf-8"))
     assert observed == {
-        "approval_file_matches": True,
-        "compatibility_file_matches": True,
+        "approval_file_absent": True,
+        "compatibility_file_absent": True,
         "compatibility_inline_absent": True,
         "inline_absent": True,
         "ke_url": "http://127.0.0.1:28002",
@@ -292,47 +280,15 @@ print(json.dumps({
     assert child_stderr.read_text(encoding="utf-8") == ""
 
 
-def test_compatibility_token_is_projected_only_to_its_two_host_consumers() -> None:
+def test_internal_trace_and_compatibility_tokens_are_never_projected() -> None:
     source = _allocation_environment()
+    source["OMNI_COMPATIBILITY_TOKEN_FILE"] = "/legacy/compatibility"
+    source["OMNI_RUNTIME_TRACE_TOKEN_FILE"] = "/legacy/runtime-trace"
     for service in runtime_env.ALLOWED_SERVICES:
         environment = runtime_env.build_service_environment(service, source)
-        if service == "frontend":
-            assert environment["OMNI_COMPATIBILITY_TOKEN_FILE"] == source["OMNI_COMPATIBILITY_TOKEN_FILE"]
-        else:
-            assert "OMNI_COMPATIBILITY_TOKEN_FILE" not in environment
-
-
-def test_runtime_trace_token_is_projected_only_to_host_publishers() -> None:
-    source = _allocation_environment()
-    for service in runtime_env.ALLOWED_SERVICES:
-        environment = runtime_env.build_service_environment(service, source)
-        if service == "knowledge-engine":
-            assert environment["OMNI_RUNTIME_TRACE_TOKEN_FILE"] == source["OMNI_RUNTIME_TRACE_TOKEN_FILE"]
-            assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE" not in environment
-        elif service in {"frontend", "scout-agent"}:
-            assert environment["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] == (
-                source["OMNI_RUNTIME_TRACE_TOKEN_FILE"]
-            )
-            assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" not in environment
-        else:
-            assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE" not in environment
-            assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" not in environment
-
-
-def test_runtime_trace_host_children_ignore_mismatched_publisher_alias() -> None:
-    source = _allocation_environment()
-    source["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] = str(
-        (ROOT / "tests" / "fixtures" / "wrong-runtime-trace-token.key").resolve()
-    )
-
-    frontend = runtime_env.build_service_environment("frontend", source)
-    knowledge = runtime_env.build_service_environment("knowledge-engine", source)
-    scout = runtime_env.build_service_environment("scout-agent", source)
-
-    canonical = source["OMNI_RUNTIME_TRACE_TOKEN_FILE"]
-    assert frontend["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] == canonical
-    assert knowledge["OMNI_RUNTIME_TRACE_TOKEN_FILE"] == canonical
-    assert scout["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] == canonical
+        assert "OMNI_COMPATIBILITY_TOKEN_FILE" not in environment
+        assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" not in environment
+        assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE" not in environment
 
 
 def test_spawned_child_observes_allocated_environment_without_emitting_passwords(

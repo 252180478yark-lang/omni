@@ -16,58 +16,34 @@ afterEach(() => {
 function sameOriginPost(path: string, body = '{}'): Request {
   return new Request(`http://localhost${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+    headers: { 'Content-Type': 'application/json', Origin: 'http://localhost', Host: 'localhost' },
     body,
   })
 }
 
-describe('developer-mode permission boundaries', () => {
-  it('does not expose model configuration details without an owner/admin session', async () => {
-    const upstream = vi.fn()
-    vi.stubGlobal('fetch', upstream)
+function upstreamFixture() {
+  const upstream = vi.fn(async () => new Response('{}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  }))
+  vi.stubGlobal('fetch', upstream)
+  return upstream
+}
 
-    const response = await getModels(new Request('http://localhost/api/omni/models'))
-
-    expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({ success: false, error: 'authentication_required' })
-    expect(upstream).not.toHaveBeenCalled()
-  })
-
-  it('does not promote a normal authenticated user into the owner/admin developer boundary', async () => {
-    vi.stubEnv('IDENTITY_SERVICE_URL', 'http://identity.test')
-    const upstream = vi.fn(async (input: string | URL | Request) => {
-      expect(String(input)).toBe('http://identity.test/api/v1/auth/verify')
-      return new Response(JSON.stringify({
-        data: { valid: true, sub: 'normal-user@example.test', role: 'user' },
-      }), { status: 200, headers: { 'Content-Type': 'application/json' } })
-    })
-    vi.stubGlobal('fetch', upstream)
-
-    const response = await getModels(new Request('http://localhost/api/omni/models', {
-      headers: { Cookie: 'omni_approval_session=normal-user-session' },
-    }))
-
-    expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ success: false, error: 'approval_admin_required' })
-    expect(upstream).toHaveBeenCalledTimes(1)
-  })
-
+describe('single-user developer-mode boundaries', () => {
   it.each([
+    ['models', () => getModels(new Request('http://localhost/api/omni/models'))],
     ['prompt node inventory', () => getPromptNodes(new Request('http://localhost/api/omni/prompt/nodes'))],
     ['prompt node details', () => getPromptNode(
       new Request('http://localhost/api/omni/prompt/nodes/node-1'),
       { params: { id: 'node-1' } },
     )],
-    ['prompt rule details', () => getPromptRules(new Request('http://localhost/api/omni/prompt/rules?node_id=node-1'))],
-  ])('does not expose %s without an owner/admin session', async (_label, invoke) => {
-    const upstream = vi.fn()
-    vi.stubGlobal('fetch', upstream)
-
+    ['prompt rules', () => getPromptRules(new Request('http://localhost/api/omni/prompt/rules?node_id=node-1'))],
+  ])('allows the local owner to read %s without a session', async (_label, invoke) => {
+    const upstream = upstreamFixture()
     const response = await invoke()
-
-    expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({ success: false, error: 'authentication_required' })
-    expect(upstream).not.toHaveBeenCalled()
+    expect([401, 403]).not.toContain(response.status)
+    expect(upstream).toHaveBeenCalled()
   })
 
   it.each([
@@ -80,41 +56,30 @@ describe('developer-mode permission boundaries', () => {
     ['prompt rule creation', () => createPromptRule(sameOriginPost('/api/omni/prompt/rules'))],
     ['prompt rule update', () => patchPromptRule(
       new Request('http://localhost/api/omni/prompt/rules/rule-1', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
-        body: '{}',
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', Origin: 'http://localhost', Host: 'localhost' }, body: '{}',
       }),
       { params: { id: 'rule-1' } },
     )],
     ['prompt rule deletion', () => deletePromptRule(
       new Request('http://localhost/api/omni/prompt/rules/rule-1', {
-        method: 'DELETE',
-        headers: { Origin: 'http://localhost' },
+        method: 'DELETE', headers: { Origin: 'http://localhost', Host: 'localhost' },
       }),
       { params: { id: 'rule-1' } },
     )],
-  ])('rejects anonymous %s before any upstream request', async (_label, invoke) => {
-    const upstream = vi.fn()
-    vi.stubGlobal('fetch', upstream)
-
+  ])('allows same-origin local-owner %s without a session', async (_label, invoke) => {
+    const upstream = upstreamFixture()
     const response = await invoke()
-
-    expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({ success: false, error: 'authentication_required' })
-    expect(upstream).not.toHaveBeenCalled()
+    expect([401, 403]).not.toContain(response.status)
+    expect(upstream).toHaveBeenCalled()
   })
 
-  it('rejects a cross-origin developer mutation before identity or upstream access', async () => {
-    const upstream = vi.fn()
-    vi.stubGlobal('fetch', upstream)
-    const request = new Request('http://localhost/api/omni/models', {
+  it('rejects a cross-origin developer mutation before upstream access', async () => {
+    const upstream = upstreamFixture()
+    const response = await mutateModels(new Request('http://localhost/api/omni/models', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: 'https://attacker.example' },
+      headers: { 'Content-Type': 'application/json', Origin: 'https://attacker.example', Host: 'localhost' },
       body: JSON.stringify({ action: 'update-provider', providerId: 'openai', apiKey: 'not-forwarded' }),
-    })
-
-    const response = await mutateModels(request)
-
+    }))
     expect(response.status).toBe(403)
     expect(await response.json()).toEqual({ success: false, error: 'csrf_origin_mismatch' })
     expect(upstream).not.toHaveBeenCalled()

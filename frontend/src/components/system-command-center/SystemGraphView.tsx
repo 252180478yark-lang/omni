@@ -25,6 +25,24 @@ const STATUS_STYLE: Record<string, string> = {
   verified_not_delivered: 'border-violet-400 bg-violet-50 text-violet-800',
 }
 
+async function responseError(response: Response, layer: string): Promise<Error> {
+  const body = await response.json().catch(() => null) as {
+    error?: string | { code?: string; source?: string; status?: number }
+    detail?: { code?: string; message?: string }
+  } | null
+  const error = body?.error
+  const code = typeof error === 'string' ? error : error?.code || body?.detail?.code
+  const source = typeof error === 'object' ? error.source : undefined
+  if (response.status === 404) return new Error(`${layer}尚未生成，请先刷新事实图。`)
+  if (response.status === 401 || response.status === 403) {
+    return new Error(`${layer}仍被旧认证配置阻止（${code || response.status}），请重启本地服务加载单用户模式。`)
+  }
+  if (response.status >= 500) {
+    return new Error(`${layer}服务暂不可用（${source || code || response.status}），请检查知识引擎运行状态后重试。`)
+  }
+  return new Error(`${layer}读取失败（${code || response.status}）。`)
+}
+
 function NodeCard({ node, selected, onSelect }: { node: SystemGraphNode; selected: boolean; onSelect: () => void }) {
   const status = graphDisplayStatus(node)
   const definition = nodeTypeDefinition(node.kind)
@@ -56,13 +74,13 @@ export function SystemGraphView({ focusQuery = '' }: { focusQuery?: string }) {
     setError('')
     try {
       const response = await fetch('/api/omni/system-graph/snapshot', { cache: 'no-store' })
-      if (!response.ok) throw new Error(response.status === 404 ? '还没有系统图快照，请先刷新。' : '系统图事实快照暂不可读。')
+      if (!response.ok) throw await responseError(response, '系统图快照')
       const identity = await response.json() as SystemGraphSnapshot
       const graphResponse = await fetch(
         `/api/omni/system-graph/snapshots/${encodeURIComponent(identity.snapshot_id)}/graph?limit=500`,
         { cache: 'no-store' },
       )
-      if (!graphResponse.ok) throw new Error('不可变系统图分页暂不可读。')
+      if (!graphResponse.ok) throw await responseError(graphResponse, '系统图分页')
       const graph = await graphResponse.json() as GraphPageResponse
       const value: SystemGraphSnapshot = {
         ...identity,

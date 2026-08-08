@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 
 import { requireAuthenticatedActor, requireSameOrigin, ServiceFetchError, serviceBase } from '../../_shared'
 import {
@@ -121,19 +120,6 @@ function parseInput(value: unknown): NavigationEventInput | null {
   }
 }
 
-function compatibilityToken(): string {
-  const path = process.env.OMNI_COMPATIBILITY_TOKEN_FILE?.trim()
-  if (!path) throw new Error('compatibility_token_unconfigured')
-  let token = ''
-  try {
-    token = readFileSync(path, 'utf8').trim()
-  } catch {
-    throw new Error('compatibility_token_unavailable')
-  }
-  if (token.length < 24) throw new Error('compatibility_token_invalid')
-  return token
-}
-
 function routeSlug(pathname: string): string {
   const slug = pathname === '/'
     ? 'root'
@@ -247,17 +233,10 @@ async function submitCompatibilityTelemetry(
   contract: ValidatedNavigationContract,
   observedAt: string,
 ): Promise<boolean> {
-  let token: string
-  try {
-    token = compatibilityToken()
-  } catch {
-    return false
-  }
   try {
     const response = await fetch(`${serviceBase().knowledge}/api/v1/compatibility/telemetry`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

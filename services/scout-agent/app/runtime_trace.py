@@ -9,7 +9,6 @@ import uuid
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -76,14 +75,7 @@ async def publish_trace_events(
     failed: bool,
 ) -> bool:
     base = os.getenv("OMNI_KE_URL", "").rstrip("/")
-    token_path = os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", "").strip()
-    if not base or not token_path:
-        return False
-    try:
-        token = Path(token_path).read_text(encoding="utf-8").strip()
-    except OSError:
-        return False
-    if len(token) < 24:
+    if not base:
         return False
     node_id = f"rest_operation:{method}:{route}"
     common = {
@@ -105,7 +97,6 @@ async def publish_trace_events(
                 response = await client.post(
                     f"{base}/api/v1/runtime-traces/{encoded_trace_id}/events",
                     json=payload,
-                    headers={"Authorization": f"Bearer {token}"},
                 )
                 if response.status_code not in {200, 201}:
                     return False

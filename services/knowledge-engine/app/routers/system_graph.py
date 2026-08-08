@@ -284,10 +284,11 @@ async def transition_system_graph_issue(
 
 def repository_root() -> Path:
     configured = os.getenv("OMNI_REPO_ROOT", "").strip()
-    root = Path(configured).resolve() if configured else Path(__file__).resolve().parents[4]
-    if not (root / "AGENTS.md").is_file():
-        raise RuntimeError("system_graph_repository_unavailable")
-    return root
+    candidates = [Path(configured).resolve()] if configured else list(Path(__file__).resolve().parents)
+    for root in candidates:
+        if (root / "AGENTS.md").is_file():
+            return root
+    raise RuntimeError("system_graph_repository_unavailable")
 
 
 @router.get("/snapshot", response_model=GraphSnapshot)

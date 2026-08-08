@@ -149,35 +149,14 @@ def build_service_environment(service: str, source: Mapping[str, str] | None = N
     else:
         environment.pop("REDIS_URL", None)
 
-    environment.pop("JWT_SECRET_KEY", None)
-    if service == "identity-service":
-        environment["JWT_SECRET_KEY_FILE"] = _absolute_file_path(inherited, "OMNI_IDENTITY_JWT_SECRET_FILE")
-    else:
-        environment.pop("JWT_SECRET_KEY_FILE", None)
-
-    environment.pop("OMNI_APPROVAL_SERVICE_TOKEN", None)
-    if service == "frontend":
-        environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] = _absolute_file_path(
-            inherited, "OMNI_APPROVAL_HMAC_SECRET_FILE"
-        )
-    else:
-        environment.pop("OMNI_APPROVAL_SERVICE_SECRET_FILE", None)
-
-    environment.pop("OMNI_COMPATIBILITY_TOKEN", None)
-    if service == "frontend":
-        environment["OMNI_COMPATIBILITY_TOKEN_FILE"] = _absolute_file_path(inherited, "OMNI_COMPATIBILITY_TOKEN_FILE")
-    else:
-        environment.pop("OMNI_COMPATIBILITY_TOKEN_FILE", None)
-
-    environment.pop("OMNI_RUNTIME_TRACE_TOKEN", None)
-    environment.pop("OMNI_RUNTIME_TRACE_SERVICE_TOKEN", None)
-    environment.pop("OMNI_RUNTIME_TRACE_TOKEN_FILE", None)
-    environment.pop("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", None)
-    runtime_trace_token_file = _absolute_file_path(inherited, "OMNI_RUNTIME_TRACE_TOKEN_FILE")
-    if service == "knowledge-engine":
-        environment["OMNI_RUNTIME_TRACE_TOKEN_FILE"] = runtime_trace_token_file
-    elif service in {"frontend", "scout-agent"}:
-        environment["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] = runtime_trace_token_file
+    for key in (
+        "JWT_SECRET_KEY", "JWT_SECRET_KEY_FILE", "OMNI_APPROVAL_SERVICE_TOKEN",
+        "OMNI_APPROVAL_SERVICE_SECRET_FILE", "OMNI_COMPATIBILITY_TOKEN",
+        "OMNI_COMPATIBILITY_TOKEN_FILE", "OMNI_RUNTIME_TRACE_TOKEN",
+        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN", "OMNI_RUNTIME_TRACE_TOKEN_FILE",
+        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE",
+    ):
+        environment.pop(key, None)
     return environment
 
 

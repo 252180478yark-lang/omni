@@ -8,7 +8,7 @@
 ![Status](https://img.shields.io/badge/Status-Active-green)
 ![Mode](https://img.shields.io/badge/Mode-Single_User-yellow)
 
-> ⚠ **当前版本默认未启用鉴权**，建议只在本机或可信内网使用，详见 [§9 安全提示](#9-安全提示当前版本)。
+> 当前版本按**个人本机单用户**设计：默认身份固定为 `local-owner`，不设置账号、密码、登录页或内部服务密钥。所有发布端口默认绑定 `127.0.0.1`，详见 [§9 安全边界](#9-安全边界单用户本机模式)。
 
 ---
 
@@ -28,8 +28,7 @@ Omni 是一个 Next.js + FastAPI 微服务混合架构的 AI Native 工作台，
 ### 1.1 架构图
 
 ```
-浏览器 ─► Nginx :80（full profile）─┬─► frontend :3000   Next.js 14 + BFF
-                     ├─► identity-service   :8000   JWT 鉴权（前端未对接）
+浏览器 ─► Nginx :80（full profile）─┬─► frontend :3000   Next.js 14 + BFF（local-owner）
                      ├─► ai-provider-hub    :8001   7 个 Provider 统一适配
                      ├─► knowledge-engine   :8002   RAG / Harvester / Content Studio
                      ├─► news-aggregator    :8005   多源资讯
@@ -64,7 +63,7 @@ omni/
 │   │   ├── postgres/                 镜像构建 + init.sql 多 schema
 │   │   ├── redis/redis.conf
 │   │   └── nginx/{nginx.conf, conf.d/default.conf}
-│   ├── identity-service/             FastAPI + SQLAlchemy Async + Alembic
+│   ├── identity-service/             仅保留的历史源码；不进入当前运行编排
 │   ├── ai-provider-hub/              FastAPI，7 个 provider 适配
 │   ├── knowledge-engine/             FastAPI + asyncpg（体量最大）
 │   ├── news-aggregator/              FastAPI + SQLAlchemy + Alembic
@@ -75,7 +74,7 @@ omni/
 ├── docs/                             PRD / IMPL / UAT / SYSTEM_ARCHITECTURE.md
 ├── migrations/                       SQL 迁移脚本
 ├── scripts/                          运维脚本
-├── docker-compose.yml                生产/全量编排（9 个容器）
+├── docker-compose.yml                本机编排（按 core/content/full profile 收敛）
 ├── docker-compose.dev.yml            开发模式（仅 postgres + redis）
 ├── dev-start.ps1 / dev-stop.ps1      Windows 一键启停
 ├── 启动全部.bat / 启动全部(包含Docker).bat
@@ -91,7 +90,7 @@ omni/
 | 服务 | 端口 | API 前缀 | 主要职责 |
 |---|---|---|---|
 | frontend | 3000 | `/` | Next.js 14，BFF 在 `/api/omni/*` |
-| identity-service | 8000 | `/api/v1/auth/` | 注册 / 登录 / 刷新 / `/me` / `/verify` |
+| identity-service（历史源码） | — | — | 不进入当前 Compose；默认前端和服务链路不依赖 |
 | ai-provider-hub | 8001 | `/api/v1/ai/`、`/v1/`（OpenAI 兼容） | chat/embedding/image/video/analyze + provider 配置 + usage/cost |
 | knowledge-engine | 8002 | `/api/v1/knowledge/`、`/api/v1/knowledge/harvester/`、`/api/v1/content-studio/` | 知识库、采集、RAG、内容工坊 |
 | news-aggregator | 8005 | `/api/v1/news/` | fetch / articles / archive |
@@ -236,7 +235,6 @@ full profile 的外部访问统一走 :80；core/content 直连 frontend。Nginx
 
 ```text
 /                                  → frontend (含 Next.js HMR)
-/api/v1/auth/*                     → identity-service
 /api/v1/ai/*                       → ai-provider-hub
 /v1/*                              → ai-provider-hub  (OpenAI 兼容)
 /v1/chat/completions               → ai-provider-hub  (SSE，长连不缓冲)
@@ -288,15 +286,15 @@ D. 投放复盘飞轮
 
 ---
 
-## 9. 安全提示（当前版本）
+## 9. 安全边界（单用户本机模式）
 
-> 这是一个**为单用户/本机自用设计**的工具，**默认配置不适合直接暴露公网**。请按以下顺序收口：
+> 这是一个**为个人本机自用设计**的工具，不应直接暴露到公网或不可信局域网。
 
-1. **绑本机**：在 `docker-compose.yml` 的 `ports` 上加 `127.0.0.1:` 前缀，例如 `127.0.0.1:80:80`。
-2. **改默认密码**：`POSTGRES_PASSWORD` / `REDIS_PASSWORD` / `JWT_SECRET_KEY`（identity-service）三个值都要改。
-3. **慎用 `/models`**：当前 `GET /api/v1/ai/provider-secrets/{provider}` 会返回完整明文 Key，任何能开浏览器的人都能拿到，请勿把网关裸暴。
-4. **identity-service 已实现但前端未对接**：如要启用，需要前端加 `/login` 页面 + Nginx 用 `auth_request` 校验 JWT。
-5. **CORS 默认 `*`**：见 `ad-review-service`、`video-analysis` 的 `CORSMiddleware`，多用户场景请收紧。
+1. **无需登录**：浏览器、BFF、Knowledge Engine、Runtime Trace 和 Host Bridge 默认使用固定 `local-owner`，不生成或要求内部账号、密码、cookie、JWT、HMAC、Bearer Token。
+2. **只绑本机**：Compose 发布端口默认带 `127.0.0.1:`；如手工改为 `0.0.0.0` 或接入公网代理，就超出了当前安全模型。
+3. **写操作仍有边界**：浏览器变更请求校验 same-origin；删除、发布、付费和外部平台写入仍需显式确认并保留审计记录。
+4. **外部凭据例外**：OpenAI、Gemini、抖音等外部平台自身要求的 Key/Cookie 可以按需配置；它们不是 Omni 内部登录凭据，也不应提交进仓库。
+5. **遗留认证隔离**：`identity-service` 只保留历史源码和迁移，不进入 core/content/full 或 Nginx 路由。
 
 ---
 
@@ -346,8 +344,8 @@ D. 投放复盘飞轮
 
 ## 13. 已知限制 & Roadmap 候选
 
-* 🔴 鉴权未启用（identity-service 已就绪，前端没接）
-* 🔴 `/models` Key 明文回显
+* 🟠 单用户本机信任模型不支持公网或多用户部署
+* 🟠 `/models` 外部 Provider Key 管理仅适合本机使用
 * 🟠 content/full 使用完整容器运行面；core 才提供 host 热重载
 * 🟠 video-analysis 与 livestream-analysis 重复封装 GeminiClient
 * 🟠 knowledge-engine 启动时硬改表（无 alembic）

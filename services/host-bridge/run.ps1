@@ -7,9 +7,6 @@ $ErrorActionPreference = "Stop"
 $serviceRoot = $PSScriptRoot
 $repoRoot = (Resolve-Path (Join-Path $serviceRoot "..\..")).Path
 
-if (-not $env:OMNI_HOST_TOKEN_FILE -or -not (Test-Path -LiteralPath $env:OMNI_HOST_TOKEN_FILE -PathType Leaf)) {
-    throw "OMNI_HOST_TOKEN_FILE must point to a repository-external token file"
-}
 if (-not $env:OMNI_HOST_ALLOWED_PROJECT_ROOTS) { $env:OMNI_HOST_ALLOWED_PROJECT_ROOTS = (Split-Path $repoRoot -Parent) }
 if (-not $env:OMNI_HOST_STATE_DIR) {
     $localState = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [System.IO.Path]::GetTempPath() }

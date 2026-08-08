@@ -52,12 +52,12 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('approval WebSocket authorization', () => {
-  it('never broadcasts to or accepts a gate decision from an unauthenticated connection', async () => {
+describe('approval WebSocket local trust', () => {
+  it('rejects a connection whose server-side origin check failed', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const anonymous = new FakeWebSocket()
-    attachWsHandler(anonymous as never, null)
+    attachWsHandler(anonymous as never, 'invalid-origin')
     await Promise.resolve()
 
     redisHarness.handlers.get('message')?.(
@@ -66,7 +66,7 @@ describe('approval WebSocket authorization', () => {
     )
     expect(anonymous.sent.map((item) => JSON.parse(item))).toContainEqual({
       kind: 'error',
-      error: 'authentication_required',
+      error: 'same_origin_required',
     })
     expect(anonymous.closed).toBe(true)
 

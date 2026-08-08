@@ -1,0 +1,217 @@
+schema_version: 3
+change_id: 2026-08-09-single-user-local-trust
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  summary: Replaced frontend cookie, identity verification, HMAC and internal bearer-token gates with a fixed local-owner projection; retained same-origin mutation checks across HTTP and WebSocket paths and kept compatibility route schemas stable.
+  paths:
+  - frontend/server.ts
+  - frontend/next.config.mjs
+  - frontend/src/app/api/omni/_shared.ts
+  - frontend/src/app/api/omni/auth/session/route.ts
+  - frontend/src/app/api/omni/host-bridge/_host-auth.ts
+  - frontend/src/app/api/omni/host-bridge/sessions/[sessionId]/attachments/[attachmentId]/route.ts
+  - frontend/src/app/api/omni/host-bridge/sessions/[sessionId]/attachments/route.ts
+  - frontend/src/app/api/omni/host-bridge/sessions/[sessionId]/visible-auth/route.ts
+  - frontend/src/app/api/omni/runtime-findings/route.ts
+  - frontend/src/app/api/omni/runtime-plan-drafts/route.ts
+  - frontend/src/app/api/omni/runtime-traces/[traceId]/events/route.ts
+  - frontend/src/app/api/omni/runtime-traces/[traceId]/replay/route.ts
+  - frontend/src/app/api/omni/runtime-traces/_runtime-auth.ts
+  - frontend/src/app/api/omni/runtime-traces/active/route.ts
+  - frontend/src/app/api/omni/system-graph/[[...path]]/route.ts
+  - frontend/src/app/api/omni/workbench/navigation-events/route.ts
+  - frontend/src/lib/agent-chat/host-bridge-runner.ts
+  - frontend/src/lib/agent-chat/runtime-trace.ts
+  - frontend/src/lib/agent-chat/ws-handler.ts
+  - frontend/src/middleware.ts
+- id: ACT-002
+  planned_change_id: CHG-002
+  summary: Converged Knowledge Engine, Scout and Host Bridge onto local-owner/no-internal-token behavior while preserving approval records, idempotency, audit, secret-reference resolution for external providers and loopback-only host access.
+  paths:
+  - services/knowledge-engine/app/routers/approval_operations.py
+  - services/knowledge-engine/app/routers/compatibility.py
+  - services/knowledge-engine/app/routers/runtime_traces.py
+  - services/knowledge-engine/app/services/approval_operations.py
+  - services/scout-agent/app/runtime_trace.py
+  - services/host-bridge/host_bridge/app.py
+  - services/host-bridge/run.ps1
+- id: ACT-003
+  planned_change_id: CHG-003
+  summary: Repaired bounded system-graph repository discovery for containers and added typed, actionable frontend errors; live browser now renders snapshot sha256:4448229d9e1e5d6fc6257bdf45bfd39cd1a833e337e4b9a4a660a4e4a5640119 with 189 nodes, 213 edges and zero orphans.
+  paths:
+  - services/knowledge-engine/app/routers/system_graph.py
+  - frontend/src/components/system-command-center/SystemGraphView.tsx
+- id: ACT-004
+  planned_change_id: CHG-004
+  summary: Removed identity-service and its Nginx route from current Compose, deleted four unused internal-secret generators, stripped inherited legacy credential variables, bound published ports to loopback and aligned core/content/full plus compatibility Compose with zero internal credentials.
+  paths:
+  - .env.example
+  - docker-compose.yml
+  - services/docker-compose.sp1-sp4.yml
+  - services/infra-core/nginx/conf.d/default.conf
+  - config/runtime-manifest.yaml
+  - scripts/runtime_allocation.py
+  - scripts/dev_runtime_environment.py
+- id: ACT-005
+  planned_change_id: CHG-005
+  summary: Updated frontend regression coverage for local-owner, same-origin, runtime trace, Host Bridge and system-graph behavior.
+  paths:
+  - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
+  - frontend/tests/approval-auth-session.test.ts
+  - frontend/tests/approval-ws-authorization.test.ts
+  - frontend/tests/runtime-api-auth.test.ts
+  - frontend/tests/runtime-trace-publisher.test.ts
+  - frontend/tests/scout-proxy-trace.test.ts
+  - frontend/tests/system-command-center.test.tsx
+  - frontend/tests/workbench-developer-permissions.test.ts
+  - frontend/tests/workbench-middleware.test.ts
+  - frontend/tests/workbench-navigation-events.test.ts
+- id: ACT-007
+  planned_change_id: CHG-002
+  summary: Updated backend and Host Bridge regression coverage for the fixed local owner and credential-free service calls.
+  paths:
+  - services/host-bridge/tests/test_host_bridge_http.py
+  - services/knowledge-engine/tests/test_approval_operation_worker.py
+  - services/knowledge-engine/tests/test_approval_operations.py
+  - services/knowledge-engine/tests/test_router_human_gates.py
+- id: ACT-008
+  planned_change_id: CHG-004
+  summary: Updated runtime and Compose regression coverage and removed the obsolete approval-HMAC interoperability test.
+  paths:
+  - tests/test_approval_hmac_interop.py
+  - tests/test_compose_runtime_contract.py
+  - tests/test_dev_runtime_environment.py
+  - tests/test_runtime_allocation.py
+- id: ACT-006
+  planned_change_id: CHG-006
+  summary: Made the personal local-owner rule durable in repository policy and rewrote runtime documentation so future changes do not reintroduce accounts, passwords, internal cookies, JWTs, HMACs or bearer tokens.
+  paths:
+  - AGENTS.md
+  - README.md
+  - docs/multi-device/host-bridge.md
+contract_delta:
+- description: Added middleware, Host Bridge, secondary Compose, runner and Next build closure found during repository-wide credential and build review.
+  reason: Each path still carried removed credential behavior or could block the new frontend from building.
+  effect: All retained local execution paths share one trust model and the production build remains type-checked.
+  accepted: true
+- description: Removed dead internal-secret generators, the current identity Compose/Nginx projection and outdated policy text.
+  reason: An inactive profiled service still forced JWT interpolation during Compose config, contradicting zero-credential startup.
+  effect: Identity source and historical migrations remain recoverable, but no supported runtime profile starts or routes to them.
+  accepted: true
+- description: Replaced non-existent or non-hermetic verification commands with changed-surface suites and real in-app-browser evidence.
+  reason: The repository has no test:chrome script; the full Knowledge Engine suite includes live MCP/model and historical migration assumptions unrelated to this change.
+  effect: Required verification directly proves every changed trust boundary; the broader audit result remains recorded as an exception.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: npm --prefix frontend run test:unit
+  status: passed
+  exit_code: 0
+  evidence: 29 Vitest files and 154 tests passed in 2.48s.
+- id: VER-002
+  command: npm --prefix frontend run build
+  status: passed
+  exit_code: 0
+  evidence: Next 14.2.35 compiled, type-checked and generated 47/47 pages; changed TypeScript/TSX ESLint and tsc --noEmit also passed.
+- id: VER-003
+  command: DATABASE_URL=<local-test-db> services/knowledge-engine/.venv/bin/python -m pytest services/knowledge-engine/tests/test_router_human_gates.py services/knowledge-engine/tests/test_approval_operation_worker.py services/knowledge-engine/tests/test_approval_operations.py services/knowledge-engine/tests/test_runtime_trace_router.py services/knowledge-engine/tests/test_system_graph_router.py services/knowledge-engine/tests/test_compatibility_retirement.py -q
+  status: passed
+  exit_code: 0
+  evidence: 62 relevant Knowledge Engine tests passed; one unrelated FastAPI deprecation warning remains.
+- id: VER-004
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pyyaml>=6,<7' python -m pytest tests/test_runtime_allocation.py tests/test_dev_runtime_environment.py tests/test_compose_runtime_contract.py tests/test_runtime_guard.py -q
+  status: passed
+  exit_code: 0
+  evidence: 68 runtime, environment, profile and Compose contract tests passed after identity projection removal; Scout 3/3 and Host Bridge 8/8 also passed.
+- id: VER-005
+  command: export <RuntimeAllocation non-secret evidence>; docker compose --profile core config --quiet && docker compose --profile content config --quiet && docker compose --profile full config --quiet && python3 scripts/check_agent_policy.py --require-tracked
+  status: passed
+  exit_code: 0
+  evidence: All three profiles rendered with no internal credential variable; policy check passed at 13741/16384 bytes with tracked routed assets.
+- id: VER-006
+  command: in-app browser reload http://127.0.0.1:3000/workspace/development and inspect DOM plus local session/system-graph responses
+  status: passed
+  exit_code: 0
+  evidence: Browser rendered the system command center with snapshot 444822..., 189 nodes, 213 edges, zero orphans and no alert; session GET returned local-owner 200, no-origin POST returned 403, same-origin POST returned 200, graph returned 200.
+- id: VER-007
+  command: git diff --check && rg -n 'OMNI_APPROVAL_SERVICE_SECRET|OMNI_IDENTITY_JWT|OMNI_COMPATIBILITY_TOKEN|OMNI_RUNTIME_TRACE_(SERVICE_)?TOKEN' docker-compose.yml scripts/runtime_allocation.py scripts/dev_runtime_environment.py frontend/src frontend/server.ts services/knowledge-engine/app services/scout-agent/app services/host-bridge/host_bridge && true
+  status: passed
+  exit_code: 0
+  evidence: Diff is whitespace-clean; only dev_runtime_environment.py retains names in a denylist that strips inherited legacy variables.
+graph_diff:
+  status: accepted
+  snapshot_before: git:4623aacb087c9a7337e17b25236e685d429e2a2b
+  snapshot_after: sha256:4448229d9e1e5d6fc6257bdf45bfd39cd1a833e337e4b9a4a660a4e4a5640119
+  added_nodes:
+  - service:frontend-local-owner
+  - service:knowledge-engine-local-owner
+  modified_nodes:
+  - page:/workspace/development
+  - api:GET:/api/omni/auth/session
+  - api:GET:/api/omni/system-graph/snapshot
+  - service:runtime-allocation
+  - service:docker-runtime-projection
+  - service:system-graph.repository-root
+  removed_nodes:
+  - runtime-service:identity-service
+  - runtime-secret:approval-hmac
+  - runtime-secret:identity-jwt
+  - runtime-secret:compatibility-token
+  - runtime-secret:runtime-trace-token
+  added_edges:
+  - source:local-browser-origin projects-fixed-owner service:frontend-local-owner
+  - page:/workspace/development fetches-without-login api:GET:/api/omni/system-graph/snapshot
+  - api:GET:/api/omni/system-graph/snapshot calls-as-local-owner api:GET:/api/v1/system-graph/snapshot
+  - api:GET:/api/v1/system-graph/snapshot scans-bounded-repository-root source:repository-filesystem
+  removed_edges:
+  - api:GET:/api/omni/system-graph/snapshot requires service:identity-service
+  - service:runtime-allocation provisions runtime-secret:internal-credentials
+  required_edges:
+  - from: page:/workspace/development
+    to: api:GET:/api/omni/system-graph/snapshot
+    relation: fetches-without-login
+    status: present
+    evidence: Live browser and BFF returned graph snapshot 200 with no login surface.
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: calls-as-local-owner
+    status: present
+    evidence: Frontend live request reached the isolated Knowledge Engine, whose log returned 200.
+  - from: api:GET:/api/v1/system-graph/snapshot
+    to: source:repository-filesystem
+    relation: scans-bounded-repository-root
+    status: present
+    evidence: OMNI_REPO_ROOT and bounded AGENTS.md discovery produced 189 nodes and 213 edges.
+  - from: source:local-browser-origin
+    to: service:frontend-local-owner
+    relation: projects-fixed-owner
+    status: present
+    evidence: Session compatibility endpoint returned local-owner without cookie, account or token.
+  - from: service:frontend-local-owner
+    to: state:approval-confirmation
+    relation: retains-explicit-dangerous-action-gate
+    status: present
+    evidence: Approval router/service tests passed and same-origin mutation remained enforced.
+  - from: service:runtime-allocation
+    to: state:runtime-profile-core-content-full
+    relation: projects-without-internal-credential-files
+    status: present
+    evidence: Allocation and Compose tests plus all three config projections passed with no internal credential outputs.
+  orphan_nodes: []
+  unknowns: []
+exceptions:
+- id: EXC-001
+  description: Full Knowledge Engine audit produced 1051 passes, 2 skips and 33 failures in external-service/model, legacy HumanGate fixture, historical migration/data and uncommitted evidence-hash tests.
+  disposition: All changed-surface tests pass. The local-owner HumanGate expectation was updated; evidence-hash verification is rerun after the immutable commit. Remaining failures predate or sit outside this change and are not masked as passing.
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: Reverting the candidate commit restores previous wiring; no database migration or business-data deletion is included, and identity source/history remain in the repository.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: Single-user local trust implementation and live system-graph recovery are verified; immutable commit and post-commit graph evidence remain.

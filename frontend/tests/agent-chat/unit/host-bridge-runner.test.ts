@@ -2,17 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { startHostBridgeRunner } from '@/lib/agent-chat/host-bridge-runner'
 
-vi.mock('node:fs', () => ({ readFileSync: () => 'x'.repeat(32) }))
-
 describe('host bridge runner', () => {
-  it('uses authenticated provider-neutral session and cursor APIs', async () => {
-    const previousTokenFile = process.env.OMNI_HOST_TOKEN_FILE
-    process.env.OMNI_HOST_TOKEN_FILE = 'fixture.token'
+  it('uses local provider-neutral session and cursor APIs without authorization', async () => {
     const calls: string[] = []
     const originalFetch = global.fetch
-    global.fetch = vi.fn(async (input: string | URL | Request) => {
+    global.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input)
       calls.push(url)
+      expect(new Headers(init?.headers).get('authorization')).toBeNull()
       if (url.endsWith('/sessions')) return Response.json({ session_id: 'session:one' })
       if (url.endsWith('/runs')) return Response.json({ run_id: 'run:one' })
       return Response.json({ status: 'completed', next_cursor: 2, events: [
@@ -32,14 +29,10 @@ describe('host bridge runner', () => {
       expect(calls.some((url) => url.includes('/runs/run%3Aone/events?cursor=0'))).toBe(true)
     } finally {
       global.fetch = originalFetch
-      if (previousTokenFile === undefined) delete process.env.OMNI_HOST_TOKEN_FILE
-      else process.env.OMNI_HOST_TOKEN_FILE = previousTokenFile
     }
   })
 
   it('falls back only before a host run is accepted', async () => {
-    const previousTokenFile = process.env.OMNI_HOST_TOKEN_FILE
-    process.env.OMNI_HOST_TOKEN_FILE = 'fixture.token'
     const originalFetch = global.fetch
     global.fetch = vi.fn(async () => new Response('{}', { status: 503 })) as typeof fetch
     const fallback = { proc: { killed: false }, cancel: vi.fn(), on: vi.fn().mockReturnThis() }
@@ -48,14 +41,10 @@ describe('host bridge runner', () => {
       await vi.waitFor(() => expect(fallback.on).toHaveBeenCalled())
     } finally {
       global.fetch = originalFetch
-      if (previousTokenFile === undefined) delete process.env.OMNI_HOST_TOKEN_FILE
-      else process.env.OMNI_HOST_TOKEN_FILE = previousTokenFile
     }
   })
 
   it('does not risk duplicate execution after run submission becomes ambiguous', async () => {
-    const previousTokenFile = process.env.OMNI_HOST_TOKEN_FILE
-    process.env.OMNI_HOST_TOKEN_FILE = 'fixture.token'
     const originalFetch = global.fetch
     let calls = 0
     global.fetch = vi.fn(async () => {
@@ -75,8 +64,6 @@ describe('host bridge runner', () => {
       expect(fallback.on).not.toHaveBeenCalled()
     } finally {
       global.fetch = originalFetch
-      if (previousTokenFile === undefined) delete process.env.OMNI_HOST_TOKEN_FILE
-      else process.env.OMNI_HOST_TOKEN_FILE = previousTokenFile
     }
   })
 })

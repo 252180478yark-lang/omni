@@ -10,10 +10,6 @@ describe('Scout BFF trace propagation', () => {
 
   it('forwards the allowlisted trace context and returns Scout trace evidence', async () => {
     const upstream = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-      if (String(input).endsWith('/api/v1/auth/verify')) {
-        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer browser-session')
-        return new Response(JSON.stringify({ data: { valid: true, sub: 'user@example.com', role: 'user' } }))
-      }
       const headers = new Headers(init?.headers)
       expect(headers.get('x-omni-trace-id')).toBe('trace:frontend-scout')
       expect(headers.get('x-omni-execution-id')).toBe('execution:frontend-scout')
@@ -43,14 +39,14 @@ describe('Scout BFF trace propagation', () => {
       { params: { path: ['jobs'] } },
     )
 
-    expect(upstream).toHaveBeenCalledTimes(2)
+    expect(upstream).toHaveBeenCalledTimes(1)
     expect(response.headers.get('x-omni-trace-id')).toBe('trace:frontend-scout')
     expect(response.headers.get('x-omni-execution-id')).toBe('execution:frontend-scout')
     expect(response.headers.get('x-omni-span-id')).toBe('scout:span')
   })
 
-  it('rejects unauthenticated or malformed trace injection before Scout', async () => {
-    const upstream = vi.fn()
+  it('allows the local owner without a credential but rejects malformed trace injection', async () => {
+    const upstream = vi.fn(async () => new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', upstream)
 
     const unauthenticated = await GET(
@@ -59,8 +55,8 @@ describe('Scout BFF trace propagation', () => {
       }),
       { params: { path: ['jobs'] } },
     )
-    expect(unauthenticated.status).toBe(401)
-    expect((await unauthenticated.json()).error).toBe('authentication_required')
+    expect(unauthenticated.status).toBe(200)
+    expect(upstream).toHaveBeenCalledTimes(1)
 
     const malformed = await GET(
       new NextRequest('http://localhost/api/omni/scout/jobs', {
@@ -73,7 +69,7 @@ describe('Scout BFF trace propagation', () => {
     )
     expect(malformed.status).toBe(400)
     expect((await malformed.json()).error).toBe('invalid_trace_context')
-    expect(upstream).not.toHaveBeenCalled()
+    expect(upstream).toHaveBeenCalledTimes(1)
   })
 
   it('does not forward unsupported W3C traceparent as Omni continuity', async () => {

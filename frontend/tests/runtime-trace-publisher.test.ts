@@ -10,19 +10,21 @@ const event = {
 }
 
 describe('explicit websocket runtime publisher', () => {
-  it('posts a redacted event under the stable trace path when a service identity exists', async () => {
+  it('posts a redacted event under the stable trace path without an internal credential', async () => {
     const fetchImpl = vi.fn(async () => new Response('{}', { status: 200 }))
     const publisher = createRuntimeTracePublisher({ baseUrl: 'http://ke.test', token: 'x'.repeat(24), fetchImpl })
     expect(await publisher.publish(event)).toBe(true)
     const [url, init] = (fetchImpl.mock.calls as unknown as Array<[string, RequestInit]>)[0]
     expect(url).toBe('http://ke.test/api/v1/runtime-traces/trace%3Aone/events')
     expect(JSON.parse(String(init!.body)).payload).toEqual({ message_kind: 'send_prompt' })
-    expect(new Headers(init!.headers).get('Authorization')).toBe(`Bearer ${'x'.repeat(24)}`)
+    expect(new Headers(init!.headers).get('Authorization')).toBeNull()
   })
 
-  it('does not pretend to publish when host identity is unavailable', async () => {
-    const publisher = createRuntimeTracePublisher({ token: null, fetchImpl: vi.fn() })
-    expect(await publisher.publish(event)).toBe(false)
+  it('does not disable publishing when the legacy token option is null', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 200 }))
+    const publisher = createRuntimeTracePublisher({ token: null, fetchImpl })
+    expect(await publisher.publish(event)).toBe(true)
+    expect(fetchImpl).toHaveBeenCalledOnce()
   })
 
   it('retries transient failure without reordering queued events', async () => {
