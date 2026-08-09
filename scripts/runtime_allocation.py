@@ -237,8 +237,10 @@ def _fingerprint_path_allowed(relative: str) -> bool:
         return False
     if name.endswith((".pem", ".key", ".p12", ".pfx", ".pyc", ".log")):
         return False
-    # Documentation/test fixtures do not alter the runnable source identity.
-    if parts[0] == "docs" or "tests" in parts or "__tests__" in parts:
+    # Documentation, planning evidence and test fixtures do not alter the
+    # runnable source identity. Keep this list narrow: runnable source and
+    # configuration elsewhere must still invalidate an active allocation.
+    if parts[0] in {"docs", ".planning", "outputs"} or "tests" in parts or "__tests__" in parts:
         return False
     return True
 

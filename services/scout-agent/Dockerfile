@@ -1,10 +1,5 @@
 FROM python:3.11-slim
 
-ARG OMNI_BUILD_COMMIT=unknown
-ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
-ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
-    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
-
 ENV HTTP_PROXY="" HTTPS_PROXY="" http_proxy="" https_proxy=""
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
@@ -24,6 +19,11 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trus
     -r requirements.txt
 # headed Chromium 跑淘宝绕反爬；所需系统库已在上面 apt 装齐（gtk/xvfb/cjk 字体）
 RUN playwright install chromium
+
+ARG OMNI_BUILD_COMMIT=unknown
+ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
+ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
+    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
 
 COPY app /app/app
 COPY catalog /app/catalog

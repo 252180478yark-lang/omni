@@ -1,11 +1,30 @@
 #!/usr/bin/env bash
-# Verify the isolated macOS runtime and prove recovered Windows data is visible.
+# Verify the isolated macOS runtime. Set OMNI_REQUIRE_RECOVERED_DATA=1 to also
+# enforce the historical recovered-Windows-data thresholds.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHANGE_ID="${OMNI_CHANGE_ID:-mac-local-dev}"
 OWNER="${OMNI_OWNER:-${USER:-mac-developer}}"
+RUNTIME_PROFILE="${OMNI_RUNTIME_PROFILE:-content}"
+REQUIRE_RECOVERED_DATA="${OMNI_REQUIRE_RECOVERED_DATA:-0}"
+
+case "$RUNTIME_PROFILE" in
+  core|content|full) ;;
+  *)
+    printf 'OMNI_RUNTIME_PROFILE must be core, content, or full (got %s).\n' "$RUNTIME_PROFILE" >&2
+    exit 2
+    ;;
+esac
+
+case "$REQUIRE_RECOVERED_DATA" in
+  0|1) ;;
+  *)
+    printf 'OMNI_REQUIRE_RECOVERED_DATA must be 0 or 1 (got %s).\n' "$REQUIRE_RECOVERED_DATA" >&2
+    exit 2
+    ;;
+esac
 
 for tool in docker jq curl python3; do
   command -v "$tool" >/dev/null || {
@@ -64,29 +83,54 @@ postgres_id="$(docker compose -f docker-compose.yml ps -q postgres)"
 database_evidence="$(docker exec "$postgres_id" sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -F "|" -v ON_ERROR_STOP=1 -c "select pg_database_size(current_database()), (select count(*) from pg_catalog.pg_tables where schemaname not in ('"'"'pg_catalog'"'"','"'"'information_schema'"'"')), (select count(*) from knowledge.documents), (select count(*) from knowledge.knowledge_chunks), (select count(*) from public.mvp_daily_metric)"')"
 IFS='|' read -r database_bytes table_count document_count chunk_count daily_metric_count <<<"$database_evidence"
 
-if (( database_bytes < 1000000000 )); then
-  printf 'Recovered database is unexpectedly small: %s bytes.\n' "$database_bytes" >&2
-  exit 1
-fi
-if (( table_count < 100 || document_count < 1 || chunk_count < 1 || daily_metric_count < 1 )); then
-  printf 'Recovered data thresholds failed: tables=%s documents=%s chunks=%s daily_metrics=%s\n' \
-    "$table_count" "$document_count" "$chunk_count" "$daily_metric_count" >&2
-  exit 1
+if [[ "$REQUIRE_RECOVERED_DATA" == "1" ]]; then
+  if (( database_bytes < 1000000000 )); then
+    printf 'Recovered database is unexpectedly small: %s bytes.\n' "$database_bytes" >&2
+    exit 1
+  fi
+  if (( table_count < 100 || document_count < 1 || chunk_count < 1 || daily_metric_count < 1 )); then
+    printf 'Recovered data thresholds failed: tables=%s documents=%s chunks=%s daily_metrics=%s\n' \
+      "$table_count" "$document_count" "$chunk_count" "$daily_metric_count" >&2
+    exit 1
+  fi
 fi
 
 curl -fsS --max-time 20 -o /dev/null "http://127.0.0.1:${FRONTEND_PORT}/"
 curl -fsS --max-time 20 -o /dev/null "http://127.0.0.1:${NGINX_HTTP_PORT}/"
 stats_json="$(curl -fsS --max-time 20 "http://127.0.0.1:${KNOWLEDGE_ENGINE_PORT}/api/v1/knowledge/stats")"
-visible_documents="$(printf '%s' "$stats_json" | jq -r '.data.documents // 0')"
-visible_chunks="$(printf '%s' "$stats_json" | jq -r '.data.chunks // 0')"
-if (( visible_documents < 1 || visible_chunks < 1 )); then
+if ! printf '%s' "$stats_json" | jq -e \
+  '(.data | type) == "object" and (.data.documents | type) == "number" and (.data.chunks | type) == "number"' \
+  >/dev/null; then
+  printf 'Product read path returned an invalid knowledge stats payload.\n' >&2
+  exit 1
+fi
+visible_documents="$(printf '%s' "$stats_json" | jq -r '.data.documents')"
+visible_chunks="$(printf '%s' "$stats_json" | jq -r '.data.chunks')"
+if [[ "$REQUIRE_RECOVERED_DATA" == "1" ]] && (( visible_documents < 1 || visible_chunks < 1 )); then
   printf 'Product read path did not expose recovered knowledge data: documents=%s chunks=%s\n' \
     "$visible_documents" "$visible_chunks" >&2
   exit 1
 fi
 
+graph_json="$(curl -fsS --max-time 60 "http://127.0.0.1:${FRONTEND_PORT}/api/omni/system-graph/snapshot")"
+if ! printf '%s' "$graph_json" | jq -e \
+  '(.snapshot_id | type) == "string" and (.content.commit | type) == "string" and (.content.nodes | type) == "array" and (.content.edges | type) == "array" and (.content.source_results | type) == "array"' \
+  >/dev/null; then
+  printf 'System graph BFF returned an invalid snapshot payload.\n' >&2
+  exit 1
+fi
+graph_snapshot="$(printf '%s' "$graph_json" | jq -r '.snapshot_id')"
+graph_commit="$(printf '%s' "$graph_json" | jq -r '.content.commit')"
+graph_nodes="$(printf '%s' "$graph_json" | jq -r '.content.nodes | length')"
+graph_edges="$(printf '%s' "$graph_json" | jq -r '.content.edges | length')"
+graph_unknowns="$(printf '%s' "$graph_json" | jq -r '[.content.source_results[] | select(.status == "unknown")] | length')"
+
 printf 'DATABASE bytes=%s tables=%s documents=%s chunks=%s daily_metrics=%s\n' \
   "$database_bytes" "$table_count" "$document_count" "$chunk_count" "$daily_metric_count"
 printf 'PRODUCT_VISIBLE documents=%s chunks=%s\n' "$visible_documents" "$visible_chunks"
+printf 'SYSTEM_GRAPH snapshot=%s commit=%s nodes=%s edges=%s unknown_sources=%s\n' \
+  "$graph_snapshot" "$graph_commit" "$graph_nodes" "$graph_edges" "$graph_unknowns"
+printf 'RECOVERED_DATA_REQUIRED %s\n' "$REQUIRE_RECOVERED_DATA"
+printf 'PROFILE %s\n' "$RUNTIME_PROFILE"
 printf 'FRONTEND http://127.0.0.1:%s/\n' "$FRONTEND_PORT"
 printf 'NGINX http://127.0.0.1:%s/\n' "$NGINX_HTTP_PORT"

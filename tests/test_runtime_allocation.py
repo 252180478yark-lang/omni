@@ -358,6 +358,18 @@ def test_source_fingerprint_tracks_content_not_mtime_or_secret_files(
     assert changed != initial
     (repo / ".env").write_text("API_KEY=live_abcdefghijklmnopqrstuvwxyz\n", encoding="utf-8")
     assert allocation.source_tree_fingerprint(repo) == changed
+    planning = repo / ".planning" / "runtime-verification" / "progress.md"
+    planning.parent.mkdir(parents=True)
+    planning.write_text("runtime started\n", encoding="utf-8")
+    assert allocation.source_tree_fingerprint(repo) == changed
+    artifact = repo / "outputs" / "research" / "report.csv"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("platform,count\nexample,1\n", encoding="utf-8")
+    assert allocation.source_tree_fingerprint(repo) == changed
+    nested_runtime = repo / "services" / "example" / "outputs" / "generated.py"
+    nested_runtime.parent.mkdir(parents=True)
+    nested_runtime.write_text("value = 3\n", encoding="utf-8")
+    assert allocation.source_tree_fingerprint(repo) != changed
 
 
 def test_lock_file_stays_one_byte_and_release_requires_owner_cas(

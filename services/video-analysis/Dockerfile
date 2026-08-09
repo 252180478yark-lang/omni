@@ -1,10 +1,5 @@
 FROM python:3.11-slim
 
-ARG OMNI_BUILD_COMMIT=unknown
-ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
-ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
-    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
-
 ENV HTTP_PROXY="" HTTPS_PROXY="" http_proxy="" https_proxy=""
 
 RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources && \
@@ -19,6 +14,11 @@ RUN pip install --no-cache-dir --retries 5 --timeout 60 -i https://mirrors.aliyu
     fastapi uvicorn[standard] pydantic pydantic-settings python-multipart httpx \
     google-generativeai matplotlib psycopg2-binary PySocks \
     opencv-python-headless scenedetect[opencv] scipy librosa faster-whisper
+
+ARG OMNI_BUILD_COMMIT=unknown
+ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
+ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
+    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
 
 COPY app /app/app
 RUN mkdir -p /app/data/video-analysis
