@@ -1,0 +1,232 @@
+schema_version: 3
+change_id: 2026-08-10-blueprint-ledger-contract-closure
+title: Fix blueprint timeout and refresh delivery-ledger ownership
+state: IMPLEMENTING
+created_at: '2026-08-09T17:57:37Z'
+updated_at: '2026-08-09T17:59:09Z'
+feature_refs:
+- feature_id: omni-fde-system-convergence-master-prd-v12
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:sha256:d34c5975e08d82bae86efa9b3b7ea3d626405c63ccf8c089945f56c2163501f3
+- feature_id: omni-unified-ai-workbench-v13
+  feature_ref: prd:2026-08-02-omni-unified-ai-workbench-prd:v1.3:sha256:cfdc88d68e985c0801dfbc9ab1bccfc7b5a36059b8d5bd0feab4cf74687622bd
+before_snapshot:
+  ref: git:52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0
+delivery:
+  authority: ci_attestation
+  base_commit: 52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - The fix changes the Web BFF timeout contract, Knowledge Engine cold-read persistence, and the evidence inputs used to assign cross-worktree contract ownership.
+  - A false success in either graph or delivery projection would hide unavailable runtime state or incorrectly release an active path owner.
+  external_effects: []
+  scope_deltas: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The system blueprint intermittently fails because two BFF readers abort after eight seconds while an empty Knowledge Engine snapshot repository performs a roughly twenty-four-second synchronous repository scan on every read. Separately, the shared verified-receipt cache is empty and its versioned recovery manifest omits the two latest main deliveries, so the PRD ledger and workspace ownership projection treat delivered schema-v3 contracts as active.
+  expected_outcome: The first truthful graph read may perform one bounded repository scan and persist its immutable result, later reads reuse the stored snapshot, both Web consumers share a configurable sixty-second default timeout, and the PRD ledger/readiness inventory is regenerated only from provenance-verified CI receipts.
+  user_visible_behavior:
+  - Opening the blueprint after a cold start returns the real snapshot instead of an eight-second 502, while genuine upstream failures remain explicit errors.
+  - Subsequent blueprint and grounded-suggestion reads avoid repeated full-repository scans.
+  - Progress and contract ownership exclude only contracts proven delivered by immutable, reachable main CI attestations; unresolved work remains active.
+current_chain:
+  nodes:
+  - component:frontend.WorkbenchBlueprint
+  - api:GET:/api/omni/system-graph/snapshot
+  - api:POST:/api/omni/workbench/suggestions
+  - api:GET:/api/v1/system-graph/snapshot
+  - service:knowledge-engine.system_graph
+  - db:mcp.system_graph_snapshots
+  - workflow:delivery-receipt-cache-rebuild
+  - projection:prd.implementation-status
+  - projection:workspace.active-contract-ownership
+  edges:
+  - component:frontend.WorkbenchBlueprint -> api:GET:/api/omni/system-graph/snapshot
+  - api:GET:/api/omni/system-graph/snapshot -> api:GET:/api/v1/system-graph/snapshot
+  - api:POST:/api/omni/workbench/suggestions -> api:GET:/api/v1/system-graph/snapshot
+  - api:GET:/api/v1/system-graph/snapshot -> service:knowledge-engine.system_graph
+  - service:knowledge-engine.system_graph -> db:mcp.system_graph_snapshots
+  - workflow:delivery-receipt-cache-rebuild -> projection:prd.implementation-status
+  - workflow:delivery-receipt-cache-rebuild -> projection:workspace.active-contract-ownership
+  evidence:
+  - Both frontend graph readers currently use AbortSignal.timeout(8000), while the repository recovery verifier already budgets sixty seconds for a graph read.
+  - A direct live Knowledge Engine cold snapshot read took approximately 24.49 seconds.
+  - The read router scans the repository when latest_snapshot is absent but does not save the result; the refresh path does save it.
+  - The Git common verified-receipts cache is empty, and the tracked W0 recovery manifest lists only four deliveries through 2026-08-01.
+scope:
+  pages:
+  - page:/workspace
+  - page:/system-graph
+  apis:
+  - api:GET:/api/omni/system-graph/snapshot
+  - api:POST:/api/omni/workbench/suggestions
+  - api:GET:/api/v1/system-graph/snapshot
+  mcp_tools: []
+  services:
+  - service:knowledge-engine.system_graph
+  - service:frontend.system_graph_reader
+  database:
+  - db:mcp.system_graph_snapshots
+  data_sources:
+  - source:repository.static-system-graph
+  - source:github-actions.delivery-attestation
+  states_workflows:
+  - state:system-graph.available_stale_unavailable
+  - workflow:delivery-receipt-cache-rebuild
+  - projection:prd.implementation-status
+  - projection:workspace.active-contract-ownership
+  tests:
+  - test:frontend/system-graph-bff
+  - test:frontend/workbench-suggestions
+  - test:knowledge-engine/system-graph-router
+  - test:governance/delivery-ledger-readiness
+  docs:
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+planned_changes:
+- id: BLC-CHG-001
+  action: modify
+  kind: api
+  node_id: service:frontend.system_graph_reader
+  paths:
+  - frontend/src/app/api/omni/system-graph/_graph-fetch.ts
+  - frontend/src/app/api/omni/system-graph/snapshot/route.ts
+  - frontend/src/app/api/omni/workbench/suggestions/route.ts
+  - frontend/.env.example
+  - frontend/tests/system-graph-snapshot-bff.test.ts
+  - frontend/tests/workbench-suggestions-grounding.test.ts
+  upstream:
+  - component:frontend.WorkbenchBlueprint
+  downstream:
+  - api:GET:/api/v1/system-graph/snapshot
+  contract_change: compatible
+  verification_ids:
+  - BLC-VER-001
+  - BLC-VER-002
+- id: BLC-CHG-002
+  action: modify
+  kind: service
+  node_id: service:knowledge-engine.system_graph
+  paths:
+  - services/knowledge-engine/app/routers/system_graph.py
+  - services/knowledge-engine/tests/test_system_graph_router.py
+  upstream:
+  - api:GET:/api/v1/system-graph/snapshot
+  downstream:
+  - db:mcp.system_graph_snapshots
+  - source:repository.static-system-graph
+  contract_change: compatible
+  verification_ids:
+  - BLC-VER-003
+- id: BLC-CHG-003
+  action: modify
+  kind: workflow
+  node_id: workflow:delivery-receipt-cache-rebuild
+  paths:
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/delivery-recovery-manifest.yaml
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/ownership-before.yaml
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/ownership-after.yaml
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  upstream:
+  - source:github-actions.delivery-attestation
+  downstream:
+  - projection:prd.implementation-status
+  - projection:workspace.active-contract-ownership
+  contract_change: compatible
+  verification_ids:
+  - BLC-VER-004
+  - BLC-VER-005
+allowed_unplanned_paths:
+- .planning/2026-08-10-prd-blueprint-ledger-desktop-w6-closure/**
+compatibility:
+  api:
+    status: compatible
+    strategy: Response schemas and error status semantics remain unchanged; only the bounded upstream wait and cold-read implementation change.
+  database:
+    status: compatible
+    strategy: Reuse the existing immutable snapshot repository and tables; no migration or record mutation is introduced beyond idempotent snapshot insertion.
+  workflow:
+    status: compatible
+    strategy: Delivery remains CI-attestation authoritative; the versioned manifest only reconstructs the non-authoritative shared cache and never sets COMPLETE itself.
+  data_source:
+    status: compatible
+    strategy: Repository scan and GitHub Actions attestation sources are unchanged and continue to fail closed when unavailable or unverifiable.
+graph_acceptance:
+  required_edges:
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: reads-with-bounded-timeout
+  - from: api:POST:/api/omni/workbench/suggestions
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: grounds-with-bounded-timeout
+  - from: service:knowledge-engine.system_graph
+    to: db:mcp.system_graph_snapshots
+    relation: persists-cold-scan
+  - from: source:github-actions.delivery-attestation
+    to: projection:workspace.active-contract-ownership
+    relation: verifies-delivered-contracts
+  allowed_unknowns:
+  - collector failure remains unknown or stale and never becomes a missing node.
+  forbidden_orphans:
+  - service:frontend.system_graph_reader
+  - workflow:delivery-receipt-cache-rebuild
+risks:
+- id: BLC-RISK-001
+  description: A longer BFF timeout without persistence would only hide repeated cold scans.
+  mitigation: Persist the first scan idempotently and test that the next read uses latest_snapshot without rescanning.
+- id: BLC-RISK-002
+  description: Reconstructed receipt files could be forged or refer to an unreachable/non-main commit.
+  mitigation: Reuse live GitHub provenance, artifact digest, raw payload hash, committed contract, target ref, and reachability verification before atomically caching.
+- id: BLC-RISK-003
+  description: Concurrent cold reads could duplicate expensive scans.
+  mitigation: Use a process-local single-flight lock with a second latest_snapshot check and immutable repository idempotency.
+out_of_scope:
+- No new product account, credential, RBAC, token, migration, destructive graph operation, or external publication.
+- Desktop W6 product files belong to a separate omni-desktop schema-v3 contract; this contract only refreshes the main-repository ledger and ownership truth.
+- Existing unrelated dirty worktrees and runtime bridge identity drift are reported truthfully but not modified.
+rollback:
+  strategy: Revert the BFF helper/router and Knowledge Engine cold-read changes; delete only this task's reconstructed cache files if needed, then regenerate the projection from the remaining verified receipts.
+  data_recovery: Existing graph snapshots are immutable and content-addressed, so rollback requires no destructive database recovery; generated ledger/cache artifacts can be deterministically rebuilt from CI artifacts.
+verification_plan:
+- id: BLC-VER-001
+  layer: frontend-unit
+  command: cd frontend && npx vitest run tests/system-graph-snapshot-bff.test.ts
+  proves: Both snapshot success/error paths use the shared bounded timeout without changing response truthfulness.
+  required: true
+- id: BLC-VER-002
+  layer: frontend-unit
+  command: cd frontend && npx vitest run tests/workbench-suggestions-grounding.test.ts
+  proves: Grounded suggestions share the graph reader while preserving insufficient-evidence and upstream-error behavior.
+  required: true
+- id: BLC-VER-003
+  layer: knowledge-engine
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_router.py services/knowledge-engine/tests/test_system_graph_s7_router.py
+  proves: Cold reads persist exactly one reusable immutable snapshot and normal refresh semantics remain valid.
+  required: true
+- id: BLC-VER-004
+  layer: governance
+  command: uv run --with pyyaml python scripts/rebuild_delivery_receipts.py --manifest docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/delivery-recovery-manifest.yaml --dry-run
+  proves: Every tracked receipt can be recovered and provenance-verified without trusting the cache.
+  required: true
+- id: BLC-VER-005
+  layer: governance
+  command: uv run --with pyyaml python scripts/check_development_readiness.py --format json
+  proves: Delivered contracts are excluded from active ownership while unresolved contracts and runtime drift remain fail-closed.
+  required: true
+- id: BLC-VER-006
+  layer: policy
+  command: python3 scripts/check_agent_policy.py --require-tracked
+  proves: Project policy and tracked skill routing remain valid.
+  required: true
+- id: BLC-VER-007
+  layer: runtime
+  command: curl --fail --max-time 60 http://127.0.0.1:23604/api/omni/system-graph/snapshot
+  proves: The deployed browser-facing blueprint endpoint returns a truthful snapshot within the repository recovery budget.
+  required: true
+lock:
+  locked_at: '2026-08-09T17:58:43Z'
+  locked_by: codex
+  rationale: User requested blueprint timeout repair followed by evidence-backed ledger and ownership refresh; paths, contracts, risks, rollback and verification are now locked.

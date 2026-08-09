@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import Literal
@@ -48,6 +49,7 @@ from app.services.system_graph.repository import (
 )
 
 router = APIRouter(prefix="/api/v1/system-graph", tags=["system-graph"])
+_snapshot_bootstrap_lock = asyncio.Lock()
 
 
 class CreatePlanRequest(StrictModel):
@@ -301,7 +303,31 @@ async def read_system_graph_snapshot(
         latest = await repository.latest_snapshot()
     except RuntimeError:
         latest = None
-    return latest or scan_repository(ScanRequest(repo=repository_root(), dynamic=False))
+    if latest is not None:
+        return latest
+
+    # An empty repository is a cold-start condition, not a reason to rescan the
+    # complete source tree on every GET. Keep one in-process scan in flight,
+    # recheck after taking the lock, then persist through the immutable adapter.
+    async with _snapshot_bootstrap_lock:
+        try:
+            latest = await repository.latest_snapshot()
+        except RuntimeError:
+            latest = None
+        if latest is not None:
+            return latest
+
+        snapshot = await asyncio.to_thread(
+            scan_repository,
+            ScanRequest(repo=repository_root(), dynamic=False),
+        )
+        try:
+            return await repository.save_snapshot(snapshot)
+        except RuntimeError:
+            # Preserve the existing truthful read-only fallback when the
+            # database itself is unavailable; callers still receive the scan,
+            # not a fabricated empty or stale success response.
+            return snapshot
 
 
 async def _run_refresh(

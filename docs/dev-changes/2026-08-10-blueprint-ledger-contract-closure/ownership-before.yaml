@@ -1,0 +1,19 @@
+schema_version: 1
+kind: omni_contract_ownership_snapshot
+captured_at: '2026-08-10T01:40:00+08:00'
+repository_head: 52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0
+receipt_cache:
+  discovered_receipt_count: 0
+  delivered_contract_count: 0
+readiness:
+  status: development_in_progress
+  active_contract_count: 23
+  ownership_check: failed
+  runtime_identity_check: failed
+  secret_scan: passed
+  hook_trust: review_required
+cause:
+- The Git common verified-receipts cache was empty.
+- The tracked recovery manifest stopped at four deliveries through 2026-08-01.
+- Delivered GRAPH_DIFF_READY contracts were therefore conservatively retained as active owners.
+interpretation: This snapshot is evidence of a stale projection, not authority to mark contracts delivered.

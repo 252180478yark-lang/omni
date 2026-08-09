@@ -1,0 +1,60 @@
+schema_version: 1
+kind: omni_delivery_receipt_recovery_manifest
+change_id: 2026-08-10-blueprint-ledger-contract-closure
+generated_at: '2026-08-10T02:02:00+08:00'
+authority: github_actions_ci_attestation
+verified_deliveries:
+- change_id: 2026-07-30-system-convergence-s0-s3-foundation
+  subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+  workflow_run_id: '30688798400'
+  artifact_id: '8814940928'
+  artifact_name: delivery-attestation-041f05d931967d3ab014f031e684d1b02765c684
+  artifact_digest: sha256:f6d196487027ab2cd4c2c0896ac386e8c624ec499e6fb9fa7eaa6b372fa84fcf
+  cache_path: omni-delivery/verified-receipts/blueprint-ledger-closure/30688798400-041f05d931967d3ab014f031e684d1b02765c684.json
+  raw_sha256: 49cafd772c00d7f32e9195827a325ae44a13f12021645ca2d6e1481fad69e52c
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/30688798400
+- change_id: 2026-08-01-system-convergence-s4-s6-static
+  subject_commit: af11294eeadc84a45284c3265ddf623826edb1f7
+  workflow_run_id: '30703198969'
+  artifact_id: '8819498174'
+  artifact_name: delivery-attestation-af11294eeadc84a45284c3265ddf623826edb1f7
+  artifact_digest: sha256:8bf61970183c6fa9c7b84b32841d78d4a8515af4d33af3bb24fd52b0db89021a
+  cache_path: omni-delivery/verified-receipts/blueprint-ledger-closure/30703198969-af11294eeadc84a45284c3265ddf623826edb1f7.json
+  raw_sha256: 65449402269b0bb9bd059c8b9f3dbbbb47ea9e15c5db85c828604e276270affd
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/30703198969
+- change_id: 2026-08-01-system-convergence-s4-s6-gap-closure
+  subject_commit: 5d760f733aeb976c5b88419c5406383bf272ca86
+  workflow_run_id: '30709405646'
+  artifact_id: '8821387408'
+  artifact_name: delivery-attestation-5d760f733aeb976c5b88419c5406383bf272ca86
+  artifact_digest: sha256:754aaa08b8c82140b298da4a5059c3afaa5b390e9af05fad83c0cafa7d1dd09f
+  cache_path: omni-delivery/verified-receipts/blueprint-ledger-closure/30709405646-5d760f733aeb976c5b88419c5406383bf272ca86.json
+  raw_sha256: bfa2bcfd174c53a12a4b00a59f95af89ec09e6f0947551fcd974c0a616f8d50f
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/30709405646
+- change_id: 2026-08-01-system-convergence-s7-s14
+  subject_commit: c8c8eec71d9d970272de84649cf31f87fd148441
+  workflow_run_id: '30709994820'
+  artifact_id: '8821567739'
+  artifact_name: delivery-attestation-c8c8eec71d9d970272de84649cf31f87fd148441
+  artifact_digest: sha256:ccafef633f2fd2723f8da30c81f3950a0e3ccf8854d6917ba866a3b53678c9de
+  cache_path: omni-delivery/verified-receipts/blueprint-ledger-closure/30709994820-c8c8eec71d9d970272de84649cf31f87fd148441.json
+  raw_sha256: c3cfdae984ad08f27a388af5e7cac903a446d1c575a2f378f0ceb61202bf6eae
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/30709994820
+- change_id: 2026-08-07-prd-receipt-cache-rebuild
+  subject_commit: 795587d64b9d4b42275180f261071090b261076d
+  workflow_run_id: '31321956584'
+  artifact_id: '9040446272'
+  artifact_name: delivery-attestation-795587d64b9d4b42275180f261071090b261076d
+  artifact_digest: sha256:cb6db9f9836463f14c25a133c3883efaab1cb32b0afbc8003a0c5bb1b54f9ee1
+  cache_path: omni-delivery/verified-receipts/blueprint-ledger-closure/31321956584-795587d64b9d4b42275180f261071090b261076d.json
+  raw_sha256: 34ede7e931c22b721cc23368321016f5ca49e5f373e1f7b14b9b72b00906f1de
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/31321956584
+- change_id: 2026-08-10-mac-runtime-profile-forwarding
+  subject_commit: 52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0
+  workflow_run_id: '31324053180'
+  artifact_id: '9041028302'
+  artifact_name: delivery-attestation-52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0
+  artifact_digest: sha256:f09e159713390aac7ba2c2598f8e24122dfd7da59afefd4a5c6266ff97a97c63
+  cache_path: omni-delivery/verified-receipts/blueprint-ledger-closure/31324053180-52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0.json
+  raw_sha256: dae05af89304ae0b26730cce197db448ace50cada3c22bdf1ad109f3261bea81
+  run_url: https://github.com/252180478yark-lang/omni/actions/runs/31324053180
