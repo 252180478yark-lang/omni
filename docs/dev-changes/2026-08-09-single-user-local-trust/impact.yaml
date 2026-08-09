@@ -3,7 +3,7 @@ change_id: 2026-08-09-single-user-local-trust
 title: Single-user local trust convergence
 state: GRAPH_DIFF_READY
 created_at: '2026-08-08T19:25:51Z'
-updated_at: '2026-08-08T20:01:46Z'
+updated_at: '2026-08-09T15:34:13Z'
 feature_refs:
 - feature_id: system-convergence-master-prd
   feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S7-S12
@@ -90,6 +90,12 @@ risk:
     - services/knowledge-engine/tests/test_router_human_gates.py
     required_level: R2
     risk_change: none; verification becomes reproducible and directly tied to the local-trust contracts instead of depending on unrelated live services.
+  - id: DELTA-009
+    discovered_at: '2026-08-09T15:34:13Z'
+    reason: Unified commit-mode validation found frontend/server.ts has a later final semantic owner in the WebSocket exact-origin hardening contract.
+    added_paths: []
+    required_level: R2
+    risk_change: none; local-owner projection remains verified here while final server bytes and origin admission are owned by the later hardening contract.
   approval:
     required: false
     gate_ref: ''
@@ -192,7 +198,6 @@ planned_changes:
   kind: frontend-local-trust
   node_id: service:frontend-local-owner
   paths:
-  - frontend/server.ts
   - frontend/next.config.mjs
   - frontend/src/app/api/omni/_shared.ts
   - frontend/src/app/api/omni/auth/session/route.ts

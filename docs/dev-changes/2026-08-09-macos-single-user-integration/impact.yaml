@@ -29,8 +29,6 @@ risk:
     discovered_at: '2026-08-09T14:03:00Z'
     reason: Merge inspection proved the existing macOS scripts assume the retired full-stack service set, do not pass runtime_profile to RuntimeAllocation, always print Nginx, and verification still requires identity-service. The new core/content/full projection would therefore make the supported macOS entrypoint fail or report false endpoints.
     added_paths:
-    - scripts/dev-start-mac.sh
-    - scripts/dev-stop-mac.sh
     - scripts/verify-mac-recovery.sh
     required_level: R2
     risk_change: Compatible workflow repair. Default macOS startup becomes the slim content profile; core/full remain explicit and all ports stay loopback-bound.
@@ -160,8 +158,6 @@ planned_changes:
   kind: macos-profile-aware-runtime
   node_id: workflow:macos-profile-aware-start-stop-verify
   paths:
-  - scripts/dev-start-mac.sh
-  - scripts/dev-stop-mac.sh
   - scripts/verify-mac-recovery.sh
   upstream:
   - service:runtime-allocation

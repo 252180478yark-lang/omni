@@ -4,10 +4,8 @@ state: GRAPH_DIFF_READY
 actual_changes:
 - id: ACT-INT-003
   planned_change_id: INT-003
-  summary: Made the supported macOS lifecycle profile-aware, defaulted it to the content projection and changed live verification to manifest-backed service checks with an explicit strict recovered-data mode.
+  summary: Changed live macOS verification to manifest-backed service checks with an explicit strict recovered-data mode; the profile-aware start and stop bytes already exist at this contract's curated immutable baseline.
   paths:
-  - scripts/dev-start-mac.sh
-  - scripts/dev-stop-mac.sh
   - scripts/verify-mac-recovery.sh
 - id: ACT-INT-004
   planned_change_id: INT-004
@@ -33,6 +31,10 @@ actual_changes:
   - services/scout-agent/Dockerfile
   - tests/test_docker_build_cache_contract.py
 contract_delta:
+- description: Released dev-start-mac.sh and dev-stop-mac.sh from final ownership while retaining verify-mac-recovery.sh.
+  reason: Commit-mode evidence proved both start/stop scripts are byte-identical to the curated fa45bbe baseline, whereas the verifier changes after that baseline and remains an actual integration delta.
+  effect: The contract owns only paths changed after its immutable delivery baseline; lifecycle behavior remains covered by retained runtime evidence without fabricating a diff.
+  accepted: true
 - description: Rebased the curated macOS integration contract onto the immutable recovery commit in this unified lineage and removed personal planning plus historical-contract composition from owned product scope.
   reason: The source branch contained unrelated tracked planning and non-ancestor commit identities; only runtime/profile, source identity, graph fallback and Docker cache repairs were authorized for mainline integration.
   effect: Every retained actual path is changed after an ancestor baseline, unrelated local artifacts stay out of the candidate, and historical feature contracts continue to own their own product paths.

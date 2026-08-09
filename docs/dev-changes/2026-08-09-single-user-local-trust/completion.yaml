@@ -6,7 +6,6 @@ actual_changes:
   planned_change_id: CHG-001
   summary: Replaced frontend cookie, identity verification, HMAC and internal bearer-token gates with a fixed local-owner projection; retained same-origin mutation checks across HTTP and WebSocket paths and kept compatibility route schemas stable.
   paths:
-  - frontend/server.ts
   - frontend/next.config.mjs
   - frontend/src/app/api/omni/_shared.ts
   - frontend/src/app/api/omni/auth/session/route.ts
@@ -92,6 +91,10 @@ actual_changes:
   - README.md
   - docs/multi-device/host-bridge.md
 contract_delta:
+- description: Transferred final frontend/server.ts ownership to the later WebSocket origin hardening contract.
+  reason: The unified candidate changes the server again after local-trust convergence, and schema-v3 delivery requires exactly one final owner for each protected path.
+  effect: This contract retains all local-owner API, BFF and WebSocket-handler paths it finally writes; the hardening contract uniquely owns the final custom-server admission classifier wiring.
+  accepted: true
 - description: Finalized cumulative-candidate ownership by accepting only shared runtime paths actually changed after the content-convergence baseline and releasing the allocation schema, runtime guard and Windows launcher back to that predecessor contract.
   reason: Commit-mode validation requires one owner whose completion contains the real path diff; those three retained predecessor paths were not modified by the local-trust commit and therefore cannot truthfully appear in its actual changes.
   effect: The local-trust contract owns its final semantic writes, content convergence owns the untouched predecessor paths, and no product or runtime bytes change during the governance repair.
