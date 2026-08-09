@@ -1,9 +1,9 @@
 schema_version: 3
 change_id: 2026-08-10-mac-runtime-profile-forwarding
 title: Forward macOS runtime profiles into allocation
-state: VERIFYING
+state: GRAPH_DIFF_READY
 created_at: '2026-08-09T16:16:36Z'
-updated_at: '2026-08-09T16:18:46Z'
+updated_at: '2026-08-09T16:28:46Z'
 feature_refs:
 - feature_id: macos-runtime-profile-forwarding
   feature_ref: git:795587d64b9d4b42275180f261071090b261076d:config/runtime-manifest.yaml#runtime_profiles

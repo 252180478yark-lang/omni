@@ -1,6 +1,6 @@
 schema_version: 3
 change_id: 2026-08-10-mac-runtime-profile-forwarding
-state: VERIFYING
+state: GRAPH_DIFF_READY
 actual_changes:
 - id: ACT-PROFILE-001
   planned_change_id: PROFILE-001
@@ -35,24 +35,65 @@ verification_results:
   status: passed
   exit_code: 0
   evidence: The exact locked command acquired runtime_profile=content, started and verified eight manifest-owned services, read a 19,078,167-byte database with 158 tables, served the product read path, and returned system graph snapshot sha256:7cc58d430b1ba8911489afb218d7fe178c8d51a52b306b220988c9e6690afa7e with 187 nodes and 211 edges. The four dynamic-disabled or attestation-unsupplied collectors remained explicitly unknown rather than being misreported missing.
+- id: PROFILE-VER-004
+  command: git diff --check 795587d64b9d4b42275180f261071090b261076d..HEAD
+  status: passed
+  exit_code: 0
+  evidence: The committed candidate range contains no whitespace or patch-integrity errors.
 graph_diff:
-  status: pending
-  snapshot_before: ''
-  snapshot_after: ''
+  status: clean
+  snapshot_before: git:795587d64b9d4b42275180f261071090b261076d
+  snapshot_after: runtime:sha256:7cc58d430b1ba8911489afb218d7fe178c8d51a52b306b220988c9e6690afa7e
   added_nodes: []
-  modified_nodes: []
+  modified_nodes:
+  - workflow:macos-runtime-start
+  - workflow:macos-runtime-verify
+  - workflow:macos-runtime-stop
+  - test:macos-runtime-script-profile-forwarding
   removed_nodes: []
-  added_edges: []
+  added_edges:
+  - from: workflow:macos-runtime-start
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+  - from: workflow:macos-runtime-verify
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+  - from: workflow:macos-runtime-stop
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+  - from: service:runtime-allocation-cli
+    to: service:docker-compose-profile-projection
+    relation: projects-exact-profile-service-set
   removed_edges: []
-  required_edges: []
+  required_edges:
+  - from: workflow:macos-runtime-start
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+    status: present
+    evidence: dev-start-mac.sh validates core/content/full and passes --runtime-profile; the live allocation recorded content.
+  - from: workflow:macos-runtime-verify
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+    status: present
+    evidence: verify-mac-recovery.sh passes the validated profile, boundedly waits for its exact tier, and the locked live command passed.
+  - from: workflow:macos-runtime-stop
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+    status: present
+    evidence: dev-stop-mac.sh validates and passes the same runtime profile; static lifecycle regression coverage passed.
+  - from: service:runtime-allocation-cli
+    to: service:docker-compose-profile-projection
+    relation: projects-exact-profile-service-set
+    status: present
+    evidence: Allocation environment projection tests passed and the live content runtime started the five core plus three content services while omitting full-only services and nginx.
   orphan_nodes: []
   unknowns: []
 exceptions: []
 delivery:
-  status: pending
+  status: ready_for_ci
 rollback:
-  verified: false
-  evidence: ''
+  verified: true
+  evidence: The stale-fingerprint candidate was stopped by exact container name and released with allocation-id/owner/revision CAS, without deleting any named volume. Reacquisition reused the isolated PostgreSQL, Redis and knowledge volumes and again verified the same 19,078,167-byte database and 158 tables.
 final:
   status: pending
   completed_at: null
