@@ -186,10 +186,8 @@ planned_changes:
   - frontend/src/lib/workbench-ia.ts
   - frontend/tests/feature-registry.test.ts
   - frontend/tests/workbench-ia.test.ts
-  - frontend/src/app/api/omni/workbench/navigation-events/route.ts
   - frontend/tests/workbench-navigation-events.test.ts
   - frontend/src/lib/workbench-ia-compat.ts
-  - frontend/src/middleware.ts
   - frontend/tests/workbench-middleware.test.ts
   - frontend/tests/workbench-route-inventory.test.ts
   upstream:
@@ -274,17 +272,13 @@ planned_changes:
   kind: runtime-profile-convergence
   node_id: runtime:root-compose
   paths:
-  - docker-compose.yml
-  - config/runtime-manifest.yaml
   - services/knowledge-engine/app/config.py
   - services/knowledge-engine/tests/test_config_contract.py
   - tests/test_compose_runtime_contract.py
   - docs/runtime-profiles.md
   - frontend/Dockerfile
   - frontend/.dockerignore
-  - frontend/server.ts
   - config/schemas/runtime-allocation.schema.json
-  - scripts/runtime_allocation.py
   - scripts/runtime_guard.py
   - dev-start.ps1
   - tests/test_runtime_allocation.py

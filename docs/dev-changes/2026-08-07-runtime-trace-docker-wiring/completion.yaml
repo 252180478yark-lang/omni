@@ -5,20 +5,16 @@ actual_changes:
 - id: ACT-001
   planned_change_id: CHG-001
   paths:
-  - scripts/runtime_allocation.py
   - tests/test_runtime_allocation.py
   summary: Added an independent external runtime trace token, canonical receiver and publisher aliases, and side-effect-free active-allocation dry-run behavior.
 - id: ACT-002
   planned_change_id: CHG-002
   paths:
-  - docker-compose.yml
-  - services/docker-compose.sp1-sp4.yml
   - tests/test_compose_runtime_contract.py
   summary: Mounted one canonical token source read-only into Frontend, Knowledge Engine, and Scout under role-specific aliases; configured Scout's in-network KE URL and startup dependency.
 - id: ACT-003
   planned_change_id: CHG-003
   paths:
-  - scripts/dev_runtime_environment.py
   - tests/test_dev_runtime_environment.py
   summary: Added Knowledge Engine host support and projected only the receiver alias to KE and publisher alias to Frontend/Scout, always derived from the canonical token path.
 - id: ACT-004
@@ -36,11 +32,14 @@ actual_changes:
 - id: ACT-006
   planned_change_id: CHG-006
   paths:
-  - .env.example
   - docs/multi-device/host-bridge.md
   - tests/test_compose_runtime_contract.py
   summary: Removed the independently configurable publisher alias from user-facing environment examples and Host Bridge setup instructions so all host and container roles derive from one canonical token path.
 contract_delta:
+- description: Transferred cumulative-candidate ownership of the five shared runtime/bootstrap paths to the later single-user local-trust contract while retaining this contract's trace-specific tests and documentation ownership.
+  reason: CI evaluates the complete merge-base diff and correctly rejected multiple v3 owners after the local-trust integration commit became the final semantic writer for those paths.
+  effect: Runtime trace behavior remains present and regression-tested, and every protected shared path has one final owner in the evidence-recovery delivery candidate.
+  accepted: true
 - description: Added host-mode Knowledge Engine receiver wiring and made OMNI_RUNTIME_TRACE_TOKEN_FILE the single canonical host source for every receiver/publisher mount.
   reason: Independent PRD review proved host KE was excluded and separately configurable aliases could silently point at different tokens.
   effect: Container and host publishers always authenticate with the same token as KE; mismatched service alias input is ignored and regression-tested.

@@ -39,7 +39,6 @@ actual_changes:
   - frontend/src/generated/feature-registry.v1.json
   - frontend/src/lib/workbench-ia.ts
   - frontend/src/lib/workbench-ia-compat.ts
-  - frontend/src/app/api/omni/workbench/navigation-events/route.ts
   - frontend/tests/feature-registry.test.ts
   - frontend/tests/workbench-ia.test.ts
   - frontend/tests/workbench-navigation-events.test.ts
@@ -80,10 +79,7 @@ actual_changes:
   planned_change_id: CHG-005
   summary: Converged root Compose into exact core/content/full projections with 6/9/12 long-lived services, carried runtime_profile through allocation, Compose, guard and Knowledge Engine startup, required a truthful health contract for every selected long-lived service, kept every port/database/named volume, aligned Windows startup and docs, and produced a reachable custom-server image whose build context excludes local dependencies and test artifacts.
   paths:
-  - docker-compose.yml
-  - config/runtime-manifest.yaml
   - config/schemas/runtime-allocation.schema.json
-  - scripts/runtime_allocation.py
   - scripts/runtime_guard.py
   - services/knowledge-engine/app/runtime_preflight.py
   - services/knowledge-engine/tests/test_runtime_preflight.py
@@ -95,7 +91,6 @@ actual_changes:
   - tests/test_dev_runtime_environment.py
   - frontend/Dockerfile
   - frontend/.dockerignore
-  - frontend/server.ts
   - dev-start.ps1
   - README.md
   - docs/runtime-profiles.md
@@ -113,6 +108,10 @@ actual_changes:
   - services/knowledge-engine/app/mcp/doctor.py
   - services/knowledge-engine/tests/test_tool_execution.py
 contract_delta:
+- description: Transferred cumulative-candidate ownership of navigation telemetry, root Compose, runtime manifest, runtime allocation and the frontend custom server to the later single-user local-trust contract; content convergence retains the allocation schema, guard and Windows launcher paths it actually changed.
+  reason: Feature-branch CI evaluates the full merge-base diff, and the local-trust commit is the final writer for the transferred paths while the retained paths were not changed by that successor.
+  effect: Implementation bytes are unchanged, prior verification stays valid, and the cumulative evidence-recovery candidate has one truthful actual-change owner per protected path.
+  accepted: true
 - description: Added direct IA consumers, compatibility middleware, route inventory and system-health tests to the implementation boundary.
   reason: TypeScript and focused regressions proved these existing consumers embed the changed group allowlist, alias ownership or retired root-renderer contract and therefore must move atomically with the FeatureDefinition sources.
   effect: Old v1 clients remain accepted by an immutable adapter, v2 clients use six groups, root is a one-hop alias, and every physical page still resolves with one owner.

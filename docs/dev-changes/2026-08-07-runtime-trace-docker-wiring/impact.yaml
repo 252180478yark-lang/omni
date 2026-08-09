@@ -71,7 +71,6 @@ planned_changes:
   kind: service
   node_id: workflow:scripts/runtime_allocation.py
   paths:
-  - scripts/runtime_allocation.py
   - tests/test_runtime_allocation.py
   upstream: []
   downstream:
@@ -86,8 +85,6 @@ planned_changes:
   kind: workflow
   node_id: runtime:compose-runtime-trace-token
   paths:
-  - docker-compose.yml
-  - services/docker-compose.sp1-sp4.yml
   - tests/test_compose_runtime_contract.py
   upstream:
   - workflow:scripts/runtime_allocation.py
@@ -103,7 +100,6 @@ planned_changes:
   kind: workflow
   node_id: workflow:host-dev-environment
   paths:
-  - scripts/dev_runtime_environment.py
   - tests/test_dev_runtime_environment.py
   upstream:
   - workflow:scripts/runtime_allocation.py
@@ -145,7 +141,6 @@ planned_changes:
   kind: configuration
   node_id: config:runtime-trace-token-source
   paths:
-  - .env.example
   - docs/multi-device/host-bridge.md
   - tests/test_compose_runtime_contract.py
   upstream:

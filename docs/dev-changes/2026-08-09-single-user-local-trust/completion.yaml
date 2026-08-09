@@ -92,6 +92,10 @@ actual_changes:
   - README.md
   - docs/multi-device/host-bridge.md
 contract_delta:
+- description: Finalized cumulative-candidate ownership by accepting only shared runtime paths actually changed after the content-convergence baseline and releasing the allocation schema, runtime guard and Windows launcher back to that predecessor contract.
+  reason: Commit-mode validation requires one owner whose completion contains the real path diff; those three retained predecessor paths were not modified by the local-trust commit and therefore cannot truthfully appear in its actual changes.
+  effect: The local-trust contract owns its final semantic writes, content convergence owns the untouched predecessor paths, and no product or runtime bytes change during the governance repair.
+  accepted: true
 - description: Added middleware, Host Bridge, secondary Compose, runner and Next build closure found during repository-wide credential and build review.
   reason: Each path still carried removed credential behavior or could block the new frontend from building.
   effect: All retained local execution paths share one trust model and the production build remains type-checked.
