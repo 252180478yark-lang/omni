@@ -1,0 +1,183 @@
+schema_version: 3
+change_id: 2026-08-09-websocket-origin-scheme-hardening
+title: WebSocket origin scheme hardening
+state: IMPACT_LOCKED
+created_at: '2026-08-09T15:11:45Z'
+updated_at: '2026-08-09T15:13:14Z'
+feature_refs:
+- feature_id: macos-single-user-integration
+  feature_ref: git:2ad16ad435fd5a242259819c436f12b58be5badb:docs/dev-changes/2026-08-09-macos-single-user-integration
+before_snapshot:
+  ref: git:2ad16ad435fd5a242259819c436f12b58be5badb
+delivery:
+  authority: ci_attestation
+  base_commit: 2ad16ad435fd5a242259819c436f12b58be5badb
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - The retained local-owner WebSocket upgrade currently compares Origin host only, so an http request can accept an https Origin or the inverse despite HTTP mutation routes already requiring exact scheme and host.
+  - Scheme inference must remain correct behind a trusted local reverse proxy without weakening malformed, missing or non-HTTP Origin rejection.
+  external_effects: []
+  scope_deltas: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The fixed local-owner WebSocket is passwordless by design and therefore depends on an exact browser-origin boundary. Host-only comparison leaves a cross-scheme gap and diverges from the existing HTTP same-origin contract.
+  expected_outcome: WebSocket upgrade authorization compares an http/https Origin against the exact effective request scheme and host, including first-hop forwarded headers, and rejects missing, malformed, non-HTTP or scheme/host-mismatched origins before any local-owner action can be accepted.
+  user_visible_behavior:
+  - Normal loopback agent-chat WebSocket connections continue to work without login, account, password, cookie or internal token.
+  - Cross-scheme, cross-host, malformed and non-HTTP Origin handshakes are rejected with the existing same_origin_required behavior.
+  - HTTPS termination through a trusted local proxy works when x-forwarded-proto and x-forwarded-host describe the browser-visible origin.
+current_chain:
+  nodes:
+  - id: source:local-browser-origin
+    role: Browser-supplied Origin for the loopback personal workspace.
+  - id: service:frontend-websocket-upgrade
+    role: Node HTTP upgrade boundary for /ws/agent-chat.
+  - id: service:frontend-local-owner
+    role: Fixed owner projection used after same-origin authorization.
+  - id: workflow:agent-chat-websocket
+    role: Agent chat and approval event channel.
+  edges:
+  - from: source:local-browser-origin
+    to: service:frontend-websocket-upgrade
+    relation: checked-by-host-only
+  - from: service:frontend-websocket-upgrade
+    to: service:frontend-local-owner
+    relation: projects-after-origin-check
+  - from: service:frontend-local-owner
+    to: workflow:agent-chat-websocket
+    relation: operates
+  evidence:
+  - frontend/server.ts accepts only http/https Origin protocols and matching hosts, but does not compare parsedOrigin.protocol with x-forwarded-proto or the socket protocol.
+  - frontend/src/app/api/omni/_shared.ts already defines the intended HTTP semantic as exact protocol plus host.
+  - frontend/tests/approval-ws-authorization.test.ts proves invalid-origin sessions are closed before approval actions, but does not test how the server classifies schemes and proxy headers.
+scope:
+  pages: []
+  apis:
+  - websocket:/ws/agent-chat
+  mcp_tools: []
+  services:
+  - service:frontend-websocket-upgrade
+  - service:frontend-local-owner
+  database: []
+  data_sources:
+  - source:local-browser-origin
+  states_workflows:
+  - workflow:agent-chat-websocket
+  - state:websocket-same-origin-authorized
+  tests:
+  - test:websocket-origin-classifier
+  - test:websocket-invalid-origin-authorization
+  docs:
+  - docs/dev-changes/2026-08-09-websocket-origin-scheme-hardening
+planned_changes:
+- id: WS-001
+  action: modify
+  kind: websocket-origin-boundary
+  node_id: service:frontend-websocket-upgrade
+  paths:
+  - frontend/server.ts
+  - frontend/src/lib/agent-chat/ws-origin.ts
+  upstream:
+  - source:local-browser-origin
+  downstream:
+  - service:frontend-local-owner
+  - workflow:agent-chat-websocket
+  contract_change: compatible
+  verification_ids:
+  - WS-VER-001
+  - WS-VER-002
+  - WS-VER-003
+  - WS-VER-004
+- id: WS-002
+  action: add
+  kind: websocket-origin-regression-tests
+  node_id: test:websocket-origin-classifier
+  paths:
+  - frontend/tests/websocket-origin.test.ts
+  upstream:
+  - service:frontend-websocket-upgrade
+  downstream:
+  - reader:local-owner
+  contract_change: compatible
+  verification_ids:
+  - WS-VER-001
+  - WS-VER-002
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Keep /ws/agent-chat, message payloads, close code 1008 and same_origin_required unchanged; only make admission classification match the existing HTTP exact-origin rule.
+  database:
+    status: not_applicable
+    strategy: No table, migration, row or persistent business-data mutation.
+  workflow:
+    status: compatible
+    strategy: Valid loopback and correctly forwarded same-origin connections remain accepted; only protocol/host mismatches already outside the trust contract are rejected.
+  data_source:
+    status: compatible
+    strategy: Read only request headers and socket encryption state; add no external source, credential or logging of header values.
+graph_acceptance:
+  required_edges:
+  - from: source:local-browser-origin
+    to: service:frontend-websocket-upgrade
+    relation: authorizes-by-exact-effective-scheme-and-host
+  - from: service:frontend-websocket-upgrade
+    to: service:frontend-local-owner
+    relation: projects-only-after-exact-origin
+  - from: service:frontend-local-owner
+    to: workflow:agent-chat-websocket
+    relation: operates-without-product-credentials
+  allowed_unknowns: []
+  forbidden_orphans:
+  - test:websocket-origin-classifier
+risks:
+- id: WS-RISK-001
+  description: TLS termination can make the backend socket plain HTTP even when the browser origin is HTTPS.
+  mitigation: Prefer the first normalized x-forwarded-proto and x-forwarded-host values, then fall back to the direct socket encryption state and Host header.
+- id: WS-RISK-002
+  description: Comma-delimited or array proxy headers can be interpreted inconsistently and accidentally widen admission.
+  mitigation: Use one small exported classifier with deterministic first-value normalization and explicit tests for strings, arrays, whitespace and mismatches.
+- id: WS-RISK-003
+  description: Extracting origin logic could change the existing invalid-origin close path.
+  mitigation: Keep attachWsHandler and its invalid-origin sentinel unchanged and rerun its authorization regression together with the new classifier suite.
+out_of_scope:
+- No account, login, password, cookie, JWT, HMAC, bearer token, signing key, RBAC or product identity layer.
+- No change to HTTP mutation authorization, WebSocket message schemas, approval Gate semantics, Knowledge Engine, database or Docker service count.
+- No external publication, network exposure expansion, proxy trust configuration change or destructive cleanup.
+rollback:
+  strategy: Revert the isolated hardening commit to restore the base implementation; do not roll back the preceding macOS/content integration commit.
+  data_recovery: No data changes occur. Existing runtime allocation, volumes and content remain intact.
+verification_plan:
+- id: WS-VER-001
+  layer: frontend-unit
+  command: cd frontend && npm run test:unit -- tests/websocket-origin.test.ts tests/approval-ws-authorization.test.ts
+  proves: Exact direct/proxied scheme-host classification and the existing invalid-origin close-before-action behavior both pass.
+  required: true
+- id: WS-VER-002
+  layer: frontend-regression
+  command: cd frontend && npm run test:unit
+  proves: Origin extraction and server wiring do not regress any retained frontend behavior.
+  required: true
+- id: WS-VER-003
+  layer: frontend-build
+  command: cd frontend && npm run build
+  proves: The custom Next server compiles and the production frontend remains buildable.
+  required: true
+- id: WS-VER-004
+  layer: live-browser
+  command: in-app browser navigate to the isolated loopback frontend, inspect /workspace and /workspace/development DOM, and confirm no login surface or same-origin WebSocket failure
+  proves: The real personal loopback UI remains usable and the development system graph stays readable after the stricter upgrade boundary.
+  required: true
+- id: WS-VER-005
+  layer: git
+  command: git diff --check 2ad16ad435fd5a242259819c436f12b58be5badb..HEAD
+  proves: The isolated hardening candidate contains no new whitespace errors.
+  required: true
+lock:
+  locked_at: '2026-08-09T15:13:14Z'
+  locked_by: codex
+  rationale: Exact WebSocket scheme/host trust boundary, proxy semantics, tests and rollback reviewed against the current fixed local-owner implementation.
