@@ -287,6 +287,7 @@ planned_changes:
   - tests/test_runtime_allocation.py
   - tests/test_runtime_guard.py
   - tests/test_dev_runtime_environment.py
+  - tests/test_system_convergence_s6_vertical.py
   - README.md
   - docs/multi-device/setup.md
   - services/knowledge-engine/app/runtime_preflight.py
@@ -305,6 +306,7 @@ planned_changes:
   - VER-006
   - VER-009
   - VER-011
+  - VER-012
 - id: CHG-006
   action: modify
   kind: canonical-tool-execution-bffs
@@ -452,6 +454,11 @@ verification_plan:
   layer: knowledge-engine-runtime-preflight
   command: PYTHONDONTWRITEBYTECODE=1 uv run --no-project --with-editable services/knowledge-engine --with 'pytest>=8,<9' --with 'pytest-asyncio>=0.23,<1' python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_runtime_preflight.py
   proves: The actual Knowledge Engine startup preflight requires the selected runtime profile and rejects missing or mismatched profile identity before database, scheduler or filesystem side effects.
+  required: true
+- id: VER-012
+  layer: s6-isolated-runtime
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py
+  proves: The S6 disposable R1/R2 pilot uses the current required runtime-profile manifest contract and still records receipts, transcript and release evidence.
   required: true
 lock:
   locked_at: '2026-08-08T18:04:45Z'

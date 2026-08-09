@@ -90,6 +90,7 @@ actual_changes:
   - tests/test_runtime_allocation.py
   - tests/test_runtime_guard.py
   - tests/test_dev_runtime_environment.py
+  - tests/test_system_convergence_s6_vertical.py
   - frontend/Dockerfile
   - frontend/.dockerignore
   - frontend/server.ts
@@ -110,6 +111,10 @@ actual_changes:
   - services/knowledge-engine/app/mcp/doctor.py
   - services/knowledge-engine/tests/test_tool_execution.py
 contract_delta:
+- description: Updated the S6 isolated-pilot fixture to the required runtime-profile manifest contract after CI reached the full convergence Gate.
+  reason: Runtime allocation now intentionally fails closed when runtime_profiles is absent, while the old minimal fixture still represented the pre-profile manifest shape.
+  effect: The disposable R1/R2 pilot continues to prove allocation, receipt, transcript and release behavior under the current core/content/full profile contract; production runtime logic is unchanged.
+  accepted: true
 - description: Transferred cumulative-candidate ownership of AppShell, the root Compose file and the runtime manifest to the later unified-workbench integration contract while retaining content convergence ownership of runtime allocation and all remaining shell/profile paths.
   reason: Feature-branch CI evaluates the full merge-base diff; the later Workbench v1.3 commit is the final semantic writer for those three protected shared files and duplicate v3 ownership is forbidden.
   effect: The content/development convergence behavior stays in the candidate, while the integrated delivery graph has one owner per protected path and no implementation bytes are changed by the transfer.
@@ -198,6 +203,11 @@ verification_results:
   status: passed
   exit_code: 0
   evidence: 11 tests passed in 6.34s with third-party deprecation warnings; missing, legacy and mismatched profile identity fail before lifespan side effects.
+- id: VER-012
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh local run passed both S6 repository-pilot and vertical tests in 2.49 seconds using the current core/content/full runtime-profile fixture.
 graph_diff:
   status: accepted
   snapshot_before: git:1d3177abb783baf039a94c2c68bde3c50a920f54
@@ -220,6 +230,7 @@ graph_diff:
   - runtime:frontend-container
   - service:canonical-tool-execution
   - service:knowledge-engine-runtime-preflight
+  - test:s6-isolated-runtime-profile-fixture
   removed_nodes: []
   added_edges:
   - source:feature-definition-yaml generates frontend:feature-registry-v1
