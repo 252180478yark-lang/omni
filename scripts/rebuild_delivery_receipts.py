@@ -10,6 +10,7 @@ atomically below the Git common directory.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -317,20 +318,20 @@ def rebuild_receipts(root: Path, manifest: Path, *, dry_run: bool = False) -> di
     if not repository:
         raise ReceiptRecoveryError("cannot resolve GitHub repository identity from origin")
     deliveries = load_deliveries(manifest)
-    verifier = projection.bounded_live_provenance(60)
-    validated: list[tuple[Mapping[str, Any], bytes, PurePosixPath, Path]] = []
-    total_raw_bytes = 0
-
-    for entry in deliveries:
+    authoritative_receipts: dict[str, Mapping[str, Any]] = {}
+    verifier = projection.bounded_live_provenance(
+        60,
+        authoritative_receipts=authoritative_receipts,
+    )
+    def validate_entry(
+        entry: Mapping[str, Any],
+    ) -> tuple[Mapping[str, Any], bytes, PurePosixPath, Path]:
         artifact_id = _text(entry, "artifact_id")
         metadata = _artifact_metadata(root, repository, artifact_id)
         _validate_declared_artifact(entry, metadata)
         raw = projection._download_attestation_bytes(root, repository, metadata)
         if len(raw) > projection.RECEIPT_CACHE_MAX_FILE_BYTES:
             raise ReceiptRecoveryError(f"attestation exceeds maximum file size: {artifact_id}")
-        total_raw_bytes += len(raw)
-        if total_raw_bytes > projection.RECEIPT_CACHE_MAX_TOTAL_BYTES:
-            raise ReceiptRecoveryError("attestations exceed maximum total size")
         observed_hash = hashlib.sha256(raw).hexdigest()
         expected_hash = _text(entry, "raw_sha256").lower()
         if observed_hash != expected_hash:
@@ -340,8 +341,12 @@ def rebuild_receipts(root: Path, manifest: Path, *, dry_run: bool = False) -> di
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ReceiptRecoveryError(f"invalid attestation JSON for artifact {artifact_id}") from exc
         change_id = _text(entry, "change_id")
-        if str(receipt.get("subject_commit") or "").lower() != _text(entry, "subject_commit").lower():
+        receipt_subject = str(
+            receipt.get("subject_commit", receipt.get("delivered_commit", ""))
+        ).lower()
+        if receipt_subject != _text(entry, "subject_commit").lower():
             raise ReceiptRecoveryError(f"subject commit drift for artifact {artifact_id}")
+        authoritative_receipts[receipt_subject] = receipt
         verified = projection.verify_delivery_receipt(
             root,
             receipt,
@@ -356,7 +361,16 @@ def rebuild_receipts(root: Path, manifest: Path, *, dry_run: bool = False) -> di
         nested = _cache_nested(entry.get("cache_path"))
         target = safe_cache_target(root, entry.get("cache_path"))
         _read_existing(root, nested, raw)
-        validated.append((entry, raw, nested, target))
+        return entry, raw, nested, target
+
+    # Artifact/run verification is read-only and network-bound. Validate in a
+    # small bounded pool so a complete historical manifest can still share one
+    # sixty-second provenance deadline. No cache path is published until every
+    # future has returned successfully.
+    with ThreadPoolExecutor(max_workers=min(4, len(deliveries))) as executor:
+        validated = list(executor.map(validate_entry, deliveries))
+    if sum(len(raw) for _entry, raw, _nested, _target in validated) > projection.RECEIPT_CACHE_MAX_TOTAL_BYTES:
+        raise ReceiptRecoveryError("attestations exceed maximum total size")
 
     restored: list[dict[str, str]] = []
     created: list[tuple[int, str, str]] = []

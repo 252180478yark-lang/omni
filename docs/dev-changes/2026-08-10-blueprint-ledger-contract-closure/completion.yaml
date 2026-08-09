@@ -1,0 +1,168 @@
+schema_version: 3
+change_id: 2026-08-10-blueprint-ledger-contract-closure
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: BLC-ACT-001
+  planned_change_id: BLC-CHG-001
+  summary: Replaced the two independent eight-second graph fetches with one bounded, configurable sixty-second reader while preserving 503/unavailable and abort error semantics.
+  paths:
+  - frontend/src/app/api/omni/system-graph/_graph-fetch.ts
+  - frontend/src/app/api/omni/system-graph/snapshot/route.ts
+  - frontend/src/app/api/omni/workbench/suggestions/route.ts
+  - frontend/.env.example
+  - frontend/tests/system-graph-snapshot-bff.test.ts
+  - frontend/tests/workbench-suggestions-grounding.test.ts
+- id: BLC-ACT-002
+  planned_change_id: BLC-CHG-002
+  summary: Made the first snapshot read single-flight, moved repository scanning off the async loop, persisted the immutable cold scan, and covered persistence plus concurrent readers.
+  paths:
+  - services/knowledge-engine/app/routers/system_graph.py
+  - services/knowledge-engine/tests/test_system_graph_router.py
+- id: BLC-ACT-003
+  planned_change_id: BLC-CHG-003
+  summary: Reconstructed fourteen live GitHub delivery receipts, captured before/after ownership and migration evidence, and regenerated the PRD ledger from verified delivery facts.
+  paths:
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/delivery-recovery-manifest.yaml
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/ownership-before.yaml
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/ownership-after.yaml
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/migration-baseline-evidence.json
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+- id: BLC-ACT-004
+  planned_change_id: BLC-CHG-004
+  summary: Removed duplicate attestation downloads, added bounded parallel provenance verification and memoization, retained atomic zero-write-on-failure recovery, and kept legacy v1 delivery receipts recoverable.
+  paths:
+  - scripts/generate_implementation_status.py
+  - scripts/rebuild_delivery_receipts.py
+  - tests/test_implementation_status.py
+  - tests/test_delivery_receipt_rebuild.py
+- id: BLC-ACT-005
+  planned_change_id: BLC-CHG-005
+  summary: Added an explicit opt-in bounded live-provenance refresh to readiness so externally delivered contracts release active ownership without weakening the offline SessionStart default.
+  paths:
+  - scripts/check_development_readiness.py
+  - tests/test_development_readiness.py
+contract_delta:
+- description: Verify the current-source frontend and Knowledge Engine through isolated candidate images attached read-only to the accepted full-runtime dependencies.
+  reason: Rebuilding the existing accepted runtime in place would mutate another acceptance run and its immutable build labels; a second overlapping RuntimeAllocation was correctly unavailable while that write lease remained active.
+  effect: Two exact candidate images were built, exercised on private ports 32235/32239, and their temporary containers were removed; the existing full runtime was neither rebuilt nor stopped.
+  accepted: true
+verification_results:
+- id: BLC-VER-001
+  command: cd frontend && npx vitest run tests/system-graph-snapshot-bff.test.ts
+  status: passed
+  exit_code: 0
+  evidence: Snapshot BFF success, bounded timeout configuration and abort/error behavior passed as part of the two-file six-test run.
+- id: BLC-VER-002
+  command: cd frontend && npx vitest run tests/workbench-suggestions-grounding.test.ts
+  status: passed
+  exit_code: 0
+  evidence: Suggestions grounding preserved sufficient and unavailable semantics; the combined BFF run passed 2 files and 6 tests in 0.51s.
+- id: BLC-VER-003
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_system_graph_router.py services/knowledge-engine/tests/test_system_graph_s7_router.py
+  status: passed
+  exit_code: 0
+  evidence: 5 tests passed in 20.74s, including cold persistence, concurrent single-flight readers and existing S7 refresh behavior.
+- id: BLC-VER-004
+  command: uv run --with pyyaml python scripts/rebuild_delivery_receipts.py --manifest docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/delivery-recovery-manifest.yaml --dry-run
+  status: passed
+  exit_code: 0
+  evidence: All 14 manifest entries passed live GitHub run, artifact, digest, evidence and reachability checks within the shared deadline; dry-run performed no cache writes.
+- id: BLC-VER-005
+  command: uv run --with pyyaml python scripts/check_development_readiness.py --json --refresh-live-provenance --live-timeout-seconds 60
+  status: passed
+  exit_code: 0
+  evidence: 31 contracts were evaluated; only this VERIFYING contract remained active, with zero active-pattern overlaps and zero contract errors. Secret scan passed; unrelated linked-worktree ownership and current-user hook trust remained explicit warnings.
+- id: BLC-VER-005A
+  command: docker exec omni-prd-v12-main-full-accept-52866f3f-knowledge-engine-1 bash -c 'cd /app && PYTHONPATH=/app python scripts/p0_baseline_preflight.py'
+  status: passed
+  exit_code: 0
+  evidence: Baseline status ready with no blockers; repository count 87 and runtime ledger count 95 share migration 104 head checksum 4e99b93e156ea4eb45f4efc1b0d9fefc7f26036571be96e6c0c074a0162b4b04.
+- id: BLC-VER-006
+  command: python3 scripts/check_agent_policy.py --require-tracked
+  status: passed
+  exit_code: 0
+  evidence: AGENTS policy passed at 13741/16384 bytes with valid dynamic totals, Skill references and tracked routed assets; git diff --check also exited zero.
+- id: BLC-VER-007
+  command: curl --fail --max-time 60 http://127.0.0.1:23604/api/omni/system-graph/snapshot
+  status: passed
+  exit_code: 0
+  evidence: Candidate KE image sha256:6bd6962 and frontend image sha256:4f8c382 returned snapshot HTTP 200 in 1.594s then 0.024s/0.020s; ten parallel reads were all 200 with one snapshot ID, and suggestions returned HTTP 200 with evidenceState=sufficient. Existing full runtime was untouched.
+- id: BLC-VER-008
+  command: uv run --with pytest --with pyyaml pytest -q tests/test_delivery_receipt_rebuild.py tests/test_implementation_status.py
+  status: passed
+  exit_code: 0
+  evidence: The combined delivery recovery, projection and readiness suite passed 69 tests in 21.00s.
+- id: BLC-VER-009
+  command: uv run --with pytest --with pyyaml pytest -q tests/test_development_readiness.py
+  status: passed
+  exit_code: 0
+  evidence: Readiness tests passed in the 69-test governance run, covering opt-in live refresh, offline fail-closed behavior, timeout handling and delivered-owner release.
+graph_diff:
+  status: clean
+  snapshot_before: git:52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0
+  snapshot_after: sha256:42f369563f9a3464eab4cbd0a5dbf3d30ed8c21b6f564bb5fff616c6f706d92b
+  snapshot_evidence: Current-source candidate images returned a stable 187-node/211-edge persisted graph and the verified ledger projected 30 of 31 historical contracts delivered while retaining this candidate as active.
+  added_nodes:
+  - service:frontend.system_graph_reader
+  - workflow:delivery-receipt-cache-rebuild
+  modified_nodes:
+  - service:knowledge-engine.system_graph
+  - projection:workspace.active-contract-ownership
+  - projection:prd.implementation-status
+  removed_nodes: []
+  added_edges:
+  - api:GET:/api/omni/system-graph/snapshot reads-with-bounded-timeout api:GET:/api/v1/system-graph/snapshot
+  - api:POST:/api/omni/workbench/suggestions grounds-with-bounded-timeout api:GET:/api/v1/system-graph/snapshot
+  - service:knowledge-engine.system_graph persists-cold-scan db:mcp.system_graph_snapshots
+  - source:github-actions.delivery-attestation verifies-delivered-contracts projection:workspace.active-contract-ownership
+  removed_edges: []
+  required_edges:
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: reads-with-bounded-timeout
+    status: present
+    evidence: Shared BFF helper and production candidate returned HTTP 200 under the sixty-second contract; abort tests passed.
+  - from: api:POST:/api/omni/workbench/suggestions
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: grounds-with-bounded-timeout
+    status: present
+    evidence: Suggestions uses the shared helper and returned HTTP 200 with sufficient graph evidence.
+  - from: service:knowledge-engine.system_graph
+    to: db:mcp.system_graph_snapshots
+    relation: persists-cold-scan
+    status: present
+    evidence: Router tests prove one immutable save under concurrent cold readers; runtime repeated reads returned one snapshot ID.
+  - from: source:github-actions.delivery-attestation
+    to: projection:workspace.active-contract-ownership
+    relation: verifies-delivered-contracts
+    status: present
+    evidence: Fourteen live receipts resolve 23 delivered schema-v3 contracts; readiness retained only this candidate as active with no active overlap.
+  orphan_nodes: []
+  unknowns:
+  - node_or_edge: trust:current-user-hooks
+    reason: Repository configuration cannot prove that the current macOS user trusts installed hooks; readiness correctly reports review_required.
+    owner: local-owner
+    expires_at: '2026-08-31T00:00:00Z'
+    accepted: true
+  - node_or_edge: ownership:unrelated-linked-worktrees
+    reason: Dirty paths in user-owned linked worktrees remain outside this isolated branch and were not overwritten or reassigned.
+    owner: linked-worktree-users
+    expires_at: '2026-08-31T00:00:00Z'
+    accepted: true
+exceptions:
+- id: BLC-EXCEPTION-001
+  status: external_state
+  description: Global readiness remains development_in_progress because unrelated dirty linked-worktree ownership and current-user hook trust are real external state, not defects this contract may erase.
+- id: BLC-EXCEPTION-002
+  status: delivery_boundary
+  description: Candidate runtime and GRAPH_DIFF_READY evidence do not constitute default-branch delivery; only immutable CI attestation may mark this schema-v3 contract COMPLETE.
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: No migration or destructive state change occurred; the accepted full runtime was left running unchanged, candidate containers were removed, prior immutable snapshots remain readable, and the receipt cache remains reconstructible/non-authoritative.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: Blueprint cold reads, delivery receipt recovery and PRD ownership projection are verified local candidates; CI delivery plus external hook/worktree state remain intentionally unclaimed.

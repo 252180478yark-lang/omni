@@ -1,5 +1,5 @@
-import { serviceBase } from '../../_shared'
 import { requireRuntimeActor, runtimeTraceError } from '../../runtime-traces/_runtime-auth'
+import { fetchSystemGraphSnapshot } from '../../system-graph/_graph-fetch'
 import { buildWorkbenchActionCard } from '@/lib/workbench-runtime'
 import type { SystemGraphSnapshot } from '@/lib/system-command-center/runtime-model'
 
@@ -13,10 +13,7 @@ export async function POST(request: Request) {
     if (typeof payload.question !== 'string' || payload.question.length > 500) {
       return Response.json({ detail: { code: 'workbench_question_invalid' } }, { status: 422 })
     }
-    const response = await fetch(`${serviceBase().knowledge}/api/v1/system-graph/snapshot`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(8_000),
-    })
+    const response = await fetchSystemGraphSnapshot()
     if (!response.ok) {
       return Response.json(buildWorkbenchActionCard(null, payload.question), { status: 503 })
     }

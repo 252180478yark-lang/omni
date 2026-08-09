@@ -7,57 +7,39 @@ document:
   source_markdown: 2026-07-29-omni-fde-system-convergence-master-prd-v1.2.md
 generation:
   mode: machine_projection
-  generated_at: '2026-08-07T15:19:15Z'
+  generated_at: '2026-08-09T18:22:08Z'
   generated_by: scripts/generate_implementation_status.py
   manual_completion_allowed: false
-  source_hash: 31908176f2fad5f7fb49f391b3fa58cefe516e1bee88b628ddde66b9bc615144
+  source_hash: ea24fe587aa39d1382c78aaa6468dfd4d98786631c3118d987b4501c8e86e4d3
 audit_snapshot:
   temporal_scope: point_in_time
   repository:
-    head: 0e921256655065cebfa9a54db9970dbff6b6f939
-    branch: codex/prd-receipt-recovery
+    head: 290d888309265879ce689e90a1271e10f5f4c39d
+    branch: codex/prd-blueprint-ledger-desktop-w6-closure
     dirty: true
-    dirty_path_count: 8
+    dirty_path_count: 12
   s0_evidence:
     secret_scan:
       scope: tracked
-      status: failed
-      scanned_files: 1712
-      finding_count: 8
-      findings:
-      - path: frontend/tests/workbench-developer-permissions.test.ts
-        rule: cookie_header
-        fingerprint: 3a4a55219960db7f8beded9c358be8f196406384146269b66493e0b99bbd00fd
-      - path: frontend/tests/workbench-navigation-events.test.ts
-        rule: cookie_header
-        fingerprint: 2713339cdd6268a19f59c7654194831f337e112e5ff23de0924500c6bd07d3f3
-      - path: scripts/verify_workbench_g1_migration.ps1
-        rule: session_credential
-        fingerprint: 0f23c8eefda66e3da33bf2c6f0f732177e95554a7608ad4507c52bd02e308731
-      - path: scripts/verify_workbench_g1_migration.ps1
-        rule: session_credential
-        fingerprint: 22e1607d737dfabb0ed6e7f5f3527f2aa7902ca655490bb49c53f8702922d9cc
-      - path: scripts/verify_workbench_g1_migration.ps1
-        rule: session_credential
-        fingerprint: 80f0b513c859bbc64e1c0c4d8aec657231f319502acf5632cb6e55a42400f130
-      - path: tests/test_w5_recovery_evidence.py
-        rule: bearer_token
-        fingerprint: 52eb942fa8a31965fe7bbb9cdf7cacf84e816e3bbfba0cb63f4a4105a81b9272
-      - path: tests/test_w5_recovery_evidence.py
-        rule: bearer_token
-        fingerprint: c1643798f0b9844c60c3ffa9b0b9017f2f53972e25b99a46d508b6a798980a95
-      - path: tests/test_w5_recovery_evidence.py
-        rule: bearer_token
-        fingerprint: f5cbd8dff62629d551ac0f8cb1746ddf5a9d19b2ba2982837ab39995554069e2
+      status: passed
+      scanned_files: 1780
+      finding_count: 0
+      findings: []
       redaction: path_rule_fingerprint_only
       coverage: current_tracked_baseline
-      external_worktree_audit_count: 2
-      external_worktree_finding_count: 0
+      external_worktree_audit_count: 7
+      external_worktree_finding_count: 3
       skipped_summary:
-        count: 271
+        count: 274
         by_reason:
-          binary_extension: 271
+          binary_extension: 274
         samples:
+        - path: docs/dev-changes/2026-08-09-content-development-convergence/screenshots/content-workspace-mobile.png
+          reason: binary_extension
+        - path: docs/dev-changes/2026-08-09-content-development-convergence/screenshots/content-workspace.png
+          reason: binary_extension
+        - path: docs/dev-changes/2026-08-09-content-development-convergence/screenshots/development-workspace.png
+          reason: binary_extension
         - path: docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.1.pdf
           reason: binary_extension
         - path: docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/2026-07-29-omni-fde-system-convergence-master-prd-v1.2.pdf
@@ -68,36 +50,51 @@ audit_snapshot:
           reason: binary_extension
         - path: docs/云图/_zoom/top-assets-crowd-distribution-05-02-02_56_11.png
           reason: binary_extension
-        - path: docs/云图/_zoom/top-assets-crowd-flow-05-02-02_57_41.png
-          reason: binary_extension
-        - path: docs/云图/_zoom/top-assets-crowd-flow-05-02-02_57_48.png
-          reason: binary_extension
-        - path: docs/云图/_zoom/top-assets-crowd-flow-05-02-02_57_59.png
-          reason: binary_extension
         sample_limit: 8
       findings_truncated: false
     ownership:
       status: failed
       counts:
-        active_change: 6
+        active_change: 10
         preserved_external_user: 0
-        preserved_external_worktree: 24
-        conflict: 2
-        unassigned: 0
-        dirty_scope_conflict: 3
-        external_scope_overlap: 16
-        contract_scope_conflict: 7
-        contract_owner_ambiguity: 8
-        scope_conflict: 18
-        lease_conflict: 0
+        preserved_external_worktree: 745
+        conflict: 0
+        unassigned: 2
+        dirty_scope_conflict: 2
+        external_scope_overlap: 119
+        contract_scope_conflict: 3
+        contract_owner_ambiguity: 0
+        scope_conflict: 5
+        lease_conflict: 90
         archive_candidate: 0
     migration_baseline:
-      status: unknown
+      schema_version: p0.baseline.v1
+      status: ready
+      blockers: []
+      checked_at_utc: '2026-08-09T18:21:05.933022+00:00'
+      source:
+        command: docker exec omni-prd-v12-main-full-accept-52866f3f-knowledge-engine-1 bash -c 'cd /app && PYTHONPATH=/app python scripts/p0_baseline_preflight.py'
+        runtime: omni-prd-v12-main-full-accept-52866f3f
+      repository:
+        count: 87
+        head:
+          filename: 104_workbench_context_and_agent_binding.sql
+          sha256: 4e99b93e156ea4eb45f4efc1b0d9fefc7f26036571be96e6c0c074a0162b4b04
+      runtime:
+        count: 95
+        head:
+          applied_at: '2026-08-09T16:40:10.174606+00:00'
+          checksum: 4e99b93e156ea4eb45f4efc1b0d9fefc7f26036571be96e6c0c074a0162b4b04
+          filename: 104_workbench_context_and_agent_binding.sql
+        tracking_has_checksums: true
+      reconciliation:
+        repository_not_recorded: []
+        runtime_only: []
+        repository_duplicate_prefixes: {}
+        runtime_duplicate_prefixes: {}
     gate_status: BLOCKED
     gate_reasons: &id001
-    - secret_scan_failed
     - workspace_ownership_conflict
-    - migration_baseline_unknown
     archive_candidate_count: 0
     cleanup_mutated: false
   hook_trust:
@@ -127,20 +124,19 @@ current:
 contracts:
 - change_id: 2026-07-29-development-order-s0-5
   contract_state: GRAPH_DIFF_READY
-  effective_state: VERIFIED_NOT_DELIVERED
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-07-29-development-order-s0-5/impact.yaml
   slices: []
   delivery:
     change_id: 2026-07-29-development-order-s0-5
-    valid: false
-    delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    valid: true
+    delivery_state: delivered
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
-    reasons:
-    - change_not_present_in_receipt
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
+    reasons: []
 - change_id: 2026-07-29-feature-contract-evaluation-tree-hardening
   contract_state: COMPLETE
   effective_state: COMPLETE
@@ -151,10 +147,10 @@ contracts:
     change_id: 2026-07-29-feature-contract-evaluation-tree-hardening
     valid: false
     delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
     reasons:
     - change_not_present_in_receipt
 - change_id: 2026-07-29-feature-contract-gate-archival-compatibility
@@ -168,10 +164,10 @@ contracts:
     change_id: 2026-07-29-feature-contract-gate-archival-compatibility
     valid: false
     delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
     reasons:
     - change_not_present_in_receipt
 - change_id: 2026-07-29-prd-canonical-archive
@@ -184,10 +180,10 @@ contracts:
     change_id: 2026-07-29-prd-canonical-archive
     valid: false
     delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
     reasons:
     - change_not_present_in_receipt
 - change_id: 2026-07-29-system-convergence-s1-governance-foundation
@@ -200,10 +196,10 @@ contracts:
     change_id: 2026-07-29-system-convergence-s1-governance-foundation
     valid: false
     delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
     reasons:
     - change_not_present_in_receipt
 - change_id: 2026-07-30-system-convergence-s0-s3-foundation
@@ -226,7 +222,7 @@ contracts:
     subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
     target_ref: refs/heads/main
     receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_locator: 30688798400-041f05d931967d3ab014f031e684d1b02765c684.json
     reasons: []
 - change_id: 2026-08-01-system-convergence-s4-s6-gap-closure
   contract_state: GRAPH_DIFF_READY
@@ -244,7 +240,7 @@ contracts:
     subject_commit: 5d760f733aeb976c5b88419c5406383bf272ca86
     target_ref: refs/heads/main
     receipt_sha256: 697093d213653e3e340ad3d8b05310a814ff4b6f6625d214fecf311309057b96
-    receipt_locator: delivery-attestation.json
+    receipt_locator: 30709405646-5d760f733aeb976c5b88419c5406383bf272ca86.json
     reasons: []
 - change_id: 2026-08-01-system-convergence-s4-s6-static
   contract_state: GRAPH_DIFF_READY
@@ -262,7 +258,7 @@ contracts:
     subject_commit: af11294eeadc84a45284c3265ddf623826edb1f7
     target_ref: refs/heads/main
     receipt_sha256: a03674ef1cf34304e376d40309ae1ddbe8eb4b970f362be2e57164e676a072de
-    receipt_locator: delivery-attestation.json
+    receipt_locator: 30703198969-af11294eeadc84a45284c3265ddf623826edb1f7.json
     reasons: []
 - change_id: 2026-08-01-system-convergence-s7-s14
   contract_state: GRAPH_DIFF_READY
@@ -285,137 +281,309 @@ contracts:
     subject_commit: c8c8eec71d9d970272de84649cf31f87fd148441
     target_ref: refs/heads/main
     receipt_sha256: ccf8eb82eeb75003e3fa230313f68f52e3e566b3a0f47965292394fb7996b09e
-    receipt_locator: delivery-attestation.json
+    receipt_locator: 30709994820-c8c8eec71d9d970272de84649cf31f87fd148441.json
     reasons: []
 - change_id: 2026-08-02-omni-unified-ai-workbench-g1-foundation
   contract_state: GRAPH_DIFF_READY
-  effective_state: VERIFIED_NOT_DELIVERED
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-08-02-omni-unified-ai-workbench-g1-foundation/impact.yaml
   slices: []
   delivery:
     change_id: 2026-08-02-omni-unified-ai-workbench-g1-foundation
-    valid: false
-    delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    valid: true
+    delivery_state: delivered
+    subject_commit: c1a97f873f9f1c639dd274adcf92ca206a760c11
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
-    reasons:
-    - change_not_present_in_receipt
+    receipt_sha256: fb2edc2076cf53f284a9edc0f3151d7d6b7155d449a165622cacea43f6fbf598
+    receipt_locator: 30743981360-c1a97f873f9f1c639dd274adcf92ca206a760c11.json
+    reasons: []
 - change_id: 2026-08-02-omni-unified-ai-workbench-w0
   contract_state: GRAPH_DIFF_READY
-  effective_state: VERIFIED_NOT_DELIVERED
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/impact.yaml
   slices: []
   delivery:
     change_id: 2026-08-02-omni-unified-ai-workbench-w0
-    valid: false
-    delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    valid: true
+    delivery_state: delivered
+    subject_commit: 16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
-    reasons:
-    - change_not_present_in_receipt
+    receipt_sha256: 517d326cd5c30c38596a226ecd3c12cec85689ce01848c5919a9574fdc1ff971
+    receipt_locator: 30742236283-16d3855a9ffac4db8957bbf562ace1f3f0c2eb5f.json
+    reasons: []
 - change_id: 2026-08-02-omni-unified-ai-workbench-w1-shell-ia
   contract_state: GRAPH_DIFF_READY
-  effective_state: VERIFIED_NOT_DELIVERED
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w1-shell-ia/impact.yaml
   slices: []
   delivery:
     change_id: 2026-08-02-omni-unified-ai-workbench-w1-shell-ia
-    valid: false
-    delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    valid: true
+    delivery_state: delivered
+    subject_commit: b82da85bfd7958297cb8389f4c59acafdb00c2f7
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
-    reasons:
-    - change_not_present_in_receipt
+    receipt_sha256: aca324e06e52d31bf0cb84df3ad9088c71f484c85de715cdf2957b262aa902e2
+    receipt_locator: 30914592837-b82da85bfd7958297cb8389f4c59acafdb00c2f7.json
+    reasons: []
 - change_id: 2026-08-02-omni-workbench-g2-context-semantics
   contract_state: GRAPH_DIFF_READY
-  effective_state: VERIFIED_NOT_DELIVERED
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-08-02-omni-workbench-g2-context-semantics/impact.yaml
   slices: []
   delivery:
     change_id: 2026-08-02-omni-workbench-g2-context-semantics
-    valid: false
-    delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    valid: true
+    delivery_state: delivered
+    subject_commit: 2bc737b346c2a2c8d35c0e012d8b31919ba4460a
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
-    reasons:
-    - change_not_present_in_receipt
+    receipt_sha256: 5dc2dbf9f078ad1c83c7f7910cc996d98621f63dfc00e132597f4313654dbd98
+    receipt_locator: 30922017960-2bc737b346c2a2c8d35c0e012d8b31919ba4460a.json
+    reasons: []
 - change_id: 2026-08-04-s8-s10-supersession-handoff
   contract_state: GRAPH_DIFF_READY
-  effective_state: VERIFIED_NOT_DELIVERED
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/impact.yaml
   slices: []
   delivery:
     change_id: 2026-08-04-s8-s10-supersession-handoff
-    valid: false
-    delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    valid: true
+    delivery_state: delivered
+    subject_commit: fc0192ef4e7c8c113d66d26cf6529ce35f5c49f1
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
-    reasons:
-    - change_not_present_in_receipt
+    receipt_sha256: f0f057c115223f60b2a8a5c4e40fdb0e83331f7ec82e7560893a88dfc8db0cdc
+    receipt_locator: 30935075208-fc0192ef4e7c8c113d66d26cf6529ce35f5c49f1.json
+    reasons: []
 - change_id: 2026-08-04-w5-ownership-provenance-fail-closed
   contract_state: GRAPH_DIFF_READY
-  effective_state: VERIFIED_NOT_DELIVERED
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-08-04-w5-ownership-provenance-fail-closed/impact.yaml
   slices: []
   delivery:
     change_id: 2026-08-04-w5-ownership-provenance-fail-closed
-    valid: false
-    delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    valid: true
+    delivery_state: delivered
+    subject_commit: 6c43b1ff3f371d17dc9d2a876946056066dc3015
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
-    reasons:
-    - change_not_present_in_receipt
+    receipt_sha256: b9542c044fcf876a8995755de297e0f2b8af4430e7cc5a9d9f07cc537ca41e27
+    receipt_locator: 30924788668-6c43b1ff3f371d17dc9d2a876946056066dc3015.json
+    reasons: []
 - change_id: 2026-08-04-w5-recovery-evidence
   contract_state: GRAPH_DIFF_READY
-  effective_state: VERIFIED_NOT_DELIVERED
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-08-04-w5-recovery-evidence/impact.yaml
   slices: []
   delivery:
     change_id: 2026-08-04-w5-recovery-evidence
-    valid: false
-    delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    valid: true
+    delivery_state: delivered
+    subject_commit: 0e921256655065cebfa9a54db9970dbff6b6f939
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
-    reasons:
-    - change_not_present_in_receipt
+    receipt_sha256: 5ef575e551a6c766a72ee9c670512ac04d4664b9d489698a9c71c31389ef97d4
+    receipt_locator: 30961753298-0e921256655065cebfa9a54db9970dbff6b6f939.json
+    reasons: []
 - change_id: 2026-08-07-prd-receipt-cache-rebuild
-  contract_state: IMPLEMENTING
-  effective_state: IN_PROGRESS
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
   risk_level: R2
   contract_path: docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/impact.yaml
   slices:
   - S0.5
   delivery:
     change_id: 2026-08-07-prd-receipt-cache-rebuild
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-07-runtime-trace-docker-wiring
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-07-runtime-trace-docker-wiring/impact.yaml
+  slices:
+  - S8
+  - S9
+  delivery:
+    change_id: 2026-08-07-runtime-trace-docker-wiring
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-07-windows-macos-runtime-recovery
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/impact.yaml
+  slices: []
+  delivery:
+    change_id: 2026-08-07-windows-macos-runtime-recovery
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-09-content-development-convergence
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-09-content-development-convergence/impact.yaml
+  slices:
+  - S11
+  - S12
+  delivery:
+    change_id: 2026-08-09-content-development-convergence
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-09-macos-single-user-integration
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-09-macos-single-user-integration/impact.yaml
+  slices: []
+  delivery:
+    change_id: 2026-08-09-macos-single-user-integration
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-09-single-user-local-trust
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-09-single-user-local-trust/impact.yaml
+  slices:
+  - S7
+  - S8
+  - S9
+  - S10
+  - S11
+  - S12
+  delivery:
+    change_id: 2026-08-09-single-user-local-trust
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-09-unified-ai-workbench-v13-completion
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-09-unified-ai-workbench-v13-completion/impact.yaml
+  slices: []
+  delivery:
+    change_id: 2026-08-09-unified-ai-workbench-v13-completion
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-09-websocket-origin-scheme-hardening
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-09-websocket-origin-scheme-hardening/impact.yaml
+  slices: []
+  delivery:
+    change_id: 2026-08-09-websocket-origin-scheme-hardening
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-10-blueprint-ledger-contract-closure
+  contract_state: IMPLEMENTING
+  effective_state: IN_PROGRESS
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/impact.yaml
+  slices:
+  - S7
+  - S0.5
+  delivery:
+    change_id: 2026-08-10-blueprint-ledger-contract-closure
     valid: false
     delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
     reasons:
     - change_not_present_in_receipt
+- change_id: 2026-08-10-mac-runtime-profile-forwarding
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-10-mac-runtime-profile-forwarding/impact.yaml
+  slices: []
+  delivery:
+    change_id: 2026-08-10-mac-runtime-profile-forwarding
+    valid: true
+    delivery_state: delivered
+    subject_commit: 52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0
+    target_ref: refs/heads/main
+    receipt_sha256: 29ce1c5d4f36450360f52774d614d4d3f44e36ab568352753c91f0d9ab9a36ab
+    receipt_locator: 31324053180-52866f3ff276466dbbf6e0f95e1c8a9a41b25cc0.json
+    reasons: []
+- change_id: 2026-08-10-s8-s10-evidence-loss-quarantine
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-10-s8-s10-evidence-loss-quarantine/impact.yaml
+  slices:
+  - S0.5
+  delivery:
+    change_id: 2026-08-10-s8-s10-evidence-loss-quarantine
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
+- change_id: 2026-08-10-tracked-secret-fixture-hygiene
+  contract_state: GRAPH_DIFF_READY
+  effective_state: COMPLETE
+  risk_level: R2
+  contract_path: docs/dev-changes/2026-08-10-tracked-secret-fixture-hygiene/impact.yaml
+  slices:
+  - S0
+  delivery:
+    change_id: 2026-08-10-tracked-secret-fixture-hygiene
+    valid: true
+    delivery_state: delivered
+    subject_commit: 795587d64b9d4b42275180f261071090b261076d
+    target_ref: refs/heads/main
+    receipt_sha256: 4b24e78c2554310a7af6edde714de1c072ad0adb1b646e58ee894f32b8805ebf
+    receipt_locator: 31321956584-795587d64b9d4b42275180f261071090b261076d.json
+    reasons: []
 - change_id: p0-pack-lineage-v4
   contract_state: COMPLETE
   effective_state: COMPLETE
@@ -426,10 +594,10 @@ contracts:
     change_id: p0-pack-lineage-v4
     valid: false
     delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
     reasons:
     - change_not_present_in_receipt
 - change_id: p0-planting-upstream-contract-v3
@@ -442,10 +610,10 @@ contracts:
     change_id: p0-planting-upstream-contract-v3
     valid: false
     delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
     reasons:
     - change_not_present_in_receipt
 - change_id: p0-v4-canonical-deployment
@@ -458,10 +626,10 @@ contracts:
     change_id: p0-v4-canonical-deployment
     valid: false
     delivery_state: stale
-    subject_commit: 041f05d931967d3ab014f031e684d1b02765c684
+    subject_commit: 7ccc84f5bbdc6c5cef58864820537025e7a96f20
     target_ref: refs/heads/main
-    receipt_sha256: e32e9966aca689e8489266aa4098ee4efff43f48944ab9d17508fc817097ac87
-    receipt_locator: delivery-attestation.json
+    receipt_sha256: e42e726f81404f35313aa551107d764031c8d83a0b5e45c34297233130645ea3
+    receipt_locator: 30472602904-7ccc84f5bbdc6c5cef58864820537025e7a96f20.json
     reasons:
     - change_not_present_in_receipt
 projection_errors: []
@@ -472,6 +640,7 @@ slices:
   completion_claimed: false
   evidence_refs:
   - 2026-07-30-system-convergence-s0-s3-foundation
+  - 2026-08-10-tracked-secret-fixture-hygiene
   remaining: *id001
 - id: S0.5
   title: 交付真值收口
@@ -480,6 +649,8 @@ slices:
   evidence_refs:
   - 2026-07-30-system-convergence-s0-s3-foundation
   - 2026-08-07-prd-receipt-cache-rebuild
+  - 2026-08-10-blueprint-ledger-contract-closure
+  - 2026-08-10-s8-s10-evidence-loss-quarantine
   remaining:
   - current_user_hook_trust_confirmation_required:/hooks
 - id: S1
@@ -549,17 +720,22 @@ slices:
   remaining: []
 - id: S7
   title: 图谱API与统一系统中台静态面
-  status: COMPLETE
-  completion_claimed: true
+  status: IN_PROGRESS
+  completion_claimed: false
   evidence_refs:
   - 2026-08-01-system-convergence-s7-s14
-  remaining: []
+  - 2026-08-09-single-user-local-trust
+  - 2026-08-10-blueprint-ledger-contract-closure
+  remaining:
+  - Complete required verification and obtain a trusted external delivery attestation.
 - id: S8
   title: 运行追踪事件脊柱
   status: COMPLETE
   completion_claimed: true
   evidence_refs:
   - 2026-08-01-system-convergence-s7-s14
+  - 2026-08-07-runtime-trace-docker-wiring
+  - 2026-08-09-single-user-local-trust
   remaining: []
 - id: S9
   title: 执行微动画、中文解释与四层雷达
@@ -567,6 +743,8 @@ slices:
   completion_claimed: true
   evidence_refs:
   - 2026-08-01-system-convergence-s7-s14
+  - 2026-08-07-runtime-trace-docker-wiring
+  - 2026-08-09-single-user-local-trust
   remaining: []
 - id: S10
   title: Host Bridge与Agent合同
@@ -574,6 +752,7 @@ slices:
   completion_claimed: true
   evidence_refs:
   - 2026-08-01-system-convergence-s7-s14
+  - 2026-08-09-single-user-local-trust
   remaining: []
 - id: S11
   title: 前端收敛
@@ -581,6 +760,8 @@ slices:
   completion_claimed: true
   evidence_refs:
   - 2026-08-01-system-convergence-s7-s14
+  - 2026-08-09-content-development-convergence
+  - 2026-08-09-single-user-local-trust
   remaining: []
 - id: S12
   title: 后端单真源
@@ -588,6 +769,8 @@ slices:
   completion_claimed: true
   evidence_refs:
   - 2026-08-01-system-convergence-s7-s14
+  - 2026-08-09-content-development-convergence
+  - 2026-08-09-single-user-local-trust
   remaining: []
 - id: S13
   title: 兼容面与客户端退役

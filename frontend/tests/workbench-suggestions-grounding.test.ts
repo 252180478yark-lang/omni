@@ -55,4 +55,20 @@ describe('grounded workbench suggestions', () => {
     expect(card.observations).toEqual([])
     expect(card.toolPlan).not.toContain('operation.create')
   })
+
+  it('returns an explicit unavailable state when the graph upstream rejects the read', async () => {
+    const { POST } = await import('@/app/api/omni/workbench/suggestions/route')
+    global.fetch = vi.fn(async () => Response.json({ detail: 'unavailable' }, { status: 503 })) as typeof fetch
+
+    const response = await POST(new Request('http://localhost/api/omni/workbench/suggestions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'http://localhost' },
+      body: JSON.stringify({ question: '现在能否运行？' }),
+    }))
+    const card = await response.json()
+
+    expect(response.status).toBe(503)
+    expect(card).toMatchObject({ evidenceState: 'unavailable', riskLevel: 'R0' })
+    expect(card.toolPlan).not.toContain('operation.create')
+  })
 })

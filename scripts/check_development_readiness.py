@@ -422,11 +422,23 @@ def _load_workspace_ownership(root: Path) -> ModuleType:
     return module
 
 
+def _load_delivery_projection(root: Path) -> ModuleType:
+    path = root / "scripts" / "generate_implementation_status.py"
+    spec = importlib.util.spec_from_file_location("omni_readiness_delivery_projection", path)
+    if spec is None or spec.loader is None:
+        raise ReadinessInputError(f"delivery projection cannot be loaded: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def build_report(
     root: Path,
     *,
     include_runtime: bool = False,
     attestation_paths: Sequence[Path] = (),
+    provenance_verifier: Any = None,
 ) -> dict[str, Any]:
     head = _run(["git", "rev-parse", "HEAD"], cwd=root, check=True).stdout.strip()
     branch_result = _run(["git", "branch", "--show-current"], cwd=root)
@@ -440,6 +452,7 @@ def build_report(
             root,
             include_primary=True,
             attestation_paths=attestation_paths,
+            provenance_verifier=provenance_verifier,
             secret_scope="tracked",
         )
     except ValueError as exc:
@@ -661,6 +674,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="external delivery receipt; shared Git common-dir cache is also consulted",
     )
     parser.add_argument(
+        "--refresh-live-provenance",
+        action="store_true",
+        help=(
+            "explicitly verify cached/explicit receipts against live GitHub provenance; "
+            "the default and SessionStart remain fast offline fail-closed"
+        ),
+    )
+    parser.add_argument(
+        "--live-timeout-seconds",
+        type=float,
+        default=30.0,
+        help="one wall-clock budget shared by all live provenance checks (max 60)",
+    )
+    parser.add_argument(
         "--strict-critical-assets",
         "--strict",
         dest="strict_critical_assets",
@@ -682,10 +709,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         root = repository_root(args.root)
+        provenance_verifier = None
+        if args.refresh_live_provenance:
+            projection = _load_delivery_projection(root)
+            try:
+                provenance_verifier = projection.bounded_live_provenance(
+                    args.live_timeout_seconds
+                )
+            except ValueError as exc:
+                raise ReadinessInputError(str(exc)) from exc
         report = build_report(
             root,
             include_runtime=args.runtime,
             attestation_paths=args.attestation,
+            provenance_verifier=provenance_verifier,
         )
     except ReadinessInputError as exc:
         if args.hook:

@@ -1,0 +1,32 @@
+{
+  "schema_version": "p0.baseline.v1",
+  "status": "ready",
+  "blockers": [],
+  "checked_at_utc": "2026-08-09T18:21:05.933022+00:00",
+  "source": {
+    "command": "docker exec omni-prd-v12-main-full-accept-52866f3f-knowledge-engine-1 bash -c 'cd /app && PYTHONPATH=/app python scripts/p0_baseline_preflight.py'",
+    "runtime": "omni-prd-v12-main-full-accept-52866f3f"
+  },
+  "repository": {
+    "count": 87,
+    "head": {
+      "filename": "104_workbench_context_and_agent_binding.sql",
+      "sha256": "4e99b93e156ea4eb45f4efc1b0d9fefc7f26036571be96e6c0c074a0162b4b04"
+    }
+  },
+  "runtime": {
+    "count": 95,
+    "head": {
+      "applied_at": "2026-08-09T16:40:10.174606+00:00",
+      "checksum": "4e99b93e156ea4eb45f4efc1b0d9fefc7f26036571be96e6c0c074a0162b4b04",
+      "filename": "104_workbench_context_and_agent_binding.sql"
+    },
+    "tracking_has_checksums": true
+  },
+  "reconciliation": {
+    "repository_not_recorded": [],
+    "runtime_only": [],
+    "repository_duplicate_prefixes": {},
+    "runtime_duplicate_prefixes": {}
+  }
+}
