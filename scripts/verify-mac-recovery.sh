@@ -9,6 +9,7 @@ CHANGE_ID="${OMNI_CHANGE_ID:-mac-local-dev}"
 OWNER="${OMNI_OWNER:-${USER:-mac-developer}}"
 RUNTIME_PROFILE="${OMNI_RUNTIME_PROFILE:-content}"
 REQUIRE_RECOVERED_DATA="${OMNI_REQUIRE_RECOVERED_DATA:-0}"
+VERIFY_TIMEOUT_SECONDS="${OMNI_VERIFY_TIMEOUT_SECONDS:-120}"
 
 case "$RUNTIME_PROFILE" in
   core|content|full) ;;
@@ -26,6 +27,11 @@ case "$REQUIRE_RECOVERED_DATA" in
     ;;
 esac
 
+if [[ ! "$VERIFY_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'OMNI_VERIFY_TIMEOUT_SECONDS must be a positive integer (got %s).\n' "$VERIFY_TIMEOUT_SECONDS" >&2
+  exit 2
+fi
+
 for tool in docker jq curl python3; do
   command -v "$tool" >/dev/null || {
     printf '%s is required for recovery verification.\n' "$tool" >&2
@@ -39,6 +45,7 @@ ALLOCATION_JSON="$(python3 scripts/runtime_allocation.py --root "$ROOT" acquire 
   --owner "$OWNER" \
   --mode write \
   --risk-level R1 \
+  --runtime-profile "$RUNTIME_PROFILE" \
   --path 'docker-compose.yml' \
   --path 'docker-compose.dev.yml' \
   --path 'scripts/dev-start-mac.sh' \
@@ -56,24 +63,36 @@ python3 -B scripts/runtime_guard.py allocation-preflight \
   --allocation-file "$OMNI_RUNTIME_ALLOCATION_SOURCE" --json >/dev/null
 
 required_services=(
-  postgres redis identity-service ai-provider-hub knowledge-engine news-aggregator
-  video-analysis livestream-analysis ad-review-service scout-agent frontend nginx
+  postgres redis ai-provider-hub knowledge-engine frontend
 )
+if [[ "$RUNTIME_PROFILE" == "content" || "$RUNTIME_PROFILE" == "full" ]]; then
+  required_services+=(video-analysis livestream-analysis scout-agent)
+fi
+if [[ "$RUNTIME_PROFILE" == "full" ]]; then
+  required_services+=(news-aggregator ad-review-service nginx)
+fi
 
+health_deadline=$((SECONDS + VERIFY_TIMEOUT_SECONDS))
 for service in "${required_services[@]}"; do
-  container_id="$(docker compose -f docker-compose.yml ps -q "$service")"
-  if [[ -z "$container_id" ]]; then
-    printf 'Missing service container: %s\n' "$service" >&2
-    exit 1
-  fi
-  state="$(docker inspect --format '{{.State.Status}}' "$container_id")"
-  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' "$container_id")"
-  if [[ "$state" != "running" ]]; then
-    printf 'Service %s is %s, expected running.\n' "$service" "$state" >&2
-    exit 1
-  fi
-  if [[ "$health" != "not-configured" && "$health" != "healthy" ]]; then
-    printf 'Service %s health is %s, expected healthy.\n' "$service" "$health" >&2
+  state="missing"
+  health="unknown"
+  while (( SECONDS < health_deadline )); do
+    container_id="$(docker compose -f docker-compose.yml ps -q "$service")"
+    if [[ -n "$container_id" ]]; then
+      state="$(docker inspect --format '{{.State.Status}}' "$container_id")"
+      health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}not-configured{{end}}' "$container_id")"
+      if [[ "$state" == "running" && ( "$health" == "not-configured" || "$health" == "healthy" ) ]]; then
+        break
+      fi
+      if [[ "$state" == "exited" || "$state" == "dead" ]]; then
+        break
+      fi
+    fi
+    sleep 1
+  done
+  if [[ "$state" != "running" || ( "$health" != "not-configured" && "$health" != "healthy" ) ]]; then
+    printf 'Service %s did not become ready within %ss: state=%s health=%s.\n' \
+      "$service" "$VERIFY_TIMEOUT_SECONDS" "$state" "$health" >&2
     exit 1
   fi
   printf 'SERVICE %s state=%s health=%s\n' "$service" "$state" "$health"
@@ -96,7 +115,11 @@ if [[ "$REQUIRE_RECOVERED_DATA" == "1" ]]; then
 fi
 
 curl -fsS --max-time 20 -o /dev/null "http://127.0.0.1:${FRONTEND_PORT}/"
-curl -fsS --max-time 20 -o /dev/null "http://127.0.0.1:${NGINX_HTTP_PORT}/"
+nginx_url="not_started_for_${RUNTIME_PROFILE}_profile"
+if [[ "$RUNTIME_PROFILE" == "full" ]]; then
+  curl -fsS --max-time 20 -o /dev/null "http://127.0.0.1:${NGINX_HTTP_PORT}/"
+  nginx_url="http://127.0.0.1:${NGINX_HTTP_PORT}/"
+fi
 stats_json="$(curl -fsS --max-time 20 "http://127.0.0.1:${KNOWLEDGE_ENGINE_PORT}/api/v1/knowledge/stats")"
 if ! printf '%s' "$stats_json" | jq -e \
   '(.data | type) == "object" and (.data.documents | type) == "number" and (.data.chunks | type) == "number"' \
@@ -133,4 +156,4 @@ printf 'SYSTEM_GRAPH snapshot=%s commit=%s nodes=%s edges=%s unknown_sources=%s\
 printf 'RECOVERED_DATA_REQUIRED %s\n' "$REQUIRE_RECOVERED_DATA"
 printf 'PROFILE %s\n' "$RUNTIME_PROFILE"
 printf 'FRONTEND http://127.0.0.1:%s/\n' "$FRONTEND_PORT"
-printf 'NGINX http://127.0.0.1:%s/\n' "$NGINX_HTTP_PORT"
+printf 'NGINX %s\n' "$nginx_url"
