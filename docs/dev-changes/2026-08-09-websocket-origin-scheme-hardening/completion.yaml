@@ -15,6 +15,10 @@ actual_changes:
   - frontend/tests/websocket-origin.test.ts
   - frontend/tests/approval-auth-session.test.ts
 contract_delta:
+- description: Added standalone TypeScript coverage and made the intentionally minimal encrypted-socket fixture explicit across an unknown boundary.
+  reason: Pull-request CI includes test sources in npx tsc --noEmit and correctly rejected a direct assertion from a one-field object to Node's full Socket type.
+  effect: Runtime code is unchanged; the fixture remains minimal, all six security tests pass, and the exact CI compiler command now passes locally.
+  accepted: true
 - description: Added the existing approval-auth-session source-closure test to the implementation scope.
   reason: Full frontend regression exposed a hardcoded assertion for the former in-file classifier symbol after the classifier was extracted into a testable module.
   effect: The regression now requires isSameOriginWebSocketUpgrade wiring while retaining its no browser token, no session credential and invalid-origin checks.
@@ -49,6 +53,11 @@ verification_results:
   status: passed
   exit_code: 0
   evidence: The WebSocket hardening commit range and current worktree are whitespace-clean.
+- id: WS-VER-006
+  command: cd frontend && npx tsc --noEmit
+  status: passed
+  exit_code: 0
+  evidence: Standalone TypeScript compilation completed without diagnostics after the test-only fixture assertion was made explicit through unknown; the focused six WebSocket tests also remained green.
 graph_diff:
   status: clean
   snapshot_before: git:43f97094df44bdff6c74de846556bd4a2031a612

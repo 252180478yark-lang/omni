@@ -23,7 +23,7 @@ function request(
 
   return {
     headers,
-    socket: { encrypted: options.encrypted === true } as UpgradeFixture['socket'],
+    socket: { encrypted: options.encrypted === true } as unknown as UpgradeFixture['socket'],
   }
 }
 

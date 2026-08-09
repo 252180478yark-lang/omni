@@ -33,6 +33,12 @@ risk:
     added_paths: []
     required_level: R2
     risk_change: Replace the manual browser-only verification with a deterministic production-server smoke that proves both retained workspace routes return HTTP 200 without a login redirect or surface.
+  - id: WS-DELTA-003
+    discovered_at: '2026-08-09T15:40:00Z'
+    reason: Pull-request CI runs a standalone TypeScript check that includes test fixtures; it rejected the intentionally minimal Socket fixture's direct structural assertion even though unit tests and the Next production build passed.
+    added_paths: []
+    required_level: R2
+    risk_change: Test-only type closure. Preserve the minimal encrypted-socket fixture through an explicit unknown boundary and add the standalone CI typecheck to required evidence.
   approval:
     required: false
     gate_ref: ''
@@ -191,6 +197,11 @@ verification_plan:
   layer: git
   command: git diff --check 43f97094df44bdff6c74de846556bd4a2031a612..HEAD
   proves: The isolated hardening candidate contains no new whitespace errors.
+  required: true
+- id: WS-VER-006
+  layer: frontend-typecheck
+  command: cd frontend && npx tsc --noEmit
+  proves: Production source and all TypeScript test fixtures satisfy the standalone CI compiler boundary.
   required: true
 lock:
   locked_at: '2026-08-09T15:13:14Z'
