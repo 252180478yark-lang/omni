@@ -2,6 +2,12 @@ schema_version: 3
 change_id: 2026-08-07-windows-macos-runtime-recovery
 state: GRAPH_DIFF_READY
 actual_changes:
+- id: RECOVERY-ACT-005
+  planned_change_id: RECOVERY-005
+  summary: Added supported macOS start and non-destructive stop entrypoints that acquire the existing RuntimeAllocation and operate only the exact isolated Compose project.
+  paths:
+  - scripts/dev-start-mac.sh
+  - scripts/dev-stop-mac.sh
 - id: RECOVERY-ACT-004
   planned_change_id: RECOVERY-004
   summary: Normalized nullable AI Hub model settings before video-analysis startup and added focused regression coverage for null, missing, blank, and populated values.
@@ -10,9 +16,9 @@ actual_changes:
   - services/video-analysis/app/settings_normalization.py
   - services/video-analysis/tests/test_settings_normalization.py
 contract_delta:
-- description: Curated the original recovery candidate for the unified integration lineage and transferred later-written runtime, Docker, frontend, database and local MCP ownership to their final contracts.
+- description: Curated the original recovery candidate for the unified integration lineage and transferred later-written shared runtime, Docker, frontend, database and local MCP ownership to their final contracts.
   reason: The source branch bundled machine-local configuration and paths subsequently rewritten by profile-aware macOS, single-user trust and WebSocket changes; commit-mode delivery requires one final owner and an ancestor baseline.
-  effect: This contract retains the unique nullable video-analysis startup repair, while excluded local planning/configuration and superseded shared paths remain absent or are owned by later integration contracts.
+  effect: This contract retains the macOS start/stop entrypoints and unique nullable video-analysis startup repair, while excluded local planning/configuration and superseded shared paths remain absent or are owned by later integration contracts.
   accepted: true
 - description: The GRAPH_DIFF_READY strict validator is executed after the state transition because its expected state does not exist before the transition.
   reason: Recording it as a pre-transition requirement would create a circular state dependency.

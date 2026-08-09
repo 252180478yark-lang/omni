@@ -96,6 +96,12 @@ risk:
     added_paths: []
     required_level: R2
     risk_change: none; local-owner projection remains verified here while final server bytes and origin admission are owned by the later hardening contract.
+  - id: DELTA-010
+    discovered_at: '2026-08-09T15:34:13Z'
+    reason: Unified commit-mode validation found scripts/runtime_allocation.py has later final source-identity semantics owned by the macOS integration contract.
+    added_paths: []
+    required_level: R2
+    risk_change: none; zero-internal-secret behavior remains covered by Compose and runtime tests while the final allocation implementation has one later owner.
   approval:
     required: false
     gate_ref: ''
@@ -273,7 +279,6 @@ planned_changes:
   - services/docker-compose.sp1-sp4.yml
   - services/infra-core/nginx/conf.d/default.conf
   - config/runtime-manifest.yaml
-  - scripts/runtime_allocation.py
   - scripts/dev_runtime_environment.py
   - tests/test_compose_runtime_contract.py
   - tests/test_approval_hmac_interop.py

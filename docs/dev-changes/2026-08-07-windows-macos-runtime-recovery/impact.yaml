@@ -34,6 +34,14 @@ risk:
     - frontend/server.ts
     required_level: R2
     risk_change: Compatible container-network binding change; no route, authentication, or public deployment behavior changes.
+  - id: RECOVERY-DELTA-003
+    discovered_at: '2026-08-09T15:34:13Z'
+    reason: Unified commit-mode validation proved the macOS start and stop entrypoints are introduced after this contract's immutable recovery baseline and are already present at the later integration baseline.
+    added_paths:
+    - scripts/dev-start-mac.sh
+    - scripts/dev-stop-mac.sh
+    required_level: R2
+    risk_change: Compatible ownership correction only; the scripts, loopback bindings, RuntimeAllocation use and non-destructive stop behavior are unchanged.
   approval:
     required: false
     gate_ref: ''
@@ -119,6 +127,21 @@ scope:
   - README.md
   - docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/**
 planned_changes:
+- id: RECOVERY-005
+  action: add
+  kind: macos-runtime-lifecycle
+  node_id: workflow:scripts.dev-start-stop-mac
+  paths:
+  - scripts/dev-start-mac.sh
+  - scripts/dev-stop-mac.sh
+  upstream:
+  - workflow:scripts.runtime-allocation
+  downstream:
+  - service:docker-compose.omni
+  contract_change: compatible
+  verification_ids:
+  - RECOVERY-VERIFY-001
+  - RECOVERY-VERIFY-003
 - id: RECOVERY-004
   action: modify
   kind: nullable-runtime-setting

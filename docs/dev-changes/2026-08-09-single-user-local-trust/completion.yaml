@@ -51,7 +51,6 @@ actual_changes:
   - services/docker-compose.sp1-sp4.yml
   - services/infra-core/nginx/conf.d/default.conf
   - config/runtime-manifest.yaml
-  - scripts/runtime_allocation.py
   - scripts/dev_runtime_environment.py
 - id: ACT-005
   planned_change_id: CHG-005
@@ -91,6 +90,10 @@ actual_changes:
   - README.md
   - docs/multi-device/host-bridge.md
 contract_delta:
+- description: Transferred final scripts/runtime_allocation.py ownership to the later macOS integration contract.
+  reason: The unified candidate changes allocation source-identity semantics after local-trust convergence, so schema-v3 delivery cannot assign the final protected path to both contracts.
+  effect: This contract retains final Compose, manifest and environment credential removal; the macOS integration contract uniquely owns the final allocation implementation and its runtime regression evidence.
+  accepted: true
 - description: Transferred final frontend/server.ts ownership to the later WebSocket origin hardening contract.
   reason: The unified candidate changes the server again after local-trust convergence, and schema-v3 delivery requires exactly one final owner for each protected path.
   effect: This contract retains all local-owner API, BFF and WebSocket-handler paths it finally writes; the hardening contract uniquely owns the final custom-server admission classifier wiring.
