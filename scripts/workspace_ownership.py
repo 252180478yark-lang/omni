@@ -291,6 +291,177 @@ def _sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _quarantine_record(impact: Mapping[str, Any]) -> dict[str, Any] | None:
+    quarantine = impact.get("evidence_quarantine")
+    if not isinstance(quarantine, Mapping):
+        return None
+    source = quarantine.get("source")
+    consequence = quarantine.get("consequence")
+    if (
+        quarantine.get("schema_version") != 1
+        or quarantine.get("mode") != "quarantine_irrecoverable_git_candidate"
+        or quarantine.get("effective_when") != "this_contract_is_ci_attested"
+        or not isinstance(source, Mapping)
+        or not isinstance(consequence, Mapping)
+    ):
+        return None
+    candidate = str(source.get("candidate_commit") or "").strip().lower()
+    impact_digest = str(source.get("impact_sha256") or "").strip().lower()
+    completion_digest = str(source.get("completion_sha256") or "").strip().lower()
+    if not (
+        str(source.get("handoff_change_id") or "").strip()
+        and str(source.get("change_id") or "").strip()
+        and str(source.get("required_state") or "") == "GRAPH_DIFF_READY"
+        and re.fullmatch(r"[0-9a-f]{40}", candidate)
+        and re.fullmatch(r"[0-9a-f]{64}", impact_digest)
+        and re.fullmatch(r"[0-9a-f]{64}", completion_digest)
+        and consequence.get("delivery_status") == "unmerged_not_delivered"
+        and consequence.get("ownership_effect") == "none"
+        and consequence.get("retirement_authorized") is False
+        and consequence.get("completion_claimed") is False
+        and consequence.get("if_object_reappears")
+        == "quarantine_invalid_revalidate_original_handoff"
+    ):
+        return None
+    return {
+        "handoff_change_id": str(source["handoff_change_id"]),
+        "source_change_id": str(source["change_id"]),
+        "source_candidate_commit": candidate,
+        "required_state": "GRAPH_DIFF_READY",
+        "impact_sha256": impact_digest,
+        "completion_sha256": completion_digest,
+        "delivery_status": "unmerged_not_delivered",
+        "ownership_effect": "none",
+        "retirement_authorized": False,
+        "completion_claimed": False,
+    }
+
+
+def historical_candidate_evidence(
+    root: Path,
+    source: Mapping[str, Any],
+    *,
+    quarantine_impact: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Evaluate exact historical blobs before considering an evidence quarantine.
+
+    A quarantine is a portable record of irrecoverable evidence loss, never a
+    substitute for delivery or retirement.  If the object later reappears, its
+    original state and both hashes take precedence and must validate again.
+    """
+
+    source_id = str(source.get("change_id") or "").strip()
+    candidate = str(source.get("candidate_commit") or "").strip().lower()
+    required_state = str(source.get("required_state") or "").strip()
+    impact_digest = str(source.get("impact_sha256") or "").strip().lower()
+    completion_digest = str(source.get("completion_sha256") or "").strip().lower()
+    if not (
+        source_id
+        and required_state == "GRAPH_DIFF_READY"
+        and re.fullmatch(r"[0-9a-f]{40}", candidate)
+        and re.fullmatch(r"[0-9a-f]{64}", impact_digest)
+        and re.fullmatch(r"[0-9a-f]{64}", completion_digest)
+    ):
+        return {"status": "invalid", "reason": "invalid_source_contract"}
+
+    source_dir = f"docs/dev-changes/{source_id}"
+    impact_text = _git_text(root, candidate, f"{source_dir}/impact.yaml")
+    completion_text = _git_text(root, candidate, f"{source_dir}/completion.yaml")
+    if impact_text is not None or completion_text is not None:
+        if impact_text is None or completion_text is None or yaml is None:
+            return {"status": "invalid", "reason": "partial_candidate_evidence"}
+        try:
+            source_mapping = yaml.safe_load(impact_text)
+        except yaml.YAMLError:
+            return {"status": "invalid", "reason": "invalid_candidate_impact"}
+        if (
+            not isinstance(source_mapping, Mapping)
+            or str(source_mapping.get("change_id") or "") != source_id
+            or str(source_mapping.get("state") or "") != required_state
+            or _sha256_text(impact_text) != impact_digest
+            or _sha256_text(completion_text) != completion_digest
+        ):
+            return {"status": "invalid", "reason": "candidate_binding_mismatch"}
+        return {
+            "status": "verified",
+            "source_change_id": source_id,
+            "source_candidate_commit": candidate,
+        }
+
+    quarantine = (
+        _quarantine_record(quarantine_impact)
+        if isinstance(quarantine_impact, Mapping)
+        else None
+    )
+    if quarantine is not None and all(
+        (
+            quarantine["source_change_id"] == source_id,
+            quarantine["source_candidate_commit"] == candidate,
+            quarantine["required_state"] == required_state,
+            quarantine["impact_sha256"] == impact_digest,
+            quarantine["completion_sha256"] == completion_digest,
+        )
+    ):
+        return {"status": "quarantined_unavailable", **quarantine}
+    return {
+        "status": "unavailable",
+        "reason": "candidate_object_unavailable",
+        "source_change_id": source_id,
+        "source_candidate_commit": candidate,
+    }
+
+
+def trusted_evidence_quarantines(
+    root: Path,
+    delivered: Mapping[str, Mapping[str, Any]],
+) -> tuple[dict[str, Any], ...]:
+    """Load attested loss records without changing ownership or delivery state."""
+
+    records: list[dict[str, Any]] = []
+    for quarantine_id, proof in sorted(delivered.items()):
+        subject = str(proof.get("subject_commit") or "").strip().lower()
+        if not re.fullmatch(r"[0-9a-f]{40}", subject):
+            continue
+        raw = _git_text(
+            root,
+            subject,
+            f"docs/dev-changes/{quarantine_id}/impact.yaml",
+        )
+        if raw is None or yaml is None:
+            continue
+        try:
+            impact = yaml.safe_load(raw)
+        except yaml.YAMLError:
+            continue
+        if not isinstance(impact, Mapping):
+            continue
+        quarantine = _quarantine_record(impact)
+        if quarantine is None:
+            continue
+        source = {
+            "change_id": quarantine["source_change_id"],
+            "candidate_commit": quarantine["source_candidate_commit"],
+            "required_state": quarantine["required_state"],
+            "impact_sha256": quarantine["impact_sha256"],
+            "completion_sha256": quarantine["completion_sha256"],
+        }
+        evidence = historical_candidate_evidence(
+            root,
+            source,
+            quarantine_impact=impact,
+        )
+        if evidence.get("status") != "quarantined_unavailable":
+            continue
+        records.append(
+            {
+                "quarantine_change_id": quarantine_id,
+                "quarantine_subject_commit": subject,
+                **quarantine,
+            }
+        )
+    return tuple(records)
+
+
 def trusted_retirements(
     root: Path,
     delivered: Mapping[str, Mapping[str, Any]],
@@ -732,6 +903,7 @@ def inventory_workspace(
         provenance_verifier=provenance_verifier,
     )
     retirements = trusted_retirements(root, delivered)
+    evidence_quarantines = trusted_evidence_quarantines(root, delivered)
     scopes = active_contract_scopes(
         root,
         delivered_ids=delivered,
@@ -928,6 +1100,7 @@ def inventory_workspace(
         "runtime_lease_audit": list(lease_audit),
         "delivered_contracts": [delivered[key] for key in sorted(delivered)],
         "retired_contracts": list(retirements),
+        "evidence_quarantines": list(evidence_quarantines),
         "counts": counts,
         "paths": [asdict(fact) for fact in sorted(facts, key=lambda item: (item.worktree_id, item.path))],
         "secret_scan": secret_scan,

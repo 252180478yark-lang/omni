@@ -182,14 +182,13 @@ planned_changes:
   - services/knowledge-engine/config/features/generated/features.v1.json
   - services/knowledge-engine/app/services/system_graph/feature_definitions.py
   - services/knowledge-engine/tests/test_feature_definitions.py
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
   - frontend/src/generated/feature-registry.v1.json
   - frontend/src/lib/workbench-ia.ts
   - frontend/tests/feature-registry.test.ts
   - frontend/tests/workbench-ia.test.ts
-  - frontend/src/app/api/omni/workbench/navigation-events/route.ts
   - frontend/tests/workbench-navigation-events.test.ts
   - frontend/src/lib/workbench-ia-compat.ts
-  - frontend/src/middleware.ts
   - frontend/tests/workbench-middleware.test.ts
   - frontend/tests/workbench-route-inventory.test.ts
   upstream:
@@ -201,6 +200,7 @@ planned_changes:
   verification_ids:
   - VER-001
   - VER-002
+  - VER-012
 - id: CHG-002
   action: modify
   kind: frontend-shell-design
@@ -279,9 +279,7 @@ planned_changes:
   - docs/runtime-profiles.md
   - frontend/Dockerfile
   - frontend/.dockerignore
-  - frontend/server.ts
   - config/schemas/runtime-allocation.schema.json
-  - scripts/runtime_allocation.py
   - scripts/runtime_guard.py
   - dev-start.ps1
   - tests/test_runtime_allocation.py
@@ -306,7 +304,7 @@ planned_changes:
   - VER-006
   - VER-009
   - VER-011
-  - VER-012
+  - VER-013
 - id: CHG-006
   action: modify
   kind: canonical-tool-execution-bffs
@@ -456,6 +454,11 @@ verification_plan:
   proves: The actual Knowledge Engine startup preflight requires the selected runtime profile and rejects missing or mismatched profile identity before database, scheduler or filesystem side effects.
   required: true
 - id: VER-012
+  layer: system-graph-owner
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_collectors.py
+  proves: Workspace and development command-center routes are projected under their declared, non-overlapping FeatureDefinition owners.
+  required: true
+- id: VER-013
   layer: s6-isolated-runtime
   command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py
   proves: The S6 disposable R1/R2 pilot uses the current required runtime-profile manifest contract and still records receipts, transcript and release evidence.

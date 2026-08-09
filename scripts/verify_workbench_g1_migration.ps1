@@ -473,10 +473,10 @@ INSERT INTO mcp.agent_session_contracts(
     fallback_reason_code, provider_accepted_at, parent_session_id,
     project_handle, project_display_name
 ) VALUES (
-    'session-self-parent', 'codex',
+    'session-self', 'codex',
     'sha256:9999999999999999999999999999999999999999999999999999999999999999',
     'resolving', 'workbench.v1', 'context-snapshot-1', 'codex', NULL,
-    NULL, NULL, 'session-self-parent', 'project-self', 'Omni Self'
+    NULL, NULL, 'session-self', 'project-self', 'Omni Self'
 );
 '@
     Assert-PsqlRejected -Label "runtime context rebind" -Sql @'
@@ -555,7 +555,7 @@ INSERT INTO mcp.agent_session_contracts(
     fallback_reason_code, provider_accepted_at, parent_session_id,
     project_handle, project_display_name
 ) VALUES (
-    'session-tab-display', 'codex',
+    'session-tab', 'codex',
     'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
     'resolving', 'workbench.v1', 'context-snapshot-1', 'codex', NULL,
     NULL, NULL, NULL, 'project-tab-display', E'\tOmni\t'
@@ -568,7 +568,7 @@ INSERT INTO mcp.agent_session_contracts(
     resolved_runner_mode, fallback_reason_code, provider_accepted_at,
     parent_session_id, project_handle, project_display_name
 ) VALUES (
-    'session-missing-runner', 'codex', NULL,
+    'session-miss', 'codex', NULL,
     'sha256:abababababababababababababababababababababababababababababababab',
     'active', 'workbench.v1', 'context-snapshot-1', 'codex', 'host', NULL,
     NOW(), NULL, 'project-missing-runner', 'Omni Missing Runner'
@@ -591,19 +591,19 @@ BEGIN
     END IF;
     IF EXISTS (
         SELECT 1 FROM mcp.agent_session_contracts
-        WHERE session_id = 'session-self-parent'
+        WHERE session_id = 'session-self'
     ) THEN
         RAISE EXCEPTION 'self-parent agent session was inserted';
     END IF;
     IF EXISTS (
         SELECT 1 FROM mcp.agent_session_contracts
-        WHERE session_id = 'session-tab-display'
+        WHERE session_id = 'session-tab'
     ) THEN
         RAISE EXCEPTION 'unsafe project display name was inserted';
     END IF;
     IF EXISTS (
         SELECT 1 FROM mcp.agent_session_contracts
-        WHERE session_id = 'session-missing-runner'
+        WHERE session_id = 'session-miss'
     ) THEN
         RAISE EXCEPTION 'active session without runner identity was inserted';
     END IF;

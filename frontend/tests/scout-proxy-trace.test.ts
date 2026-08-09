@@ -39,13 +39,13 @@ describe('Scout BFF trace propagation', () => {
       { params: { path: ['jobs'] } },
     )
 
-    expect(upstream).toHaveBeenCalledOnce()
+    expect(upstream).toHaveBeenCalledTimes(1)
     expect(response.headers.get('x-omni-trace-id')).toBe('trace:frontend-scout')
     expect(response.headers.get('x-omni-execution-id')).toBe('execution:frontend-scout')
     expect(response.headers.get('x-omni-span-id')).toBe('scout:span')
   })
 
-  it('accepts local-owner trace propagation but rejects malformed trace injection before Scout', async () => {
+  it('allows the local owner without a credential but rejects malformed trace injection', async () => {
     const upstream = vi.fn(async () => new Response('{}', { status: 200 }))
     vi.stubGlobal('fetch', upstream)
 
@@ -56,6 +56,7 @@ describe('Scout BFF trace propagation', () => {
       { params: { path: ['jobs'] } },
     )
     expect(unauthenticated.status).toBe(200)
+    expect(upstream).toHaveBeenCalledTimes(1)
 
     const malformed = await GET(
       new NextRequest('http://localhost/api/omni/scout/jobs', {
@@ -68,7 +69,7 @@ describe('Scout BFF trace propagation', () => {
     )
     expect(malformed.status).toBe(400)
     expect((await malformed.json()).error).toBe('invalid_trace_context')
-    expect(upstream).toHaveBeenCalledOnce()
+    expect(upstream).toHaveBeenCalledTimes(1)
   })
 
   it('does not forward unsupported W3C traceparent as Omni continuity', async () => {

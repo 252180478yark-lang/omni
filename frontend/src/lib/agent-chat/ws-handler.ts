@@ -176,15 +176,15 @@ export function attachWsHandler(ws: WebSocket, approvalAuthorization: string | n
   _initRedisSubscriber()
   let closed = false
   let authErrorSent = false
-  const authentication = approvalAuthorization
-    ? verifyApprovalActor(approvalAuthorization).then(() => true).catch(() => false)
-    : Promise.resolve(false)
+  const authentication = approvalAuthorization === 'invalid-origin'
+    ? Promise.resolve(false)
+    : Promise.resolve(true)
   void authentication.then((authenticated) => {
     if (closed || ws.readyState !== 1) return
     if (authenticated) return void _approvalConnections.add(ws)
     authErrorSent = true
-    send(ws, { kind: 'error', error: 'authentication_required' })
-    ws.close(1008, 'authentication_required')
+    send(ws, { kind: 'error', error: 'same_origin_required' })
+    ws.close(1008, 'same_origin_required')
   })
   ws.on('close', () => {
     closed = true

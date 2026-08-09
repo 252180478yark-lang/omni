@@ -8,7 +8,6 @@ import { parse } from 'node:url'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import { attachWsHandler } from './src/lib/agent-chat/ws-handler'
-import { approvalAuthorizationFromCookie } from './src/app/api/omni/_shared'
 
 const dev = process.env.NODE_ENV !== 'production'
 // Containers must accept traffic arriving through their published port or
@@ -20,22 +19,22 @@ const port = parseInt(process.env.PORT || '3000', 10)
 const app = next({ dev, hostname, port })
 const handle = app.getRequestHandler()
 
-function approvalUpgradeAuthorization(req: import('node:http').IncomingMessage): string | null {
+function isSameOriginUpgrade(req: import('node:http').IncomingMessage): boolean {
   const origin = req.headers.origin
   const forwardedHost = Array.isArray(req.headers['x-forwarded-host'])
     ? req.headers['x-forwarded-host'][0]
     : req.headers['x-forwarded-host']?.split(',')[0]?.trim()
   const expectedHost = forwardedHost || req.headers.host
-  if (!origin || !expectedHost) return null
+  if (!origin || !expectedHost) return false
   try {
     const parsedOrigin = new URL(origin)
     if (!['http:', 'https:'].includes(parsedOrigin.protocol) || parsedOrigin.host !== expectedHost) {
-      return null
+      return false
     }
   } catch {
-    return null
+    return false
   }
-  return approvalAuthorizationFromCookie(req.headers.cookie || null)
+  return true
 }
 
 app.prepare().then(() => {
@@ -46,7 +45,7 @@ app.prepare().then(() => {
 
   const wss = new WebSocketServer({ noServer: true })
   wss.on('connection', (ws, req) => {
-    attachWsHandler(ws, approvalUpgradeAuthorization(req))
+    attachWsHandler(ws, isSameOriginUpgrade(req) ? null : 'invalid-origin')
   })
 
   server.on('upgrade', (req, socket, head) => {

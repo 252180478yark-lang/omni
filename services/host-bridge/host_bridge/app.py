@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import os
 import urllib.error
@@ -15,7 +14,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -44,9 +43,6 @@ def _trace_sink(session: HostSession, run_id: str, event_type: str, status: str,
     if not base or not session.trace_id:
         return False
     try:
-        headers = _core_service_headers()
-        if headers is None:
-            return False
         body = json.dumps({
             "source": "host.bridge", "event_id": f"{run_id}:{event_type}",
             "trace_id": session.trace_id, "execution_id": session.execution_id or session.trace_id,
@@ -58,7 +54,7 @@ def _trace_sink(session: HostSession, run_id: str, event_type: str, status: str,
         request = urllib.request.Request(
             f"{base}/api/v1/runtime-traces/{urllib.parse.quote(session.trace_id, safe='')}/events",
             data=body, method="POST",
-            headers=headers,
+            headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(request, timeout=3) as response:
             return 200 <= response.status < 300
@@ -71,31 +67,14 @@ def _contract_post(path: str, payload: dict[str, Any]) -> bool:
     if not base:
         return False
     try:
-        headers = _core_service_headers()
-        if headers is None:
-            return False
         request = urllib.request.Request(
             f"{base}{path}", data=json.dumps(payload).encode(), method="POST",
-            headers=headers,
+            headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(request, timeout=3) as response:
             return 200 <= response.status < 300
     except (OSError, urllib.error.URLError, ValueError):
         return False
-
-
-def _core_service_headers() -> dict[str, str] | None:
-    headers = {"Content-Type": "application/json", "X-Omni-Actor-Id": "local-owner", "X-Omni-Trust-Mode": "trusted-local"}
-    if os.getenv("OMNI_APPROVAL_AUTH_MODE", "trusted-local").strip().lower() in {"trusted-local", "trusted_local", "local"}:
-        return headers
-    token_path = os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", "") or os.getenv("OMNI_RUNTIME_TRACE_TOKEN_FILE", "")
-    try:
-        token = Path(token_path).read_text(encoding="utf-8").strip() if token_path else ""
-    except OSError:
-        token = ""
-    if len(token) < 24:
-        return None
-    return {**headers, "Authorization": f"Bearer {token}"}
 
 
 def _sync_session(session: HostSession) -> bool:
@@ -140,23 +119,6 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="omni-host-bridge", lifespan=lifespan)
-
-
-def _required_token() -> str:
-    path = os.getenv("OMNI_HOST_TOKEN_FILE", "")
-    try:
-        token = Path(path).read_text(encoding="utf-8").strip() if path else ""
-    except OSError:
-        token = ""
-    if len(token) < 24:
-        raise HTTPException(status_code=503, detail={"code": "host_auth_unconfigured"})
-    return token
-
-
-def require_host_access(authorization: str | None = Header(default=None)) -> None:
-    supplied = authorization.removeprefix("Bearer ") if authorization else ""
-    if not supplied or not hmac.compare_digest(supplied, _required_token()):
-        raise HTTPException(status_code=401, detail={"code": "host_auth_required"})
 
 
 class SessionPayload(BaseModel):
@@ -225,13 +187,13 @@ def _call(action):
 @app.get("/api/v1/host-bridge/health")
 async def health() -> dict[str, Any]:
     value = bridge.health()
-    if not os.getenv("OMNI_KE_URL") or _core_service_headers() is None:
+    if not os.getenv("OMNI_KE_URL"):
         value["state"] = "degraded"
         value["reason_codes"] = [*value["reason_codes"], "core_contract_sync_unconfigured"]
     return value
 
 
-@app.post("/api/v1/host-bridge/sessions", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions")
 async def create_session(payload: SessionPayload) -> dict[str, Any]:
     values = payload.model_dump()
     supplied_handle = values.pop("project_handle")
@@ -242,49 +204,49 @@ async def create_session(payload: SessionPayload) -> dict[str, Any]:
     return {**as_public_session(session), "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.get("/api/v1/host-bridge/sessions/{session_id}", dependencies=[Depends(require_host_access)])
+@app.get("/api/v1/host-bridge/sessions/{session_id}")
 async def get_session(session_id: str) -> dict[str, Any]:
     return _call(lambda: as_public_session(bridge.get_session(session_id)))
 
 
-@app.post("/api/v1/host-bridge/sessions/{session_id}/context", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions/{session_id}/context")
 async def rebind_session_context(session_id: str, payload: RebindContextPayload) -> dict[str, Any]:
     session = _call(lambda: bridge.rebind_context(session_id, **payload.model_dump()))
     return {**as_public_session(session), "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.post("/api/v1/host-bridge/sessions/{session_id}/runs", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions/{session_id}/runs")
 async def start_run(session_id: str, payload: RunPayload) -> dict[str, Any]:
     result = _call(lambda: bridge.start_run(session_id, payload.prompt, payload.request_id))
     session = _call(lambda: bridge.get_session(session_id))
     return {**result, "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.post("/api/v1/host-bridge/sessions/{session_id}/visible-auth", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions/{session_id}/visible-auth")
 async def open_visible_auth(session_id: str, payload: VisibleAuthPayload) -> dict[str, Any]:
     return _call(lambda: bridge.open_visible_auth(session_id, payload.provider, payload.url, payload.request_id))
 
 
-@app.get("/api/v1/host-bridge/runs/{run_id}/events", dependencies=[Depends(require_host_access)])
+@app.get("/api/v1/host-bridge/runs/{run_id}/events")
 async def run_events(run_id: str, cursor: int = Query(default=0, ge=0)) -> dict[str, Any]:
     page = _call(lambda: bridge.run_events(run_id, cursor))
     session = _call(lambda: bridge.get_session(page["session_id"]))
     return {**page, "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.post("/api/v1/host-bridge/runs/{run_id}/cancel", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/runs/{run_id}/cancel")
 async def cancel_run(run_id: str) -> dict[str, Any]:
     return _call(lambda: bridge.cancel_run(run_id))
 
 
-@app.post("/api/v1/host-bridge/sessions/{session_id}/attachments", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions/{session_id}/attachments")
 async def upload_attachment(session_id: str, attachment: UploadFile = File(...)) -> dict[str, Any]:
     content = await attachment.read(25 * 1024 * 1024 + 1)
     metadata = _call(lambda: bridge.save_attachment(session_id, attachment.filename or "attachment", content, attachment.content_type or "application/octet-stream"))
     return {**metadata, "contract_sync": "success" if _sync_attachment(session_id, metadata) else "partial"}
 
 
-@app.get("/api/v1/host-bridge/sessions/{session_id}/attachments/{attachment_id}", dependencies=[Depends(require_host_access)])
+@app.get("/api/v1/host-bridge/sessions/{session_id}/attachments/{attachment_id}")
 async def download_attachment(session_id: str, attachment_id: str):
     path, metadata = _call(lambda: bridge.attachment(session_id, attachment_id))
     return FileResponse(path, media_type=metadata["content_type"], filename=path.name)
@@ -292,7 +254,7 @@ async def download_attachment(session_id: str, attachment_id: str):
 
 # Compatibility for the current WeCom orchestration call shape. It is still
 # authenticated and delegates to the same provider-neutral session/run core.
-@app.post("/api/sessions", dependencies=[Depends(require_host_access)])
+@app.post("/api/sessions")
 async def legacy_create_session(payload: LegacyCreatePayload) -> dict[str, Any]:
     session_id = payload.session_id or f"session:{uuid.uuid4().hex}"
     project_dir = payload.project_dir or os.getenv("OMNI_PROJECT_DIR", "")
@@ -300,12 +262,12 @@ async def legacy_create_session(payload: LegacyCreatePayload) -> dict[str, Any]:
     return {"id": session.session_id, "session_id": session.session_id, "runner_provider": session.runner_provider, "runner_session_id": session.runner_session_id, "status": session.status, "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.post("/api/sessions/{session_id}/open", dependencies=[Depends(require_host_access)])
+@app.post("/api/sessions/{session_id}/open")
 async def legacy_open_session(session_id: str) -> dict[str, Any]:
     return _call(lambda: as_public_session(bridge.get_session(session_id)))
 
 
-@app.post("/api/sessions/{session_id}/prompt", dependencies=[Depends(require_host_access)])
+@app.post("/api/sessions/{session_id}/prompt")
 async def legacy_prompt(session_id: str, payload: LegacyPromptPayload) -> dict[str, Any]:
     existing = _call(lambda: bridge.get_session(session_id))
     trace_id = payload.trace_id or f"trace:host:{uuid.uuid4().hex}"

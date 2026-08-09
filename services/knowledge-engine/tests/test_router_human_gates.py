@@ -212,11 +212,11 @@ async def test_reject_with_full_uuid(client, _seed_gates):
     assert row["decided_by"] == OWNER.principal_id
 
 
-async def test_anonymous_request_requires_authentication():
+async def test_local_request_uses_fixed_owner_without_authentication():
     app.dependency_overrides.pop(get_approval_principal, None)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
-    ) as anonymous:
-        response = await anonymous.get("/api/v1/mcp/human-gates")
-    assert response.status_code == 401
-    assert response.json()["detail"]["code"] == "authentication_required"
+    ) as local_client:
+        response = await local_client.get("/api/v1/mcp/human-gates")
+    assert response.status_code == 200
+    assert isinstance(response.json()["data"], list)

@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-
 export interface RuntimeTraceEventInput {
   source: 'agent.websocket'
   event_id: string
@@ -19,27 +17,16 @@ export interface RuntimeTraceEventInput {
 
 type FetchLike = typeof fetch
 
-function tokenFromFile(path = process.env.OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE?.trim() || ''): string | null {
-  if (!path) return null
-  try {
-    const token = readFileSync(path, 'utf8').trim()
-    return token.length >= 24 ? token : null
-  } catch {
-    return null
-  }
-}
-
 export function createRuntimeTracePublisher(options: { baseUrl?: string; token?: string | null; fetchImpl?: FetchLike } = {}) {
   const baseUrl = options.baseUrl || process.env.KNOWLEDGE_ENGINE_URL || process.env.OMNI_KE_URL || 'http://localhost:8002'
-  const token = options.token === undefined ? tokenFromFile() : options.token
+  void options.token
   const fetchImpl = options.fetchImpl || fetch
   let queue: Promise<boolean> = Promise.resolve(true)
   const send = async (event: RuntimeTraceEventInput): Promise<boolean> => {
-    if (!token) return false
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const response = await fetchImpl(`${baseUrl}/api/v1/runtime-traces/${encodeURIComponent(event.trace_id)}/events`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(event), signal: AbortSignal.timeout(3000),
         })
         if (response.ok) return true
@@ -51,7 +38,7 @@ export function createRuntimeTracePublisher(options: { baseUrl?: string; token?:
     return false
   }
   return {
-    enabled: Boolean(token),
+    enabled: true,
     async publish(event: RuntimeTraceEventInput): Promise<boolean> {
       queue = queue.then(() => send(event), () => send(event))
       return queue

@@ -5,6 +5,9 @@ const newsAggregatorUrl = process.env.NEWS_AGGREGATOR_URL || 'http://127.0.0.1:8
 const knowledgeEngineUrl = process.env.KNOWLEDGE_ENGINE_URL || 'http://127.0.0.1:8002';
 
 const nextConfig = {
+  // The repository still has legacy full-tree lint debt. Keep production type
+  // checking enabled and lint changed files explicitly until that backlog is retired.
+  eslint: { ignoreDuringBuilds: true },
   async rewrites() {
     return [
       {

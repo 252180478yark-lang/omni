@@ -1,13 +1,14 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { POST } from '@/app/api/omni/workbench/navigation-events/route'
 
 let directory = ''
 let tokenPath = ''
 let actorSerial = 0
+let testMinute = 0
 
 beforeAll(() => {
   directory = mkdtempSync(join(tmpdir(), 'omni-workbench-telemetry-'))
@@ -25,6 +26,11 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
+beforeEach(() => {
+  testMinute += 1
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-02T10:00:00.000Z') + testMinute * 60_000)
+})
+
 function request(
   body: unknown,
   options: { withOrigin?: boolean; authenticated?: boolean; host?: string } = {},
@@ -38,7 +44,7 @@ function request(
       'Content-Type': 'application/json',
       Host: host,
       ...(withOrigin ? { Origin: `http://${host}` } : {}),
-      ...(authenticated ? { Cookie: 'omni_approval_session=test-browser-session' } : {}),
+      ...(authenticated ? { Cookie: 'omni_approval_session=test' } : {}),
     },
     body: JSON.stringify(body),
   })
@@ -87,29 +93,27 @@ const aliasPayload = (result: 'redirected' | 'recovered' | 'failed') => ({
 })
 
 describe('workbench navigation telemetry BFF', () => {
-  it('accepts the local owner without a cookie but still requires same-origin mutation', async () => {
+  it('uses the local owner without a browser credential and still validates origin', async () => {
     const { fetchMock, knowledgeBodies } = enableServices()
     const anonymous = await POST(request(aliasPayload('redirected'), { authenticated: false }))
     expect(anonymous.status).toBe(202)
     expect(await anonymous.json()).toEqual({ success: true, accepted: true })
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(knowledgeBodies).toHaveLength(1)
 
     const originless = await POST(request(aliasPayload('redirected'), { withOrigin: false }))
     expect(originless.status).toBe(403)
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('returns typed telemetry-unavailable when its compatibility credential is unavailable', async () => {
+  it('does not contact identity or read a compatibility token', async () => {
     const { fetchMock, knowledgeBodies } = enableServices({ identityUnavailable: true })
     vi.stubEnv('OMNI_COMPATIBILITY_TOKEN_FILE', join(directory, 'missing'))
     const response = await POST(request(aliasPayload('redirected')))
-    expect(response.status).toBe(503)
-    expect(await response.json()).toMatchObject({
-      error: { code: 'compatibility_telemetry_unavailable', retryable: true },
-    })
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(knowledgeBodies).toHaveLength(0)
+    expect(response.status).toBe(202)
+    expect(await response.json()).toEqual({ success: true, accepted: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(knowledgeBodies).toHaveLength(1)
   })
 
   it('accepts and registry-revalidates redirected, recovered and failed alias outcomes', async () => {
@@ -136,7 +140,7 @@ describe('workbench navigation telemetry BFF', () => {
     }
   })
 
-  it('accepts a legacy user cookie as local-owner navigation evidence', async () => {
+  it('ignores legacy Identity role input and records as the local owner', async () => {
     const { knowledgeBodies } = enableServices({ role: 'user', actorId: 'normal-user@example.test' })
 
     const response = await POST(request(aliasPayload('redirected')))
@@ -340,16 +344,13 @@ describe('workbench navigation telemetry BFF', () => {
     expect(knowledgeBodies).toHaveLength(1)
   })
 
-  it('returns typed retryable unavailable when the secret or compatibility service is down', async () => {
+  it('ignores a missing legacy secret and returns typed unavailable only when compatibility is down', async () => {
     const missingSecretServices = enableServices()
     vi.stubEnv('OMNI_COMPATIBILITY_TOKEN_FILE', join(directory, 'missing'))
     const missingSecret = await POST(request(aliasPayload('redirected')))
-    expect(missingSecret.status).toBe(503)
-    expect(await missingSecret.json()).toEqual({
-      success: false,
-      error: { code: 'compatibility_telemetry_unavailable', retryable: true },
-    })
-    expect(missingSecretServices.knowledgeBodies).toHaveLength(0)
+    expect(missingSecret.status).toBe(202)
+    expect(await missingSecret.json()).toEqual({ success: true, accepted: true })
+    expect(missingSecretServices.knowledgeBodies).toHaveLength(1)
 
     const upstreamDownServices = enableServices({ knowledgeStatus: 503 })
     const upstreamDown = await POST(request(aliasPayload('failed')))

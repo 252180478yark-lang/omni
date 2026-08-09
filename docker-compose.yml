@@ -146,8 +146,8 @@ services:
     ports:
       # W6 multi-device: nginx 绑 0.0.0.0 让 tailnet 内 OPPO/Mac 能访问;
       # 其他服务 (KE/Hub/Frontend) 保持 127.0.0.1, 由 nginx 反代统一出口
-      - "${NGINX_HTTP_PORT:-80}:80"
-      - "${NGINX_HTTPS_PORT:-443}:443"
+      - "127.0.0.1:${NGINX_HTTP_PORT:-80}:80"
+      - "127.0.0.1:${NGINX_HTTPS_PORT:-443}:443"
     volumes:
       - ./services/infra-core/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/infra-core/nginx/conf.d:/etc/nginx/conf.d:ro
@@ -161,41 +161,6 @@ services:
 
   # ═══ Application Services ═══
 
-  identity-service:
-    profiles: ["legacy-identity"]
-    build:
-      context: ./services/identity-service
-      labels: *build-labels
-      args: *build-args
-    labels: *runtime-labels
-    environment:
-      <<: *runtime-env
-      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/3"
-      JWT_SECRET_KEY_FILE: "/run/secrets/omni_identity_jwt"
-      JWT_ALGORITHM: "HS256"
-      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-    expose:
-      - "8000"
-    volumes:
-      - "${OMNI_IDENTITY_JWT_SECRET_FILE:?Identity JWT secret file required}:/run/secrets/omni_identity_jwt:ro"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - omni-network
-
   frontend:
     build:
       context: ./frontend
@@ -206,8 +171,6 @@ services:
     labels: *runtime-labels
     environment:
       <<: *runtime-env
-      OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
-      OMNI_APPROVAL_AUTH_MODE: "trusted-local"
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
       NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
@@ -219,8 +182,6 @@ services:
       AD_REVIEW_SERVICE_URL: "http://ad-review-service:8008"
       SCOUT_AGENT_URL: "http://scout-agent:8009"
     command: ["npm", "run", "start"]
-    volumes:
-      - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     healthcheck:
@@ -340,10 +301,7 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/1"
       OMNI_SCHEDULER_ENABLED: "${OMNI_SCHEDULER_ENABLED:-false}"
       OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
-      OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
-      OMNI_APPROVAL_AUTH_MODE: "trusted-local"
-      OMNI_TRUSTED_LOCAL_PRINCIPAL: "local-owner"
-      OMNI_TRUSTED_LOCAL_ROLES: "owner,admin"
+      OMNI_REPO_ROOT: "/workspace"
       # P0 owner-facing preflight reads this checkout only to hash the
       # migration/config baseline; it never writes to the mount.
       P0_REPOSITORY_ROOT: "/workspace"
@@ -368,7 +326,6 @@ services:
       # Dev: host 直通访问（Claude Code MCP / 直接 curl 调试）
       - "127.0.0.1:${KNOWLEDGE_ENGINE_PORT:-8002}:8002"
     volumes:
-      - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
       - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
       - knowledge_data:/app/data
       # The P0 baseline card must compare runtime state with the same checked
@@ -519,7 +476,6 @@ services:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       AI_HUB_URL: "http://ai-provider-hub:8001"
       OMNI_KE_URL: "http://knowledge-engine:8002"
-      OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE: "/run/secrets/omni_runtime_trace"
       DOUYIN_SHOP_ID: "${DOUYIN_SHOP_ID:-}"
       YUNTU_BRAND_ID: "${YUNTU_BRAND_ID:-WADAKAN_HETIANKUAN}"
       YUNTU_INDUSTRY: "${YUNTU_INDUSTRY:-food_beverage}"
@@ -534,7 +490,6 @@ services:
       - ./services/scout-agent/sessions:/app/sessions
       - ./services/scout-agent/downloads:/app/downloads
       - ./services/scout-agent/snapshots:/app/snapshots
-      - "${OMNI_RUNTIME_TRACE_TOKEN_FILE:?Runtime trace token file required}:/run/secrets/omni_runtime_trace:ro"
     depends_on:
       migrate:
         condition: service_completed_successfully

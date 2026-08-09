@@ -1,0 +1,192 @@
+schema_version: 3
+change_id: 2026-08-10-s8-s10-evidence-loss-quarantine
+title: Quarantine irrecoverable S8-S10 Git evidence without false delivery
+state: GRAPH_DIFF_READY
+created_at: '2026-08-09T14:14:27Z'
+updated_at: '2026-08-09T14:18:36Z'
+feature_refs:
+- feature_id: system-convergence-s8-s10-evidence-quarantine
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S0.5:evidence-loss-quarantine
+before_snapshot:
+  ref: git:fbeb99f8651d6844910ddb45a0ac7c5375130129
+delivery:
+  authority: ci_attestation
+  base_commit: fbeb99f8651d6844910ddb45a0ac7c5375130129
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - Changes governance interpretation and reporting for an irrecoverable historical Git evidence dependency.
+  - Must preserve fail-closed delivery and ownership semantics while allowing portable verification on machines that never possessed the unmerged object.
+  external_effects: []
+  scope_deltas: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The historical S8-S10 candidate commit 8df227bc1be5dee02bea8006d596e30aae802539 is permanently unavailable from the original Windows repository, local objects, origin heads, pull refs, and direct fetch. A production test requires that object on every machine even though its handoff remains unmerged and not delivered.
+  expected_outcome: A versioned, CI-attested quarantine records the exact missing candidate and expected hashes without reconstructing, retiring, or delivering it. Portable verification reports the loss explicitly; if the object reappears, normal hash binding becomes mandatory again.
+  user_visible_behavior:
+  - Ownership inventory exposes an evidence quarantine only after the quarantine contract itself has a trusted external delivery receipt.
+  - The quarantine never removes an active source worktree, grants ownership, marks the historical candidate delivered, or authorizes retirement.
+  - Before CI attestation the repository remains locally verified but not delivered.
+current_chain:
+  nodes:
+  - id: state:historical-s8-s10-unmerged-candidate
+    role: Unavailable commit recorded by the historical handoff as unmerged_not_delivered.
+  - id: service:scripts.workspace_ownership.trusted_retirements
+    role: Requires exact source Git blobs before a handoff can retire active ownership.
+  - id: test:tests/test_workspace_ownership.py::test_production_s8_s10_handoff_hashes_bind_to_the_historical_git_blobs
+    role: Currently requires the unavailable object unconditionally.
+  edges:
+  - from: test:tests/test_workspace_ownership.py::test_production_s8_s10_handoff_hashes_bind_to_the_historical_git_blobs
+    to: service:scripts.workspace_ownership.trusted_retirements
+    relation: verifies
+  evidence:
+  - docs/dev-changes/2026-08-04-s8-s10-supersession-handoff/impact.yaml records candidate 8df227bc1be5dee02bea8006d596e30aae802539, both source hashes, and unmerged_not_delivered.
+  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/completion.yaml records that local and direct-origin recovery failed and explicitly deselects the single object-dependent test.
+  - User confirmed on 2026-08-10 that the original Windows source can no longer be recovered and authorized direct fail-closed repair.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - service:scripts.workspace_ownership.historical_candidate_evidence
+  database: []
+  data_sources: []
+  states_workflows:
+  - state:historical_evidence.available_verified_unavailable_quarantined_invalid
+  tests:
+  - test:tests/test_workspace_ownership.py
+  docs:
+  - docs/dev-changes/2026-08-10-s8-s10-evidence-loss-quarantine/**
+planned_changes:
+- id: LOSS-001
+  action: modify
+  kind: governance-service
+  node_id: service:scripts.workspace_ownership.historical_candidate_evidence
+  paths:
+  - scripts/workspace_ownership.py
+  upstream:
+  - state:historical-s8-s10-unmerged-candidate
+  - source:ci.delivery-attestation
+  downstream:
+  - projection:workspace-ownership.evidence-quarantines
+  contract_change: compatible
+  verification_ids:
+  - LOSS-VER-001
+  - LOSS-VER-002
+- id: LOSS-002
+  action: modify
+  kind: governance-tests
+  node_id: test:tests/test_workspace_ownership.py
+  paths:
+  - tests/test_workspace_ownership.py
+  upstream:
+  - service:scripts.workspace_ownership.historical_candidate_evidence
+  downstream:
+  - test:tests/test_workspace_ownership.py
+  contract_change: compatible
+  verification_ids:
+  - LOSS-VER-001
+- id: LOSS-003
+  action: add
+  kind: evidence-quarantine-contract
+  node_id: state:historical_evidence.unavailable_quarantined
+  paths:
+  - docs/dev-changes/2026-08-10-s8-s10-evidence-loss-quarantine/**
+  upstream:
+  - state:historical-s8-s10-unmerged-candidate
+  downstream:
+  - service:scripts.workspace_ownership.historical_candidate_evidence
+  contract_change: compatible
+  verification_ids:
+  - LOSS-VER-001
+  - LOSS-VER-003
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: No HTTP, MCP, IPC, or frontend contract changes.
+  database:
+    status: not_applicable
+    strategy: No database, migration, or persistent business data changes.
+  workflow:
+    status: compatible
+    strategy: Existing exact-hash retirement remains unchanged. The additive quarantine has no ownership or delivery effect, requires its own CI attestation for inventory reporting, and automatically stops applying if the candidate object becomes available.
+  data_source:
+    status: compatible
+    strategy: Git object lookup remains local and read-only; no remote response or mutable external state is trusted as delivery evidence.
+graph_acceptance:
+  required_edges:
+  - from: state:historical_evidence.unavailable_quarantined
+    to: service:scripts.workspace_ownership.historical_candidate_evidence
+    relation: declares
+  - from: service:scripts.workspace_ownership.historical_candidate_evidence
+    to: projection:workspace-ownership.evidence-quarantines
+    relation: projects
+  - from: test:tests/test_workspace_ownership.py
+    to: service:scripts.workspace_ownership.historical_candidate_evidence
+    relation: verifies_fail_closed
+  allowed_unknowns: []
+  forbidden_orphans: []
+risks:
+- id: LOSS-RISK-001
+  description: A quarantine could be mistaken for delivery or retirement.
+  mitigation: Require explicit false completion/retirement fields, preserve unmerged_not_delivered, and never pass quarantine records into active scope exclusion.
+- id: LOSS-RISK-002
+  description: A later-restored object could remain hidden behind the quarantine.
+  mitigation: Object availability takes precedence; any reappearing object must pass the original commit/state/hash binding and disables quarantine status.
+- id: LOSS-RISK-003
+  description: Self-authored worktree YAML could become authoritative.
+  mitigation: Inventory exposes quarantines only from an immutable subject commit already verified by the existing external delivery resolver.
+out_of_scope:
+- Reconstructing or fabricating commit 8df227bc1be5dee02bea8006d596e30aae802539.
+- Editing or rewriting the historical S8-S10 and supersession contracts.
+- Marking the historical candidate COMPLETE, delivered, retired, or deleted.
+- Resolving unrelated secret-scan, migration-runtime, Hook-trust, active-worktree, or external CI delivery gates.
+rollback:
+  strategy: Revert the quarantine commit; the original exact-object fail-closed behavior returns and no historical evidence or runtime data changes.
+  data_recovery: Not applicable; the change adds a read-only governance interpretation and versioned record only.
+verification_plan:
+- id: LOSS-VER-001
+  layer: unit
+  command: python -m pytest -q tests/test_workspace_ownership.py
+  proves: Exact-object success/mismatch, unavailable-without-quarantine, valid quarantine, malformed quarantine, attestation gating, no-retirement effect, and production record behavior.
+  required: true
+- id: LOSS-VER-002
+  layer: governance-consumers
+  command: python -m pytest -q tests/test_implementation_status.py tests/test_development_readiness.py tests/test_prd_status_projection.py
+  proves: Additive ownership reporting preserves delivery projection and readiness truth boundaries.
+  required: true
+- id: LOSS-VER-003
+  layer: contract
+  command: python scripts/check_agent_policy.py --require-tracked
+  proves: Repository governance assets remain portable, tracked, and policy compliant.
+  required: true
+evidence_quarantine:
+  schema_version: 1
+  mode: quarantine_irrecoverable_git_candidate
+  effective_when: this_contract_is_ci_attested
+  source:
+    handoff_change_id: 2026-08-04-s8-s10-supersession-handoff
+    change_id: 2026-08-01-system-convergence-s8-s10
+    candidate_commit: 8df227bc1be5dee02bea8006d596e30aae802539
+    required_state: GRAPH_DIFF_READY
+    impact_sha256: 62ad4dd2ca63535ecec73af0f52ee11817ee1b75f1247d9f0636115a049d21b8
+    completion_sha256: 6a3990ef74681ab4ba7dd8eb647b6051b7d7c6369ee39003a7e733cb02dcf81e
+  consequence:
+    delivery_status: unmerged_not_delivered
+    ownership_effect: none
+    retirement_authorized: false
+    completion_claimed: false
+    if_object_reappears: quarantine_invalid_revalidate_original_handoff
+  recovery_audit:
+    local_object: unavailable
+    origin_heads_and_pull_refs: unavailable
+    direct_fetch: not_our_ref
+    original_windows_source: user_confirmed_irrecoverable
+lock:
+  locked_at: '2026-08-09T14:16:00Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.

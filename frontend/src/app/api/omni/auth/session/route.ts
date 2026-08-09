@@ -1,7 +1,5 @@
-import { NextResponse } from 'next/server'
-
 import {
-  requireApprovalActor,
+  LOCAL_OWNER,
   requireSameOrigin,
   ServiceFetchError,
 } from '../../_shared'
@@ -16,24 +14,17 @@ function safeError(error: unknown, fallback = 'authentication_failed') {
   }
 }
 
-export async function GET(request: Request) {
-  try {
-    const actor = await requireApprovalActor(request)
-    return NextResponse.json({ success: true, actor })
-  } catch (error: unknown) {
-    const safe = safeError(error)
-    return NextResponse.json({ success: false, error: safe.code }, { status: safe.status })
-  }
+export async function GET() {
+  return Response.json({ success: true, mode: 'single-user-local', actor: LOCAL_OWNER })
 }
 
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request)
-    const actor = await requireApprovalActor(request)
-    return NextResponse.json({ success: true, actor, trust_mode: 'trusted-local' })
+    return Response.json({ success: true, mode: 'single-user-local', actor: LOCAL_OWNER })
   } catch (error: unknown) {
     const safe = safeError(error)
-    return NextResponse.json({ success: false, error: safe.code }, { status: safe.status })
+    return Response.json({ success: false, error: safe.code }, { status: safe.status })
   }
 }
 
@@ -42,10 +33,10 @@ export async function DELETE(request: Request) {
     requireSameOrigin(request)
   } catch (error: unknown) {
     const safe = safeError(error)
-    return NextResponse.json(
+    return Response.json(
       { success: false, error: safe.code },
       { status: safe.status },
     )
   }
-  return NextResponse.json({ success: true, trust_mode: 'trusted-local' })
+  return Response.json({ success: true, mode: 'single-user-local', actor: LOCAL_OWNER })
 }

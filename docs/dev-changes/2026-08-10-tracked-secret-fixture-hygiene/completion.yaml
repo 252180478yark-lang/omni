@@ -1,0 +1,56 @@
+schema_version: 3
+change_id: 2026-08-10-tracked-secret-fixture-hygiene
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: TSFH-ACT-001
+  planned_change_id: TSFH-CHG-001
+  paths:
+  - frontend/tests/workbench-navigation-events.test.ts
+  - scripts/verify_workbench_g1_migration.ps1
+  - tests/test_w5_recovery_evidence.py
+  summary: Removed seven credential-shaped contiguous source literals while preserving the same authentication branch, disposable migration rejection cases and runtime secret-scanner fixtures; scanner patterns and allowlists are unchanged.
+contract_delta:
+- description: Replaced the all-platform W5 regression command with the portable selection on macOS and left the common-directory junction case to Windows CI.
+  reason: The junction test unconditionally invokes cmd.exe and cannot execute on the current macOS repair host; its failure was FileNotFoundError before reaching any changed fixture logic.
+  effect: Local evidence covers all 46 portable workspace/W5 cases plus the exact frontend test; no Windows junction behavior is claimed locally and immutable CI remains the delivery authority.
+  accepted: true
+verification_results:
+- id: TSFH-VER-001
+  command: uv run --no-project --with 'pyyaml>=6,<7' python scripts/workspace_ownership.py --current-only --secret-scope tracked --fail-secrets
+  status: passed
+  exit_code: 0
+  evidence: Fresh unchanged tracked scanner completed with finding_count=0 and findings=[]; the prior seven credential-shaped fixture findings are gone without an allowlist override.
+- id: TSFH-VER-002
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pyyaml>=6,<7' pytest -q tests/test_workspace_ownership.py tests/test_w5_recovery_evidence.py -k 'not test_manifest_rejects_common_dir_junction_escape' && cd frontend && npx vitest run tests/workbench-navigation-events.test.ts
+  status: passed
+  exit_code: 0
+  evidence: Portable governance/W5 selection passed 46 tests with only the cmd.exe junction case deselected; the exact frontend navigation-events file passed all 13 tests. The full unfiltered Python run separately reached 46 passed before the same macOS FileNotFoundError for cmd.exe.
+graph_diff:
+  status: clean
+  snapshot_before: git:30c5f4cda703250a46a12ec6145e934d042863f7
+  snapshot_after: worktree:30c5f4cda703250a46a12ec6145e934d042863f7:tracked-secret-fixture-hygiene
+  added_nodes: []
+  modified_nodes:
+  - state:s0-secret-scan
+  removed_nodes: []
+  added_edges: []
+  removed_edges: []
+  required_edges:
+  - from: scanner:scripts.workspace_ownership.scan_secrets
+    to: state:s0-secret-scan
+    relation: reports
+    status: present
+    evidence: TSFH-VER-001 exercised the unchanged scanner and reported the tracked repository baseline as passed with zero findings.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: Fixture-only changes have no persisted state; reverting the candidate commit restores the prior literals, and no scanner rule, allowlist, runtime configuration or data was changed.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: All seven tracked fixture false positives are removed and local portable verification is green; formal completion still requires immutable external CI attestation.

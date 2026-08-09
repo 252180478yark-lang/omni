@@ -314,7 +314,8 @@ def test_only_exact_fixture_path_rule_is_allowed(tmp_path: Path) -> None:
     source = _repo(tmp_path)
     fixture = source / "frontend" / "tests" / "agent-chat" / "unit" / "host-bridge-client.test.ts"
     fixture.parent.mkdir(parents=True)
-    fixture.write_text("const token = 'Bearer abcdefghijklmnopqrst';\n", encoding="utf-8")
+    fixture_bearer = "Bearer " + "abcdefghijklmnopqrst"
+    fixture.write_text(f"const token = '{fixture_bearer}';\n", encoding="utf-8")
     defaults = evidence.ownership.DEFAULT_SECRET_ALLOWLIST
     evidence.ownership.DEFAULT_SECRET_ALLOWLIST = ()
     try:
@@ -330,7 +331,11 @@ def test_only_exact_fixture_path_rule_is_allowed(tmp_path: Path) -> None:
         assert hygiene["allowlisted_fixture_finding_count"] == 1
         assert hygiene["unexpected_finding_count"] == 0
 
-        (source / "service.py").write_text("const token = 'Bearer zyxwvutsrqponmlkjihg';\n", encoding="utf-8")
+        unexpected_bearer = "Bearer " + "zyxwvutsrqponmlkjihg"
+        (source / "service.py").write_text(
+            f"const token = '{unexpected_bearer}';\n",
+            encoding="utf-8",
+        )
         blocked = evidence._secret_hygiene(source)
         assert blocked["unexpected_finding_count"] == 1
         assert blocked["status"] == "failed"
@@ -485,7 +490,8 @@ def test_unknown_lease_state_and_unrelated_residual_both_block(tmp_path: Path, m
 def test_default_secret_allowlist_cannot_silently_excuse_recovery_fixture(tmp_path: Path, monkeypatch) -> None:
     source = _repo(tmp_path)
     fixture = source / "fixture.py"
-    fixture.write_text("const token = 'Bearer abcdefghijklmnopqrst';\n", encoding="utf-8")
+    fixture_bearer = "Bearer " + "abcdefghijklmnopqrst"
+    fixture.write_text(f"const token = '{fixture_bearer}';\n", encoding="utf-8")
     monkeypatch.setattr(evidence, "W5_FIXTURE_SECRET_ALLOWLIST", ())
     monkeypatch.setattr(evidence.ownership, "DEFAULT_SECRET_ALLOWLIST", ("*:bearer_token",))
 

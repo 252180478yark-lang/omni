@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
-import { readFileSync } from 'node:fs'
 
 import { codexEventToClaudeChunks } from './codex-runner'
 import type { ClaudeRunner, SpawnOptions } from './claude-runner'
@@ -12,24 +11,11 @@ interface HostBridgeEvent {
   payload: { chunk?: Record<string, unknown> }
 }
 
-function hostToken(): string | null {
-  const path = process.env.OMNI_HOST_TOKEN_FILE?.trim()
-  if (!path) return null
-  try {
-    const value = readFileSync(path, 'utf8').trim()
-    return value.length >= 24 ? value : null
-  } catch {
-    return null
-  }
-}
-
 async function hostFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = hostToken()
-  if (!token) throw new Error('host_auth_unconfigured')
   const base = (process.env.OMNI_HOST_BRIDGE_URL || 'http://127.0.0.1:7777').replace(/\/$/, '')
   const response = await fetch(`${base}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...init.headers },
+    headers: { 'Content-Type': 'application/json', ...init.headers },
     signal: AbortSignal.timeout(5_000),
   })
   if (!response.ok) throw new Error(`host_bridge_status_${response.status}`)

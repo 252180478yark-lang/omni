@@ -1,11 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import asyncio
-import hashlib
-import hmac
 import inspect
 import json
-import time
-import uuid
 from pathlib import Path
 import sys
 from unittest.mock import AsyncMock
@@ -504,33 +500,8 @@ async def test_authentication_and_owner_read_are_fail_closed():
     assert (denied.value.code, denied.value.status) == ("approval_read_forbidden", 403)
 
 
-def signed_headers(secret: bytes, method: str, path: str, body: bytes = b"") -> dict[str, str]:
-    timestamp = str(int(time.time()))
-    nonce = str(uuid.uuid4())
-    body_hash = hashlib.sha256(body).hexdigest()
-    actor_id = "admin@example.com"
-    actor_role = "admin"
-    canonical = "\n".join(
-        ("frontend", timestamp, nonce, method, path, body_hash, actor_id, actor_role)
-    ).encode()
-    return {
-        "X-Omni-Service-Id": "frontend",
-        "X-Omni-Timestamp": timestamp,
-        "X-Omni-Nonce": nonce,
-        "X-Omni-Body-SHA256": body_hash,
-        "X-Omni-Signature": hmac.new(secret, canonical, hashlib.sha256).hexdigest(),
-        "X-Omni-Actor-Id": actor_id,
-        "X-Omni-Actor-Role": actor_role,
-    }
-
-
 @pytest.mark.asyncio
-async def test_service_hmac_is_required_replay_protected_and_cannot_create(tmp_path, monkeypatch):
-    secret = b"a-secure-fixture-secret-with-at-least-32-bytes"
-    secret_path = tmp_path / "approval-hmac"
-    secret_path.write_bytes(secret)
-    monkeypatch.setenv("OMNI_APPROVAL_SERVICE_SECRET_FILE", str(secret_path))
-    monkeypatch.setenv("OMNI_APPROVAL_AUTH_MODE", "service-hmac")
+async def test_local_owner_needs_no_hmac_and_idempotency_still_prevents_duplicates():
     repository = InMemoryApprovalRepository()
     service = ApprovalOperationService(repository, now=Clock())
     app = FastAPI()
@@ -540,12 +511,10 @@ async def test_service_hmac_is_required_replay_protected_and_cannot_create(tmp_p
     payload = request().model_dump(mode="json")
     body = json.dumps(payload, separators=(",", ":")).encode()
     path = "/api/v1/approval-operations"
-    headers = {"Content-Type": "application/json", **signed_headers(secret, "POST", path, body)}
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        anonymous = await client.post(path, content=body, headers={"Content-Type": "application/json"})
-        forbidden = await client.post(path, content=body, headers=headers)
-        replay = await client.post(path, content=body, headers=headers)
-    assert anonymous.status_code == 401
-    assert forbidden.status_code == 403
-    assert replay.status_code == 401
-    assert repository.operations == {}
+        first = await client.post(path, content=body, headers={"Content-Type": "application/json"})
+        replay = await client.post(path, content=body, headers={"Content-Type": "application/json"})
+    assert first.status_code == 202
+    assert replay.status_code == 202
+    assert first.json()["operation_id"] == replay.json()["operation_id"]
+    assert len(repository.operations) == 1

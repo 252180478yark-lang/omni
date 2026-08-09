@@ -1,11 +1,7 @@
 from datetime import datetime, timedelta, timezone
-import hashlib
-import hmac
 import json
 from pathlib import Path
 import sys
-import time
-import uuid
 
 import httpx
 import pytest
@@ -41,27 +37,6 @@ OWNER = ApprovalPrincipal(
     scopes=frozenset({"approval:request", "approval:execute"}),
 )
 ALLOW = StaticApprovalAuthorizationVerifier(OWNER)
-
-
-def service_headers(secret: bytes, method: str, path: str, body: bytes) -> dict[str, str]:
-    timestamp = str(int(time.time()))
-    nonce = str(uuid.uuid4())
-    body_hash = hashlib.sha256(body).hexdigest()
-    actor_id = "admin@example.com"
-    actor_role = "admin"
-    canonical = "\n".join(
-        ("frontend", timestamp, nonce, method, path, body_hash, actor_id, actor_role)
-    ).encode()
-    return {
-        "Content-Type": "application/json",
-        "X-Omni-Service-Id": "frontend",
-        "X-Omni-Timestamp": timestamp,
-        "X-Omni-Nonce": nonce,
-        "X-Omni-Body-SHA256": body_hash,
-        "X-Omni-Signature": hmac.new(secret, canonical, hashlib.sha256).hexdigest(),
-        "X-Omni-Actor-Id": actor_id,
-        "X-Omni-Actor-Role": actor_role,
-    }
 
 
 class Clock:
@@ -541,11 +516,7 @@ async def test_non_persistable_handler_result_moves_to_reconciliation(result_val
 
 
 @pytest.mark.asyncio
-async def test_local_owner_create_approve_worker_status_chain_and_audit(tmp_path, monkeypatch):
-    secret = b"fixture-hmac-secret-longer-than-thirty-two-bytes"
-    secret_path = tmp_path / "approval-secret"
-    secret_path.write_bytes(secret)
-    monkeypatch.setenv("OMNI_APPROVAL_SERVICE_SECRET_FILE", str(secret_path))
+async def test_local_owner_create_approve_worker_status_chain_and_audit(monkeypatch):
     repository = InMemoryApprovalRepository()
     clock = Clock()
     requester = knowledge_engine_requester_principal()
@@ -573,7 +544,7 @@ async def test_local_owner_create_approve_worker_status_chain_and_audit(tmp_path
     app.include_router(human_gate_router.router)
     transport = httpx.ASGITransport(app=app)
     create_payload = ApprovalOperationCreate(
-        request_id="request-hmac-chain",
+        request_id="request-local-owner-chain",
         requested_by="caller:untrusted",
         permission_snapshot={"roles": ["admin"], "scopes": ["anything"]},
         handler="system.noop-audit",
@@ -591,7 +562,7 @@ async def test_local_owner_create_approve_worker_status_chain_and_audit(tmp_path
         approved_response = await client.post(
             approve_path,
             content=approve_body,
-            headers=service_headers(secret, "POST", approve_path, approve_body),
+            headers={"Content-Type": "application/json"},
         )
     assert approved_response.status_code == 200
 

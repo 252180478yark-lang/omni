@@ -16,10 +16,8 @@ import importlib.util
 import json
 import os
 import re
-import secrets
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from dataclasses import asdict, dataclass
@@ -172,127 +170,6 @@ def git_common_dir(root: Path) -> Path:
 
 def default_state_dir(root: Path) -> Path:
     return git_common_dir(root) / "omni-runtime"
-
-
-def _default_runtime_secret_path(root: Path, filename: str, label: str) -> Path:
-    repo_key = repository_id(root)
-    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-        base = Path(os.environ["LOCALAPPDATA"])
-    elif os.environ.get("XDG_STATE_HOME"):
-        base = Path(os.environ["XDG_STATE_HOME"])
-    else:
-        base = Path(tempfile.gettempdir()) / "omni-local-state"
-    path = (base / "Omni" / "runtime-secrets" / repo_key / filename).resolve()
-    try:
-        path.relative_to(root.resolve())
-    except ValueError:
-        return path
-    raise AllocationError(f"{label} secret path must remain outside the repository")
-
-
-def default_approval_secret_path(root: Path) -> Path:
-    """Return a stable repository-external approval HMAC secret reference."""
-
-    return _default_runtime_secret_path(root, "approval-hmac.key", "approval HMAC")
-
-
-def default_identity_jwt_secret_path(root: Path) -> Path:
-    """Return an independent repository-external identity JWT secret reference."""
-
-    return _default_runtime_secret_path(root, "identity-jwt.key", "identity JWT")
-
-
-def default_compatibility_token_path(root: Path) -> Path:
-    """Return an independent repository-external compatibility token reference."""
-
-    return _default_runtime_secret_path(root, "compatibility-token.key", "compatibility token")
-
-
-def default_runtime_trace_token_path(root: Path) -> Path:
-    """Return an independent repository-external runtime trace token reference."""
-
-    return _default_runtime_secret_path(root, "runtime-trace-token.key", "runtime trace token")
-
-
-def _ensure_runtime_secret(
-    root: Path,
-    *,
-    target: Path,
-    label: str,
-    secret_factory: Any,
-) -> Path:
-    target = target.resolve()
-    try:
-        target.relative_to(root.resolve())
-    except ValueError:
-        pass
-    else:
-        raise AllocationError(f"{label} secret path must remain outside the repository")
-    if target.exists():
-        if not target.is_file() or target.stat().st_size < 32:
-            raise AllocationError(f"{label} secret reference is invalid")
-        if os.name != "nt":
-            target.chmod(0o600)
-        return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(secret_factory())
-            handle.flush()
-            os.fsync(handle.fileno())
-        if os.name != "nt":
-            temporary.chmod(0o600)
-        os.replace(temporary, target)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-    return target
-
-
-def ensure_approval_hmac_secret(root: Path, *, path: Path | None = None) -> Path:
-    """Create once with private permissions; never read or return its value."""
-
-    return _ensure_runtime_secret(
-        root,
-        target=path or default_approval_secret_path(root),
-        label="approval HMAC",
-        secret_factory=lambda: secrets.token_bytes(48),
-    )
-
-
-def ensure_identity_jwt_secret(root: Path, *, path: Path | None = None) -> Path:
-    """Create a distinct printable JWT key once without returning its value."""
-
-    return _ensure_runtime_secret(
-        root,
-        target=path or default_identity_jwt_secret_path(root),
-        label="identity JWT",
-        secret_factory=lambda: secrets.token_urlsafe(48).encode("ascii"),
-    )
-
-
-def ensure_compatibility_token(root: Path, *, path: Path | None = None) -> Path:
-    """Create a distinct printable compatibility token without returning its value."""
-
-    return _ensure_runtime_secret(
-        root,
-        target=path or default_compatibility_token_path(root),
-        label="compatibility token",
-        secret_factory=lambda: secrets.token_urlsafe(48).encode("ascii"),
-    )
-
-
-def ensure_runtime_trace_token(root: Path, *, path: Path | None = None) -> Path:
-    """Create a distinct printable runtime trace token without returning its value."""
-
-    return _ensure_runtime_secret(
-        root,
-        target=path or default_runtime_trace_token_path(root),
-        label="runtime trace token",
-        secret_factory=lambda: secrets.token_urlsafe(48).encode("ascii"),
-    )
 
 
 def primary_worktree(root: Path) -> Path:
@@ -986,10 +863,6 @@ def acquire(
                     raise CompareAndSwapConflict(
                         "active allocation request differs in paths, ports, mode, canonical flag, runtime profile, risk, or source fingerprint; release/renew with CAS"
                     )
-                approval_secret = default_approval_secret_path(root) if dry_run else ensure_approval_hmac_secret(root)
-                identity_secret = default_identity_jwt_secret_path(root) if dry_run else ensure_identity_jwt_secret(root)
-                compatibility_token = default_compatibility_token_path(root) if dry_run else ensure_compatibility_token(root)
-                runtime_trace_token = default_runtime_trace_token_path(root) if dry_run else ensure_runtime_trace_token(root)
                 return {
                     "schema_version": SCHEMA_VERSION,
                     "generation": generation,
@@ -1002,11 +875,6 @@ def acquire(
                         "OMNI_RUNTIME_STATE_DIR": str(store_dir).replace("\\", "/"),
                         "OMNI_RUNTIME_ALLOCATION_SOURCE": str(state_path).replace("\\", "/"),
                         "OMNI_RUNTIME_ALLOCATION_FILE": "/runtime-state/allocations.json",
-                        "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval_secret).replace("\\", "/"),
-                        "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity_secret).replace("\\", "/"),
-                        "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility_token).replace("\\", "/"),
-                        "OMNI_RUNTIME_TRACE_TOKEN_FILE": str(runtime_trace_token).replace("\\", "/"),
-                        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE": str(runtime_trace_token).replace("\\", "/"),
                     },
                     "state_path": "git-common-dir/omni-runtime/allocations.json"
                     if state_dir is None
@@ -1029,10 +897,6 @@ def acquire(
         conflicts = _conflicts(state, lease, allocation)
         if conflicts:
             raise AllocationConflict(conflicts)
-        approval_secret = default_approval_secret_path(root) if dry_run else ensure_approval_hmac_secret(root)
-        identity_secret = default_identity_jwt_secret_path(root) if dry_run else ensure_identity_jwt_secret(root)
-        compatibility_token = default_compatibility_token_path(root) if dry_run else ensure_compatibility_token(root)
-        runtime_trace_token = default_runtime_trace_token_path(root) if dry_run else ensure_runtime_trace_token(root)
         new_generation = generation + 1
         if not dry_run:
             state["leases"].append(lease.to_dict())
@@ -1051,11 +915,6 @@ def acquire(
                 "OMNI_RUNTIME_STATE_DIR": str(store_dir).replace("\\", "/"),
                 "OMNI_RUNTIME_ALLOCATION_SOURCE": str(state_path).replace("\\", "/"),
                 "OMNI_RUNTIME_ALLOCATION_FILE": "/runtime-state/allocations.json",
-                "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval_secret).replace("\\", "/"),
-                "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity_secret).replace("\\", "/"),
-                "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility_token).replace("\\", "/"),
-                "OMNI_RUNTIME_TRACE_TOKEN_FILE": str(runtime_trace_token).replace("\\", "/"),
-                "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE": str(runtime_trace_token).replace("\\", "/"),
             },
             "state_path": "git-common-dir/omni-runtime/allocations.json" if state_dir is None else str(state_path),
         }

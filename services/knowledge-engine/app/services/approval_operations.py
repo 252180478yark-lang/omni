@@ -19,7 +19,6 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Protocol
 from urllib.parse import urlsplit, urlunsplit
-from pathlib import Path
 
 from app.database import get_pool
 from app.schemas.approval_operations import (
@@ -277,35 +276,14 @@ class ApprovalPrincipal:
         )
 
 
-def trusted_local_principal(environ: dict[str, str] | None = None) -> ApprovalPrincipal | None:
-    env = environ if environ is not None else os.environ
-    if env.get("OMNI_APPROVAL_AUTH_MODE", "trusted-local").strip().lower() != "trusted-local":
-        return None
-    principal_id = env.get("OMNI_TRUSTED_LOCAL_PRINCIPAL", "local-owner").strip() or "local-owner"
-    def split(name: str) -> frozenset[str]:
-        return frozenset(
-            item.strip() for item in env.get(name, "").split(",") if item.strip()
-        )
-
+def trusted_local_principal(environ: dict[str, str] | None = None) -> ApprovalPrincipal:
+    del environ
     return ApprovalPrincipal(
-        principal_id=principal_id,
-        roles=split("OMNI_TRUSTED_LOCAL_ROLES") or frozenset({"owner"}),
-        scopes=split("OMNI_TRUSTED_LOCAL_SCOPES"),
-        verifier_version=env.get("OMNI_APPROVAL_VERIFIER_VERSION", "local-v1"),
+        principal_id="local-owner",
+        roles=frozenset({"owner"}),
+        scopes=frozenset({"approval:read:any", "approval:request", "approval:decide", "approval:execute"}),
+        verifier_version="single-user-local-v1",
     )
-
-
-def _approval_secret_configured(environ: dict[str, str] | None = None) -> bool:
-    env = environ if environ is not None else os.environ
-    secret_path = env.get("OMNI_APPROVAL_SERVICE_SECRET_FILE", "").strip()
-    if not secret_path:
-        return False
-    try:
-        if len(Path(secret_path).read_bytes()) < 32:
-            return False
-    except OSError:
-        return False
-    return True
 
 
 def identity_approver_principal(actor_id: str, role: str) -> ApprovalPrincipal | None:
@@ -322,9 +300,8 @@ def identity_approver_principal(actor_id: str, role: str) -> ApprovalPrincipal |
 
 def knowledge_engine_requester_principal(
     environ: dict[str, str] | None = None,
-) -> ApprovalPrincipal | None:
-    if not _approval_secret_configured(environ):
-        return None
+) -> ApprovalPrincipal:
+    del environ
     return ApprovalPrincipal(
         principal_id="service:knowledge-engine",
         roles=frozenset({"approval-requester"}),
@@ -345,23 +322,16 @@ class DenyApprovalAuthorizationVerifier:
 
 class EnvironmentApprovalAuthorizationVerifier:
     async def revalidate(self, record: "OperationRecord") -> bool:
-        local_principal = trusted_local_principal()
-        request_principals = (local_principal, knowledge_engine_requester_principal())
-        request_is_current = any(
+        principals = (trusted_local_principal(), knowledge_engine_requester_principal())
+        return any(
             principal is not None
             and principal.principal_id == record.requested_by
             and principal.snapshot_hash == record.permission_snapshot_hash
             and principal.can("approval:execute")
-            for principal in request_principals
+            and record.decision is ApprovalDecision.APPROVED
+            and record.decision_actor == "local-owner"
+            for principal in principals
         )
-        decision_actor_is_current = bool(
-            record.decision_actor
-            and (
-                record.decision_actor.startswith("identity:")
-                or (local_principal is not None and record.decision_actor == local_principal.principal_id)
-            )
-        )
-        return request_is_current and record.decision is ApprovalDecision.APPROVED and decision_actor_is_current
 
 
 class StaticApprovalAuthorizationVerifier:

@@ -7,7 +7,6 @@ const DEFAULTS = {
   livestreamAnalysis: 'http://localhost:8007',
   adReview: 'http://localhost:8008',
   scoutAgent: 'http://localhost:8009',
-  identity: 'http://localhost:8000',
 }
 
 function trimSlash(value: string): string {
@@ -26,7 +25,6 @@ export function serviceBase() {
     livestreamAnalysis: trimSlash(process.env.LIVESTREAM_ANALYSIS_SERVICE_URL || fallback || DEFAULTS.livestreamAnalysis),
     adReview: trimSlash(process.env.AD_REVIEW_SERVICE_URL || fallback || DEFAULTS.adReview),
     scoutAgent: trimSlash(process.env.SCOUT_AGENT_URL || fallback || DEFAULTS.scoutAgent),
-    identity: trimSlash(process.env.IDENTITY_SERVICE_URL || fallback || DEFAULTS.identity),
   }
 }
 
@@ -65,34 +63,11 @@ export interface AuthenticatedActor {
   role: 'admin' | 'owner' | 'user'
 }
 
-export const APPROVAL_SESSION_COOKIE = 'omni_approval_session'
-
-function cookieValue(cookieHeader: string | null, name: string): string | null {
-  if (!cookieHeader) return null
-  for (const item of cookieHeader.split(';')) {
-    const separator = item.indexOf('=')
-    if (separator < 1 || item.slice(0, separator).trim() !== name) continue
-    try {
-      const value = decodeURIComponent(item.slice(separator + 1).trim())
-      return value && value.length <= 8192 ? value : null
-    } catch {
-      return null
-    }
-  }
-  return null
-}
-
-export function approvalAuthorizationFromCookie(cookieHeader: string | null): string | null {
-  const token = cookieValue(cookieHeader, APPROVAL_SESSION_COOKIE)
-  return token ? `Bearer ${token}` : null
-}
+export const LOCAL_OWNER: ApprovalActor = Object.freeze({ id: 'local-owner', role: 'owner' })
 
 export async function verifyAuthenticatedActor(authorization: string | null): Promise<AuthenticatedActor> {
-  // Omni is a loopback-only, single-owner product. Browser identity is the local
-  // owner; external provider credentials and destructive-action confirmation are
-  // separate boundaries and are not weakened by removing product login.
   void authorization
-  return { id: 'local-owner', role: 'owner' }
+  return LOCAL_OWNER
 }
 
 export async function verifyApprovalActor(authorization: string | null): Promise<ApprovalActor> {
@@ -100,7 +75,7 @@ export async function verifyApprovalActor(authorization: string | null): Promise
   if (actor.role !== 'admin' && actor.role !== 'owner') {
     throw new ServiceFetchError('approval permission required', {
       status: 403,
-      source: 'identity-service:verify',
+      source: 'frontend:local-owner',
       code: 'approval_admin_required',
     })
   }
@@ -108,15 +83,13 @@ export async function verifyApprovalActor(authorization: string | null): Promise
 }
 
 export async function requireApprovalActor(request: Request): Promise<ApprovalActor> {
-  const authorization = request.headers.get('authorization')
-    || approvalAuthorizationFromCookie(request.headers.get('cookie'))
-  return verifyApprovalActor(authorization)
+  void request
+  return LOCAL_OWNER
 }
 
 export async function requireAuthenticatedActor(request: Request): Promise<AuthenticatedActor> {
-  const authorization = request.headers.get('authorization')
-    || approvalAuthorizationFromCookie(request.headers.get('cookie'))
-  return verifyAuthenticatedActor(authorization)
+  void request
+  return LOCAL_OWNER
 }
 
 export function requireSameOrigin(request: Request): void {
@@ -153,18 +126,17 @@ export function requireSameOrigin(request: Request): void {
 }
 
 export function approvalServiceHeaders(
-  _method: string,
-  _url: string,
+  method: string,
+  url: string,
   actor: ApprovalActor,
   body = '',
 ): Record<string, string> {
-  // This is descriptive context, not an authentication credential. Knowledge
-  // Engine resolves the configured trusted-local principal itself and never
-  // trusts browser-supplied role elevation.
+  void method
+  void url
   void body
   return {
     'X-Omni-Actor-Id': actor.id,
-    'X-Omni-Trust-Mode': 'trusted-local',
+    'X-Omni-Actor-Role': actor.role,
   }
 }
 
