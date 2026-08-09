@@ -44,7 +44,7 @@ function request(
       'Content-Type': 'application/json',
       Host: host,
       ...(withOrigin ? { Origin: `http://${host}` } : {}),
-      ...(authenticated ? { Cookie: 'omni_approval_session=test-browser-session' } : {}),
+      ...(authenticated ? { Cookie: 'omni_approval_session=test' } : {}),
     },
     body: JSON.stringify(body),
   })
