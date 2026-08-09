@@ -8,10 +8,10 @@ feature_refs:
 - feature_id: windows-macos-runtime-recovery
   feature_ref: design:docs/superpowers/specs/2026-08-07-windows-to-macos-recovery-design.md
 before_snapshot:
-  ref: git:0b70eed2ff1f59fb909dfea468229a889feffee5
+  ref: git:5dc52a4b37d6ec5c57ed50bfe0924b6bf42a095e
 delivery:
   authority: ci_attestation
-  base_commit: 0b70eed2ff1f59fb909dfea468229a889feffee5
+  base_commit: 5dc52a4b37d6ec5c57ed50bfe0924b6bf42a095e
 risk:
   level: R2
   contract_profile: full
@@ -119,59 +119,6 @@ scope:
   - README.md
   - docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/**
 planned_changes:
-- id: RECOVERY-001
-  action: add
-  kind: macos-runtime-workflow
-  node_id: workflow:scripts.dev-start-mac
-  paths:
-  - scripts/dev-start-mac.sh
-  - scripts/dev-stop-mac.sh
-  - scripts/verify-mac-recovery.sh
-  - README.md
-  upstream:
-  - workflow:scripts.runtime-allocation
-  downstream:
-  - service:docker-compose.omni
-  contract_change: compatible
-  verification_ids:
-  - RECOVERY-VERIFY-001
-  - RECOVERY-VERIFY-004
-- id: RECOVERY-002
-  action: modify
-  kind: frontend-container-runtime
-  node_id: service:frontend.runtime
-  paths:
-  - frontend/Dockerfile
-  - frontend/next.config.mjs
-  - frontend/server.ts
-  upstream:
-  - service:docker-compose.omni
-  downstream:
-  - workflow:scripts.verify-mac-recovery
-  contract_change: compatible
-  verification_ids:
-  - RECOVERY-VERIFY-003
-  - RECOVERY-VERIFY-004
-- id: RECOVERY-003
-  action: modify
-  kind: arm64-build-resilience
-  node_id: service:docker-compose.omni
-  paths:
-  - services/knowledge-engine/Dockerfile
-  - services/livestream-analysis/Dockerfile
-  - services/scout-agent/Dockerfile
-  - services/video-analysis/Dockerfile
-  upstream:
-  - service:docker-compose.omni
-  downstream:
-  - service:knowledge-engine.image
-  - service:livestream-analysis.image
-  - service:scout-agent.image
-  - service:video-analysis.startup-settings
-  contract_change: compatible
-  verification_ids:
-  - RECOVERY-VERIFY-003
-  - RECOVERY-VERIFY-004
 - id: RECOVERY-004
   action: modify
   kind: nullable-runtime-setting
@@ -187,33 +134,6 @@ planned_changes:
   contract_change: compatible
   verification_ids:
   - RECOVERY-VERIFY-002
-  - RECOVERY-VERIFY-004
-- id: RECOVERY-005
-  action: add
-  kind: project-local-mcp-declaration
-  node_id: mcp-server:omni-localhost
-  paths:
-  - .codex/config.toml
-  upstream: []
-  downstream:
-  - service:knowledge-engine.image
-  contract_change: compatible
-  verification_ids:
-  - RECOVERY-VERIFY-005
-- id: RECOVERY-006
-  action: reuse
-  kind: isolated-database-restore-and-upgrade
-  node_id: db:postgres.recovered-windows-runtime
-  paths:
-  - docker-compose.yml
-  - migrations/**
-  - scripts/apply_migrations.py
-  upstream:
-  - db:postgres.omni_windows_20260612
-  downstream:
-  - service:docker-compose.omni
-  contract_change: compatible
-  verification_ids:
   - RECOVERY-VERIFY-004
 allowed_unplanned_paths: []
 compatibility:

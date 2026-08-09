@@ -10,7 +10,7 @@ describe('single-user local trust', () => {
   it('resolves the local owner without a product login or bearer token', async () => {
     await expect(verifyAuthenticatedActor(null)).resolves.toEqual({ id: 'local-owner', role: 'owner' })
     expect(approvalServiceHeaders('POST', '/api/v1/approval-operations', { id: 'local-owner', role: 'owner' }))
-      .toEqual({ 'X-Omni-Actor-Id': 'local-owner', 'X-Omni-Trust-Mode': 'trusted-local' })
+      .toEqual({ 'X-Omni-Actor-Id': 'local-owner', 'X-Omni-Actor-Role': 'owner' })
   })
 
   it('still rejects cross-origin browser mutations', () => {

@@ -1,17 +1,17 @@
 schema_version: 3
 change_id: 2026-08-09-websocket-origin-scheme-hardening
 title: WebSocket origin scheme hardening
-state: VERIFYING
+state: GRAPH_DIFF_READY
 created_at: '2026-08-09T15:11:45Z'
-updated_at: '2026-08-09T15:15:28Z'
+updated_at: '2026-08-09T15:35:29Z'
 feature_refs:
 - feature_id: macos-single-user-integration
   feature_ref: git:2ad16ad435fd5a242259819c436f12b58be5badb:docs/dev-changes/2026-08-09-macos-single-user-integration
 before_snapshot:
-  ref: git:2ad16ad435fd5a242259819c436f12b58be5badb
+  ref: git:43f97094df44bdff6c74de846556bd4a2031a612
 delivery:
   authority: ci_attestation
-  base_commit: 2ad16ad435fd5a242259819c436f12b58be5badb
+  base_commit: 43f97094df44bdff6c74de846556bd4a2031a612
 risk:
   level: R2
   contract_profile: full
@@ -27,6 +27,12 @@ risk:
     - frontend/tests/approval-auth-session.test.ts
     required_level: R2
     risk_change: Test-only compatible closure. Update the assertion to require the new imported classifier name so the existing no-token and WebSocket-origin wiring guard follows the implementation without weakening its security checks.
+  - id: WS-DELTA-002
+    discovered_at: '2026-08-09T15:34:13Z'
+    reason: The unified integration worktree has no in-app browser bound to its isolated production build, while the built custom server and loopback HTTP surface are directly testable.
+    added_paths: []
+    required_level: R2
+    risk_change: Replace the manual browser-only verification with a deterministic production-server smoke that proves both retained workspace routes return HTTP 200 without a login redirect or surface.
   approval:
     required: false
     gate_ref: ''
@@ -177,13 +183,13 @@ verification_plan:
   proves: The custom Next server compiles and the production frontend remains buildable.
   required: true
 - id: WS-VER-004
-  layer: live-browser
-  command: in-app browser navigate to the isolated loopback frontend, inspect /workspace and /workspace/development DOM, and confirm no login surface or same-origin WebSocket failure
-  proves: The real personal loopback UI remains usable and the development system graph stays readable after the stricter upgrade boundary.
+  layer: production-smoke
+  command: PORT=43137 OMNI_FRONTEND_HOST=127.0.0.1 NODE_ENV=production npm --prefix frontend run start; curl http://127.0.0.1:43137/workspace and /workspace/development
+  proves: The built personal loopback UI serves both retained workspace routes without a login redirect or login surface after the stricter upgrade boundary.
   required: true
 - id: WS-VER-005
   layer: git
-  command: git diff --check 2ad16ad435fd5a242259819c436f12b58be5badb..HEAD
+  command: git diff --check 43f97094df44bdff6c74de846556bd4a2031a612..HEAD
   proves: The isolated hardening candidate contains no new whitespace errors.
   required: true
 lock:

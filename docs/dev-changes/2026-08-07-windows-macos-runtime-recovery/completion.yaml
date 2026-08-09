@@ -2,29 +2,6 @@ schema_version: 3
 change_id: 2026-08-07-windows-macos-runtime-recovery
 state: GRAPH_DIFF_READY
 actual_changes:
-- id: RECOVERY-ACT-001
-  planned_change_id: RECOVERY-001
-  summary: Added supported macOS start, stop, and deterministic recovery-verification workflows with isolated RuntimeAllocation URLs and a developer handoff in the README.
-  paths:
-  - scripts/dev-start-mac.sh
-  - scripts/dev-stop-mac.sh
-  - scripts/verify-mac-recovery.sh
-  - README.md
-- id: RECOVERY-ACT-002
-  planned_change_id: RECOVERY-002
-  summary: Made the Next.js custom server runnable in the production image by preserving its runtime entrypoint and source modules and binding the server to a Docker-reachable interface.
-  paths:
-  - frontend/Dockerfile
-  - frontend/next.config.mjs
-  - frontend/server.ts
-- id: RECOVERY-ACT-003
-  planned_change_id: RECOVERY-003
-  summary: Made all affected service images build reliably on Apple Silicon with HTTPS Debian sources, bounded retries, and portable ARM64 dependency installation.
-  paths:
-  - services/knowledge-engine/Dockerfile
-  - services/livestream-analysis/Dockerfile
-  - services/scout-agent/Dockerfile
-  - services/video-analysis/Dockerfile
 - id: RECOVERY-ACT-004
   planned_change_id: RECOVERY-004
   summary: Normalized nullable AI Hub model settings before video-analysis startup and added focused regression coverage for null, missing, blank, and populated values.
@@ -32,19 +9,11 @@ actual_changes:
   - services/video-analysis/app/main.py
   - services/video-analysis/app/settings_normalization.py
   - services/video-analysis/tests/test_settings_normalization.py
-- id: RECOVERY-ACT-005
-  planned_change_id: RECOVERY-005
-  summary: Added a project-local localhost-only Omni MCP declaration without importing Windows credentials.
-  paths:
-  - .codex/config.toml
-- id: RECOVERY-ACT-006
-  planned_change_id: RECOVERY-006
-  summary: Restored the verified PostgreSQL 16 custom dump and knowledge archive into the fresh isolated RuntimeAllocation, backfilled only its disposable legacy migration checksums, and upgraded it through all 45 existing migrations while preserving the source database.
-  paths:
-  - docker-compose.yml
-  - migrations/104_workbench_context_and_agent_binding.sql
-  - scripts/apply_migrations.py
 contract_delta:
+- description: Curated the original recovery candidate for the unified integration lineage and transferred later-written runtime, Docker, frontend, database and local MCP ownership to their final contracts.
+  reason: The source branch bundled machine-local configuration and paths subsequently rewritten by profile-aware macOS, single-user trust and WebSocket changes; commit-mode delivery requires one final owner and an ancestor baseline.
+  effect: This contract retains the unique nullable video-analysis startup repair, while excluded local planning/configuration and superseded shared paths remain absent or are owned by later integration contracts.
+  accepted: true
 - description: The GRAPH_DIFF_READY strict validator is executed after the state transition because its expected state does not exist before the transition.
   reason: Recording it as a pre-transition requirement would create a circular state dependency.
   effect: All required implementation and runtime evidence is recorded before transition; the exact strict command is then run and appended before handoff.
@@ -82,7 +51,7 @@ verification_results:
   evidence: Strict schema-v3 validation reported GRAPH_DIFF_READY with exact scope, actual-change mapping, required runtime edges, verification evidence, rollback, and CI-only delivery status.
 graph_diff:
   status: clean
-  snapshot_before: git:0b70eed2ff1f59fb909dfea468229a889feffee5
+  snapshot_before: git:5dc52a4b37d6ec5c57ed50bfe0924b6bf42a095e
   snapshot_after: worktree:omni-macos:windows-macos-recovery-final
   added_nodes:
   - workflow:scripts.dev-start-mac

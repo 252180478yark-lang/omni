@@ -2,27 +2,6 @@ schema_version: 3
 change_id: 2026-08-09-macos-single-user-integration
 state: GRAPH_DIFF_READY
 actual_changes:
-- id: ACT-INT-001
-  planned_change_id: INT-001
-  summary: Composed the immutable macOS recovery and target content/development plus local-trust histories without rewriting their original v3 contract ownership.
-  paths:
-  - docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/impact.yaml
-  - docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/completion.yaml
-  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/impact.yaml
-  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/completion.yaml
-  - docs/dev-changes/2026-08-07-runtime-trace-docker-wiring/impact.yaml
-  - docs/dev-changes/2026-08-07-runtime-trace-docker-wiring/completion.yaml
-  - docs/dev-changes/2026-08-09-content-development-convergence/impact.yaml
-  - docs/dev-changes/2026-08-09-content-development-convergence/completion.yaml
-  - docs/dev-changes/2026-08-09-single-user-local-trust/impact.yaml
-  - docs/dev-changes/2026-08-09-single-user-local-trust/completion.yaml
-- id: ACT-INT-002
-  planned_change_id: INT-002
-  summary: Recorded the merge, runtime investigation, false-negative diagnoses, repairs and repeatable local verification evidence.
-  paths:
-  - .planning/2026-08-09-macos-single-user-integration/task_plan.md
-  - .planning/2026-08-09-macos-single-user-integration/findings.md
-  - .planning/2026-08-09-macos-single-user-integration/progress.md
 - id: ACT-INT-003
   planned_change_id: INT-003
   summary: Made the supported macOS lifecycle profile-aware, defaulted it to the content projection and changed live verification to manifest-backed service checks with an explicit strict recovered-data mode.
@@ -54,6 +33,10 @@ actual_changes:
   - services/scout-agent/Dockerfile
   - tests/test_docker_build_cache_contract.py
 contract_delta:
+- description: Rebased the curated macOS integration contract onto the immutable recovery commit in this unified lineage and removed personal planning plus historical-contract composition from owned product scope.
+  reason: The source branch contained unrelated tracked planning and non-ancestor commit identities; only runtime/profile, source identity, graph fallback and Docker cache repairs were authorized for mainline integration.
+  effect: Every retained actual path is changed after an ancestor baseline, unrelated local artifacts stay out of the candidate, and historical feature contracts continue to own their own product paths.
+  accepted: true
 - description: Added profile-aware macOS start, stop and verification after merge discovery proved the previous scripts assumed the retired full runtime.
   reason: The supported content profile would otherwise omit services the verifier hardcoded as required and print endpoints that were not started.
   effect: macOS defaults to the eight-service content projection; core/full stay explicit and service checks come from the versioned manifest.
@@ -127,7 +110,7 @@ verification_results:
   evidence: Docker ordering contract passed for all six content Python images; live identical rebuild evidence confirmed dependency cache reuse.
 graph_diff:
   status: accepted
-  snapshot_before: git:d38b95cbe5d8f124168883716c4bd5f752451528
+  snapshot_before: git:fa45bbe15c9d8fe1298e8cb0e5c849b1a4c15acd
   snapshot_after: sha256:e43832ccbddc774f5b30fc5fb560d9a8a4b74698bed1092153590f3f28b382f5
   added_nodes: []
   modified_nodes:
