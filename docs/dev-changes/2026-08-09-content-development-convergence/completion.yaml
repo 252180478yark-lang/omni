@@ -90,6 +90,7 @@ actual_changes:
   - tests/test_runtime_allocation.py
   - tests/test_runtime_guard.py
   - tests/test_dev_runtime_environment.py
+  - tests/test_system_convergence_s6_vertical.py
   - frontend/Dockerfile
   - frontend/.dockerignore
   - dev-start.ps1
@@ -109,6 +110,10 @@ actual_changes:
   - services/knowledge-engine/app/mcp/doctor.py
   - services/knowledge-engine/tests/test_tool_execution.py
 contract_delta:
+- description: Updated the S6 isolated-pilot fixture to the required runtime-profile manifest contract after CI reached the full convergence Gate.
+  reason: Runtime allocation now intentionally fails closed when runtime_profiles is absent, while the old minimal fixture still represented the pre-profile manifest shape.
+  effect: The disposable R1/R2 pilot continues to prove allocation, receipt, transcript and release behavior under the current core/content/full profile contract; production runtime logic is unchanged.
+  accepted: true
 - description: Added the S3 system-graph owner regression after real feature-branch CI exposed a stale ownership expectation.
   reason: The test still expected workspace-operations to own /workspace/development even though the versioned system-console FeatureDefinition is its canonical and sole owner.
   effect: Both sides of the non-overlapping workspace/system-console boundary are now asserted without changing any product route or collector implementation.
@@ -206,6 +211,11 @@ verification_results:
   status: passed
   exit_code: 0
   evidence: Fresh local run passed 17 FeatureDefinition and system-graph collector tests in 3.11 seconds, including positive system-console ownership and negative workspace-operations ownership for /workspace/development.
+- id: VER-013
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh local run passed both S6 repository-pilot and vertical tests in 3.31 seconds using the current core/content/full runtime-profile fixture.
 graph_diff:
   status: accepted
   snapshot_before: git:1d3177abb783baf039a94c2c68bde3c50a920f54
@@ -219,6 +229,7 @@ graph_diff:
   modified_nodes:
   - config:feature-definition-v1
   - test:system-graph-feature-owner
+  - test:s6-isolated-runtime-profile-fixture
   - frontend:feature-registry-v1
   - frontend:unified-app-shell
   - page:/workspace

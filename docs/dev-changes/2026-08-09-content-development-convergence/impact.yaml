@@ -286,6 +286,7 @@ planned_changes:
   - tests/test_runtime_allocation.py
   - tests/test_runtime_guard.py
   - tests/test_dev_runtime_environment.py
+  - tests/test_system_convergence_s6_vertical.py
   - README.md
   - docs/multi-device/setup.md
   - services/knowledge-engine/app/runtime_preflight.py
@@ -304,6 +305,7 @@ planned_changes:
   - VER-006
   - VER-009
   - VER-011
+  - VER-013
 - id: CHG-006
   action: modify
   kind: canonical-tool-execution-bffs
@@ -456,6 +458,11 @@ verification_plan:
   layer: system-graph-owner
   command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_collectors.py
   proves: Workspace and development command-center routes are projected under their declared, non-overlapping FeatureDefinition owners.
+  required: true
+- id: VER-013
+  layer: s6-isolated-runtime
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider tests/test_system_convergence_s6_repository_pilot.py tests/test_system_convergence_s6_vertical.py
+  proves: The S6 disposable R1/R2 pilot uses the current required runtime-profile manifest contract and still records receipts, transcript and release evidence.
   required: true
 lock:
   locked_at: '2026-08-08T18:04:45Z'
