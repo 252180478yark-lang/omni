@@ -1,6 +1,6 @@
 schema_version: 3
 change_id: 2026-08-09-macos-single-user-integration
-state: IMPACT_LOCKED
+state: IMPLEMENTING
 actual_changes: []
 contract_delta: []
 verification_results: []
