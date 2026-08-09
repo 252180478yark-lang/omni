@@ -49,7 +49,6 @@ actual_changes:
   planned_change_id: CHG-002
   summary: Rebuilt the shared shell as a restrained neutral/cyan two-mode workbench with labelled responsive navigation, honest runtime semantics, preserved continuity, stable exclusive-route mode switching, WCAG contrast fixes, and real-Chrome desktop/mobile evidence.
   paths:
-  - frontend/src/components/app-shell.tsx
   - frontend/src/components/app-sidebar.tsx
   - frontend/src/app/globals.css
   - frontend/playwright.config.ts
@@ -80,8 +79,6 @@ actual_changes:
   planned_change_id: CHG-005
   summary: Converged root Compose into exact core/content/full projections with 6/9/12 long-lived services, carried runtime_profile through allocation, Compose, guard and Knowledge Engine startup, required a truthful health contract for every selected long-lived service, kept every port/database/named volume, aligned Windows startup and docs, and produced a reachable custom-server image whose build context excludes local dependencies and test artifacts.
   paths:
-  - docker-compose.yml
-  - config/runtime-manifest.yaml
   - config/schemas/runtime-allocation.schema.json
   - scripts/runtime_allocation.py
   - scripts/runtime_guard.py
@@ -113,6 +110,10 @@ actual_changes:
   - services/knowledge-engine/app/mcp/doctor.py
   - services/knowledge-engine/tests/test_tool_execution.py
 contract_delta:
+- description: Transferred cumulative-candidate ownership of AppShell, the root Compose file and the runtime manifest to the later unified-workbench integration contract while retaining content convergence ownership of runtime allocation and all remaining shell/profile paths.
+  reason: Feature-branch CI evaluates the full merge-base diff; the later Workbench v1.3 commit is the final semantic writer for those three protected shared files and duplicate v3 ownership is forbidden.
+  effect: The content/development convergence behavior stays in the candidate, while the integrated delivery graph has one owner per protected path and no implementation bytes are changed by the transfer.
+  accepted: true
 - description: Added direct IA consumers, compatibility middleware, route inventory and system-health tests to the implementation boundary.
   reason: TypeScript and focused regressions proved these existing consumers embed the changed group allowlist, alias ownership or retired root-renderer contract and therefore must move atomically with the FeatureDefinition sources.
   effect: Old v1 clients remain accepted by an immutable adapter, v2 clients use six groups, root is a one-hop alias, and every physical page still resolves with one owner.

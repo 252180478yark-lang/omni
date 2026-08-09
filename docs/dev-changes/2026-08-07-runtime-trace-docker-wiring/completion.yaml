@@ -5,13 +5,11 @@ actual_changes:
 - id: ACT-001
   planned_change_id: CHG-001
   paths:
-  - scripts/runtime_allocation.py
   - tests/test_runtime_allocation.py
   summary: Added an independent external runtime trace token, canonical receiver and publisher aliases, and side-effect-free active-allocation dry-run behavior.
 - id: ACT-002
   planned_change_id: CHG-002
   paths:
-  - docker-compose.yml
   - services/docker-compose.sp1-sp4.yml
   - tests/test_compose_runtime_contract.py
   summary: Mounted one canonical token source read-only into Frontend, Knowledge Engine, and Scout under role-specific aliases; configured Scout's in-network KE URL and startup dependency.
@@ -41,6 +39,10 @@ actual_changes:
   - tests/test_compose_runtime_contract.py
   summary: Removed the independently configurable publisher alias from user-facing environment examples and Host Bridge setup instructions so all host and container roles derive from one canonical token path.
 contract_delta:
+- description: Transferred cumulative-candidate ownership of scripts/runtime_allocation.py and docker-compose.yml to their later integration contracts while retaining this contract's trace-specific tests and SP1-SP4 compose ownership.
+  reason: Branch CI evaluates the complete merge-base diff and correctly rejected multiple schema-v3 owners after later integration commits modified the same shared files.
+  effect: The runtime-trace behavior remains present and regression-tested, but each protected shared path now has one final semantic owner in the cumulative delivery candidate.
+  accepted: true
 - description: Added host-mode Knowledge Engine receiver wiring and made OMNI_RUNTIME_TRACE_TOKEN_FILE the single canonical host source for every receiver/publisher mount.
   reason: Independent PRD review proved host KE was excluded and separately configurable aliases could silently point at different tokens.
   effect: Container and host publishers always authenticate with the same token as KE; mismatched service alias input is ignored and regression-tested.

@@ -206,7 +206,6 @@ planned_changes:
   kind: frontend-shell-design
   node_id: frontend:unified-app-shell
   paths:
-  - frontend/src/components/app-shell.tsx
   - frontend/src/components/app-sidebar.tsx
   - frontend/src/app/globals.css
   - frontend/tests/workbench-shell.test.tsx
@@ -274,8 +273,6 @@ planned_changes:
   kind: runtime-profile-convergence
   node_id: runtime:root-compose
   paths:
-  - docker-compose.yml
-  - config/runtime-manifest.yaml
   - services/knowledge-engine/app/config.py
   - services/knowledge-engine/tests/test_config_contract.py
   - tests/test_compose_runtime_contract.py
