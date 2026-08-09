@@ -89,7 +89,16 @@ actual_changes:
   - services/knowledge-engine/app/schemas/workbench_contexts.py
   - services/knowledge-engine/app/services/workbench_contexts.py
   - services/knowledge-engine/tests/test_workbench_contexts.py
+- id: WB13-ACT-007
+  planned_change_id: WB13-CHG-007
+  summary: 'Corrected the S3 collector regression to assert the declared non-overlapping owners: workspace-operations owns the work workspace and system-console owns the development command center.'
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
 contract_delta:
+- description: Added the S3 system-graph owner regression after the first real feature-branch CI run.
+  reason: CI proved the existing test still expected workspace-operations to own /workspace/development even though the versioned system-console FeatureDefinition is its canonical and sole owner.
+  effect: The test now follows current machine truth and independently verifies both sides of the non-overlapping ownership boundary; no product route or collector implementation changes.
+  accepted: true
 - description: Included the shared runtime-trace BFF authentication helper in local-owner convergence.
   reason: The blueprint and run center otherwise retained a second identity/HMAC dependency outside the initially discovered shared helper.
   effect: Loopback-owned reads use local trust; same-origin writes, R3 decisions and audit remain unchanged.
@@ -156,6 +165,11 @@ verification_results:
   status: passed
   exit_code: 0
   evidence: Fresh run passed 6 files and 15 tests for route-derived persistence, BFF-to-Host CAS projection, grounded suggestion guardrails, frozen operation context and pre/post-acceptance fallback semantics. The full frontend suite also passed 35 files and 170 tests, including fail-closed rejection of unbound Agent runs, and the optimized build generated all 47 pages.
+- id: WB13-VER-010
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_collectors.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh local run passed 17 FeatureDefinition and system-graph collector tests in 3.12 seconds, including positive system-console ownership and negative workspace-operations ownership for /workspace/development.
 graph_diff:
   status: clean
   snapshot_before: git:4623aacb087c9a7337e17b25236e685d429e2a2b
@@ -177,6 +191,7 @@ graph_diff:
   - service:knowledge-engine.approval_operations
   - state:workbench.context_revision
   - db:mcp.workbench_context_snapshots
+  - test:system-graph-feature-owner
   removed_nodes: []
   added_edges:
   - from: component:frontend.AppShell

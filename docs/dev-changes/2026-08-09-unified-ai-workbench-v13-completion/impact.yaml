@@ -341,6 +341,20 @@ planned_changes:
   verification_ids:
   - WB13-VER-008
   - WB13-VER-009
+- id: WB13-CHG-007
+  action: modify
+  kind: test
+  node_id: test:system-graph-feature-owner
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
+  upstream:
+  - source:feature-definition-system-console
+  - source:feature-definition-workspace-operations
+  downstream:
+  - collector:system-graph-frontend
+  contract_change: compatible
+  verification_ids:
+  - WB13-VER-010
 allowed_unplanned_paths: []
 compatibility:
   api:
@@ -462,6 +476,11 @@ verification_plan:
   layer: frontend-workbench-integration
   command: cd frontend && npx vitest run tests/workbench-context*.test.ts tests/workbench-suggestions*.test.ts tests/workbench-v13*.test.ts tests/workbench-v13*.test.tsx tests/agent-chat/unit/workbench-binding.test.ts tests/agent-chat/unit/host-bridge-runner.test.ts
   proves: Route-derived context persistence, grounded suggestion guardrails, durable approval projection, Host rebind and no post-acceptance fallback.
+  required: true
+- id: WB13-VER-010
+  layer: system-graph-owner
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_collectors.py
+  proves: Workspace and development command-center routes are projected under their declared, non-overlapping FeatureDefinition owners.
   required: true
 lock:
   locked_at: '2026-08-08T19:29:40Z'

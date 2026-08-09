@@ -101,18 +101,25 @@ def test_catch_all_bff_preserves_canonical_page_and_rest_edges() -> None:
 
 
 def test_owned_surfaces_follow_their_feature_owner() -> None:
-    snapshot = scan_repository(
+    workspace_snapshot = scan_repository(
         ScanRequest(repo=REPO, feature_ids=("workspace-operations",), dynamic=False)
     )
-    nodes = {node.id for node in snapshot.content.nodes}
+    workspace_nodes = {node.id for node in workspace_snapshot.content.nodes}
     assert {
         "ui_route:/workspace",
-        "ui_route:/workspace/development",
         "ui_route:/decisions",
         "ui_route:/insights",
         "ui_route:/review",
-    } <= nodes
-    assert "ui_route:/system-graph" not in nodes
+    } <= workspace_nodes
+    assert "ui_route:/workspace/development" not in workspace_nodes
+    assert "ui_route:/system-graph" not in workspace_nodes
+
+    console_snapshot = scan_repository(
+        ScanRequest(repo=REPO, feature_ids=("system-console",), dynamic=False)
+    )
+    console_nodes = {node.id for node in console_snapshot.content.nodes}
+    assert "ui_route:/workspace/development" in console_nodes
+    assert "ui_route:/workspace" not in console_nodes
 
 
 def test_compatibility_alias_is_not_collected_as_a_renderer() -> None:
