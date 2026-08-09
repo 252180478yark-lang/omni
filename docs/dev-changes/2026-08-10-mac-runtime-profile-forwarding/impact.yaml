@@ -1,0 +1,185 @@
+schema_version: 3
+change_id: 2026-08-10-mac-runtime-profile-forwarding
+title: Forward macOS runtime profiles into allocation
+state: VERIFYING
+created_at: '2026-08-09T16:16:36Z'
+updated_at: '2026-08-09T16:18:46Z'
+feature_refs:
+- feature_id: macos-runtime-profile-forwarding
+  feature_ref: git:795587d64b9d4b42275180f261071090b261076d:config/runtime-manifest.yaml#runtime_profiles
+before_snapshot:
+  ref: git:795587d64b9d4b42275180f261071090b261076d
+delivery:
+  authority: ci_attestation
+  base_commit: 795587d64b9d4b42275180f261071090b261076d
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - macOS start, verify and stop workflows currently read a requested runtime profile but do not pass it into the immutable RuntimeAllocation boundary.
+  - Correcting profile projection changes which isolated Docker services are started and verified, while preserving loopback ports, disposable databases and volumes.
+  external_effects: []
+  scope_deltas: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The macOS scripts silently acquire the manifest default core profile even when OMNI_RUNTIME_PROFILE is content or full. Verification also assumes the full service set for every profile, so content-mode acceptance is either incomplete or impossible.
+  expected_outcome: Start, verify and stop forward the same validated profile into RuntimeAllocation; Docker Compose receives its projected COMPOSE_PROFILES; verification checks exactly the services and probes owned by that profile.
+  user_visible_behavior:
+  - OMNI_RUNTIME_PROFILE=content starts the core services plus video-analysis, livestream-analysis and scout-agent.
+  - OMNI_RUNTIME_PROFILE=core verifies only the core service set, while full additionally verifies news, ad review and nginx.
+  - Stop reacquires the same immutable profile and stops the matching runtime without deleting its database or volumes.
+current_chain:
+  nodes:
+  - id: workflow:macos-runtime-start
+    role: Shell launcher for an isolated local Docker runtime.
+  - id: workflow:macos-runtime-verify
+    role: Runtime and product-read acceptance verifier.
+  - id: workflow:macos-runtime-stop
+    role: Non-destructive stop workflow for the allocated runtime.
+  - id: service:runtime-allocation-cli
+    role: Immutable profile and resource allocation authority.
+  - id: service:docker-compose-profile-projection
+    role: Starts the service set selected by COMPOSE_PROFILES.
+  edges:
+  - from: workflow:macos-runtime-start
+    to: service:runtime-allocation-cli
+    relation: calls-without-requested-profile
+  - from: workflow:macos-runtime-verify
+    to: service:runtime-allocation-cli
+    relation: calls-without-requested-profile
+  - from: workflow:macos-runtime-stop
+    to: service:runtime-allocation-cli
+    relation: calls-without-requested-profile
+  - from: service:runtime-allocation-cli
+    to: service:docker-compose-profile-projection
+    relation: projects-default-core
+  evidence:
+  - scripts/dev-start-mac.sh invokes runtime_allocation.py acquire without --runtime-profile and does not validate OMNI_RUNTIME_PROFILE.
+  - scripts/verify-mac-recovery.sh and scripts/dev-stop-mac.sh validate RUNTIME_PROFILE but omit --runtime-profile from acquire.
+  - Runtime allocation allocation-0927b3803f6f4716a36afe19770cec07 recorded runtime_profile=core after a start request with OMNI_RUNTIME_PROFILE=content; only the seven core containers exist.
+  - config/runtime-manifest.yaml defines exact core, content and full service projections and RuntimeAllocation exports COMPOSE_PROFILES from the selected immutable profile.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services:
+  - service:runtime-allocation-cli
+  - service:docker-compose-profile-projection
+  database: []
+  data_sources: []
+  states_workflows:
+  - workflow:macos-runtime-start
+  - workflow:macos-runtime-verify
+  - workflow:macos-runtime-stop
+  tests:
+  - test:macos-runtime-script-profile-forwarding
+  - test:runtime-profile-compose-projection
+  docs:
+  - docs/dev-changes/2026-08-10-mac-runtime-profile-forwarding
+planned_changes:
+- id: PROFILE-001
+  action: modify
+  kind: runtime-workflow
+  node_id: workflow:macos-runtime-profile-lifecycle
+  paths:
+  - scripts/dev-start-mac.sh
+  - scripts/dev-stop-mac.sh
+  - scripts/verify-mac-recovery.sh
+  upstream:
+  - source:OMNI_RUNTIME_PROFILE
+  downstream:
+  - service:runtime-allocation-cli
+  - service:docker-compose-profile-projection
+  contract_change: compatible
+  verification_ids:
+  - PROFILE-VER-001
+  - PROFILE-VER-002
+  - PROFILE-VER-003
+- id: PROFILE-002
+  action: modify
+  kind: runtime-regression-tests
+  node_id: test:macos-runtime-script-profile-forwarding
+  paths:
+  - tests/test_dev_runtime_environment.py
+  upstream:
+  - workflow:macos-runtime-profile-lifecycle
+  downstream:
+  - reader:ci-runtime-gate
+  contract_change: compatible
+  verification_ids:
+  - PROFILE-VER-001
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: No HTTP, BFF, REST, MCP or payload contract changes.
+  database:
+    status: compatible
+    strategy: Each profile continues using its existing isolated disposable database and named volumes; no schema or data migration changes.
+  workflow:
+    status: compatible
+    strategy: Preserve the core/content/full names and manifest-defined service sets. The fix only makes macOS scripts honor the already documented input and verify the selected set.
+  data_source:
+    status: not_applicable
+    strategy: No external source, credential, cookie, token or network exposure change.
+graph_acceptance:
+  required_edges:
+  - from: workflow:macos-runtime-start
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+  - from: workflow:macos-runtime-verify
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+  - from: workflow:macos-runtime-stop
+    to: service:runtime-allocation-cli
+    relation: passes-validated-runtime-profile
+  - from: service:runtime-allocation-cli
+    to: service:docker-compose-profile-projection
+    relation: projects-exact-profile-service-set
+  allowed_unknowns: []
+  forbidden_orphans:
+  - test:macos-runtime-script-profile-forwarding
+risks:
+- id: PROFILE-RISK-001
+  description: Reacquiring an existing allocation with a different profile must fail closed rather than silently mutate it.
+  mitigation: Keep RuntimeAllocation CAS semantics unchanged and test only that lifecycle scripts pass the requested profile.
+- id: PROFILE-RISK-002
+  description: A profile-specific verifier can accidentally skip a service that the manifest includes.
+  mitigation: Derive script expectations in explicit core/content/full tiers and retain compose projection tests against the manifest truth.
+- id: PROFILE-RISK-003
+  description: Stopping a content/full runtime with an omitted or different profile can fail to resolve the allocation.
+  mitigation: Forward the same validated profile in dev-stop-mac.sh and live-test the content lifecycle without deleting volumes.
+out_of_scope:
+- No changes to Dockerfiles, Compose service definitions, runtime-manifest profile membership, ports, databases, volumes or migration files.
+- No account, login, cookie, RBAC, JWT, HMAC, bearer token or product credential behavior.
+- No automatic deletion, volume removal, database recovery or cleanup of unrelated historical runtimes.
+rollback:
+  strategy: Revert the three shell-script changes and their regression test; stop the isolated candidate containers and release only the candidate allocation with CAS.
+  data_recovery: No business data is migrated or deleted. Named candidate volumes remain recoverable after docker stop or code rollback.
+verification_plan:
+- id: PROFILE-VER-001
+  layer: runtime-unit
+  command: PYTHONPATH=services/knowledge-engine services/knowledge-engine/.venv/bin/python -B -m pytest -q -p no:cacheprovider tests/test_dev_runtime_environment.py tests/test_runtime_allocation.py tests/test_compose_runtime_contract.py
+  proves: Shell-script forwarding, immutable allocation profiles and exact Compose service projections remain aligned.
+  required: true
+- id: PROFILE-VER-002
+  layer: shell-static
+  command: bash -n scripts/dev-start-mac.sh scripts/dev-stop-mac.sh scripts/verify-mac-recovery.sh
+  proves: All modified macOS lifecycle scripts remain syntactically valid.
+  required: true
+- id: PROFILE-VER-003
+  layer: live-runtime
+  command: OMNI_RUNTIME_PROFILE=content OMNI_CHANGE_ID=mac-runtime-profile-forwarding-live OMNI_OWNER=yk bash scripts/dev-start-mac.sh && OMNI_RUNTIME_PROFILE=content OMNI_CHANGE_ID=mac-runtime-profile-forwarding-live OMNI_OWNER=yk bash scripts/verify-mac-recovery.sh
+  proves: A real isolated content allocation starts and verifies the manifest-defined content service set, product read path and system graph.
+  required: true
+- id: PROFILE-VER-004
+  layer: git
+  command: git diff --check 795587d64b9d4b42275180f261071090b261076d..HEAD
+  proves: The candidate commit range contains no whitespace errors.
+  required: true
+lock:
+  locked_at: '2026-08-09T16:18:02Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.

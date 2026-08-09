@@ -369,3 +369,40 @@ def test_dev_start_boots_core_services_in_the_same_root_compose_allocation() -> 
     assert '$env:OMNI_FRONTEND_HOST = "127.0.0.1"' in script
     assert '"npm", "run", "dev", "--", "-H"' not in script
     assert 'Optional = $true' not in script
+
+
+@pytest.mark.parametrize(
+    "script_name",
+    ("dev-start-mac.sh", "dev-stop-mac.sh", "verify-mac-recovery.sh"),
+)
+def test_macos_runtime_lifecycle_forwards_the_validated_profile_to_allocation(
+    script_name: str,
+) -> None:
+    script = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+
+    assert 'RUNTIME_PROFILE="${OMNI_RUNTIME_PROFILE:-content}"' in script
+    assert 'case "$RUNTIME_PROFILE" in' in script
+    assert 'core|content|full)' in script
+    assert '--runtime-profile "$RUNTIME_PROFILE"' in script
+
+
+def test_macos_runtime_verifier_checks_the_exact_selected_service_tier() -> None:
+    script = (ROOT / "scripts" / "verify-mac-recovery.sh").read_text(encoding="utf-8")
+
+    assert "postgres redis ai-provider-hub knowledge-engine frontend" in script
+    assert '"$RUNTIME_PROFILE" == "content" || "$RUNTIME_PROFILE" == "full"' in script
+    assert "required_services+=(video-analysis livestream-analysis scout-agent)" in script
+    assert '"$RUNTIME_PROFILE" == "full"' in script
+    assert "required_services+=(news-aggregator ad-review-service nginx)" in script
+    assert 'nginx_url="not_started_for_${RUNTIME_PROFILE}_profile"' in script
+
+
+def test_macos_runtime_verifier_boundedly_waits_for_service_health() -> None:
+    script = (ROOT / "scripts" / "verify-mac-recovery.sh").read_text(encoding="utf-8")
+
+    assert 'VERIFY_TIMEOUT_SECONDS="${OMNI_VERIFY_TIMEOUT_SECONDS:-120}"' in script
+    assert '[[ ! "$VERIFY_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]' in script
+    assert "health_deadline=$((SECONDS + VERIFY_TIMEOUT_SECONDS))" in script
+    assert "while (( SECONDS < health_deadline )); do" in script
+    assert '"$health" == "not-configured" || "$health" == "healthy"' in script
+    assert "sleep 1" in script

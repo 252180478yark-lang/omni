@@ -10,6 +10,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CHANGE_ID="${OMNI_CHANGE_ID:-mac-local-dev}"
 OWNER="${OMNI_OWNER:-${USER:-mac-developer}}"
+RUNTIME_PROFILE="${OMNI_RUNTIME_PROFILE:-content}"
+
+case "$RUNTIME_PROFILE" in
+  core|content|full) ;;
+  *)
+    printf 'OMNI_RUNTIME_PROFILE must be core, content, or full (got %s).\n' "$RUNTIME_PROFILE" >&2
+    exit 2
+    ;;
+esac
 
 command -v docker >/dev/null || {
   printf 'Docker Desktop is required. Start it, then rerun this script.\n' >&2
@@ -30,6 +39,7 @@ ALLOCATION_JSON="$(python3 scripts/runtime_allocation.py --root "$ROOT" acquire 
   --owner "$OWNER" \
   --mode write \
   --risk-level R1 \
+  --runtime-profile "$RUNTIME_PROFILE" \
   --path 'docker-compose.yml' \
   --path 'docker-compose.dev.yml' \
   --path 'scripts/dev-start-mac.sh' \
