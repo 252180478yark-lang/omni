@@ -156,6 +156,48 @@ def test_rebuild_validates_and_atomically_restores_manifest_receipt(
     assert repeated["receipts"][0]["status"] == "existing"
 
 
+def test_rebuild_supplies_the_raw_hash_verified_payload_to_live_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    subject = _run(repo, "git", "rev-parse", "HEAD")
+    receipt = {"subject_commit": subject, "contracts": [{"change_id": "fixture-delivery"}]}
+    raw = json.dumps(receipt, sort_keys=True).encode("utf-8")
+    manifest, entry = _manifest(repo, raw)
+    metadata = {
+        "id": 456,
+        "name": entry["artifact_name"],
+        "digest": entry["artifact_digest"],
+        "expired": False,
+        "workflow_run": {"id": 123},
+    }
+    captured: list[object] = []
+
+    monkeypatch.setattr(rebuild.projection, "repository_identity", lambda _root: "fixture/repo")
+    monkeypatch.setattr(rebuild, "_artifact_metadata", lambda *_args: metadata)
+    monkeypatch.setattr(rebuild.projection, "_download_attestation_bytes", lambda *_args, **_kwargs: raw)
+
+    def live(_root, _receipt, _path=None, *, deadline=None, authoritative_receipt=None):
+        assert deadline is not None
+        captured.append(authoritative_receipt)
+        return {"valid": True, "reasons": [], "checks_passed": True}
+
+    monkeypatch.setattr(rebuild.projection, "live_github_provenance", live)
+    monkeypatch.setattr(
+        rebuild.projection,
+        "verify_delivery_receipt",
+        lambda _root, current, _change_id, **kwargs: {
+            "valid": kwargs["provenance_verifier"](_root, current)["valid"],
+            "reasons": [],
+        },
+    )
+
+    result = rebuild.rebuild_receipts(repo, manifest, dry_run=True)
+
+    assert result["receipt_count"] == 1
+    assert captured == [receipt]
+
+
 def test_rebuild_never_overwrites_different_existing_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -456,6 +456,7 @@ def live_github_provenance(
     receipt_path: Path | None = None,
     *,
     deadline: float | None = None,
+    authoritative_receipt: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Verify GitHub run and artifact metadata without trusting local JSON."""
 
@@ -542,8 +543,12 @@ def live_github_provenance(
             reasons.append("evidence_artifact_digest_mismatch")
     if artifact is not None:
         try:
-            authoritative = _download_attestation_payload(
-                root, repository, artifact, deadline=deadline
+            authoritative = (
+                authoritative_receipt
+                if authoritative_receipt is not None
+                else _download_attestation_payload(
+                    root, repository, artifact, deadline=deadline
+                )
             )
             local_digest = _sha256_text(json.dumps(receipt, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
             authoritative_digest = _sha256_text(json.dumps(authoritative, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
@@ -582,7 +587,11 @@ def offline_provenance(
     }
 
 
-def bounded_live_provenance(total_timeout_seconds: float) -> ProvenanceVerifier:
+def bounded_live_provenance(
+    total_timeout_seconds: float,
+    *,
+    authoritative_receipts: Mapping[str, Mapping[str, Any]] | None = None,
+) -> ProvenanceVerifier:
     """Share one wall-clock deadline across every receipt in a projection."""
 
     if not 0 < total_timeout_seconds <= 60:
@@ -600,8 +609,20 @@ def bounded_live_provenance(total_timeout_seconds: float) -> ProvenanceVerifier:
                 "reasons": ["live_provenance_total_deadline_exhausted"],
                 "checks_passed": False,
             }
+        subject = str(
+            receipt.get("subject_commit", receipt.get("delivered_commit", ""))
+        ).lower()
+        authoritative = (
+            authoritative_receipts.get(subject)
+            if authoritative_receipts is not None
+            else None
+        )
         return live_github_provenance(
-            root, receipt, receipt_path, deadline=deadline
+            root,
+            receipt,
+            receipt_path,
+            deadline=deadline,
+            authoritative_receipt=authoritative,
         )
 
     return verify

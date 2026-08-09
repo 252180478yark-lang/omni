@@ -675,7 +675,15 @@ def test_live_refresh_shares_one_wall_clock_deadline_across_all_receipts(
 ) -> None:
     calls = 0
 
-    def bounded_fake(_root, _receipt, _path=None, *, deadline=None):
+    def bounded_fake(
+        _root,
+        _receipt,
+        _path=None,
+        *,
+        deadline=None,
+        authoritative_receipt=None,
+    ):
+        del authoritative_receipt
         nonlocal calls
         calls += 1
         assert deadline is not None
@@ -695,3 +703,27 @@ def test_live_refresh_shares_one_wall_clock_deadline_across_all_receipts(
         "live_provenance_total_deadline_exhausted" in item["reasons"]
         for item in results
     )
+
+
+def test_bounded_live_refresh_passes_only_matching_authoritative_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    subject = "a" * 40
+    receipt = {"subject_commit": subject, "workflow_run_id": "1"}
+    captured: list[object] = []
+
+    def fake_live(_root, _receipt, _path=None, *, deadline=None, authoritative_receipt=None):
+        assert deadline is not None
+        captured.append(authoritative_receipt)
+        return {"valid": True, "reasons": [], "checks_passed": True}
+
+    monkeypatch.setattr(status, "live_github_provenance", fake_live)
+    authoritative = {subject: receipt}
+    verifier = status.bounded_live_provenance(
+        1,
+        authoritative_receipts=authoritative,
+    )
+
+    assert verifier(tmp_path, receipt)["valid"] is True
+    assert verifier(tmp_path, {"subject_commit": "b" * 40})["valid"] is True
+    assert captured == [receipt, None]

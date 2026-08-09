@@ -317,7 +317,11 @@ def rebuild_receipts(root: Path, manifest: Path, *, dry_run: bool = False) -> di
     if not repository:
         raise ReceiptRecoveryError("cannot resolve GitHub repository identity from origin")
     deliveries = load_deliveries(manifest)
-    verifier = projection.bounded_live_provenance(60)
+    authoritative_receipts: dict[str, Mapping[str, Any]] = {}
+    verifier = projection.bounded_live_provenance(
+        60,
+        authoritative_receipts=authoritative_receipts,
+    )
     validated: list[tuple[Mapping[str, Any], bytes, PurePosixPath, Path]] = []
     total_raw_bytes = 0
 
@@ -342,6 +346,7 @@ def rebuild_receipts(root: Path, manifest: Path, *, dry_run: bool = False) -> di
         change_id = _text(entry, "change_id")
         if str(receipt.get("subject_commit") or "").lower() != _text(entry, "subject_commit").lower():
             raise ReceiptRecoveryError(f"subject commit drift for artifact {artifact_id}")
+        authoritative_receipts[_text(entry, "subject_commit").lower()] = receipt
         verified = projection.verify_delivery_receipt(
             root,
             receipt,

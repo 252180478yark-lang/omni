@@ -74,6 +74,60 @@ def test_ready_when_critical_assets_match_head(tmp_path: Path) -> None:
     }
 
 
+def test_build_report_passes_explicit_provenance_to_ownership(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = _seed_repository(tmp_path)
+    verifier = object()
+    observed: list[object] = []
+    actual = readiness._load_workspace_ownership(root)
+
+    class OwnershipProxy:
+        @staticmethod
+        def inventory_workspace(*args, **kwargs):
+            observed.append(kwargs.get("provenance_verifier"))
+            return actual.inventory_workspace(*args, **kwargs)
+
+    monkeypatch.setattr(readiness, "_load_workspace_ownership", lambda _root: OwnershipProxy)
+
+    readiness.build_report(root, provenance_verifier=verifier)
+
+    assert observed == [verifier]
+
+
+def test_main_live_refresh_is_explicit_and_bounded(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    root = _seed_repository(tmp_path)
+    verifier = object()
+    observed: list[tuple[float, object]] = []
+
+    class Projection:
+        @staticmethod
+        def bounded_live_provenance(timeout):
+            observed.append((timeout, verifier))
+            return verifier
+
+    original_build = readiness.build_report
+
+    def build(candidate, **kwargs):
+        assert kwargs["provenance_verifier"] is verifier
+        return original_build(candidate, **kwargs)
+
+    monkeypatch.setattr(readiness, "_load_delivery_projection", lambda _root: Projection)
+    monkeypatch.setattr(readiness, "build_report", build)
+
+    exit_code = readiness.main([
+        "--root", str(root),
+        "--refresh-live-provenance",
+        "--live-timeout-seconds", "12",
+    ])
+
+    assert exit_code == 0
+    assert observed == [(12.0, verifier)]
+    assert "context_status=ready" in capsys.readouterr().out
+
+
 def test_staged_governance_asset_is_candidate_not_delivered(tmp_path: Path) -> None:
     root = _seed_repository(tmp_path)
     _write(root, "AGENTS.md", "changed candidate\n")
