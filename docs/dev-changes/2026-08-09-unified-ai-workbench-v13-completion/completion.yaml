@@ -17,10 +17,8 @@ actual_changes:
   summary: Bound every Agent run to the current canonical Workbench context pair and disclosed provider resolution while preserving legacy aliases at the compatibility boundary.
   paths:
   - frontend/src/hooks/useAgentChat.ts
-  - frontend/src/lib/agent-chat/host-bridge-runner.ts
   - frontend/src/lib/agent-chat/session-manager.ts
   - frontend/src/lib/agent-chat/types.ts
-  - frontend/src/lib/agent-chat/ws-handler.ts
   - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
   - frontend/tests/agent-chat/unit/useAgentChat.test.tsx
   - frontend/tests/agent-chat/unit/workbench-binding.test.ts
@@ -28,16 +26,12 @@ actual_changes:
   planned_change_id: WB13-CHG-003
   summary: Made Host sessions and runs durable with opaque project handles, immutable accepted-provider disclosure, frozen context pairs, compare-and-swap rebind, paused restart recovery and raw-path-free public responses.
   paths:
-  - services/host-bridge/host_bridge/app.py
   - services/host-bridge/host_bridge/core.py
   - services/host-bridge/tests/test_workbench_context.py
 - id: WB13-ACT-004
   planned_change_id: WB13-CHG-004
   summary: Converged retained Web, approval/runtime and Compose paths on trusted loopback local-owner access while preserving exact same-origin browser mutations, external platform credentials, R3 approval decisions, audit and recovery semantics.
   paths:
-  - frontend/src/app/api/omni/_shared.ts
-  - frontend/src/app/api/omni/auth/session/route.ts
-  - frontend/src/app/api/omni/runtime-traces/_runtime-auth.ts
   - frontend/src/app/inbox/page.tsx
   - frontend/tests/approval-auth-session.test.ts
   - frontend/tests/inbox-auth-ui.test.tsx
@@ -46,14 +40,9 @@ actual_changes:
   - frontend/tests/single-user-local-trust.test.ts
   - frontend/tests/workbench-developer-permissions.test.ts
   - frontend/tests/workbench-navigation-events.test.ts
-  - services/knowledge-engine/app/routers/approval_operations.py
-  - services/knowledge-engine/app/routers/runtime_traces.py
-  - services/knowledge-engine/app/services/approval_operations.py
   - services/knowledge-engine/tests/test_approval_operation_worker.py
   - services/knowledge-engine/tests/test_approval_operations.py
   - services/knowledge-engine/tests/test_single_user_local_trust.py
-  - config/runtime-manifest.yaml
-  - docker-compose.yml
   - tests/test_compose_runtime_contract.py
 - id: WB13-ACT-005
   planned_change_id: WB13-CHG-005
@@ -74,13 +63,11 @@ actual_changes:
   - frontend/src/components/workbench/WorkbenchDock.tsx
   - frontend/src/hooks/useAgentChat.ts
   - frontend/src/lib/agent-chat/codex-runner.ts
-  - frontend/src/lib/agent-chat/host-bridge-runner.ts
   - frontend/src/lib/workbench-context.ts
   - frontend/tests/agent-chat/unit/codex-runner.test.ts
   - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
   - frontend/tests/workbench-context-persistence.test.ts
   - frontend/tests/workbench-suggestions-grounding.test.ts
-  - services/host-bridge/host_bridge/app.py
   - services/host-bridge/host_bridge/core.py
   - services/host-bridge/tests/test_host_bridge.py
   - services/host-bridge/tests/test_workbench_context.py
@@ -95,6 +82,10 @@ actual_changes:
   paths:
   - services/knowledge-engine/tests/test_system_graph_collectors.py
 contract_delta:
+- description: Transferred final cumulative-candidate ownership of shared local-trust, runtime, Host adapter and system-graph paths to the later single-user-local-trust contract.
+  reason: The integration commit combines two independently green candidates; commit-mode validation correctly rejected duplicate schema-v3 owners for files whose final credential-removal semantics are defined by the local-trust change.
+  effect: Workbench retains sole ownership of its Dock, context persistence, Agent Contract and Host Core paths, while every shared protected path has one final semantic owner.
+  accepted: true
 - description: Added the S3 system-graph owner regression after the first real feature-branch CI run.
   reason: CI proved the existing test still expected workspace-operations to own /workspace/development even though the versioned system-console FeatureDefinition is its canonical and sole owner.
   effect: The test now follows current machine truth and independently verifies both sides of the non-overlapping ownership boundary; no product route or collector implementation changes.
