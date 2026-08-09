@@ -16,6 +16,102 @@
     "database": "omni_vibe_db",
     "scheduler_owner": true
   },
+  "runtime_profiles": {
+    "default": "core",
+    "profiles": {
+      "core": {
+        "compose_profiles": [],
+        "services": [
+          "runtime-preflight",
+          "postgres",
+          "redis",
+          "migrate",
+          "ai-provider-hub",
+          "knowledge-engine",
+          "frontend"
+        ],
+        "long_lived_services": [
+          "postgres",
+          "redis",
+          "ai-provider-hub",
+          "knowledge-engine",
+          "frontend"
+        ],
+        "one_shot_services": [
+          "runtime-preflight",
+          "migrate"
+        ]
+      },
+      "content": {
+        "compose_profiles": [
+          "content"
+        ],
+        "services": [
+          "runtime-preflight",
+          "postgres",
+          "redis",
+          "migrate",
+          "ai-provider-hub",
+          "knowledge-engine",
+          "frontend",
+          "video-analysis",
+          "livestream-analysis",
+          "scout-agent"
+        ],
+        "long_lived_services": [
+          "postgres",
+          "redis",
+          "ai-provider-hub",
+          "knowledge-engine",
+          "frontend",
+          "video-analysis",
+          "livestream-analysis",
+          "scout-agent"
+        ],
+        "one_shot_services": [
+          "runtime-preflight",
+          "migrate"
+        ]
+      },
+      "full": {
+        "compose_profiles": [
+          "full"
+        ],
+        "services": [
+          "runtime-preflight",
+          "postgres",
+          "redis",
+          "migrate",
+          "ai-provider-hub",
+          "knowledge-engine",
+          "frontend",
+          "video-analysis",
+          "livestream-analysis",
+          "scout-agent",
+          "news-aggregator",
+          "ad-review-service",
+          "nginx"
+        ],
+        "long_lived_services": [
+          "postgres",
+          "redis",
+          "ai-provider-hub",
+          "knowledge-engine",
+          "frontend",
+          "video-analysis",
+          "livestream-analysis",
+          "scout-agent",
+          "news-aggregator",
+          "ad-review-service",
+          "nginx"
+        ],
+        "one_shot_services": [
+          "runtime-preflight",
+          "migrate"
+        ]
+      }
+    }
+  },
   "identity_labels": {
     "runtime_id": "io.omni.runtime_id",
     "source_commit": "org.opencontainers.image.revision",
@@ -71,8 +167,18 @@
     "services/infra-core/docker-compose.infra.yml"
   ],
   "services": {
+    "runtime-preflight": {
+      "required": false,
+      "runtime_profiles": ["core", "content", "full"],
+      "lifecycle": "one_shot",
+      "source_paths": [
+        "services/infra-core/migrations/Dockerfile",
+        "scripts/runtime_guard.py"
+      ]
+    },
     "postgres": {
       "required": true,
+      "runtime_profiles": ["core", "content", "full"],
       "published_ports": [5432],
       "health": {"kind": "docker"},
       "source_paths": [
@@ -81,6 +187,7 @@
     },
     "redis": {
       "required": true,
+      "runtime_profiles": ["core", "content", "full"],
       "published_ports": [6379],
       "health": {"kind": "docker"},
       "source_paths": [
@@ -89,6 +196,7 @@
     },
     "frontend": {
       "required": true,
+      "runtime_profiles": ["core", "content", "full"],
       "published_ports": [3000],
       "health": {"kind": "http", "path": ""},
       "source_paths": [
@@ -101,6 +209,7 @@
     },
     "ai-provider-hub": {
       "required": true,
+      "runtime_profiles": ["core", "content", "full"],
       "published_ports": [8001],
       "health": {"kind": "http", "path": "health"},
       "source_paths": [
@@ -111,6 +220,7 @@
     },
     "knowledge-engine": {
       "required": true,
+      "runtime_profiles": ["core", "content", "full"],
       "published_ports": [8002],
       "health": {"kind": "http", "path": "health"},
       "scheduler_default": false,
@@ -124,7 +234,8 @@
       ]
     },
     "scout-agent": {
-      "required": true,
+      "required": false,
+      "runtime_profiles": ["content", "full"],
       "published_ports": [8009],
       "health": {"kind": "http", "path": "health"},
       "source_paths": [
@@ -137,38 +248,65 @@
     },
     "identity-service": {
       "required": false,
+      "runtime_profiles": [],
       "published_ports": [8000],
+      "health": {"kind": "docker"},
       "source_paths": [
         "services/identity-service"
       ]
     },
     "news-aggregator": {
       "required": false,
+      "runtime_profiles": ["full"],
       "published_ports": [8005],
+      "health": {"kind": "docker"},
       "source_paths": [
         "services/news-aggregator"
       ]
     },
     "video-analysis": {
       "required": false,
+      "runtime_profiles": ["content", "full"],
       "published_ports": [8006],
+      "health": {"kind": "docker"},
       "source_paths": [
         "services/video-analysis"
       ]
     },
     "livestream-analysis": {
       "required": false,
+      "runtime_profiles": ["content", "full"],
       "published_ports": [8007],
+      "health": {"kind": "docker"},
       "source_paths": [
         "services/livestream-analysis"
       ]
     },
     "ad-review-service": {
       "required": false,
+      "runtime_profiles": ["full"],
       "published_ports": [8008],
       "health": {"kind": "http", "path": "health"},
       "source_paths": [
         "services/ad-review-service"
+      ]
+    },
+    "nginx": {
+      "required": false,
+      "runtime_profiles": ["full"],
+      "health": {"kind": "docker"},
+      "source_paths": [
+        "services/infra-core/nginx"
+      ]
+    },
+    "migrate": {
+      "required": false,
+      "runtime_profiles": ["core", "content", "full"],
+      "lifecycle": "one_shot",
+      "source_paths": [
+        "services/infra-core/migrations",
+        "migrations",
+        "scripts/apply_migrations.py"
       ]
     }
   }

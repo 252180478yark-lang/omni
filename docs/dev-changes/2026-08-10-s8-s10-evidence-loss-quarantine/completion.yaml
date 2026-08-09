@@ -1,0 +1,81 @@
+schema_version: 3
+change_id: 2026-08-10-s8-s10-evidence-loss-quarantine
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: LOSS-ACT-001
+  planned_change_id: LOSS-001
+  summary: Added exact historical candidate evaluation, strict quarantine schema validation, attestation-gated quarantine discovery, and additive ownership inventory reporting with no active-scope effect.
+  paths:
+  - scripts/workspace_ownership.py
+- id: LOSS-ACT-002
+  planned_change_id: LOSS-002
+  summary: Replaced the machine-local permanent-object assumption with fail-closed verified-or-quarantined production coverage and added an attested reporting-only ownership fixture.
+  paths:
+  - tests/test_workspace_ownership.py
+- id: LOSS-ACT-003
+  planned_change_id: LOSS-003
+  summary: Added the exact source identity, expected hashes, recovery audit, and explicit no-delivery/no-retirement/no-ownership-effect quarantine contract.
+  paths:
+  - docs/dev-changes/2026-08-10-s8-s10-evidence-loss-quarantine/impact.yaml
+  - docs/dev-changes/2026-08-10-s8-s10-evidence-loss-quarantine/completion.yaml
+contract_delta: []
+verification_results:
+- id: LOSS-VER-001
+  command: python -m pytest -q tests/test_workspace_ownership.py
+  status: passed
+  exit_code: 0
+  evidence: 30 ownership tests passed in 4.06 seconds, including exact historical evidence, production quarantine, attestation gating, active-owner preservation, and no-retirement behavior.
+- id: LOSS-VER-002
+  command: python -m pytest -q tests/test_implementation_status.py tests/test_development_readiness.py tests/test_prd_status_projection.py
+  status: passed
+  exit_code: 0
+  evidence: 48 implementation-status, readiness, and PRD projection tests passed in 10.37 seconds; a fresh projection has zero projection_errors.
+- id: LOSS-VER-003
+  command: python scripts/check_agent_policy.py --require-tracked
+  status: passed
+  exit_code: 0
+  evidence: AGENTS policy passes at 13741/16384 bytes with all routed assets valid and tracked.
+graph_diff:
+  status: clean
+  snapshot_before: git:fbeb99f8651d6844910ddb45a0ac7c5375130129
+  snapshot_after: worktree:2026-08-10-s8-s10-evidence-loss-quarantine:verified
+  added_nodes:
+  - state:historical_evidence.unavailable_quarantined
+  modified_nodes:
+  - service:scripts.workspace_ownership.historical_candidate_evidence
+  - projection:workspace-ownership.evidence-quarantines
+  - test:tests/test_workspace_ownership.py
+  removed_nodes: []
+  added_edges:
+  - state:historical_evidence.unavailable_quarantined -> service:scripts.workspace_ownership.historical_candidate_evidence (declares)
+  - service:scripts.workspace_ownership.historical_candidate_evidence -> projection:workspace-ownership.evidence-quarantines (projects)
+  removed_edges: []
+  required_edges:
+  - from: state:historical_evidence.unavailable_quarantined
+    to: service:scripts.workspace_ownership.historical_candidate_evidence
+    relation: declares
+    status: present
+    evidence: The versioned contract carries the exact lost candidate, original expected hashes, recovery audit, and explicit no-effect consequences.
+  - from: service:scripts.workspace_ownership.historical_candidate_evidence
+    to: projection:workspace-ownership.evidence-quarantines
+    relation: projects
+    status: present
+    evidence: inventory_workspace loads quarantines only from externally delivered immutable contracts and reports them in an additive evidence_quarantines field.
+  - from: test:tests/test_workspace_ownership.py
+    to: service:scripts.workspace_ownership.historical_candidate_evidence
+    relation: verifies_fail_closed
+    status: present
+    evidence: The 30-test suite proves unavailable evidence without quarantine remains unavailable and quarantine never removes the active historical owner or creates a retirement.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: Reverting this candidate restores the previous exact-object-only check; no historical contract, Git object, runtime, external system, or persistent data was changed.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: Irrecoverable historical Git evidence is represented by an attestation-gated, reporting-only quarantine without false delivery, retirement, completion, or ownership effects.

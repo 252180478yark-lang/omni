@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 
 import { requireAuthenticatedActor, requireSameOrigin, ServiceFetchError, serviceBase } from '../../_shared'
+import {
+  isLegacyWorkbenchGroupId,
+  LEGACY_WORKBENCH_IA_VERSION,
+  resolveLegacyWorkbenchNavigation,
+  type LegacyWorkbenchGroupId,
+} from '@/lib/workbench-ia-compat'
 import {
   resolveWorkbenchLocation,
   workbenchNavigationForMode,
@@ -28,7 +33,7 @@ interface NavigationEventInput {
   canonical_href?: string
   feature_id?: string
   mode?: WorkbenchMode
-  primary_group?: WorkbenchGroupId
+  primary_group?: WorkbenchGroupId | LegacyWorkbenchGroupId
   secondary_depth?: number
   result: NavigationResult
 }
@@ -38,9 +43,10 @@ const RESULTS = new Set<NavigationResult>([
   'redirected', 'recovered', 'failed', 'selected', 'opened', 'unregistered', 'ambiguous',
 ])
 const MODES = new Set<WorkbenchMode>(['work', 'development'])
-const GROUPS = new Set<WorkbenchGroupId>([
-  'today', 'products', 'operations', 'content', 'knowledge',
-  'agents', 'skills-tools', 'workflows', 'prompt-eval', 'runs-system',
+const CURRENT_WORKBENCH_IA_VERSION = 'workbench-ia-v2' as const
+const CURRENT_GROUPS = new Set<WorkbenchGroupId>([
+  'production', 'analysis', 'library',
+  'agent-tools', 'quality', 'system',
 ])
 const ALLOWED_KEYS = new Set([
   'event_type', 'requested_href', 'canonical_href', 'feature_id',
@@ -52,6 +58,8 @@ const MAX_TRACKED_ACTORS = 256
 interface ValidatedNavigationContract {
   capabilityId: string
   routeFamily: string
+  version: typeof LEGACY_WORKBENCH_IA_VERSION | typeof CURRENT_WORKBENCH_IA_VERSION
+  exclusive: boolean
 }
 
 interface ActorMinuteWindow {
@@ -94,7 +102,10 @@ function parseInput(value: unknown): NavigationEventInput | null {
     (value.canonical_href !== undefined && !canonicalHref) ||
     (featureId !== undefined && (typeof featureId !== 'string' || !/^[a-z][a-z0-9-]{2,63}$/.test(featureId))) ||
     (mode !== undefined && (typeof mode !== 'string' || !MODES.has(mode as WorkbenchMode))) ||
-    (primaryGroup !== undefined && (typeof primaryGroup !== 'string' || !GROUPS.has(primaryGroup as WorkbenchGroupId))) ||
+    (primaryGroup !== undefined && (
+      typeof primaryGroup !== 'string' ||
+      (!CURRENT_GROUPS.has(primaryGroup as WorkbenchGroupId) && !isLegacyWorkbenchGroupId(primaryGroup))
+    )) ||
     (secondaryDepth !== undefined && (!Number.isInteger(secondaryDepth) || Number(secondaryDepth) < 0 || Number(secondaryDepth) > 20))
   ) return null
   return {
@@ -103,23 +114,10 @@ function parseInput(value: unknown): NavigationEventInput | null {
     canonical_href: canonicalHref,
     feature_id: featureId as string | undefined,
     mode: mode as WorkbenchMode | undefined,
-    primary_group: primaryGroup as WorkbenchGroupId | undefined,
+    primary_group: primaryGroup as WorkbenchGroupId | LegacyWorkbenchGroupId | undefined,
     secondary_depth: secondaryDepth as number | undefined,
     result: result as NavigationResult,
   }
-}
-
-function compatibilityToken(): string {
-  const path = process.env.OMNI_COMPATIBILITY_TOKEN_FILE?.trim()
-  if (!path) throw new Error('compatibility_token_unconfigured')
-  let token = ''
-  try {
-    token = readFileSync(path, 'utf8').trim()
-  } catch {
-    throw new Error('compatibility_token_unavailable')
-  }
-  if (token.length < 24) throw new Error('compatibility_token_invalid')
-  return token
 }
 
 function routeSlug(pathname: string): string {
@@ -131,6 +129,28 @@ function routeSlug(pathname: string): string {
 }
 
 function validateContract(input: NavigationEventInput): ValidatedNavigationContract | null {
+  if (input.event_type === 'primary_navigation' && input.primary_group && isLegacyWorkbenchGroupId(input.primary_group)) {
+    if (
+      !['selected', 'opened'].includes(input.result) ||
+      !input.feature_id || !input.mode
+    ) return null
+    const legacy = resolveLegacyWorkbenchNavigation({
+      featureId: input.feature_id,
+      requestedHref: input.requested_href,
+      canonicalHref: input.canonical_href,
+      mode: input.mode,
+      primaryGroup: input.primary_group,
+      secondaryDepth: input.secondary_depth,
+    })
+    if (!legacy) return null
+    return {
+      capabilityId: `navigation:${input.feature_id}`,
+      routeFamily: `workbench-nav:${input.mode}:${input.primary_group}:depth-${legacy.expectedDepth}`,
+      version: legacy.version,
+      exclusive: legacy.exclusive,
+    }
+  }
+
   const location = resolveWorkbenchLocation(input.requested_href)
   if (input.event_type === 'legacy_alias') {
     if (
@@ -141,6 +161,8 @@ function validateContract(input: NavigationEventInput): ValidatedNavigationContr
     return {
       capabilityId: `legacy-alias:${routeSlug(location.requestedHref)}:${location.featureId}`,
       routeFamily: `workbench-alias:${routeSlug(location.canonicalHref)}`,
+      version: CURRENT_WORKBENCH_IA_VERSION,
+      exclusive: false,
     }
   }
   if (input.event_type === 'route_gap') {
@@ -150,25 +172,34 @@ function validateContract(input: NavigationEventInput): ValidatedNavigationContr
       input.feature_id !== undefined
     ) return null
     const fingerprint = createHash('sha256').update(location.requestedHref).digest('hex').slice(0, 16)
-    return { capabilityId: `route-gap:sha256-${fingerprint}`, routeFamily: 'workbench-gap' }
+    return {
+      capabilityId: `route-gap:sha256-${fingerprint}`,
+      routeFamily: 'workbench-gap',
+      version: CURRENT_WORKBENCH_IA_VERSION,
+      exclusive: false,
+    }
   }
   if (
     !location.featureId || ['alias', 'unregistered', 'ambiguous'].includes(location.kind) ||
     !['selected', 'opened'].includes(input.result) || input.feature_id !== location.featureId ||
-    input.canonical_href !== location.canonicalHref || !input.mode || !input.primary_group
+    input.canonical_href !== location.canonicalHref || !input.mode || !input.primary_group ||
+    !CURRENT_GROUPS.has(input.primary_group as WorkbenchGroupId)
   ) return null
+  const primaryGroup = input.primary_group as WorkbenchGroupId
   const placementMatches =
-    (location.primary?.mode === input.mode && location.primary.group === input.primary_group) ||
-    location.contextualGroups.some((group) => group.mode === input.mode && group.group === input.primary_group)
+    (location.primary?.mode === input.mode && location.primary.group === primaryGroup) ||
+    location.contextualGroups.some((group) => group.mode === input.mode && group.group === primaryGroup)
   if (!placementMatches) return null
   const navigationGroup = workbenchNavigationForMode(input.mode)
-    .find((group) => group.id === input.primary_group)
+    .find((group) => group.id === primaryGroup)
   const landing = navigationGroup?.entries[0]
   const expectedDepth = landing?.featureId === location.featureId ? 0 : 1
   if (!landing || input.secondary_depth !== expectedDepth) return null
   return {
     capabilityId: `navigation:${location.featureId}`,
-    routeFamily: `workbench-nav:${input.mode}:${input.primary_group}:depth-${expectedDepth}`,
+    routeFamily: `workbench-nav:${input.mode}:${primaryGroup}:depth-${expectedDepth}`,
+    version: CURRENT_WORKBENCH_IA_VERSION,
+    exclusive: false,
   }
 }
 
@@ -193,7 +224,7 @@ function actorMinuteWindow(actorId: string, minute: number): ActorMinuteWindow {
 
 function outcomeKey(input: NavigationEventInput, contract: ValidatedNavigationContract): string {
   return createHash('sha256')
-    .update([input.event_type, input.result, contract.capabilityId, contract.routeFamily].join('\n'))
+    .update([input.event_type, input.result, contract.capabilityId, contract.routeFamily, contract.version].join('\n'))
     .digest('hex')
 }
 
@@ -202,28 +233,22 @@ async function submitCompatibilityTelemetry(
   contract: ValidatedNavigationContract,
   observedAt: string,
 ): Promise<boolean> {
-  let token: string
-  try {
-    token = compatibilityToken()
-  } catch {
-    return false
-  }
   try {
     const response = await fetch(`${serviceBase().knowledge}/api/v1/compatibility/telemetry`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         client_id: 'web-workbench',
         capability_id: contract.capabilityId,
         route_family: contract.routeFamily,
-        exclusive: false,
+        exclusive: contract.exclusive,
         observed_at: observedAt,
         metadata: {
           state: input.result,
           reason_code: input.event_type,
+          version: contract.version,
         },
       }),
       cache: 'no-store',

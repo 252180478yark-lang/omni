@@ -19,6 +19,12 @@ describe('generated FeatureDefinition projection', () => {
     expect(FEATURE_REGISTRY).toHaveLength(26)
     expect(FEATURE_REGISTRY.every((entry) => entry.owner.id && entry.owned_surfaces.includes(entry.href))).toBe(true)
     expect(FEATURE_REGISTRY.every((entry) => entry.ia.primary_order >= 0)).toBe(true)
+    const visible = FEATURE_REGISTRY.filter((entry) => entry.lifecycle === 'active' && entry.visible)
+    const hidden = FEATURE_REGISTRY.filter((entry) => !entry.visible)
+    expect(visible).toHaveLength(16)
+    expect(hidden).toHaveLength(10)
+    expect(hidden.every((entry) => entry.placements.length === 1 && entry.placements[0] === 'direct')).toBe(true)
+    expect(new Set(FEATURE_REGISTRY.flatMap((entry) => entry.owned_surfaces)).size).toBe(43)
   })
 
   it('keeps real capability pages as owned renderers and registers genuine compatibility aliases', () => {
@@ -52,6 +58,16 @@ describe('generated FeatureDefinition projection', () => {
       canonicalHref: '/ad-review',
       featureId: 'ad-review',
     })
+    expect(resolveFeatureHref('/')).toEqual({
+      href: '/workspace',
+      deprecated: true,
+      featureId: 'workspace-operations',
+    })
+    expect(resolveFeatureSurface('/')).toMatchObject({
+      kind: 'alias',
+      canonicalHref: '/workspace',
+      featureId: 'workspace-operations',
+    })
   })
 
   it('keeps real developer renderers canonical instead of swallowing them as console aliases', () => {
@@ -66,6 +82,31 @@ describe('generated FeatureDefinition projection', () => {
         kind: 'canonical',
         canonicalHref: href,
         featureId,
+      })
+    }
+  })
+
+  it('keeps hidden features directly resolvable without returning them to primary navigation', () => {
+    for (const [href, featureId] of [
+      ['/ad-review', 'ad-review'],
+      ['/ad-metrics', 'commerce-feedback'],
+      ['/cost', 'cost-management'],
+      ['/news', 'news'],
+      ['/scout', 'scout-monitoring'],
+      ['/workspace/development', 'system-console'],
+      ['/workspace/execution', 'system-convergence-runtime-execution'],
+      ['/system-graph', 'system-convergence-s4-s6'],
+      ['/tasks', 'task-management'],
+      ['/tri-mind', 'tri-mind'],
+    ] as const) {
+      expect(resolveFeatureSurface(href)).toMatchObject({
+        kind: 'canonical',
+        canonicalHref: href,
+        featureId,
+      })
+      expect(FEATURE_REGISTRY.find((entry) => entry.feature_id === featureId)).toMatchObject({
+        visible: false,
+        placements: ['direct'],
       })
     }
   })

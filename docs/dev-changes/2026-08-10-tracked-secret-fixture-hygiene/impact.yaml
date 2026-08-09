@@ -1,0 +1,118 @@
+schema_version: 3
+change_id: 2026-08-10-tracked-secret-fixture-hygiene
+title: Tracked secret fixture hygiene
+state: GRAPH_DIFF_READY
+created_at: '2026-08-09T14:41:13Z'
+updated_at: '2026-08-09T14:49:53Z'
+feature_refs:
+- feature_id: tracked-secret-fixture-hygiene
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S0:secret-hygiene
+before_snapshot:
+  ref: git:30c5f4cda703250a46a12ec6145e934d042863f7
+delivery:
+  authority: ci_attestation
+  base_commit: 30c5f4cda703250a46a12ec6145e934d042863f7
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - The tracked secret scanner detects seven credential-shaped literals that are only test identifiers assembled inside fixtures; removing the source-level literal shape is local, reversible and does not weaken scanner rules.
+  - Repository policy conservatively derives R2 because one fixture is a migration verifier even though no migration or persistent database state changes.
+  external_effects: []
+  scope_deltas: []
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: Seven tracked-baseline findings are false positives created by deterministic test literals in one frontend test, one disposable migration verifier and the W5 scanner tests themselves.
+  expected_outcome: Preserve every test assertion while ensuring the repository contains no credential-shaped contiguous fixture literal and the unmodified tracked scanner passes with zero findings.
+  user_visible_behavior:
+  - No product behavior changes; S0 secret hygiene reports the truthful clean tracked baseline without an allowlist exception.
+current_chain:
+  nodes:
+  - scanner:scripts.workspace_ownership.scan_secrets
+  - test:frontend.workbench-navigation-events
+  - verifier:scripts.verify_workbench_g1_migration
+  - test:tests.test_w5_recovery_evidence
+  edges:
+  - from: scanner:scripts.workspace_ownership.scan_secrets
+    to: state:s0-secret-scan
+    relation: reports
+  evidence:
+  - Fresh tracked scan reported 7 findings: 1 cookie_header, 3 session_credential and 3 bearer_token findings in the three scoped fixture files.
+scope:
+  pages: []
+  apis: []
+  mcp_tools: []
+  services: []
+  database: []
+  data_sources: []
+  states_workflows: []
+  tests:
+  - frontend/tests/workbench-navigation-events.test.ts
+  - tests/test_w5_recovery_evidence.py
+  docs:
+  - scripts/verify_workbench_g1_migration.ps1
+planned_changes:
+- id: TSFH-CHG-001
+  action: modify
+  kind: test
+  node_id: state:s0-secret-scan
+  paths:
+  - frontend/tests/workbench-navigation-events.test.ts
+  - scripts/verify_workbench_g1_migration.ps1
+  - tests/test_w5_recovery_evidence.py
+  upstream:
+  - scanner:scripts.workspace_ownership.scan_secrets
+  downstream:
+  - state:s0-secret-scan
+  contract_change: none
+  verification_ids:
+  - TSFH-VER-001
+  - TSFH-VER-002
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: not_applicable
+    strategy: No API implementation or wire contract changes.
+  database:
+    status: not_applicable
+    strategy: No schema, migration or persisted data changes.
+  workflow:
+    status: compatible
+    strategy: Test data retains the same assertions and generated runtime values; only contiguous credential-shaped source literals are shortened or assembled from fragments.
+  data_source:
+    status: not_applicable
+    strategy: No external source, authentication or freshness changes.
+graph_acceptance:
+  required_edges:
+  - from: scanner:scripts.workspace_ownership.scan_secrets
+    to: state:s0-secret-scan
+    relation: reports
+  allowed_unknowns: []
+  forbidden_orphans: []
+risks:
+- id: TSFH-RISK-001
+  description: Fixture cleanup could accidentally weaken the secret scanner test.
+  mitigation: Keep runtime fixture values credential-shaped and rerun scanner-specific tests plus an independent tracked-baseline scan with no added allowlist.
+out_of_scope:
+- Changing scanner patterns, placeholder heuristics or DEFAULT_SECRET_ALLOWLIST.
+- Resolving workspace ownership, migration baseline, Hook trust or external delivery gates.
+rollback:
+  strategy: Revert the fixture-only commit; no production data or runtime configuration is changed.
+  data_recovery: Not applicable; no data writes or migrations.
+verification_plan:
+- id: TSFH-VER-001
+  layer: secret-hygiene
+  command: uv run --no-project --with 'pyyaml>=6,<7' python scripts/workspace_ownership.py --current-only --secret-scope tracked --fail-secrets
+  proves: The unchanged tracked scanner reports zero findings without a supplied allowlist.
+  required: true
+- id: TSFH-VER-002
+  layer: regression
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pyyaml>=6,<7' pytest -q tests/test_workspace_ownership.py tests/test_w5_recovery_evidence.py -k 'not test_manifest_rejects_common_dir_junction_escape' && cd frontend && npx vitest run tests/workbench-navigation-events.test.ts
+  proves: Scanner redaction/allowlist policy, portable W5 fail-closed fixture semantics and navigation telemetry behavior are unchanged; the Windows-only junction case remains a CI responsibility on a runner with cmd.exe.
+  required: true
+lock:
+  locked_at: '2026-08-09T14:43:00Z'
+  locked_by: codex
+  rationale: Exact false-positive fixture paths and unchanged scanner policy are locked.

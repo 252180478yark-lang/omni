@@ -16,10 +16,8 @@ import importlib.util
 import json
 import os
 import re
-import secrets
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from dataclasses import asdict, dataclass
@@ -33,6 +31,7 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 SCHEMA_VERSION = 1
 DEFAULT_TTL_SECONDS = 8 * 60 * 60
 BLOCKING_STATES = {"active"}
+RUNTIME_PROFILES = frozenset({"core", "content", "full"})
 PORT_ENV = {
     "postgres": "POSTGRES_PORT",
     "redis": "REDIS_PORT",
@@ -96,6 +95,7 @@ class RuntimeAllocation:
     canonical: bool
     runtime_id: str
     compose_project: str
+    runtime_profile: str
     ports: Mapping[str, int]
     database: str
     database_schema: str
@@ -172,110 +172,6 @@ def default_state_dir(root: Path) -> Path:
     return git_common_dir(root) / "omni-runtime"
 
 
-def _default_runtime_secret_path(root: Path, filename: str, label: str) -> Path:
-    repo_key = repository_id(root)
-    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
-        base = Path(os.environ["LOCALAPPDATA"])
-    elif os.environ.get("XDG_STATE_HOME"):
-        base = Path(os.environ["XDG_STATE_HOME"])
-    else:
-        base = Path(tempfile.gettempdir()) / "omni-local-state"
-    path = (base / "Omni" / "runtime-secrets" / repo_key / filename).resolve()
-    try:
-        path.relative_to(root.resolve())
-    except ValueError:
-        return path
-    raise AllocationError(f"{label} secret path must remain outside the repository")
-
-
-def default_approval_secret_path(root: Path) -> Path:
-    """Return a stable repository-external approval HMAC secret reference."""
-
-    return _default_runtime_secret_path(root, "approval-hmac.key", "approval HMAC")
-
-
-def default_identity_jwt_secret_path(root: Path) -> Path:
-    """Return an independent repository-external identity JWT secret reference."""
-
-    return _default_runtime_secret_path(root, "identity-jwt.key", "identity JWT")
-
-
-def default_compatibility_token_path(root: Path) -> Path:
-    """Return an independent repository-external compatibility token reference."""
-
-    return _default_runtime_secret_path(root, "compatibility-token.key", "compatibility token")
-
-
-def _ensure_runtime_secret(
-    root: Path,
-    *,
-    target: Path,
-    label: str,
-    secret_factory: Any,
-) -> Path:
-    target = target.resolve()
-    try:
-        target.relative_to(root.resolve())
-    except ValueError:
-        pass
-    else:
-        raise AllocationError(f"{label} secret path must remain outside the repository")
-    if target.exists():
-        if not target.is_file() or target.stat().st_size < 32:
-            raise AllocationError(f"{label} secret reference is invalid")
-        if os.name != "nt":
-            target.chmod(0o600)
-        return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(secret_factory())
-            handle.flush()
-            os.fsync(handle.fileno())
-        if os.name != "nt":
-            temporary.chmod(0o600)
-        os.replace(temporary, target)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-    return target
-
-
-def ensure_approval_hmac_secret(root: Path, *, path: Path | None = None) -> Path:
-    """Create once with private permissions; never read or return its value."""
-
-    return _ensure_runtime_secret(
-        root,
-        target=path or default_approval_secret_path(root),
-        label="approval HMAC",
-        secret_factory=lambda: secrets.token_bytes(48),
-    )
-
-
-def ensure_identity_jwt_secret(root: Path, *, path: Path | None = None) -> Path:
-    """Create a distinct printable JWT key once without returning its value."""
-
-    return _ensure_runtime_secret(
-        root,
-        target=path or default_identity_jwt_secret_path(root),
-        label="identity JWT",
-        secret_factory=lambda: secrets.token_urlsafe(48).encode("ascii"),
-    )
-
-
-def ensure_compatibility_token(root: Path, *, path: Path | None = None) -> Path:
-    """Create a distinct printable compatibility token without returning its value."""
-
-    return _ensure_runtime_secret(
-        root,
-        target=path or default_compatibility_token_path(root),
-        label="compatibility token",
-        secret_factory=lambda: secrets.token_urlsafe(48).encode("ascii"),
-    )
-
-
 def primary_worktree(root: Path) -> Path:
     common = git_common_dir(root)
     if common.name.casefold() == ".git":
@@ -341,8 +237,10 @@ def _fingerprint_path_allowed(relative: str) -> bool:
         return False
     if name.endswith((".pem", ".key", ".p12", ".pfx", ".pyc", ".log")):
         return False
-    # Documentation/test fixtures do not alter the runnable source identity.
-    if parts[0] == "docs" or "tests" in parts or "__tests__" in parts:
+    # Documentation, planning evidence and test fixtures do not alter the
+    # runnable source identity. Keep this list narrow: runnable source and
+    # configuration elsewhere must still invalidate an active allocation.
+    if parts[0] in {"docs", ".planning", "outputs"} or "tests" in parts or "__tests__" in parts:
         return False
     return True
 
@@ -603,6 +501,35 @@ def _load_manifest(root: Path) -> dict[str, Any]:
     return value
 
 
+def _resolve_runtime_profile(
+    manifest: Mapping[str, Any], requested: str | None = None
+) -> tuple[str, Mapping[str, Any]]:
+    runtime_profiles = manifest.get("runtime_profiles")
+    if not isinstance(runtime_profiles, Mapping):
+        raise AllocationError("runtime manifest requires runtime_profiles")
+    profiles = runtime_profiles.get("profiles")
+    if not isinstance(profiles, Mapping) or not profiles:
+        raise AllocationError("runtime manifest requires runtime profile definitions")
+    profile = str(requested or runtime_profiles.get("default") or "").strip()
+    if profile not in RUNTIME_PROFILES or profile not in profiles:
+        available = ", ".join(sorted(str(item) for item in profiles))
+        raise AllocationError(f"unknown runtime_profile {profile!r}; expected one of: {available}")
+    specification = profiles[profile]
+    if not isinstance(specification, Mapping):
+        raise AllocationError(f"runtime profile {profile!r} must be a mapping")
+    compose_profiles = specification.get("compose_profiles")
+    if not isinstance(compose_profiles, list) or any(
+        not isinstance(item, str) or not item.strip() for item in compose_profiles
+    ):
+        raise AllocationError(f"runtime profile {profile!r} has invalid compose_profiles")
+    expected_compose_profiles = [] if profile == "core" else [profile]
+    if compose_profiles != expected_compose_profiles:
+        raise AllocationError(
+            f"runtime profile {profile!r} must map to compose profiles {expected_compose_profiles!r}"
+        )
+    return profile, specification
+
+
 def _canonical_ports(manifest: Mapping[str, Any]) -> dict[str, int]:
     ports: dict[str, int] = {}
     for service, config in (manifest.get("services") or {}).items():
@@ -723,6 +650,7 @@ def _build_records(
     mode: str,
     ttl_seconds: int,
     canonical: bool,
+    runtime_profile: str,
     requested_ports: Mapping[str, int],
     risk_level: str,
     now: datetime,
@@ -742,6 +670,7 @@ def _build_records(
         raise AllocationError("canonical allocation is available only from the primary worktree")
 
     manifest = _load_manifest(root)
+    runtime_profile, _ = _resolve_runtime_profile(manifest, runtime_profile)
     canonical_ports = _canonical_ports(manifest)
     build_sha = _run(("git", "rev-parse", "HEAD"), cwd=root).stdout.strip().lower()
     sha8 = build_sha[:8]
@@ -797,6 +726,7 @@ def _build_records(
         canonical,
         runtime_id,
         compose_project,
+        runtime_profile,
         ports,
         database,
         database_schema,
@@ -817,10 +747,17 @@ def _build_records(
 
 def allocation_environment(allocation: Mapping[str, Any], *, worktree: Path | None = None) -> dict[str, str]:
     ports = allocation.get("ports") or {}
+    runtime_profile = str(allocation.get("runtime_profile") or "").strip()
+    if runtime_profile not in RUNTIME_PROFILES:
+        raise AllocationError(
+            "RuntimeAllocation has no valid runtime_profile; release/reacquire the legacy allocation"
+        )
     env = {
         "COMPOSE_PROJECT_NAME": str(allocation["compose_project"]),
+        "COMPOSE_PROFILES": "" if runtime_profile == "core" else runtime_profile,
         "OMNI_RUNTIME_ID": str(allocation["runtime_id"]),
         "OMNI_ALLOCATION_ID": str(allocation["allocation_id"]),
+        "OMNI_RUNTIME_PROFILE": runtime_profile,
         "POSTGRES_DB": str(allocation["database"]),
         "OMNI_DB_SCHEMA": str(allocation["database_schema"]),
         "OMNI_REDIS_NAMESPACE": str(allocation["redis_namespace"]),
@@ -876,6 +813,7 @@ def acquire(
     mode: str = "write",
     ttl_seconds: int = DEFAULT_TTL_SECONDS,
     canonical: bool = False,
+    runtime_profile: str | None = None,
     requested_ports: Mapping[str, int] | None = None,
     risk_level: str = "R1",
     state_dir: Path | None = None,
@@ -884,6 +822,7 @@ def acquire(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     root = repository_root(root)
+    runtime_profile, _ = _resolve_runtime_profile(_load_manifest(root), runtime_profile)
     store_dir = (state_dir or default_state_dir(root)).resolve()
     state_path = store_dir / "allocations.json"
     lock_path = store_dir / "allocations.lock"
@@ -913,6 +852,7 @@ def acquire(
                     or tuple(lease.get("path_globs") or []) != requested_globs
                     or lease.get("mode") != mode
                     or existing.get("canonical") is not canonical
+                    or existing.get("runtime_profile") != runtime_profile
                     or existing.get("approval_worker_owner") is not (canonical or mode == "write")
                     or existing.get("risk_level", "R1") != risk_level
                     or existing.get("source_fingerprint") != source_tree_fingerprint(root)
@@ -923,15 +863,13 @@ def acquire(
                 )
                 if mismatch:
                     raise CompareAndSwapConflict(
-                        "active allocation request differs in paths, ports, mode, canonical flag, risk, or source fingerprint; release/renew with CAS"
+                        "active allocation request differs in paths, ports, mode, canonical flag, runtime profile, risk, or source fingerprint; release/renew with CAS"
                     )
-                approval_secret = ensure_approval_hmac_secret(root)
-                identity_secret = ensure_identity_jwt_secret(root)
-                compatibility_token = ensure_compatibility_token(root)
                 return {
                     "schema_version": SCHEMA_VERSION,
                     "generation": generation,
                     "created": False,
+                    "dry_run": dry_run,
                     "lease": lease,
                     "allocation": existing,
                     "environment": {
@@ -939,9 +877,6 @@ def acquire(
                         "OMNI_RUNTIME_STATE_DIR": str(store_dir).replace("\\", "/"),
                         "OMNI_RUNTIME_ALLOCATION_SOURCE": str(state_path).replace("\\", "/"),
                         "OMNI_RUNTIME_ALLOCATION_FILE": "/runtime-state/allocations.json",
-                        "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval_secret).replace("\\", "/"),
-                        "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity_secret).replace("\\", "/"),
-                        "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility_token).replace("\\", "/"),
                     },
                     "state_path": "git-common-dir/omni-runtime/allocations.json"
                     if state_dir is None
@@ -956,6 +891,7 @@ def acquire(
             mode=mode,
             ttl_seconds=ttl_seconds,
             canonical=canonical,
+            runtime_profile=runtime_profile,
             requested_ports=requested_ports or {},
             risk_level=risk_level,
             now=moment,
@@ -963,9 +899,6 @@ def acquire(
         conflicts = _conflicts(state, lease, allocation)
         if conflicts:
             raise AllocationConflict(conflicts)
-        approval_secret = default_approval_secret_path(root) if dry_run else ensure_approval_hmac_secret(root)
-        identity_secret = default_identity_jwt_secret_path(root) if dry_run else ensure_identity_jwt_secret(root)
-        compatibility_token = default_compatibility_token_path(root) if dry_run else ensure_compatibility_token(root)
         new_generation = generation + 1
         if not dry_run:
             state["leases"].append(lease.to_dict())
@@ -984,9 +917,6 @@ def acquire(
                 "OMNI_RUNTIME_STATE_DIR": str(store_dir).replace("\\", "/"),
                 "OMNI_RUNTIME_ALLOCATION_SOURCE": str(state_path).replace("\\", "/"),
                 "OMNI_RUNTIME_ALLOCATION_FILE": "/runtime-state/allocations.json",
-                "OMNI_APPROVAL_HMAC_SECRET_FILE": str(approval_secret).replace("\\", "/"),
-                "OMNI_IDENTITY_JWT_SECRET_FILE": str(identity_secret).replace("\\", "/"),
-                "OMNI_COMPATIBILITY_TOKEN_FILE": str(compatibility_token).replace("\\", "/"),
             },
             "state_path": "git-common-dir/omni-runtime/allocations.json" if state_dir is None else str(state_path),
         }
@@ -1152,6 +1082,10 @@ def _parser() -> argparse.ArgumentParser:
     acquire_parser.add_argument("--mode", choices=("read", "write"), default="write")
     acquire_parser.add_argument("--ttl-seconds", type=int, default=DEFAULT_TTL_SECONDS)
     acquire_parser.add_argument("--canonical", action="store_true")
+    acquire_parser.add_argument(
+        "--runtime-profile",
+        help="runtime profile from config/runtime-manifest.yaml (default: manifest default)",
+    )
     acquire_parser.add_argument("--port", action="append", default=[])
     acquire_parser.add_argument("--risk-level", choices=("R0", "R1", "R2", "R3"), default="R1")
     acquire_parser.add_argument("--expected-generation", type=int)
@@ -1189,6 +1123,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=args.mode,
                 ttl_seconds=args.ttl_seconds,
                 canonical=args.canonical,
+                runtime_profile=args.runtime_profile,
                 requested_ports=_parse_ports(args.port),
                 risk_level=args.risk_level,
                 state_dir=args.state_dir,

@@ -1,0 +1,112 @@
+schema_version: 3
+change_id: 2026-08-09-websocket-origin-scheme-hardening
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: ACT-WS-001
+  planned_change_id: WS-001
+  summary: Extracted WebSocket Origin classification into a deterministic helper that compares exact effective http/https scheme and host, honors the first trusted forwarded values, falls back to direct socket encryption, and rejects malformed or non-origin URL forms before fixed local-owner projection.
+  paths:
+  - frontend/server.ts
+  - frontend/src/lib/agent-chat/ws-origin.ts
+- id: ACT-WS-002
+  planned_change_id: WS-002
+  summary: Added direct, TLS, proxy, array/comma header, mismatch and malformed Origin tests while updating the existing local-owner source-closure assertion to follow the extracted classifier without changing invalid-origin close behavior.
+  paths:
+  - frontend/tests/websocket-origin.test.ts
+  - frontend/tests/approval-auth-session.test.ts
+contract_delta:
+- description: Added standalone TypeScript coverage and made the intentionally minimal encrypted-socket fixture explicit across an unknown boundary.
+  reason: Pull-request CI includes test sources in npx tsc --noEmit and correctly rejected a direct assertion from a one-field object to Node's full Socket type.
+  effect: Runtime code is unchanged; the fixture remains minimal, all six security tests pass, and the exact CI compiler command now passes locally.
+  accepted: true
+- description: Added the existing approval-auth-session source-closure test to the implementation scope.
+  reason: Full frontend regression exposed a hardcoded assertion for the former in-file classifier symbol after the classifier was extracted into a testable module.
+  effect: The regression now requires isSameOriginWebSocketUpgrade wiring while retaining its no browser token, no session credential and invalid-origin checks.
+  accepted: true
+- description: Replaced the manual in-app browser check with an isolated production-server smoke in the unified worktree.
+  reason: The production artifact and loopback server are deterministic and directly prove the retained routes without depending on unrelated desktop browser state.
+  effect: Both workspace routes must return HTTP 200 from the built custom server and the workspace markup must remain the passwordless Omni surface.
+  accepted: true
+verification_results:
+- id: WS-VER-001
+  command: cd frontend && npm run test:unit -- tests/websocket-origin.test.ts tests/approval-ws-authorization.test.ts
+  status: passed
+  exit_code: 0
+  evidence: Two Vitest files and six tests passed, covering direct HTTP/TLS, first forwarded proxy values, array/comma normalization, malformed origins, cross-scheme/cross-host rejection, and invalid-origin close-before-action behavior.
+- id: WS-VER-002
+  command: cd frontend && npm run test:unit
+  status: passed
+  exit_code: 0
+  evidence: All 36 frontend unit-test files and 174 tests passed after reconciling the fixed local-owner actor-header expectation.
+- id: WS-VER-003
+  command: cd frontend && npm run build
+  status: passed
+  exit_code: 0
+  evidence: Next.js production compilation and type validation succeeded and generated all 47 static pages.
+- id: WS-VER-004
+  command: PORT=43137 OMNI_FRONTEND_HOST=127.0.0.1 NODE_ENV=production npm --prefix frontend run start; curl http://127.0.0.1:43137/workspace and /workspace/development
+  status: passed
+  exit_code: 0
+  evidence: The isolated custom server became ready on loopback; /workspace returned HTTP 200 with 8,205 bytes, /workspace/development returned HTTP 200 with 8,552 bytes, and the workspace title remained Omni-Vibe OS Ultra with no login marker.
+- id: WS-VER-005
+  command: git diff --check 43f97094df44bdff6c74de846556bd4a2031a612..HEAD
+  status: passed
+  exit_code: 0
+  evidence: The WebSocket hardening commit range and current worktree are whitespace-clean.
+- id: WS-VER-006
+  command: cd frontend && npx tsc --noEmit
+  status: passed
+  exit_code: 0
+  evidence: Standalone TypeScript compilation completed without diagnostics after the test-only fixture assertion was made explicit through unknown; the focused six WebSocket tests also remained green.
+graph_diff:
+  status: clean
+  snapshot_before: git:43f97094df44bdff6c74de846556bd4a2031a612
+  snapshot_after: worktree:websocket-origin-scheme-hardening:2026-08-09T15:34:13Z
+  added_nodes:
+  - module:frontend.websocket-origin-classifier
+  - test:websocket-origin-classifier
+  modified_nodes:
+  - service:frontend-websocket-upgrade
+  - service:frontend-local-owner
+  - workflow:agent-chat-websocket
+  removed_nodes: []
+  added_edges:
+  - from: source:local-browser-origin
+    to: service:frontend-websocket-upgrade
+    relation: authorizes-by-exact-effective-scheme-and-host
+  - from: service:frontend-websocket-upgrade
+    to: service:frontend-local-owner
+    relation: projects-only-after-exact-origin
+  - from: service:frontend-local-owner
+    to: workflow:agent-chat-websocket
+    relation: operates-without-product-credentials
+  removed_edges: []
+  required_edges:
+  - from: source:local-browser-origin
+    to: service:frontend-websocket-upgrade
+    relation: authorizes-by-exact-effective-scheme-and-host
+    status: present
+    evidence: isSameOriginWebSocketUpgrade parses the Origin and compares its exact http/https protocol and host with normalized effective request values; the six focused tests pass.
+  - from: service:frontend-websocket-upgrade
+    to: service:frontend-local-owner
+    relation: projects-only-after-exact-origin
+    status: present
+    evidence: attachWsHandler retains the same_origin_required close path before fixedOwnerActorContext projection, and the invalid-origin authorization regression passes.
+  - from: service:frontend-local-owner
+    to: workflow:agent-chat-websocket
+    relation: operates-without-product-credentials
+    status: present
+    evidence: The source-closure regression and complete frontend suite prove actor projection uses local-owner metadata without cookies, bearer tokens or product credentials.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: The hardening is isolated to the classifier, one server call site and regression tests after immutable commit 43f9709; reverting commits 2fcd3bd and 0107e8e restores the prior host-only behavior without data, migration, volume or external-state changes.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: Exact WebSocket effective scheme-and-host authorization is locally verified with focused security tests, the full frontend suite, a production build and loopback route smoke; immutable CI delivery attestation remains external.

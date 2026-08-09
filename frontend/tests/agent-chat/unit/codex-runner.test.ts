@@ -32,6 +32,8 @@ describe('codex-runner', () => {
       expect(args).toContain('--config')
       expect(args[args.indexOf('--config') + 1]).toBe('model_reasoning_effort="high"')
       expect(args[args.length - 1]).toBe('review this change')
+      expect(args).not.toContain('--sandbox')
+      expect(args).not.toContain('--skip-git-repo-check')
     })
 
     it('passes the resolved project cwd to a new Codex task', () => {

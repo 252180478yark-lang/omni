@@ -6,7 +6,7 @@ import { AlertTriangle, Archive, CheckCircle2, GitBranch, Loader2, RefreshCw, Sa
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { SystemGraphView } from '@/components/system-command-center/SystemGraphView'
+import { SystemCommandCenter } from '@/components/system-command-center/SystemCommandCenter'
 
 type PlanState = 'draft' | 'reviewing' | 'frozen' | 'stale' | 'archived'
 type Decision = 'reuse' | 'modify' | 'add' | 'not_do' | 'unknown'
@@ -126,7 +126,7 @@ export default function SystemGraphPlanPage() {
   }, [legacyPlan, load])
 
   if (!legacyPlan) {
-    return <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6"><SystemGraphView /></div>
+    return <SystemCommandCenter initialView="graph" />
   }
 
   const replacePlan = (plan: Plan, nextSummary?: PlanSummary) => {

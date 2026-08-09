@@ -6,15 +6,14 @@ owner: {kind: team, id: omni}
 lifecycle: active
 routes:
   canonical: /system-graph
-  visible: true
+  visible: false
   placements: [direct]
   owned_surfaces: [/system-graph]
 ia:
   mode: development
-  primary_group: workflows
+  primary_group: system
   primary_order: 10
-  contextual_groups:
-    - {mode: development, group: skills-tools, order: 10}
+  contextual_groups: []
   phase: merge
   flag: unified_shell
 capabilities:

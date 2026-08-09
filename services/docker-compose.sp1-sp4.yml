@@ -74,38 +74,6 @@ services:
       - omni-network
     restart: "no"
 
-  identity-service:
-    build:
-      context: ./identity-service
-      labels: *build-labels
-      args: *build-args
-    labels: *runtime-labels
-    environment:
-      <<: *runtime-env
-      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/3"
-      JWT_SECRET_KEY_FILE: "/run/secrets/omni_identity_jwt"
-      JWT_ALGORITHM: "HS256"
-      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-      JWT_REFRESH_TOKEN_EXPIRE_DAYS: "7"
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-    expose:
-      - "8000"
-    volumes:
-      - "${OMNI_IDENTITY_JWT_SECRET_FILE:?Identity JWT secret file required}:/run/secrets/omni_identity_jwt:ro"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-      runtime-preflight:
-        condition: service_completed_successfully
-    networks:
-      - omni-network
-
   frontend:
     build:
       context: ../frontend
@@ -116,19 +84,13 @@ services:
     labels: *runtime-labels
     environment:
       <<: *runtime-env
-      OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
-      OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
       NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
       AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
-      IDENTITY_SERVICE_URL: "http://identity-service:8000"
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
     command: ["npm", "run", "start"]
-    volumes:
-      - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
-      - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     depends_on:
@@ -136,8 +98,6 @@ services:
         condition: service_completed_successfully
       runtime-preflight:
         condition: service_completed_successfully
-      identity-service:
-        condition: service_healthy
       ai-provider-hub:
         condition: service_started
       knowledge-engine:
@@ -185,15 +145,10 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/1"
       OMNI_SCHEDULER_ENABLED: "${OMNI_SCHEDULER_ENABLED:-false}"
       OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
-      OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
-      OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
-      OMNI_APPROVAL_FRONTEND_PRINCIPAL: "service:frontend"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
     ports:
       - "127.0.0.1:${KNOWLEDGE_ENGINE_PORT:-8002}:8002"
     volumes:
-      - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
-      - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
       - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
       - knowledge_data:/app/data
     depends_on:

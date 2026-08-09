@@ -1,13 +1,14 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { POST } from '@/app/api/omni/workbench/navigation-events/route'
 
 let directory = ''
 let tokenPath = ''
 let actorSerial = 0
+let testMinute = 0
 
 beforeAll(() => {
   directory = mkdtempSync(join(tmpdir(), 'omni-workbench-telemetry-'))
@@ -25,6 +26,11 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
+beforeEach(() => {
+  testMinute += 1
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-02T10:00:00.000Z') + testMinute * 60_000)
+})
+
 function request(
   body: unknown,
   options: { withOrigin?: boolean; authenticated?: boolean; host?: string } = {},
@@ -38,7 +44,7 @@ function request(
       'Content-Type': 'application/json',
       Host: host,
       ...(withOrigin ? { Origin: `http://${host}` } : {}),
-      ...(authenticated ? { Cookie: 'omni_approval_session=test-browser-session' } : {}),
+      ...(authenticated ? { Cookie: 'omni_approval_session=test' } : {}),
     },
     body: JSON.stringify(body),
   })
@@ -58,6 +64,9 @@ function enableServices(options: {
   knowledgeStatus?: number
 } = {}) {
   actorSerial += 1
+  if (!vi.isMockFunction(Date.now)) {
+    vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000 + actorSerial * 60_000)
+  }
   const actorId = options.actorId ?? `user-${actorSerial}`
   const knowledgeBodies: Array<Record<string, unknown>> = []
   vi.stubEnv('IDENTITY_SERVICE_URL', 'http://identity.test')
@@ -65,10 +74,6 @@ function enableServices(options: {
   vi.stubEnv('OMNI_COMPATIBILITY_TOKEN_FILE', tokenPath)
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
-    if (url === 'http://identity.test/api/v1/auth/verify') {
-      if (options.identityUnavailable) throw new Error('identity unavailable')
-      return json({ data: { valid: true, sub: actorId, role: options.role ?? 'user' } })
-    }
     if (url === 'http://knowledge.test/api/v1/compatibility/telemetry') {
       knowledgeBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
       return json({}, options.knowledgeStatus ?? 200)
@@ -88,31 +93,27 @@ const aliasPayload = (result: 'redirected' | 'recovered' | 'failed') => ({
 })
 
 describe('workbench navigation telemetry BFF', () => {
-  it('requires a verified browser actor after same-origin validation', async () => {
+  it('uses the local owner without a browser credential and still validates origin', async () => {
     const { fetchMock, knowledgeBodies } = enableServices()
     const anonymous = await POST(request(aliasPayload('redirected'), { authenticated: false }))
-    expect(anonymous.status).toBe(401)
-    expect(await anonymous.json()).toMatchObject({
-      error: { code: 'authentication_required', retryable: false },
-    })
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(knowledgeBodies).toHaveLength(0)
+    expect(anonymous.status).toBe(202)
+    expect(await anonymous.json()).toEqual({ success: true, accepted: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(knowledgeBodies).toHaveLength(1)
 
     const originless = await POST(request(aliasPayload('redirected'), { withOrigin: false }))
     expect(originless.status).toBe(403)
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('returns typed identity-unavailable before reading the service token or writing telemetry', async () => {
+  it('does not contact identity or read a compatibility token', async () => {
     const { fetchMock, knowledgeBodies } = enableServices({ identityUnavailable: true })
     vi.stubEnv('OMNI_COMPATIBILITY_TOKEN_FILE', join(directory, 'missing'))
     const response = await POST(request(aliasPayload('redirected')))
-    expect(response.status).toBe(503)
-    expect(await response.json()).toMatchObject({
-      error: { code: 'identity_verification_unavailable', retryable: true },
-    })
+    expect(response.status).toBe(202)
+    expect(await response.json()).toEqual({ success: true, accepted: true })
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(knowledgeBodies).toHaveLength(0)
+    expect(knowledgeBodies).toHaveLength(1)
   })
 
   it('accepts and registry-revalidates redirected, recovered and failed alias outcomes', async () => {
@@ -123,7 +124,7 @@ describe('workbench navigation telemetry BFF', () => {
       expect(await response.json()).toEqual({ success: true, accepted: true })
     }
 
-    expect(fetchMock).toHaveBeenCalledTimes(6)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(knowledgeBodies).toHaveLength(3)
     const results = ['redirected', 'recovered', 'failed']
     for (let index = 0; index < results.length; index += 1) {
@@ -133,13 +134,13 @@ describe('workbench navigation telemetry BFF', () => {
         capability_id: 'legacy-alias:qa:chat',
         route_family: 'workbench-alias:chat',
         exclusive: false,
-        metadata: { state: result, reason_code: 'legacy_alias' },
+        metadata: { state: result, reason_code: 'legacy_alias', version: 'workbench-ia-v2' },
       })
       expect(JSON.stringify(knowledgeBodies[index])).not.toContain('test-compatibility-token')
     }
   })
 
-  it('accepts the current Identity user role for non-privileged navigation evidence', async () => {
+  it('ignores legacy Identity role input and records as the local owner', async () => {
     const { knowledgeBodies } = enableServices({ role: 'user', actorId: 'normal-user@example.test' })
 
     const response = await POST(request(aliasPayload('redirected')))
@@ -154,11 +155,11 @@ describe('workbench navigation telemetry BFF', () => {
     for (const result of ['selected', 'opened'] as const) {
       const response = await POST(request({
         event_type: 'primary_navigation',
-        requested_href: '/sku-pipeline',
-        canonical_href: '/sku-pipeline',
-        feature_id: 'sku-pipeline',
+        requested_href: '/workspace',
+        canonical_href: '/workspace',
+        feature_id: 'workspace-operations',
         mode: 'development',
-        primary_group: 'workflows',
+        primary_group: 'system',
         secondary_depth: 0,
         result,
       }))
@@ -168,17 +169,19 @@ describe('workbench navigation telemetry BFF', () => {
       'selected', 'opened',
     ])
     expect(knowledgeBodies[0]).toMatchObject({
-      capability_id: 'navigation:sku-pipeline',
-      route_family: 'workbench-nav:development:workflows:depth-0',
+      capability_id: 'navigation:workspace-operations',
+      route_family: 'workbench-nav:development:system:depth-0',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
     })
 
     const pollutedDepth = await POST(request({
       event_type: 'primary_navigation',
-      requested_href: '/sku-pipeline',
-      canonical_href: '/sku-pipeline',
-      feature_id: 'sku-pipeline',
+      requested_href: '/workspace',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
       mode: 'development',
-      primary_group: 'workflows',
+      primary_group: 'system',
       secondary_depth: 1,
       result: 'selected',
     }))
@@ -186,16 +189,100 @@ describe('workbench navigation telemetry BFF', () => {
 
     const mismatch = await POST(request({
       event_type: 'primary_navigation',
-      requested_href: '/sku-pipeline',
-      canonical_href: '/sku-pipeline',
-      feature_id: 'sku-pipeline',
+      requested_href: '/workspace',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
       mode: 'development',
-      primary_group: 'agents',
+      primary_group: 'agent-tools',
       secondary_depth: 1,
       result: 'selected',
     }))
     expect(mismatch.status).toBe(400)
     expect(knowledgeBodies).toHaveLength(2)
+  })
+
+  it('dual-reads frozen v1 and current v2 navigation without deduplicating their evidence', async () => {
+    const { knowledgeBodies } = enableServices()
+    const current = await POST(request({
+      event_type: 'primary_navigation',
+      requested_href: '/sku-pipeline',
+      canonical_href: '/sku-pipeline',
+      feature_id: 'sku-pipeline',
+      mode: 'work',
+      primary_group: 'production',
+      secondary_depth: 1,
+      result: 'selected',
+    }))
+    const legacy = await POST(request({
+      event_type: 'primary_navigation',
+      requested_href: '/sku-pipeline',
+      canonical_href: '/sku-pipeline',
+      feature_id: 'sku-pipeline',
+      mode: 'development',
+      primary_group: 'workflows',
+      secondary_depth: 0,
+      result: 'selected',
+    }))
+
+    expect(current.status).toBe(202)
+    expect(legacy.status).toBe(202)
+    expect(knowledgeBodies).toHaveLength(2)
+    expect(knowledgeBodies[0]).toMatchObject({
+      capability_id: 'navigation:sku-pipeline',
+      route_family: 'workbench-nav:work:production:depth-1',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
+    })
+    expect(knowledgeBodies[1]).toMatchObject({
+      capability_id: 'navigation:sku-pipeline',
+      route_family: 'workbench-nav:development:workflows:depth-0',
+      exclusive: true,
+      metadata: { version: 'workbench-ia-v1' },
+    })
+  })
+
+  it('rejects legacy group evidence outside the frozen v1 placement and depth contract', async () => {
+    const { knowledgeBodies } = enableServices()
+    for (const payload of [
+      {
+        event_type: 'primary_navigation', requested_href: '/sku-pipeline',
+        canonical_href: '/sku-pipeline', feature_id: 'sku-pipeline', mode: 'development',
+        primary_group: 'workflows', secondary_depth: 1, result: 'selected',
+      },
+      {
+        event_type: 'primary_navigation', requested_href: '/workspace',
+        canonical_href: '/workspace', feature_id: 'workspace-operations', mode: 'development',
+        primary_group: 'workflows', secondary_depth: 0, result: 'opened',
+      },
+      {
+        event_type: 'primary_navigation', requested_href: '/sku-pipeline',
+        canonical_href: '/sku-pipeline', feature_id: 'sku-pipeline', mode: 'development',
+        primary_group: 'retired-group', secondary_depth: 0, result: 'selected',
+      },
+    ]) {
+      expect((await POST(request(payload))).status).toBe(400)
+    }
+    expect(knowledgeBodies).toHaveLength(0)
+  })
+
+  it('accepts the root workspace alias against the current registry identity', async () => {
+    const { knowledgeBodies } = enableServices()
+    const response = await POST(request({
+      event_type: 'legacy_alias',
+      requested_href: '/',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
+      result: 'redirected',
+    }))
+
+    expect(response.status).toBe(202)
+    expect(knowledgeBodies).toHaveLength(1)
+    expect(knowledgeBodies[0]).toMatchObject({
+      capability_id: 'legacy-alias:root:workspace-operations',
+      route_family: 'workbench-alias:workspace',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
+    })
   })
 
   it('hashes authenticated route gaps rather than persisting arbitrary path content', async () => {
@@ -257,16 +344,13 @@ describe('workbench navigation telemetry BFF', () => {
     expect(knowledgeBodies).toHaveLength(1)
   })
 
-  it('returns typed retryable unavailable when the secret or compatibility service is down', async () => {
+  it('ignores a missing legacy secret and returns typed unavailable only when compatibility is down', async () => {
     const missingSecretServices = enableServices()
     vi.stubEnv('OMNI_COMPATIBILITY_TOKEN_FILE', join(directory, 'missing'))
     const missingSecret = await POST(request(aliasPayload('redirected')))
-    expect(missingSecret.status).toBe(503)
-    expect(await missingSecret.json()).toEqual({
-      success: false,
-      error: { code: 'compatibility_telemetry_unavailable', retryable: true },
-    })
-    expect(missingSecretServices.knowledgeBodies).toHaveLength(0)
+    expect(missingSecret.status).toBe(202)
+    expect(await missingSecret.json()).toEqual({ success: true, accepted: true })
+    expect(missingSecretServices.knowledgeBodies).toHaveLength(1)
 
     const upstreamDownServices = enableServices({ knowledgeStatus: 503 })
     const upstreamDown = await POST(request(aliasPayload('failed')))

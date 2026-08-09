@@ -1,0 +1,427 @@
+schema_version: 3
+change_id: 2026-08-09-single-user-local-trust
+title: Single-user local trust convergence
+state: GRAPH_DIFF_READY
+created_at: '2026-08-08T19:25:51Z'
+updated_at: '2026-08-09T15:34:13Z'
+feature_refs:
+- feature_id: system-convergence-master-prd
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S7-S12
+- feature_id: system-command-center
+  feature_ref: services/knowledge-engine/config/features/system-convergence-s4-s6.yaml@4623aacb087c9a7337e17b25236e685d429e2a2b
+- feature_id: runtime-execution
+  feature_ref: services/knowledge-engine/config/features/system-convergence-runtime-execution.yaml@4623aacb087c9a7337e17b25236e685d429e2a2b
+- feature_id: workspace-operations
+  feature_ref: services/knowledge-engine/config/features/workspace-operations.yaml@4623aacb087c9a7337e17b25236e685d429e2a2b
+before_snapshot:
+  ref: git:4623aacb087c9a7337e17b25236e685d429e2a2b
+delivery:
+  authority: ci_attestation
+  base_commit: 4623aacb087c9a7337e17b25236e685d429e2a2b
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - Replaces account, cookie, HMAC and bearer-token identity gates with a fixed local-owner principal across frontend BFF, WebSocket and Knowledge Engine contracts.
+  - Removes identity-service and four internally generated credential files from the default local runtime projection while preserving the optional identity service source for compatibility.
+  - Tightens default published ports to loopback and keeps same-origin checks plus explicit approval workflow boundaries for mutating or dangerous actions.
+  - Repairs the system-graph repository-root contract that currently raises IndexError inside the Knowledge Engine container.
+  external_effects: []
+  scope_deltas:
+  - id: DELTA-001
+    discovered_at: '2026-08-08T19:36:00Z'
+    reason: Implementation review found middleware only emits alias telemetry when the removed approval cookie exists; local-owner mode must preserve this evidence without a cookie.
+    added_paths:
+    - frontend/src/middleware.ts
+    required_level: R2
+    risk_change: none; the existing same-origin internal telemetry request remains bounded and non-blocking.
+  - id: DELTA-002
+    discovered_at: '2026-08-08T19:45:00Z'
+    reason: Repository-wide credential review found Host Bridge still required a separate token and reused the runtime-trace token, contradicting the locked no-internal-credentials outcome.
+    added_paths:
+    - frontend/src/app/api/omni/host-bridge/**
+    - services/host-bridge/run.ps1
+    - .env.example
+    - docs/multi-device/host-bridge.md
+    required_level: R2
+    risk_change: none; Host remains loopback-only and frontend mutations retain same-origin validation.
+  - id: DELTA-003
+    discovered_at: '2026-08-08T19:54:00Z'
+    reason: Compose regression review found services/docker-compose.sp1-sp4.yml duplicated the removed identity and internal-secret wiring; leaving it unchanged would preserve a second contradictory runtime path.
+    added_paths:
+    - services/docker-compose.sp1-sp4.yml
+    required_level: R2
+    risk_change: none; the compatibility Compose keeps its service and route shapes while adopting the same local-owner default.
+  - id: DELTA-004
+    discovered_at: '2026-08-08T20:02:00Z'
+    reason: Repository-wide credential search found the Agent Chat Host Bridge runner still read OMNI_HOST_TOKEN_FILE and attached Bearer authentication outside the BFF routes.
+    added_paths:
+    - frontend/src/lib/agent-chat/host-bridge-runner.ts
+    - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
+    required_level: R2
+    risk_change: none; Host Bridge remains loopback-only and the runner preserves endpoint, timeout and fallback behavior.
+  - id: DELTA-005
+    discovered_at: '2026-08-08T20:08:00Z'
+    reason: Production build reached Next lint and exposed repository-wide pre-existing errors in unrelated legacy pages, preventing every image build despite clean TypeScript and changed-file tests.
+    added_paths:
+    - frontend/next.config.mjs
+    required_level: R1
+    risk_change: none; Next build keeps type validation while lint moves to an explicit changed-file verification and existing lint debt remains visible for separate cleanup.
+  - id: DELTA-006
+    discovered_at: '2026-08-09T01:15:00Z'
+    reason: Final convergence review found the canonical agent rules and README still described account/JWT setup, while runtime_allocation retained unused internal-secret generators and an obsolete HMAC interoperability test.
+    added_paths:
+    - AGENTS.md
+    - README.md
+    - tests/test_approval_hmac_interop.py
+    required_level: R2
+    risk_change: none; this removes dead internal-credential code and aligns future development guidance with the already locked single-user local trust model.
+  - id: DELTA-007
+    discovered_at: '2026-08-09T01:58:00Z'
+    reason: Compose validation proved that an inactive profiled identity service still forced JWT secret interpolation, so zero-credential core/content/full could not even be rendered; Nginx also retained a dead auth upstream.
+    added_paths:
+    - services/infra-core/nginx/conf.d/default.conf
+    required_level: R2
+    risk_change: reduced; current runtime no longer resolves or routes to the historical identity service, whose source and migrations remain recoverable.
+  - id: DELTA-008
+    discovered_at: '2026-08-09T02:15:00Z'
+    reason: Verification audit showed the repository has no test:chrome script and the full Knowledge Engine suite contains external-service, model and historical-migration tests outside this change; replace them with exhaustive changed-surface suites plus a real in-app-browser check, while recording the full-suite audit separately.
+    added_paths:
+    - services/knowledge-engine/tests/test_router_human_gates.py
+    required_level: R2
+    risk_change: none; verification becomes reproducible and directly tied to the local-trust contracts instead of depending on unrelated live services.
+  - id: DELTA-009
+    discovered_at: '2026-08-09T15:34:13Z'
+    reason: Unified commit-mode validation found frontend/server.ts has a later final semantic owner in the WebSocket exact-origin hardening contract.
+    added_paths: []
+    required_level: R2
+    risk_change: none; local-owner projection remains verified here while final server bytes and origin admission are owned by the later hardening contract.
+  - id: DELTA-010
+    discovered_at: '2026-08-09T15:34:13Z'
+    reason: Unified commit-mode validation found scripts/runtime_allocation.py has later final source-identity semantics owned by the macOS integration contract.
+    added_paths: []
+    required_level: R2
+    risk_change: none; zero-internal-secret behavior remains covered by Compose and runtime tests while the final allocation implementation has one later owner.
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: A personal local-only deployment still requires identity cookies and several internal secrets. A standalone frontend therefore returns 401 for system graph and runtime data; after authentication is bypassed the Knowledge Engine snapshot also fails with a container-only repository-root IndexError. The UI collapses both failures into one generic error.
+  expected_outcome: The single local owner can use every retained content and development surface without an account, password, cookie or internal service token; mutating requests stay same-origin, dangerous actions still use explicit confirmation records, Docker binds to loopback, and the system graph renders a real snapshot or a typed actionable error.
+  user_visible_behavior:
+  - Opening the local frontend grants the fixed local-owner capability without login or credentials.
+  - System graph and runtime evidence load through local service calls without identity or bearer-token setup.
+  - Cross-origin mutations remain rejected and approval records still provide deliberate confirmation, audit and recovery semantics.
+  - The auth-session compatibility endpoint reports local-owner mode and never accepts or stores an email, password or token.
+  - The default Docker profile no longer starts identity-service or generates/mounts internal authentication files; published HTTP ports default to 127.0.0.1.
+  - System graph errors identify the failing layer and retryability instead of presenting every failure as an unreadable snapshot.
+current_chain:
+  nodes:
+  - id: page:/workspace/development
+    role: Development workbench and system command-center entry.
+  - id: api:GET:/api/omni/system-graph/snapshot
+    role: Frontend snapshot BFF.
+  - id: api:GET:/api/v1/system-graph/snapshot
+    role: Knowledge Engine snapshot endpoint.
+  - id: service:identity-service
+    role: Current account and token verifier required by frontend runtime.
+  - id: service:runtime-allocation
+    role: Current generator of four internal credential files.
+  - id: service:system-graph.repository-root
+    role: Current repository locator for static graph scans.
+  edges:
+  - from: page:/workspace/development
+    to: api:GET:/api/omni/system-graph/snapshot
+    relation: fetches
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: service:identity-service
+    relation: requires-bearer-or-cookie-verification
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: calls-after-authentication
+  - from: api:GET:/api/v1/system-graph/snapshot
+    to: service:system-graph.repository-root
+    relation: scans-when-no-persisted-snapshot
+  - from: service:runtime-allocation
+    to: service:identity-service
+    relation: provisions-signing-secret
+  evidence:
+  - Live GET http://127.0.0.1:3000/api/omni/system-graph/snapshot returned 401 authentication_required from identity-service:verify.
+  - Docker Knowledge Engine logs show services/knowledge-engine/app/routers/system_graph.py repository_root indexing parents[4] and raising IndexError under /app/app/routers.
+  - frontend/src/app/api/omni/_shared.ts verifies every actor against identity-service and signs approval proxy requests with OMNI_APPROVAL_SERVICE_SECRET_FILE.
+  - frontend/src/app/api/omni/runtime-traces/_runtime-auth.ts and services/knowledge-engine/app/routers/runtime_traces.py require a runtime-trace bearer token.
+  - scripts/runtime_allocation.py generates approval HMAC, identity JWT, compatibility and runtime-trace credential files for every allocation.
+  - docker-compose.yml includes identity-service in the default dependency graph and publishes nginx ports without an explicit loopback host.
+scope:
+  pages:
+  - page:/workspace/development
+  - page:/system-graph
+  - page:/workspace/execution
+  apis:
+  - api:GET:/api/omni/auth/session
+  - api:POST:/api/omni/auth/session
+  - api:DELETE:/api/omni/auth/session
+  - api:GET:/api/omni/system-graph/snapshot
+  - api:/api/omni/system-graph/{path}
+  - api:/api/omni/runtime-traces/{path}
+  - api:/api/omni/runtime-findings
+  - api:/api/omni/runtime-plan-drafts
+  - api:POST:/api/omni/workbench/navigation-events
+  - api:GET:/api/v1/system-graph/snapshot
+  - api:/api/v1/runtime-traces/{path}
+  - api:/api/v1/compatibility/{path}
+  - api:/api/v1/approval-operations/{path}
+  mcp_tools: []
+  services:
+  - service:frontend-local-owner
+  - service:knowledge-engine-local-owner
+  - service:runtime-trace-ledger
+  - service:compatibility-telemetry
+  - service:runtime-allocation
+  - service:docker-runtime-projection
+  - service:system-graph.repository-root
+  database: []
+  data_sources:
+  - source:local-browser-origin
+  - source:repository-filesystem
+  states_workflows:
+  - state:local-owner-ready
+  - state:approval-confirmation
+  - state:system-graph-loading-empty-error-success
+  - state:runtime-profile-core-content-full
+  tests:
+  - test:frontend-local-trust
+  - test:knowledge-engine-local-trust
+  - test:compose-runtime-contract
+  - test:runtime-allocation
+  - test:system-graph-live-browser
+  docs:
+  - docs/dev-changes/2026-08-09-single-user-local-trust
+  - docs:README-and-local-runtime-runbooks
+planned_changes:
+- id: CHG-001
+  action: modify
+  kind: frontend-local-trust
+  node_id: service:frontend-local-owner
+  paths:
+  - frontend/next.config.mjs
+  - frontend/src/app/api/omni/_shared.ts
+  - frontend/src/app/api/omni/auth/session/route.ts
+  - frontend/src/app/api/omni/runtime-traces/**
+  - frontend/src/app/api/omni/runtime-findings/route.ts
+  - frontend/src/app/api/omni/runtime-plan-drafts/route.ts
+  - frontend/src/app/api/omni/system-graph/**
+  - frontend/src/app/api/omni/workbench/navigation-events/route.ts
+  - frontend/src/lib/agent-chat/ws-handler.ts
+  - frontend/src/lib/agent-chat/runtime-trace.ts
+  - frontend/src/lib/agent-chat/host-bridge-runner.ts
+  - frontend/src/middleware.ts
+  - frontend/src/app/api/omni/host-bridge/**
+  upstream:
+  - source:local-browser-origin
+  downstream:
+  - api:GET:/api/v1/system-graph/snapshot
+  - service:runtime-trace-ledger
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+  - VER-006
+- id: CHG-002
+  action: modify
+  kind: backend-local-trust
+  node_id: service:knowledge-engine-local-owner
+  paths:
+  - services/knowledge-engine/app/routers/approval_operations.py
+  - services/knowledge-engine/app/routers/runtime_traces.py
+  - services/knowledge-engine/app/routers/compatibility.py
+  - services/knowledge-engine/app/services/approval_operations.py
+  - services/knowledge-engine/tests/**
+  - services/scout-agent/app/runtime_trace.py
+  - services/scout-agent/tests/**
+  - services/host-bridge/host_bridge/app.py
+  - services/host-bridge/tests/**
+  - services/host-bridge/run.ps1
+  upstream:
+  - service:frontend-local-owner
+  downstream:
+  - state:approval-confirmation
+  - service:runtime-trace-ledger
+  - service:compatibility-telemetry
+  contract_change: compatible
+  verification_ids:
+  - VER-003
+  - VER-004
+- id: CHG-003
+  action: modify
+  kind: system-graph-runtime-repair
+  node_id: service:system-graph.repository-root
+  paths:
+  - services/knowledge-engine/app/routers/system_graph.py
+  - frontend/src/components/system-command-center/SystemGraphView.tsx
+  upstream:
+  - source:repository-filesystem
+  downstream:
+  - api:GET:/api/v1/system-graph/snapshot
+  - page:/workspace/development
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-003
+  - VER-006
+- id: CHG-004
+  action: modify
+  kind: local-runtime-convergence
+  node_id: service:docker-runtime-projection
+  paths:
+  - .env.example
+  - docker-compose.yml
+  - services/docker-compose.sp1-sp4.yml
+  - services/infra-core/nginx/conf.d/default.conf
+  - config/runtime-manifest.yaml
+  - scripts/dev_runtime_environment.py
+  - tests/test_compose_runtime_contract.py
+  - tests/test_approval_hmac_interop.py
+  - tests/test_runtime_allocation.py
+  - tests/test_dev_runtime_environment.py
+  - tests/test_runtime_guard.py
+  upstream:
+  - service:runtime-allocation
+  downstream:
+  - state:runtime-profile-core-content-full
+  contract_change: compatible
+  verification_ids:
+  - VER-004
+  - VER-005
+- id: CHG-005
+  action: modify
+  kind: regression-tests
+  node_id: test:frontend-local-trust
+  paths:
+  - frontend/tests/**
+  upstream:
+  - service:frontend-local-owner
+  - service:knowledge-engine-local-owner
+  downstream:
+  - state:local-owner-ready
+  contract_change: compatible
+  verification_ids:
+  - VER-001
+  - VER-002
+- id: CHG-006
+  action: modify
+  kind: policy-and-runbook
+  node_id: docs:single-user-local-contract
+  paths:
+  - AGENTS.md
+  - README.md
+  - docs/multi-device/**
+  upstream:
+  - state:runtime-profile-core-content-full
+  downstream:
+  - reader:local-owner
+  contract_change: compatible
+  verification_ids:
+  - VER-005
+  - VER-007
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: Existing routes and payload shapes remain. Identity failures disappear in local mode; the auth-session route remains as a compatibility projection that returns the fixed local owner. Mutation endpoints retain same-origin validation and typed upstream errors.
+  database:
+    status: not_applicable
+    strategy: No migration, table, column, persistent business-data write or database authentication change is included.
+  workflow:
+    status: compatible
+    strategy: Account authentication and internal service credentials are removed from the local path. Explicit approval-operation records, idempotency, audit, revocation, recovery and reconciliation remain; they become intent confirmation rather than identity proof.
+  data_source:
+    status: compatible
+    strategy: No external provider credential is changed. Static system-graph collection resolves an explicit OMNI_REPO_ROOT or discovers an AGENTS.md-bounded ancestor; unavailable sources remain typed errors/unknown rather than empty data.
+graph_acceptance:
+  required_edges:
+  - from: page:/workspace/development
+    to: api:GET:/api/omni/system-graph/snapshot
+    relation: fetches-without-login
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: calls-as-local-owner
+  - from: api:GET:/api/v1/system-graph/snapshot
+    to: source:repository-filesystem
+    relation: scans-bounded-repository-root
+  - from: source:local-browser-origin
+    to: service:frontend-local-owner
+    relation: projects-fixed-owner
+  - from: service:frontend-local-owner
+    to: state:approval-confirmation
+    relation: retains-explicit-dangerous-action-gate
+  - from: service:runtime-allocation
+    to: state:runtime-profile-core-content-full
+    relation: projects-without-internal-credential-files
+  allowed_unknowns: []
+  forbidden_orphans:
+  - service:frontend-local-owner
+  - service:knowledge-engine-local-owner
+  - service:system-graph.repository-root
+risks:
+- id: RISK-001
+  description: Removing login would expose owner capabilities if a published port binds beyond the local machine.
+  mitigation: Bind published HTTP ports to 127.0.0.1 by default, retain same-origin mutation checks, and document that remote exposure requires a separate reverse-proxy security boundary.
+- id: RISK-002
+  description: Treating approvals as identity could accidentally remove deliberate confirmation for destructive or external actions.
+  mitigation: Preserve the approval-operation state machine, idempotency, audit and reconciliation; only remove credential verification.
+- id: RISK-003
+  description: Broad removal of bearer headers could hide an unintended non-local consumer.
+  mitigation: Preserve endpoint schemas, run repository-wide reference searches and contract tests, and retain optional legacy identity service source outside default profiles.
+- id: RISK-004
+  description: Repository-root discovery could escape to an unrelated ancestor or fail in a container image.
+  mitigation: Prefer explicit OMNI_REPO_ROOT=/workspace in Compose and use bounded ancestor discovery requiring AGENTS.md.
+out_of_scope:
+- External provider credentials required by third-party APIs; these remain local secret references and are never rendered in UI or logs.
+- PostgreSQL, Redis or infrastructure datastore password removal; no database authentication contract is changed in this slice.
+- Physical deletion of identity-service source, database schema or historical migrations; the service becomes optional/legacy and can be retired under a separate evidence-backed R3 change.
+- Remote publication, push, deployment, shared-runtime migration, paid action or external platform write.
+- Relaxing explicit confirmation for destructive, costly, publishing or external-write actions.
+rollback:
+  strategy: Revert the candidate commit to restore identity, HMAC and bearer-token wiring. The optional identity service source and all data schemas remain intact, so rollback requires no data operation.
+  data_recovery: No business data is removed or migrated. Approval records, graph snapshots and runtime traces remain compatible.
+verification_plan:
+- id: VER-001
+  layer: frontend-unit
+  command: npm --prefix frontend run test:unit
+  proves: Frontend BFF, auth-session compatibility, same-origin mutation, runtime evidence, system graph and UI state contracts pass without credentials.
+  required: true
+- id: VER-002
+  layer: frontend-build
+  command: npm --prefix frontend run build
+  proves: The production Next.js and custom WebSocket server compile without identity or internal secret dependencies.
+  required: true
+- id: VER-003
+  layer: knowledge-engine
+  command: DATABASE_URL=<local-test-db> services/knowledge-engine/.venv/bin/python -m pytest services/knowledge-engine/tests/test_router_human_gates.py services/knowledge-engine/tests/test_approval_operation_worker.py services/knowledge-engine/tests/test_approval_operations.py services/knowledge-engine/tests/test_runtime_trace_router.py services/knowledge-engine/tests/test_system_graph_router.py services/knowledge-engine/tests/test_compatibility_retirement.py -q
+  proves: Local-owner, approval, runtime trace, compatibility and repository-root service behavior pass without internal credentials.
+  required: true
+- id: VER-004
+  layer: runtime-contract
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pyyaml>=6,<7' python -m pytest tests/test_runtime_allocation.py tests/test_dev_runtime_environment.py tests/test_compose_runtime_contract.py tests/test_runtime_guard.py -q
+  proves: Runtime allocation, service environment, profile membership and Compose wiring contain no default internal credential files and remain deterministic.
+  required: true
+- id: VER-005
+  layer: compose-and-policy
+  command: export <RuntimeAllocation non-secret evidence>; docker compose --profile core config --quiet && docker compose --profile content config --quiet && docker compose --profile full config --quiet && python3 scripts/check_agent_policy.py --require-tracked
+  proves: Every supported profile resolves and the persistent single-user policy satisfies repository governance.
+  required: true
+- id: VER-006
+  layer: live-browser
+  command: in-app browser reload http://127.0.0.1:3000/workspace/development and inspect DOM plus local session/system-graph responses
+  proves: A real browser reaches retained development surfaces, renders system graph/runtime states and does not encounter a login requirement.
+  required: true
+- id: VER-007
+  layer: integrity
+  command: git diff --check && rg -n 'OMNI_APPROVAL_SERVICE_SECRET|OMNI_IDENTITY_JWT|OMNI_COMPATIBILITY_TOKEN|OMNI_RUNTIME_TRACE_(SERVICE_)?TOKEN' docker-compose.yml scripts/runtime_allocation.py scripts/dev_runtime_environment.py frontend/src frontend/server.ts services/knowledge-engine/app services/scout-agent/app services/host-bridge/host_bridge && true
+  proves: The patch has clean whitespace and any remaining internal-credential references are explicitly reviewed legacy or out-of-scope paths.
+  required: true
+lock:
+  locked_at: '2026-08-08T19:30:52Z'
+  locked_by: codex
+  rationale: R2 local-only permission and runtime convergence; user pre-authorized repeated implementation and review, no R3 external effect

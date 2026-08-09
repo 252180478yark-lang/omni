@@ -4,7 +4,6 @@ import { isWorkbenchFlagEnabled } from '@/lib/workbench-flags'
 import { resolveWorkbenchLocation, type WorkbenchLocation } from '@/lib/workbench-ia'
 
 const EXCLUDED_PATHS = /^(?:\/api(?:\/|$)|\/_next(?:\/|$)|\/favicon\.ico$|\/manifest\.json$|\/icon(?:-[^/]+)?\.svg$|\/robots\.txt$|\/sitemap\.xml$|\/.*\.[a-zA-Z0-9]+$)/
-const APPROVAL_SESSION_COOKIE = 'omni_approval_session'
 export const ALIAS_RECOVERY_COOKIE = 'omni_alias_recovery'
 export const ALIAS_RECOVERY_MAX_AGE_SECONDS = 120
 
@@ -113,20 +112,13 @@ function internalNavigationEventsUrl(): URL {
   return new URL('/api/omni/workbench/navigation-events', `http://127.0.0.1:${port}`)
 }
 
-function incomingApprovalCookie(request: NextRequest): string | undefined {
-  const value = request.cookies.get(APPROVAL_SESSION_COOKIE)?.value
-  if (!value || value.length > 8192) return undefined
-  return `${APPROVAL_SESSION_COOKIE}=${encodeURIComponent(value)}`
-}
-
-async function postNavigationEvent(cookie: string, body: NavigationEventBody): Promise<void> {
+async function postNavigationEvent(body: NavigationEventBody): Promise<void> {
   try {
     const endpoint = internalNavigationEventsUrl()
     await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: cookie,
         Origin: endpoint.origin,
       },
       body: JSON.stringify(body),
@@ -139,8 +131,8 @@ async function postNavigationEvent(cookie: string, body: NavigationEventBody): P
 }
 
 function queueNavigationEvent(event: NextFetchEvent, request: NextRequest, body: NavigationEventBody): void {
-  const cookie = incomingApprovalCookie(request)
-  if (cookie) event.waitUntil(postNavigationEvent(cookie, body))
+  void request
+  event.waitUntil(postNavigationEvent(body))
 }
 
 function setRecoveryCookie(response: NextResponse, request: NextRequest, identity: AliasIdentity): void {

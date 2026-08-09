@@ -4,6 +4,7 @@ import type {
   ChatMessage, SessionState,
   WsClientMessage, WsServerMessage,
 } from '@/lib/agent-chat/types'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 
 interface UseAgentChatResult {
   connected: boolean
@@ -33,10 +34,17 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
   const [error, setError] = useState<string | null>(null)
   const [activeTraceId, setActiveTraceId] = useState<string | null>(null)
   const [traceGapCount, setTraceGapCount] = useState(0)
+  const contextSnapshotId = useWorkbenchStore((state) => state.contextSnapshotId)
+  const contextRevision = useWorkbenchStore((state) => state.contextRevisionNumber)
+  const bindContinuity = useWorkbenchStore((state) => state.bindContinuity)
 
   useEffect(() => {
     optionsRef.current = options
   }, [options])
+
+  useEffect(() => {
+    if (sessionId) bindContinuity({ agentSessionId: sessionId })
+  }, [bindContinuity, sessionId])
 
   useEffect(() => {
     if (!sessionId) return
@@ -91,14 +99,21 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
 
   const sendPrompt = useCallback((prompt: string) => {
     if (!wsRef.current || wsRef.current.readyState !== 1 || !sessionId) return
+    if (!contextSnapshotId || !contextRevision) {
+      setError('workbench_context_unavailable')
+      return
+    }
     setRunning(true)
     setError(null)
     setMessages((prev) => [
       ...prev,
       { id: `local-${Date.now()}`, session_id: sessionId, role: 'user', text: prompt, created_at: new Date().toISOString() },
     ])
-    wsRef.current.send(JSON.stringify({ kind: 'send_prompt', session_id: sessionId, prompt } satisfies WsClientMessage))
-  }, [sessionId])
+    wsRef.current.send(JSON.stringify({
+      kind: 'send_prompt', session_id: sessionId, prompt,
+      context: { context_snapshot_id: contextSnapshotId, context_revision: contextRevision },
+    } satisfies WsClientMessage))
+  }, [sessionId, contextSnapshotId, contextRevision])
 
   const cancel = useCallback(() => {
     if (!wsRef.current || !sessionId) return

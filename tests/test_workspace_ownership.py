@@ -607,6 +607,39 @@ def test_attested_handoff_retires_only_the_exact_unmerged_historical_candidate(
     ).stdout.strip()
     impact_text = (source_dir / "impact.yaml").read_text(encoding="utf-8")
     completion_text = (source_dir / "completion.yaml").read_text(encoding="utf-8")
+    source_record = {
+        "handoff_change_id": "attested-retirement",
+        "change_id": source_id,
+        "candidate_commit": candidate,
+        "required_state": "GRAPH_DIFF_READY",
+        "impact_sha256": hashlib.sha256(impact_text.encode("utf-8")).hexdigest(),
+        "completion_sha256": hashlib.sha256(completion_text.encode("utf-8")).hexdigest(),
+        "delivery_status": "unmerged_not_delivered",
+    }
+    quarantine = {
+        "evidence_quarantine": {
+            "schema_version": 1,
+            "mode": "quarantine_irrecoverable_git_candidate",
+            "effective_when": "this_contract_is_ci_attested",
+            "source": source_record,
+            "consequence": {
+                "delivery_status": "unmerged_not_delivered",
+                "ownership_effect": "none",
+                "retirement_authorized": False,
+                "completion_claimed": False,
+                "if_object_reappears": "quarantine_invalid_revalidate_original_handoff",
+            },
+        }
+    }
+    assert ownership.historical_candidate_evidence(
+        repo,
+        source_record,
+        quarantine_impact=quarantine,
+    ) == {
+        "status": "verified",
+        "source_change_id": source_id,
+        "source_candidate_commit": candidate,
+    }
 
     handoff_id = "attested-retirement"
     handoff_path = repo / "docs" / "dev-changes" / handoff_id / "impact.yaml"
@@ -740,16 +773,129 @@ def test_attested_handoff_retires_only_the_exact_unmerged_historical_candidate(
     assert blocked["retired_contracts"] == []
 
 
-def test_production_s8_s10_handoff_hashes_bind_to_the_historical_git_blobs() -> None:
+def test_attested_evidence_quarantine_is_reporting_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    source = tmp_path / "lost-source"
+    _run(repo, "git", "worktree", "add", "-q", "-b", "lost-source", str(source))
+    source_id = "historical-lost-candidate"
+    source_contract = source / "docs" / "dev-changes" / source_id / "impact.yaml"
+    source_contract.parent.mkdir(parents=True)
+    source_contract.write_text(
+        yaml.safe_dump(
+            {
+                "change_id": source_id,
+                "state": "GRAPH_DIFF_READY",
+                "planned_changes": [{"paths": ["services/runtime/**"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    quarantine_id = "lost-evidence-quarantine"
+    missing_candidate = "a" * 40
+    quarantine_path = repo / "docs" / "dev-changes" / quarantine_id / "impact.yaml"
+    quarantine_path.parent.mkdir(parents=True)
+    quarantine_path.write_text(
+        yaml.safe_dump(
+            {
+                "change_id": quarantine_id,
+                "state": "GRAPH_DIFF_READY",
+                "evidence_quarantine": {
+                    "schema_version": 1,
+                    "mode": "quarantine_irrecoverable_git_candidate",
+                    "effective_when": "this_contract_is_ci_attested",
+                    "source": {
+                        "handoff_change_id": "historical-handoff",
+                        "change_id": source_id,
+                        "candidate_commit": missing_candidate,
+                        "required_state": "GRAPH_DIFF_READY",
+                        "impact_sha256": "b" * 64,
+                        "completion_sha256": "c" * 64,
+                    },
+                    "consequence": {
+                        "delivery_status": "unmerged_not_delivered",
+                        "ownership_effect": "none",
+                        "retirement_authorized": False,
+                        "completion_claimed": False,
+                        "if_object_reappears": "quarantine_invalid_revalidate_original_handoff",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    _run(repo, "git", "add", ".")
+    _run(repo, "git", "commit", "-qm", "attested evidence quarantine fixture")
+    subject = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    monkeypatch.setattr(
+        ownership,
+        "delivered_contracts",
+        lambda *_args, **_kwargs: {
+            quarantine_id: {
+                "change_id": quarantine_id,
+                "valid": True,
+                "subject_commit": subject,
+            }
+        },
+    )
+
+    report = ownership.inventory_workspace(
+        repo, include_primary=False, secret_scope="changed"
+    )
+
+    assert report["evidence_quarantines"] == [
+        {
+            "quarantine_change_id": quarantine_id,
+            "quarantine_subject_commit": subject,
+            "handoff_change_id": "historical-handoff",
+            "source_change_id": source_id,
+            "source_candidate_commit": missing_candidate,
+            "required_state": "GRAPH_DIFF_READY",
+            "impact_sha256": "b" * 64,
+            "completion_sha256": "c" * 64,
+            "delivery_status": "unmerged_not_delivered",
+            "ownership_effect": "none",
+            "retirement_authorized": False,
+            "completion_claimed": False,
+        }
+    ]
+    assert any(item["change_id"] == source_id for item in report["active_contracts"])
+    assert report["retired_contracts"] == []
+
+
+def test_production_s8_s10_handoff_hashes_or_quarantine_are_fail_closed() -> None:
     impact_path = ROOT / "docs" / "dev-changes" / "2026-08-04-s8-s10-supersession-handoff" / "impact.yaml"
     impact = yaml.safe_load(impact_path.read_text(encoding="utf-8"))
     source = impact["ownership_handoff"]["source"]
-    candidate = source["candidate_commit"]
-    change_id = source["change_id"]
-    for name, field in (("impact.yaml", "impact_sha256"), ("completion.yaml", "completion_sha256")):
-        text = ownership._git_text(ROOT, candidate, f"docs/dev-changes/{change_id}/{name}")
-        assert text is not None
-        assert ownership._sha256_text(text) == source[field]
+    quarantine_path = (
+        ROOT
+        / "docs"
+        / "dev-changes"
+        / "2026-08-10-s8-s10-evidence-loss-quarantine"
+        / "impact.yaml"
+    )
+    quarantine = yaml.safe_load(quarantine_path.read_text(encoding="utf-8"))
+
+    evidence = ownership.historical_candidate_evidence(
+        ROOT,
+        source,
+        quarantine_impact=quarantine,
+    )
+
+    assert evidence["status"] in {"verified", "quarantined_unavailable"}
+    if evidence["status"] == "quarantined_unavailable":
+        assert evidence["delivery_status"] == "unmerged_not_delivered"
+        assert evidence["ownership_effect"] == "none"
+        assert evidence["retirement_authorized"] is False
+        assert evidence["completion_claimed"] is False
 
 
 def test_delivery_resolution_receives_the_explicit_provenance_verifier(

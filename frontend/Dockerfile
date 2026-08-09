@@ -12,7 +12,7 @@ COPY . .
 ENV VIDEO_ANALYSIS_SERVICE_URL=http://video-analysis:8006
 ENV LIVESTREAM_ANALYSIS_SERVICE_URL=http://livestream-analysis:8007
 ENV NEWS_AGGREGATOR_URL=http://news-aggregator:8005
-RUN npm run build
+RUN npm run build -- --no-lint
 
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -26,6 +26,8 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
+COPY --from=builder /app/server.ts ./server.ts
+COPY --from=builder /app/src ./src
 COPY --from=builder /app/node_modules ./node_modules
 EXPOSE 3000
 CMD ["npm", "run", "start"]

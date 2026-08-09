@@ -1,12 +1,18 @@
 // @vitest-environment happy-dom
 
-import React from 'react'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Home from '@/app/page'
 import { GET } from '@/app/api/omni/overview/route'
 
+const { redirectMock } = vi.hoisted(() => ({
+  redirectMock: vi.fn((target: string) => {
+    throw new Error(`redirect:${target}`)
+  }),
+}))
+
+vi.mock('next/navigation', () => ({ redirect: redirectMock }))
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -88,54 +94,6 @@ function stubOverviewSources(
   }))
 }
 
-const homeFeatures = [
-  ['chat', '智能问答（定义）', '/chat'],
-  ['knowledge', '知识库', '/knowledge'],
-  ['knowledge-harvester', '知识采集', '/knowledge/harvester'],
-  ['video-analysis', '短视频分析', '/video-analysis'],
-  ['livestream-analysis', '直播分析', '/livestream-analysis'],
-  ['ad-review', '投放复盘', '/ad-review'],
-  ['content-studio', '内容工坊', '/content-studio'],
-  ['news', '资讯中心', '/news'],
-].map(([feature_id, title, href]) => ({ feature_id, title, href, state: 'healthy', reason_codes: [] }))
-
-function homepageOverview(partial = false) {
-  return {
-    success: true,
-    data: {
-      health: {
-        aiHub: 'healthy',
-        knowledge: 'healthy',
-        summary: 'healthy',
-        partial,
-        generatedAt: '2026-07-30T08:00:00Z',
-        buildIdentity: {},
-        frontendBuild: { state: 'healthy', reasonCodes: [] as string[], buildIdentity: {} },
-        features: homeFeatures,
-        errors: partial
-          ? [{ code: 'upstream_timeout', message: 'hidden', source: 'knowledge-engine:stats', status: 503, retryable: true }]
-          : [],
-      },
-      metrics: {
-        aiTokenToday: null,
-        knowledgeDocuments: partial ? null : 3,
-        infraUptime: partial ? null : 100,
-        knowledgeBases: 1,
-        runningTasks: null,
-      },
-    },
-  }
-}
-
-function stubHomepage(overview = homepageOverview()) {
-  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-    const url = String(input)
-    if (url === '/api/omni/overview') return json(overview)
-    if (url === '/api/omni/activity') return json({ success: true, data: [] })
-    throw new Error('unexpected browser URL')
-  }))
-}
-
 function stubMatchingFrontendBuild() {
   vi.stubEnv('OMNI_EXPECTED_COMMIT', 'frontend-new')
   vi.stubEnv('OMNI_BUILD_COMMIT', 'frontend-new')
@@ -145,6 +103,7 @@ function stubMatchingFrontendBuild() {
 }
 
 beforeEach(() => {
+  redirectMock.mockClear()
   stubMatchingFrontendBuild()
 })
 
@@ -309,47 +268,9 @@ describe('overview BFF health truth', () => {
   })
 })
 
-describe('homepage health rendering', () => {
-  it('renders the eight cards from FeatureDefinition health identity and canonical routes', async () => {
-    window.localStorage.setItem('omni_homepage_onboard_done_v1', '1')
-    stubHomepage()
-    render(React.createElement(Home))
-
-    expect(await screen.findByText('系统就绪，可以开始用了')).toBeTruthy()
-    const definedTitle = screen.getByText('Agent 工作对话')
-    expect(definedTitle.closest('a')?.getAttribute('href')).toBe('/chat')
-    expect(screen.getByText('共 8 个功能')).toBeTruthy()
-  })
-
-  it('renders partial healthy data as non-green with reasons and repair actions', async () => {
-    window.localStorage.setItem('omni_homepage_onboard_done_v1', '1')
-    stubHomepage(homepageOverview(true))
-    render(React.createElement(Home))
-
-    expect(await screen.findByText('部分健康信息不可用')).toBeTruthy()
-    const details = screen.getByTestId('system-health-details')
-    expect(details.textContent).toContain('系统没有假装全绿')
-    expect(details.textContent).toContain('后台健康查询超时')
-    expect(screen.getByText('刷新重试')).toBeTruthy()
-    expect(screen.getByText('检查系统设置')).toBeTruthy()
-    await waitFor(() => expect(screen.getAllByText('未知').length).toBeGreaterThan(0))
-  })
-
-  it('renders a stale frontend image with its specific build reason', async () => {
-    window.localStorage.setItem('omni_homepage_onboard_done_v1', '1')
-    const overview = homepageOverview()
-    overview.data.health.summary = 'stale'
-    overview.data.health.frontendBuild = {
-      state: 'stale',
-      reasonCodes: ['frontend_build_identity_mismatch'],
-      buildIdentity: {},
-    }
-    overview.data.metrics.infraUptime = null
-    stubHomepage(overview)
-    render(React.createElement(Home))
-
-    expect(await screen.findByText('数据或运行版本已过期')).toBeTruthy()
-    const details = screen.getByTestId('system-health-details')
-    expect(details.textContent).toContain('前端运行版本与目标版本不一致')
+describe('root surface convergence', () => {
+  it('redirects the retired marketing dashboard to the canonical workspace', () => {
+    expect(() => Home()).toThrow('redirect:/workspace')
+    expect(redirectMock).toHaveBeenCalledWith('/workspace')
   })
 })

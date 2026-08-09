@@ -1,17 +1,17 @@
 FROM python:3.11-slim
 
-ARG OMNI_BUILD_COMMIT=unknown
-ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
-    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
+    PYTHONUNBUFFERED=1
 
 WORKDIR /workspace
 
 COPY services/infra-core/migrations/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+ARG OMNI_BUILD_COMMIT=unknown
+ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
+ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
+    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
 
 COPY scripts/apply_migrations.py /workspace/scripts/apply_migrations.py
 COPY scripts/runtime_guard.py /workspace/scripts/runtime_guard.py

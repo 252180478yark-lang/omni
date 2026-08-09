@@ -8,32 +8,17 @@ import { parse } from 'node:url'
 import next from 'next'
 import { WebSocketServer } from 'ws'
 import { attachWsHandler } from './src/lib/agent-chat/ws-handler'
-import { approvalAuthorizationFromCookie } from './src/app/api/omni/_shared'
+import { isSameOriginWebSocketUpgrade } from './src/lib/agent-chat/ws-origin'
 
 const dev = process.env.NODE_ENV !== 'production'
-const hostname = '127.0.0.1'
+// Containers must accept traffic arriving through their published port or
+// nginx network. Do not use Docker's automatic HOSTNAME value here: it is a
+// container id, not a listen-address contract.
+const hostname = process.env.OMNI_FRONTEND_HOST || (dev ? '127.0.0.1' : '0.0.0.0')
 const port = parseInt(process.env.PORT || '3000', 10)
 
 const app = next({ dev, hostname, port })
 const handle = app.getRequestHandler()
-
-function approvalUpgradeAuthorization(req: import('node:http').IncomingMessage): string | null {
-  const origin = req.headers.origin
-  const forwardedHost = Array.isArray(req.headers['x-forwarded-host'])
-    ? req.headers['x-forwarded-host'][0]
-    : req.headers['x-forwarded-host']?.split(',')[0]?.trim()
-  const expectedHost = forwardedHost || req.headers.host
-  if (!origin || !expectedHost) return null
-  try {
-    const parsedOrigin = new URL(origin)
-    if (!['http:', 'https:'].includes(parsedOrigin.protocol) || parsedOrigin.host !== expectedHost) {
-      return null
-    }
-  } catch {
-    return null
-  }
-  return approvalAuthorizationFromCookie(req.headers.cookie || null)
-}
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {
@@ -43,7 +28,7 @@ app.prepare().then(() => {
 
   const wss = new WebSocketServer({ noServer: true })
   wss.on('connection', (ws, req) => {
-    attachWsHandler(ws, approvalUpgradeAuthorization(req))
+    attachWsHandler(ws, isSameOriginWebSocketUpgrade(req) ? null : 'invalid-origin')
   })
 
   server.on('upgrade', (req, socket, head) => {

@@ -41,7 +41,7 @@ async function proxy(request: NextRequest, method: string, parts: string[]) {
     return NextResponse.json({ success: false, error: 'system_graph_route_not_allowed' }, { status: 404 })
   }
   try {
-    requireSameOrigin(request)
+    if (method !== 'GET') requireSameOrigin(request)
     const actor = await requireApprovalActor(request)
     const body = method === 'GET' ? '' : await request.text()
     const base = serviceBase()

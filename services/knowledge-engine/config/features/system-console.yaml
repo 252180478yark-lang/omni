@@ -5,14 +5,14 @@ domain: system
 owner: {kind: team, id: omni}
 lifecycle: active
 routes:
-  canonical: /
-  visible: true
-  placements: [sidebar, direct]
-  owned_surfaces: [/]
+  canonical: /workspace/development
+  visible: false
+  placements: [direct]
+  owned_surfaces: [/workspace/development]
 ia:
   mode: development
-  primary_group: runs-system
-  primary_order: 10
+  primary_group: system
+  primary_order: 30
   contextual_groups: []
   phase: merge
   flag: unified_shell

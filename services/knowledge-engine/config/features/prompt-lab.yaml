@@ -11,7 +11,7 @@ routes:
   owned_surfaces: [/prompt-lab]
 ia:
   mode: development
-  primary_group: prompt-eval
+  primary_group: quality
   primary_order: 0
   contextual_groups: []
   phase: retain

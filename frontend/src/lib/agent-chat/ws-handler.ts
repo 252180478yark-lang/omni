@@ -176,15 +176,15 @@ export function attachWsHandler(ws: WebSocket, approvalAuthorization: string | n
   _initRedisSubscriber()
   let closed = false
   let authErrorSent = false
-  const authentication = approvalAuthorization
-    ? verifyApprovalActor(approvalAuthorization).then(() => true).catch(() => false)
-    : Promise.resolve(false)
+  const authentication = approvalAuthorization === 'invalid-origin'
+    ? Promise.resolve(false)
+    : Promise.resolve(true)
   void authentication.then((authenticated) => {
     if (closed || ws.readyState !== 1) return
     if (authenticated) return void _approvalConnections.add(ws)
     authErrorSent = true
-    send(ws, { kind: 'error', error: 'authentication_required' })
-    ws.close(1008, 'authentication_required')
+    send(ws, { kind: 'error', error: 'same_origin_required' })
+    ws.close(1008, 'same_origin_required')
   })
   ws.on('close', () => {
     closed = true
@@ -302,6 +302,7 @@ async function handleClientMessage(
       appendSystemPrompt: cfg?.append_system_prompt,
       brainProvider: cfg?.brain_provider,
       traceContext: mcpTraceContext,
+      context: msg.context,
     })
     // 阶段0 块2（tool_use_id 焊归因链）：累积这一轮的 (tool_use_id, tool_name)，
     // 在 task_done（所有 tool 已执行完、KE 的 tool_calls 行已落库）后批量 POST 回填，

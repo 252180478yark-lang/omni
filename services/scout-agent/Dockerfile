@@ -1,16 +1,12 @@
 FROM python:3.11-slim
 
-ARG OMNI_BUILD_COMMIT=unknown
-ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
-ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
-    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
-
 ENV HTTP_PROXY="" HTTPS_PROXY="" http_proxy="" https_proxy=""
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     wget gnupg ca-certificates \
     xvfb xauth libgtk-3-0 libxshmfence1 libxtst6 fonts-liberation fonts-noto-cjk \
     libglib2.0-0 libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
@@ -23,6 +19,11 @@ RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ --trus
     -r requirements.txt
 # headed Chromium 跑淘宝绕反爬；所需系统库已在上面 apt 装齐（gtk/xvfb/cjk 字体）
 RUN playwright install chromium
+
+ARG OMNI_BUILD_COMMIT=unknown
+ARG OMNI_BUILD_SOURCE_FINGERPRINT=unknown
+ENV OMNI_BUILD_COMMIT=${OMNI_BUILD_COMMIT} \
+    OMNI_BUILD_SOURCE_FINGERPRINT=${OMNI_BUILD_SOURCE_FINGERPRINT}
 
 COPY app /app/app
 COPY catalog /app/catalog

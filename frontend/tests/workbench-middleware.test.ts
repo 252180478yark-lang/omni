@@ -39,7 +39,7 @@ function cookieHeader(response: Response): string {
 }
 
 describe('workbench compatibility middleware', () => {
-  it('redirects a genuine alias, preserves query and posts an authenticated attempt to loopback', async () => {
+  it('redirects a genuine alias, preserves query and posts a local-owner attempt to loopback', async () => {
     const fetchMock = bffMock()
     const {
       ALIAS_RECOVERY_COOKIE,
@@ -75,8 +75,7 @@ describe('workbench compatibility middleware', () => {
     expect(String(url)).toBe('http://127.0.0.1:3000/api/omni/workbench/navigation-events')
     const headers = init?.headers as Record<string, string>
     expect(headers.Origin).toBe('http://127.0.0.1:3000')
-    expect(headers.Cookie).toBe(APPROVAL_COOKIE)
-    expect(headers.Cookie).not.toContain('theme')
+    expect(headers.Cookie).toBeUndefined()
     expect(JSON.parse(String(init?.body))).toEqual({
       event_type: 'legacy_alias',
       requested_href: '/qa',
@@ -107,6 +106,35 @@ describe('workbench compatibility middleware', () => {
       requested_href: '/marketing/review',
       canonical_href: '/ad-review',
       feature_id: 'ad-review',
+      result: 'redirected',
+    })
+  })
+
+  it('treats root as the workspace alias while preserving query and recovery identity', async () => {
+    const fetchMock = bffMock()
+    const { ALIAS_RECOVERY_COOKIE, handleWorkbenchMiddleware } = await middlewareWithFlag('1')
+    const collector = eventCollector()
+    const response = handleWorkbenchMiddleware(
+      new NextRequest('http://localhost/?source=desktop&round=2', {
+        headers: { Accept: 'text/html', Cookie: APPROVAL_COOKIE },
+      }),
+      collector.event as never,
+    )
+
+    expect(response.status).toBe(307)
+    expect(response.headers.get('location')).toBe('http://localhost/workspace?source=desktop&round=2')
+    const recovery = response.cookies.get(ALIAS_RECOVERY_COOKIE)
+    expect(JSON.parse(decodeURIComponent(recovery?.value || ''))).toEqual([
+      '/', '/workspace', 'workspace-operations',
+    ])
+    expect(recovery?.value).not.toContain('source')
+    await Promise.all(collector.promises)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      event_type: 'legacy_alias',
+      requested_href: '/',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
       result: 'redirected',
     })
   })
@@ -151,7 +179,7 @@ describe('workbench compatibility middleware', () => {
     })
   })
 
-  it('emits failed on another page, while anonymous attempts never call the authenticated BFF', async () => {
+  it('emits redirected and failed evidence without requiring a browser session', async () => {
     const fetchMock = bffMock()
     const { ALIAS_RECOVERY_COOKIE, handleWorkbenchMiddleware } = await middlewareWithFlag('1')
     const anonymousCollector = eventCollector()
@@ -161,8 +189,9 @@ describe('workbench compatibility middleware', () => {
     )
     const recoveryValue = attempt.cookies.get(ALIAS_RECOVERY_COOKIE)?.value
     expect(recoveryValue).toBeTruthy()
-    expect(anonymousCollector.event.waitUntil).not.toHaveBeenCalled()
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(anonymousCollector.event.waitUntil).toHaveBeenCalledTimes(1)
+    await Promise.all(anonymousCollector.promises)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
 
     const failedCollector = eventCollector()
     const response = handleWorkbenchMiddleware(
@@ -177,7 +206,7 @@ describe('workbench compatibility middleware', () => {
     )
     expect(cookieHeader(response).toLowerCase()).toContain('max-age=0')
     await Promise.all(failedCollector.promises)
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
       event_type: 'legacy_alias',
       requested_href: '/qa',
       canonical_href: '/chat',
@@ -241,7 +270,7 @@ describe('workbench compatibility middleware', () => {
     expect(prefetchAlias.status).toBe(307)
     expect(cookieHeader(prefetchAlias)).toBe('')
     expect(prefetchAliasCollector.event.waitUntil).not.toHaveBeenCalled()
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
 
     vi.resetModules()
     const disabled = await middlewareWithFlag('0')
@@ -254,7 +283,7 @@ describe('workbench compatibility middleware', () => {
     )
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toBe('http://localhost/ad-review?source=rollback')
-    expect(disabledCollector.event.waitUntil).not.toHaveBeenCalled()
+    expect(disabledCollector.event.waitUntil).toHaveBeenCalledTimes(1)
   })
 
   it('canonicalizes the old workspace submodes only while the unified Shell is enabled', async () => {

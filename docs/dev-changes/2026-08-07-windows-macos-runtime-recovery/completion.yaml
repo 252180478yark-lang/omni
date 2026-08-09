@@ -1,0 +1,132 @@
+schema_version: 3
+change_id: 2026-08-07-windows-macos-runtime-recovery
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: RECOVERY-ACT-005
+  planned_change_id: RECOVERY-005
+  summary: Added supported macOS start and non-destructive stop entrypoints that acquire the existing RuntimeAllocation and operate only the exact isolated Compose project.
+  paths:
+  - scripts/dev-start-mac.sh
+  - scripts/dev-stop-mac.sh
+- id: RECOVERY-ACT-004
+  planned_change_id: RECOVERY-004
+  summary: Normalized nullable AI Hub model settings before video-analysis startup and added focused regression coverage for null, missing, blank, and populated values.
+  paths:
+  - services/video-analysis/app/main.py
+  - services/video-analysis/app/settings_normalization.py
+  - services/video-analysis/tests/test_settings_normalization.py
+contract_delta:
+- description: Curated the original recovery candidate for the unified integration lineage and transferred later-written shared runtime, Docker, frontend, database and local MCP ownership to their final contracts.
+  reason: The source branch bundled machine-local configuration and paths subsequently rewritten by profile-aware macOS, single-user trust and WebSocket changes; commit-mode delivery requires one final owner and an ancestor baseline.
+  effect: This contract retains the macOS start/stop entrypoints and unique nullable video-analysis startup repair, while excluded local planning/configuration and superseded shared paths remain absent or are owned by later integration contracts.
+  accepted: true
+- description: The GRAPH_DIFF_READY strict validator is executed after the state transition because its expected state does not exist before the transition.
+  reason: Recording it as a pre-transition requirement would create a circular state dependency.
+  effect: All required implementation and runtime evidence is recorded before transition; the exact strict command is then run and appended before handoff.
+  accepted: true
+verification_results:
+- id: RECOVERY-VERIFY-001
+  command: bash -n scripts/dev-start-mac.sh scripts/dev-stop-mac.sh scripts/verify-mac-recovery.sh
+  status: passed
+  exit_code: 0
+  evidence: All three user-facing macOS lifecycle scripts passed Bash syntax validation.
+- id: RECOVERY-VERIFY-002
+  command: PYTHONPATH=services/video-analysis uv run --with pytest python -m pytest services/video-analysis/tests/test_settings_normalization.py -q
+  status: passed
+  exit_code: 0
+  evidence: 3 tests passed; null, missing, blank, and populated model settings normalize safely.
+- id: RECOVERY-VERIFY-003
+  command: OMNI_CHANGE_ID=windows-macos-recovery-final OMNI_OWNER=yk bash scripts/dev-start-mac.sh
+  status: passed
+  exit_code: 0
+  evidence: The full Apple Silicon image set built and the isolated RuntimeAllocation started PostgreSQL, Redis, nine application services, frontend, and Nginx on deterministic local ports.
+- id: RECOVERY-VERIFY-004
+  command: OMNI_CHANGE_ID=windows-macos-recovery-final OMNI_OWNER=yk bash scripts/verify-mac-recovery.sh
+  status: passed
+  exit_code: 0
+  evidence: All required containers were running; frontend and Nginx returned HTTP 200; the recovered database measured 4,977,114,135 bytes with 160 user tables, 579 knowledge documents, 44,285 chunks, and 1,496 daily metrics; the product read path exposed the same document and chunk counts.
+- id: RECOVERY-VERIFY-005
+  command: uv run --python 3.11 python -c "import tomllib; d=tomllib.load(open('.codex/config.toml','rb')); assert d['mcp_servers']['omni']['url']=='http://localhost:8002/mcp/'"
+  status: passed
+  exit_code: 0
+  evidence: The project-local MCP declaration parsed under Python 3.11 and remained localhost-only; the live MCP doctor also reported DB, schema, 51 prompts, 141 registered tools, smoke run-through, and /mcp HTTP all OK.
+- id: RECOVERY-VERIFY-006
+  command: uv run --with pyyaml python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/impact.yaml --completion docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  status: passed
+  exit_code: 0
+  evidence: Strict schema-v3 validation reported GRAPH_DIFF_READY with exact scope, actual-change mapping, required runtime edges, verification evidence, rollback, and CI-only delivery status.
+graph_diff:
+  status: clean
+  snapshot_before: git:5dc52a4b37d6ec5c57ed50bfe0924b6bf42a095e
+  snapshot_after: worktree:omni-macos:windows-macos-recovery-final
+  added_nodes:
+  - workflow:scripts.dev-start-mac
+  - workflow:scripts.dev-stop-mac
+  - workflow:scripts.verify-mac-recovery
+  - db:postgres.recovered-windows-runtime
+  - mcp-server:omni-localhost
+  modified_nodes:
+  - service:frontend.runtime
+  - service:video-analysis.startup-settings
+  - service:knowledge-engine.image
+  - service:livestream-analysis.image
+  - service:scout-agent.image
+  removed_nodes: []
+  added_edges:
+  - from: workflow:scripts.dev-start-mac
+    to: workflow:scripts.runtime-allocation
+    relation: acquires
+  - from: workflow:scripts.dev-start-mac
+    to: service:docker-compose.omni
+    relation: starts
+  - from: service:docker-compose.omni
+    to: db:postgres.recovered-windows-runtime
+    relation: reads_and_writes
+  - from: mcp-server:omni-localhost
+    to: service:knowledge-engine.image
+    relation: connects_localhost
+  removed_edges: []
+  required_edges:
+  - from: workflow:scripts.dev-start-mac
+    to: workflow:scripts.runtime-allocation
+    relation: acquires
+    status: present
+    evidence: scripts/dev-start-mac.sh acquires and exports one isolated RuntimeAllocation before Compose actions.
+  - from: workflow:scripts.dev-start-mac
+    to: service:docker-compose.omni
+    relation: starts
+    status: present
+    evidence: The supported script built and started the full final Compose project with exit code 0.
+  - from: service:docker-compose.omni
+    to: service:frontend.runtime
+    relation: builds_and_runs
+    status: present
+    evidence: The frontend image contains server.ts plus src and serves HTTP 200 through both its published port and Nginx.
+  - from: service:docker-compose.omni
+    to: service:video-analysis.startup-settings
+    relation: builds_and_runs
+    status: present
+    evidence: video-analysis stayed running after nullable setting normalization; the focused regression suite passed.
+  - from: service:docker-compose.omni
+    to: db:postgres.recovered-windows-runtime
+    relation: reads_and_writes
+    status: present
+    evidence: Verification queried the isolated restored database through its Compose service and proved non-empty business data after 45 migrations.
+  - from: mcp-server:omni-localhost
+    to: service:knowledge-engine.image
+    relation: connects_localhost
+    status: present
+    evidence: The localhost config parsed and the live Knowledge Engine MCP endpoint returned HTTP 200 with 141 tools registered.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: The final runtime uses its own named PostgreSQL, Redis, and knowledge volumes. Stopping the exact Compose project without `down -v` leaves restored data inspectable; the 2.5 GB dump, verified source database, Windows VHDX, prior runtimes, and pre-import rollback snapshot remain unchanged.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''

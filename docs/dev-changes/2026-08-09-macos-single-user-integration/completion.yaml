@@ -1,0 +1,180 @@
+schema_version: 3
+change_id: 2026-08-09-macos-single-user-integration
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: ACT-INT-003
+  planned_change_id: INT-003
+  summary: Changed live macOS verification to manifest-backed service checks with an explicit strict recovered-data mode; the profile-aware start and stop bytes already exist at this contract's curated immutable baseline.
+  paths:
+  - scripts/verify-mac-recovery.sh
+- id: ACT-INT-004
+  planned_change_id: INT-004
+  summary: Excluded only top-level planning and generated outputs evidence from runnable source identity so verification and concurrent report artifacts cannot invalidate an unchanged runtime, while retaining dirty runnable-source invalidation everywhere else.
+  paths:
+  - scripts/runtime_allocation.py
+  - tests/test_runtime_allocation.py
+- id: ACT-INT-005
+  planned_change_id: INT-005
+  summary: Recovered static system-graph scanning for read-only linked-worktree mounts by using the preflight-validated allocation commit for HEAD only and Git's standalone canonical blob hashing when host administration metadata is unavailable.
+  paths:
+  - services/knowledge-engine/app/services/system_graph/canonical.py
+  - services/knowledge-engine/tests/test_system_graph_canonical.py
+- id: ACT-INT-006
+  planned_change_id: INT-006
+  summary: Moved immutable build identity after apt, pip and Playwright dependencies but before runnable source in all six content Python images, with an ordering contract that prevents source fingerprints from invalidating expensive dependency layers.
+  paths:
+  - services/infra-core/migrations/Dockerfile
+  - services/knowledge-engine/Dockerfile
+  - services/ai-provider-hub/Dockerfile
+  - services/video-analysis/Dockerfile
+  - services/livestream-analysis/Dockerfile
+  - services/scout-agent/Dockerfile
+  - tests/test_docker_build_cache_contract.py
+contract_delta:
+- description: Released dev-start-mac.sh and dev-stop-mac.sh from final ownership while retaining verify-mac-recovery.sh.
+  reason: Commit-mode evidence proved both start/stop scripts are byte-identical to the curated fa45bbe baseline, whereas the verifier changes after that baseline and remains an actual integration delta.
+  effect: The contract owns only paths changed after its immutable delivery baseline; lifecycle behavior remains covered by retained runtime evidence without fabricating a diff.
+  accepted: true
+- description: Rebased the curated macOS integration contract onto the immutable recovery commit in this unified lineage and removed personal planning plus historical-contract composition from owned product scope.
+  reason: The source branch contained unrelated tracked planning and non-ancestor commit identities; only runtime/profile, source identity, graph fallback and Docker cache repairs were authorized for mainline integration.
+  effect: Every retained actual path is changed after an ancestor baseline, unrelated local artifacts stay out of the candidate, and historical feature contracts continue to own their own product paths.
+  accepted: true
+- description: Added profile-aware macOS start, stop and verification after merge discovery proved the previous scripts assumed the retired full runtime.
+  reason: The supported content profile would otherwise omit services the verifier hardcoded as required and print endpoints that were not started.
+  effect: macOS defaults to the eight-service content projection; core/full stay explicit and service checks come from the versioned manifest.
+  accepted: true
+- description: Narrowed source fingerprinting and separated ordinary runtime health from strict recovered-data thresholds.
+  reason: Live execution proved `.planning` evidence invalidated an active allocation and a fresh disposable volume was falsely required to contain a 1GB recovered database.
+  effect: Runnable source changes still invalidate allocations; planning-only evidence does not. All services and typed product stats remain mandatory, with strict recovery thresholds retained behind `OMNI_REQUIRE_RECOVERED_DATA=1`.
+  accepted: true
+- description: Added a narrow linked-worktree canonical-source fallback after live system-graph BFF verification returned 500 in Docker.
+  reason: The read-only checkout's `.git` pointer targeted a host-only worktree administration directory, while RuntimeAllocation already supplied the immutable source commit.
+  effect: HEAD and evidence blobs resolve without mounting extra host Git metadata; explicit refs remain Git-only and fail closed. The live BFF now returns 189 nodes and 213 edges.
+  accepted: true
+- description: Excluded the top-level generated `outputs/` tree from runnable source identity.
+  reason: A concurrent research workflow created 121 MB of spreadsheet and preview artifacts during a build, invalidating an otherwise identical active runtime.
+  effect: Top-level generated reports no longer invalidate allocations; nested runnable `outputs` directories remain covered and external artifacts are preserved untouched.
+  accepted: true
+- description: Reordered build identity in six content Python Dockerfiles.
+  reason: Two source-only rebuilds repeatedly reinstalled apt, pip and Playwright layers for every content service because the fingerprint ENV preceded dependencies.
+  effect: Runtime image evidence is unchanged, while subsequent source-only builds can reuse expensive dependency layers; a dedicated ordering test enforces the boundary.
+  accepted: true
+verification_results:
+- id: INT-VER-001
+  command: git merge-base --is-ancestor fbeb99f8651d6844910ddb45a0ac7c5375130129 HEAD
+  status: passed
+  exit_code: 0
+  evidence: Target commit remains an ancestor of immutable implementation commit af6d70fdb3c2c6ac1210c093f097e151ababf0ce.
+- id: INT-VER-002
+  command: services/knowledge-engine/.venv/bin/python -X utf8 scripts/check_agent_policy.py --require-tracked
+  status: passed
+  exit_code: 0
+  evidence: Canonical policy passed at 14052/16384 bytes with valid dynamic routing and tracked assets.
+- id: INT-VER-003
+  command: bash -n scripts/dev-start-mac.sh scripts/dev-stop-mac.sh scripts/verify-mac-recovery.sh
+  status: passed
+  exit_code: 0
+  evidence: All three profile-aware macOS lifecycle scripts passed Bash syntax validation.
+- id: INT-VER-004
+  command: cd frontend && npm run test:unit -- tests/content-development-convergence.test.tsx tests/approval-auth-session.test.ts tests/workbench-route-inventory.test.ts tests/system-command-center.test.tsx
+  status: passed
+  exit_code: 0
+  evidence: Four Vitest files and 15 tests passed, covering content/development composition, route inventory, fixed local-owner session and system command center.
+- id: INT-VER-005
+  command: services/knowledge-engine/.venv/bin/python -m pytest tests/test_compose_runtime_contract.py tests/test_runtime_allocation.py tests/test_dev_runtime_environment.py tests/test_runtime_guard.py -q
+  status: passed
+  exit_code: 0
+  evidence: 68 runtime allocation, environment, profile, loopback and Compose contract tests passed in 6.07 seconds.
+- id: INT-VER-006
+  command: git diff --check d38b95cbe5d8f124168883716c4bd5f752451528..HEAD
+  status: passed
+  exit_code: 0
+  evidence: Immutable implementation diff is whitespace-clean relative to the safety checkpoint.
+- id: INT-VER-007
+  command: OMNI_RUNTIME_PROFILE=content OMNI_CHANGE_ID=macos-single-user-integration-runtime OMNI_OWNER=yk bash scripts/dev-start-mac.sh
+  status: passed
+  exit_code: 0
+  evidence: Runtime macos-single-user-integr-af6d70fd started the exact eight-service content projection on loopback. The first post-reorder build populated dependency caches; an identical second start completed in 26.68 seconds with apt, pip, Playwright and frontend build layers reported CACHED.
+- id: INT-VER-008
+  command: OMNI_RUNTIME_PROFILE=content OMNI_CHANGE_ID=macos-single-user-integration-runtime OMNI_OWNER=yk bash scripts/verify-mac-recovery.sh
+  status: passed
+  exit_code: 0
+  evidence: Eight manifest services passed; seven healthchecks were healthy and Scout was running without a configured probe. The fresh typed database exposed 158 tables and zero content rows, frontend was http://127.0.0.1:18633, and system graph snapshot e43832cc... matched commit af6d70f with 189 nodes and 213 edges. Explicit OMNI_REQUIRE_RECOVERED_DATA=1 separately exited 1 on the fresh 19 MB database, preserving the strict recovery gate.
+- id: INT-VER-009
+  command: services/knowledge-engine/.venv/bin/python -m pytest services/knowledge-engine/tests/test_system_graph_canonical.py services/knowledge-engine/tests/test_system_graph_router.py -q
+  status: passed
+  exit_code: 0
+  evidence: Ten canonical-source and router tests passed, including HEAD-only allocation fallback, explicit-ref fail-closed behavior and Git-canonical standalone blob hashing.
+- id: INT-VER-010
+  command: services/knowledge-engine/.venv/bin/python -m pytest tests/test_docker_build_cache_contract.py -q
+  status: passed
+  exit_code: 0
+  evidence: Docker ordering contract passed for all six content Python images; live identical rebuild evidence confirmed dependency cache reuse.
+graph_diff:
+  status: accepted
+  snapshot_before: git:fa45bbe15c9d8fe1298e8cb0e5c849b1a4c15acd
+  snapshot_after: sha256:e43832ccbddc774f5b30fc5fb560d9a8a4b74698bed1092153590f3f28b382f5
+  added_nodes: []
+  modified_nodes:
+  - workflow:macos-single-user-contract-composition
+  - workflow:macos-profile-aware-start-stop-verify
+  - service:runtime-allocation
+  - service:docker-runtime-projection
+  - service:system-graph-canonical-source
+  - workflow:content-docker-build
+  - page:/workspace
+  - page:/workspace/development
+  - api:GET:/api/omni/system-graph/snapshot
+  - api:GET:/api/v1/system-graph/snapshot
+  removed_nodes: []
+  added_edges: []
+  removed_edges: []
+  required_edges:
+  - from: workflow:macos-runtime-recovery
+    to: service:docker-runtime-projection
+    relation: starts
+    status: present
+    evidence: Exact macOS start command created the manifest-backed content projection with eight long-lived services.
+  - from: page:/workspace
+    to: workflow:content-development-convergence
+    relation: renders
+    status: present
+    evidence: Frontend composition suite passed and the live loopback frontend returned the canonical workspace.
+  - from: page:/workspace/development
+    to: api:GET:/api/omni/system-graph/snapshot
+    relation: fetches-without-login
+    status: present
+    evidence: Live verifier reached the BFF with fixed local-owner trust and returned snapshot e43832cc without an identity service.
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: calls-as-local-owner
+    status: present
+    evidence: The isolated BFF returned the Knowledge Engine snapshot with commit af6d70f and no internal credential dependency.
+  - from: service:docker-runtime-projection
+    to: state:runtime-profile-core-content-full
+    relation: projects-without-internal-credentials
+    status: present
+    evidence: Runtime/Compose suite passed and the live content projection omitted identity, news, ad-review and Nginx.
+  - from: workflow:macos-profile-aware-start-stop-verify
+    to: state:runtime-profile-core-content-full
+    relation: selects-and-verifies-manifest-profile
+    status: present
+    evidence: Start and verify both selected content through RuntimeAllocation and checked the versioned manifest service set.
+  - from: api:GET:/api/v1/system-graph/snapshot
+    to: source:repository-filesystem
+    relation: scans-linked-worktree-with-immutable-commit-fallback
+    status: present
+    evidence: Read-only linked-worktree mount produced 189 nodes and 213 edges while binding the snapshot to source commit af6d70f.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: Safety checkpoint d38b95c remains immutable, the new runtime uses an isolated allocation/project and loopback ports, and no migration, business-data deletion or volume removal is part of rollback. Releasing or stopping this allocation preserves its volumes and does not touch the pre-existing recovery stack.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: macOS single-user content/development integration, linked-worktree system graph recovery and Docker dependency-cache stabilization are locally verified; CI-bound delivery attestation remains intentionally external.

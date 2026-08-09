@@ -27,6 +27,7 @@ from app.services.analysis import (
 )
 from app.services.emotion_curve import save_curve_image
 from app.services.inputs import build_analysis_inputs
+from app.settings_normalization import normalize_optional_text
 from app.storage import (
     CURVE_DIR,
     REPORT_DIR,
@@ -121,16 +122,16 @@ def _fetch_config_from_ai_hub() -> dict:
 
 def _load_persisted_settings() -> None:
     data = load_settings()
-    local_model = str(data.get("gemini_model", "")).strip()
+    local_model = normalize_optional_text(data.get("gemini_model"))
     cost = data.get("gemini_cost_per_1k")
     # ai-provider-hub 是统一配置中心，优先级最高
     hub = _fetch_config_from_ai_hub()
-    hub_key = hub.get("api_key", "").strip()
-    hub_model = hub.get("default_chat_model", "").strip()
+    hub_key = normalize_optional_text(hub.get("api_key"))
+    hub_model = normalize_optional_text(hub.get("default_chat_model"))
     if hub_key:
         os.environ["GEMINI_API_KEY"] = hub_key
     else:
-        local_key = str(data.get("gemini_api_key", "")).strip()
+        local_key = normalize_optional_text(data.get("gemini_api_key"))
         if local_key:
             os.environ["GEMINI_API_KEY"] = local_key
     # 模型：hub 优先，其次本地 settings.json，最后保持默认

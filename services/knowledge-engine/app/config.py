@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # AI Provider Hub
     ai_provider_hub_url: str = "http://ai-provider-hub:8001"
-    ad_review_service_url: str = "http://ad-review-service:8005"
+    ad_review_service_url: str = "http://ad-review-service:8008"
 
     # Scout-agent（竞品调研 competitor_* tool 经 HTTP 调它抓淘宝；浏览器层在 scout-agent）
     scout_agent_url: str = "http://scout-agent:8009"

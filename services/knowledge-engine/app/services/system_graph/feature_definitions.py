@@ -15,25 +15,19 @@ from app.services.system_graph.canonical import canonical_json, sha256_value
 
 WorkbenchMode = Literal["work", "development"]
 WorkbenchGroup = Literal[
-    "today",
-    "products",
-    "operations",
-    "content",
-    "knowledge",
-    "agents",
-    "skills-tools",
-    "workflows",
-    "prompt-eval",
-    "runs-system",
+    "production",
+    "analysis",
+    "library",
+    "agent-tools",
+    "quality",
+    "system",
 ]
 WorkbenchPhase = Literal[
     "retain", "merge", "degrade", "host_only", "retirement_candidate"
 ]
 
-WORK_GROUPS = frozenset({"today", "products", "operations", "content", "knowledge"})
-DEVELOPMENT_GROUPS = frozenset(
-    {"agents", "skills-tools", "workflows", "prompt-eval", "runs-system"}
-)
+WORK_GROUPS = frozenset({"production", "analysis", "library"})
+DEVELOPMENT_GROUPS = frozenset({"agent-tools", "quality", "system"})
 
 
 class DefinitionError(ValueError):
@@ -104,7 +98,7 @@ class FeatureIA(DefinitionModel):
     # Defaults are only for read compatibility with historical v1 fixtures.
     # Canonical definitions must persist the complete mapping explicitly.
     mode: WorkbenchMode = "work"
-    primary_group: WorkbenchGroup = "today"
+    primary_group: WorkbenchGroup = "production"
     primary_order: int = Field(default=0, ge=0)
     contextual_groups: list[FeatureContextualGroup] = Field(default_factory=list)
     phase: WorkbenchPhase = "retain"

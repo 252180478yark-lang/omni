@@ -232,11 +232,30 @@ class ProviderSessionContract(StrictModel):
     session_id: str = Field(pattern=IDENTIFIER)
     runner_provider: Literal["codex", "claude"]
     runner_session_id: str | None = Field(default=None, pattern=IDENTIFIER)
-    project_dir: str = Field(min_length=1, max_length=1024)
+    project_dir: str | None = Field(default=None, min_length=1, max_length=1024, exclude=True)
+    project_hash: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    project_handle: str | None = Field(default=None, pattern=IDENTIFIER)
+    project_display_name: str | None = Field(default=None, min_length=1, max_length=160)
+    context_snapshot_id: str | None = Field(default=None, pattern=IDENTIFIER)
+    requested_provider: Literal["auto", "codex", "claude"] | None = None
+    resolved_runner_mode: Literal["host", "local"] | None = None
+    fallback_reason_code: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_.-]{0,99}$")
+    provider_accepted_at: datetime | None = None
+    parent_session_id: str | None = Field(default=None, pattern=IDENTIFIER)
     model: str | None = Field(default=None, max_length=160)
     effort: str | None = Field(default=None, max_length=40)
     trace_id: str | None = Field(default=None, pattern=IDENTIFIER)
-    status: Literal["active", "completed", "failed", "cancelled", "archived"] = "active"
+    status: Literal["resolving", "active", "paused", "completed", "failed", "cancelled", "unavailable", "archived"] = "active"
+
+    @model_validator(mode="after")
+    def project_identity_is_complete(self) -> "ProviderSessionContract":
+        if self.project_hash is None and self.project_dir is None:
+            raise ValueError("project_hash or legacy project_dir is required")
+        if (self.project_handle is None) != (self.project_display_name is None):
+            raise ValueError("project_handle and project_display_name must be supplied together")
+        if self.requested_provider not in {None, "auto", self.runner_provider} and self.fallback_reason_code is None:
+            raise ValueError("provider fallback requires fallback_reason_code")
+        return self
 
 
 class AgentSessionContractRecord(StrictModel):
@@ -246,8 +265,17 @@ class AgentSessionContractRecord(StrictModel):
     project_dir_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     model: str | None = None
     effort: str | None = None
-    status: Literal["active", "completed", "failed", "cancelled", "archived"]
+    status: Literal["resolving", "active", "paused", "completed", "failed", "cancelled", "unavailable", "archived"]
     trace_id: str | None = None
+    contract_version: str | None = None
+    context_snapshot_id: str | None = None
+    requested_provider: Literal["auto", "codex", "claude"] | None = None
+    resolved_runner_mode: Literal["host", "local"] | None = None
+    fallback_reason_code: str | None = None
+    provider_accepted_at: datetime | None = None
+    parent_session_id: str | None = None
+    project_handle: str | None = None
+    project_display_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

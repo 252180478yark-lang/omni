@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -67,7 +68,18 @@ def git_output(repo: Path, *args: str) -> str:
 
 
 def resolve_commit(repo: Path, ref: str = "HEAD") -> str:
-    return git_output(repo, "rev-parse", f"{ref}^{{commit}}")
+    try:
+        return git_output(repo, "rev-parse", f"{ref}^{{commit}}")
+    except subprocess.CalledProcessError:
+        # A bind-mounted linked worktree can contain a valid checkout while its
+        # host-only Git administration directory is outside the container.
+        # RuntimeAllocation has already bound this immutable commit through
+        # preflight, so it is a safe fallback for HEAD only. Explicit refs must
+        # still resolve through Git and therefore fail closed.
+        source_commit = os.getenv("OMNI_SOURCE_COMMIT", "").strip().lower()
+        if ref == "HEAD" and re.fullmatch(r"[0-9a-f]{40}", source_commit):
+            return source_commit
+        raise
 
 
 def repo_relative(repo: Path, path: Path) -> str:
@@ -81,7 +93,23 @@ def repo_relative(repo: Path, path: Path) -> str:
 
 
 def blob_id(repo: Path, path: Path) -> str:
-    return git_output(repo, "hash-object", "--no-filters", str(path.resolve()))
+    resolved = path.resolve()
+    try:
+        return git_output(repo, "hash-object", "--no-filters", str(resolved))
+    except subprocess.CalledProcessError:
+        # `git hash-object --no-filters` is repository-independent and keeps
+        # evidence hashes byte-identical when linked-worktree metadata is not
+        # mounted into the container.
+        result = subprocess.run(
+            ["git", "hash-object", "--no-filters", str(resolved)],
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            timeout=10,
+        )
+        return result.stdout.strip()
 
 
 def evidence_ref(repo: Path, path: Path, line: int, symbol: str = "") -> EvidenceRef:

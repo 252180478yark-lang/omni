@@ -6,7 +6,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 360
 
 /**
- * 转发到 KE /api/v1/mcp/exec/reverse_storyboard_video.
+ * 转发到 KE canonical operation video.storyboard.reverse.
  *
  * video_path 由前端在 page 里做 host→container 映射(C:/Users/Administrator/Desktop/X
  * → /host/Desktop/X), 这里只透传不做转换.
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   }
 
   const { knowledge } = serviceBase()
-  const url = `${knowledge}/api/v1/mcp/exec/reverse_storyboard_video`
+  const url = `${knowledge}/api/v1/mcp/execute/video.storyboard.reverse`
 
   try {
     const r = await fetch(url, {

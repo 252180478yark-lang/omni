@@ -11,8 +11,8 @@ routes:
   owned_surfaces: [/knowledge]
 ia:
   mode: work
-  primary_group: knowledge
-  primary_order: 0
+  primary_group: library
+  primary_order: 10
   contextual_groups: []
   phase: retain
   flag: unified_shell

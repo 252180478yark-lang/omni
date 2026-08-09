@@ -68,6 +68,6 @@ describe('static system command center states', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 503 })))
     render(<SystemGraphView />)
     await waitFor(() => expect(screen.getByTestId('system-graph-error')).toBeTruthy())
-    expect(screen.getByRole('alert').textContent).toContain('暂不可读')
+    expect(screen.getByRole('alert').textContent).toContain('知识引擎运行状态')
   })
 })

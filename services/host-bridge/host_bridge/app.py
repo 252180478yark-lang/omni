@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import os
 import urllib.error
@@ -15,7 +14,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -41,13 +40,9 @@ def _build_identity() -> dict[str, str | None]:
 
 def _trace_sink(session: HostSession, run_id: str, event_type: str, status: str, payload: dict[str, Any]) -> bool:
     base = os.getenv("OMNI_KE_URL", "").rstrip("/")
-    token_path = os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", "") or os.getenv("OMNI_RUNTIME_TRACE_TOKEN_FILE", "")
-    if not base or not token_path or not session.trace_id:
+    if not base or not session.trace_id:
         return False
     try:
-        token = Path(token_path).read_text(encoding="utf-8").strip()
-        if len(token) < 24:
-            return False
         body = json.dumps({
             "source": "host.bridge", "event_id": f"{run_id}:{event_type}",
             "trace_id": session.trace_id, "execution_id": session.execution_id or session.trace_id,
@@ -59,7 +54,7 @@ def _trace_sink(session: HostSession, run_id: str, event_type: str, status: str,
         request = urllib.request.Request(
             f"{base}/api/v1/runtime-traces/{urllib.parse.quote(session.trace_id, safe='')}/events",
             data=body, method="POST",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+            headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(request, timeout=3) as response:
             return 200 <= response.status < 300
@@ -69,16 +64,12 @@ def _trace_sink(session: HostSession, run_id: str, event_type: str, status: str,
 
 def _contract_post(path: str, payload: dict[str, Any]) -> bool:
     base = os.getenv("OMNI_KE_URL", "").rstrip("/")
-    token_path = os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", "") or os.getenv("OMNI_RUNTIME_TRACE_TOKEN_FILE", "")
-    if not base or not token_path:
+    if not base:
         return False
     try:
-        token = Path(token_path).read_text(encoding="utf-8").strip()
-        if len(token) < 24:
-            return False
         request = urllib.request.Request(
             f"{base}{path}", data=json.dumps(payload).encode(), method="POST",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+            headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(request, timeout=3) as response:
             return 200 <= response.status < 300
@@ -89,10 +80,13 @@ def _contract_post(path: str, payload: dict[str, Any]) -> bool:
 def _sync_session(session: HostSession) -> bool:
     public = as_public_session(session)
     return _contract_post("/api/v1/agent-contracts/sessions", {
-        key: public[key] for key in (
-            "session_id", "runner_provider", "runner_session_id", "project_dir",
-            "model", "effort", "trace_id", "status",
-        )
+        "session_id": public["session_id"], "runner_provider": public["resolved_provider"],
+        "runner_session_id": public["runner_session_id"], "project_hash": public["project"]["project_hash"],
+        "project_handle": public["project"]["project_handle"], "project_display_name": public["project"]["display_name"],
+        "context_snapshot_id": session.context_snapshot_id, "requested_provider": public["requested_provider"],
+        "resolved_runner_mode": public["runner_mode"], "fallback_reason_code": public["fallback_reason_code"],
+        "provider_accepted_at": public["accepted_at"], "parent_session_id": public["parent_session_id"],
+        "model": public["model"], "effort": public["effort"], "trace_id": public["trace_id"], "status": public["status"],
     })
 
 
@@ -127,38 +121,36 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="omni-host-bridge", lifespan=lifespan)
 
 
-def _required_token() -> str:
-    path = os.getenv("OMNI_HOST_TOKEN_FILE", "")
-    try:
-        token = Path(path).read_text(encoding="utf-8").strip() if path else ""
-    except OSError:
-        token = ""
-    if len(token) < 24:
-        raise HTTPException(status_code=503, detail={"code": "host_auth_unconfigured"})
-    return token
-
-
-def require_host_access(authorization: str | None = Header(default=None)) -> None:
-    supplied = authorization.removeprefix("Bearer ") if authorization else ""
-    if not supplied or not hmac.compare_digest(supplied, _required_token()):
-        raise HTTPException(status_code=401, detail={"code": "host_auth_required"})
-
-
 class SessionPayload(BaseModel):
     session_id: str = Field(min_length=2, max_length=200)
     runner_provider: str
     runner_session_id: str | None = Field(default=None, min_length=2, max_length=200)
-    project_dir: str = Field(min_length=1, max_length=1024)
+    project_dir: str | None = Field(default=None, min_length=1, max_length=1024)
+    project_handle: str | None = Field(default=None, min_length=2, max_length=200)
     execution_id: str | None = Field(default=None, min_length=2, max_length=200)
     parent_span_id: str | None = Field(default=None, min_length=2, max_length=200)
     model: str | None = None
     effort: str | None = None
     trace_id: str | None = None
+    context_snapshot_id: str | None = Field(default=None, min_length=2, max_length=200)
+    context_revision: int | None = Field(default=None, ge=1)
+    requested_provider: str | None = None
+    resolved_provider: str | None = None
+    runner_mode: str = "host"
+    fallback_reason_code: str | None = None
+    parent_session_id: str | None = Field(default=None, min_length=2, max_length=200)
 
 
 class RunPayload(BaseModel):
     prompt: str = Field(min_length=1, max_length=32000)
     request_id: str = Field(min_length=2, max_length=200)
+
+
+class RebindContextPayload(BaseModel):
+    expected_snapshot_id: str = Field(min_length=2, max_length=200)
+    expected_revision: int = Field(ge=1)
+    next_snapshot_id: str = Field(min_length=2, max_length=200)
+    next_revision: int = Field(ge=2)
 
 
 class VisibleAuthPayload(BaseModel):
@@ -195,55 +187,66 @@ def _call(action):
 @app.get("/api/v1/host-bridge/health")
 async def health() -> dict[str, Any]:
     value = bridge.health()
-    if not os.getenv("OMNI_KE_URL") or not (os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE") or os.getenv("OMNI_RUNTIME_TRACE_TOKEN_FILE")):
+    if not os.getenv("OMNI_KE_URL"):
         value["state"] = "degraded"
         value["reason_codes"] = [*value["reason_codes"], "core_contract_sync_unconfigured"]
     return value
 
 
-@app.post("/api/v1/host-bridge/sessions", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions")
 async def create_session(payload: SessionPayload) -> dict[str, Any]:
-    session = _call(lambda: bridge.ensure_session(HostSession(**payload.model_dump())))
+    values = payload.model_dump()
+    supplied_handle = values.pop("project_handle")
+    values["project_dir"] = values.get("project_dir") or os.getenv("OMNI_PROJECT_DIR", "")
+    session = _call(lambda: bridge.ensure_session(HostSession(**values)))
+    if supplied_handle and supplied_handle not in {"project:default", session.project_handle}:
+        raise HTTPException(status_code=409, detail={"code": "project_handle_mismatch"})
     return {**as_public_session(session), "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.get("/api/v1/host-bridge/sessions/{session_id}", dependencies=[Depends(require_host_access)])
+@app.get("/api/v1/host-bridge/sessions/{session_id}")
 async def get_session(session_id: str) -> dict[str, Any]:
     return _call(lambda: as_public_session(bridge.get_session(session_id)))
 
 
-@app.post("/api/v1/host-bridge/sessions/{session_id}/runs", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions/{session_id}/context")
+async def rebind_session_context(session_id: str, payload: RebindContextPayload) -> dict[str, Any]:
+    session = _call(lambda: bridge.rebind_context(session_id, **payload.model_dump()))
+    return {**as_public_session(session), "contract_sync": "success" if _sync_session(session) else "partial"}
+
+
+@app.post("/api/v1/host-bridge/sessions/{session_id}/runs")
 async def start_run(session_id: str, payload: RunPayload) -> dict[str, Any]:
     result = _call(lambda: bridge.start_run(session_id, payload.prompt, payload.request_id))
     session = _call(lambda: bridge.get_session(session_id))
     return {**result, "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.post("/api/v1/host-bridge/sessions/{session_id}/visible-auth", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions/{session_id}/visible-auth")
 async def open_visible_auth(session_id: str, payload: VisibleAuthPayload) -> dict[str, Any]:
     return _call(lambda: bridge.open_visible_auth(session_id, payload.provider, payload.url, payload.request_id))
 
 
-@app.get("/api/v1/host-bridge/runs/{run_id}/events", dependencies=[Depends(require_host_access)])
+@app.get("/api/v1/host-bridge/runs/{run_id}/events")
 async def run_events(run_id: str, cursor: int = Query(default=0, ge=0)) -> dict[str, Any]:
     page = _call(lambda: bridge.run_events(run_id, cursor))
     session = _call(lambda: bridge.get_session(page["session_id"]))
     return {**page, "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.post("/api/v1/host-bridge/runs/{run_id}/cancel", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/runs/{run_id}/cancel")
 async def cancel_run(run_id: str) -> dict[str, Any]:
     return _call(lambda: bridge.cancel_run(run_id))
 
 
-@app.post("/api/v1/host-bridge/sessions/{session_id}/attachments", dependencies=[Depends(require_host_access)])
+@app.post("/api/v1/host-bridge/sessions/{session_id}/attachments")
 async def upload_attachment(session_id: str, attachment: UploadFile = File(...)) -> dict[str, Any]:
     content = await attachment.read(25 * 1024 * 1024 + 1)
     metadata = _call(lambda: bridge.save_attachment(session_id, attachment.filename or "attachment", content, attachment.content_type or "application/octet-stream"))
     return {**metadata, "contract_sync": "success" if _sync_attachment(session_id, metadata) else "partial"}
 
 
-@app.get("/api/v1/host-bridge/sessions/{session_id}/attachments/{attachment_id}", dependencies=[Depends(require_host_access)])
+@app.get("/api/v1/host-bridge/sessions/{session_id}/attachments/{attachment_id}")
 async def download_attachment(session_id: str, attachment_id: str):
     path, metadata = _call(lambda: bridge.attachment(session_id, attachment_id))
     return FileResponse(path, media_type=metadata["content_type"], filename=path.name)
@@ -251,7 +254,7 @@ async def download_attachment(session_id: str, attachment_id: str):
 
 # Compatibility for the current WeCom orchestration call shape. It is still
 # authenticated and delegates to the same provider-neutral session/run core.
-@app.post("/api/sessions", dependencies=[Depends(require_host_access)])
+@app.post("/api/sessions")
 async def legacy_create_session(payload: LegacyCreatePayload) -> dict[str, Any]:
     session_id = payload.session_id or f"session:{uuid.uuid4().hex}"
     project_dir = payload.project_dir or os.getenv("OMNI_PROJECT_DIR", "")
@@ -259,12 +262,12 @@ async def legacy_create_session(payload: LegacyCreatePayload) -> dict[str, Any]:
     return {"id": session.session_id, "session_id": session.session_id, "runner_provider": session.runner_provider, "runner_session_id": session.runner_session_id, "status": session.status, "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
-@app.post("/api/sessions/{session_id}/open", dependencies=[Depends(require_host_access)])
+@app.post("/api/sessions/{session_id}/open")
 async def legacy_open_session(session_id: str) -> dict[str, Any]:
     return _call(lambda: as_public_session(bridge.get_session(session_id)))
 
 
-@app.post("/api/sessions/{session_id}/prompt", dependencies=[Depends(require_host_access)])
+@app.post("/api/sessions/{session_id}/prompt")
 async def legacy_prompt(session_id: str, payload: LegacyPromptPayload) -> dict[str, Any]:
     existing = _call(lambda: bridge.get_session(session_id))
     trace_id = payload.trace_id or f"trace:host:{uuid.uuid4().hex}"
@@ -282,8 +285,14 @@ async def legacy_prompt(session_id: str, payload: LegacyPromptPayload) -> dict[s
 def as_public_session(session: HostSession) -> dict[str, Any]:
     return {
         "session_id": session.session_id, "runner_provider": session.runner_provider,
-        "runner_session_id": session.runner_session_id, "project_dir": session.project_dir,
+        "runner_session_id": session.runner_session_id,
+        "project": {"project_handle": session.project_handle, "project_hash": session.project_hash, "display_name": session.project_display_name},
         "execution_id": session.execution_id, "parent_span_id": session.parent_span_id,
         "model": session.model, "effort": session.effort, "trace_id": session.trace_id,
-        "status": session.status,
+        "status": session.status, "context_snapshot_id": session.current_context_snapshot_id or session.context_snapshot_id,
+        "context_revision": session.current_context_revision or session.context_revision,
+        "requested_provider": session.requested_provider or session.runner_provider,
+        "resolved_provider": session.resolved_provider or session.runner_provider,
+        "runner_mode": session.runner_mode, "fallback_reason_code": session.fallback_reason_code,
+        "accepted_at": session.accepted_at, "parent_session_id": session.parent_session_id,
     }

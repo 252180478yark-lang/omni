@@ -11,10 +11,9 @@ routes:
   owned_surfaces: [/chat]
 ia:
   mode: development
-  primary_group: agents
+  primary_group: agent-tools
   primary_order: 0
-  contextual_groups:
-    - {mode: development, group: prompt-eval, order: 10}
+  contextual_groups: []
   phase: retain
   flag: unified_shell
 capabilities:

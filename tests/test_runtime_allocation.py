@@ -40,6 +40,14 @@ def _repo(tmp_path: Path) -> Path:
             "compose_project": "omni",
             "database": "omni_vibe_db",
         },
+        "runtime_profiles": {
+            "default": "core",
+            "profiles": {
+                "core": {"compose_profiles": []},
+                "content": {"compose_profiles": ["content"]},
+                "full": {"compose_profiles": ["full"]},
+            },
+        },
         "services": {
             "postgres": {"published_ports": [5432]},
             "redis": {"published_ports": [6379]},
@@ -92,13 +100,14 @@ def test_nonoverlapping_allocations_are_isolated_and_conflicts_fail(
     assert first["environment"]["OMNI_APPROVAL_WORKER_ENABLED"] == "true"
     assert first["environment"]["OMNI_APPROVAL_WORKER_ROLE"] == "owner"
     assert first["environment"]["OMNI_RESTART_POLICY"] == "no"
-    assert (
-        first["environment"]["OMNI_IDENTITY_JWT_SECRET_FILE"] != first["environment"]["OMNI_APPROVAL_HMAC_SECRET_FILE"]
-    )
-    assert first["environment"]["OMNI_COMPATIBILITY_TOKEN_FILE"] not in {
-        first["environment"]["OMNI_APPROVAL_HMAC_SECRET_FILE"],
-        first["environment"]["OMNI_IDENTITY_JWT_SECRET_FILE"],
-    }
+    assert first["allocation"]["runtime_profile"] == "core"
+    assert first["environment"]["OMNI_RUNTIME_PROFILE"] == "core"
+    assert first["environment"]["COMPOSE_PROFILES"] == ""
+    assert not ({
+        "OMNI_IDENTITY_JWT_SECRET_FILE", "OMNI_APPROVAL_HMAC_SECRET_FILE",
+        "OMNI_COMPATIBILITY_TOKEN_FILE", "OMNI_RUNTIME_TRACE_TOKEN_FILE",
+        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE",
+    } & first["environment"].keys())
 
     with pytest.raises(allocation.AllocationConflict) as caught:
         allocation.acquire(
@@ -109,6 +118,38 @@ def test_nonoverlapping_allocations_are_isolated_and_conflicts_fail(
             state_dir=state_dir,
         )
     assert any(item["kind"] == "path" and item["owner"] == "agent-a" for item in caught.value.conflicts)
+
+
+def test_active_allocation_dry_run_does_not_create_internal_runtime_secrets(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    state_dir = tmp_path / "state"
+    created = allocation.acquire(
+        repo,
+        change_id="change-dry-run",
+        owner="agent-a",
+        path_globs=["services/a/**"],
+        state_dir=state_dir,
+    )
+    observed = allocation.acquire(
+        repo,
+        change_id="change-dry-run",
+        owner="agent-a",
+        path_globs=["services/a/**"],
+        state_dir=state_dir,
+        dry_run=True,
+    )
+
+    assert observed["created"] is False
+    assert observed["dry_run"] is True
+    forbidden = {
+        "OMNI_IDENTITY_JWT_SECRET_FILE", "OMNI_APPROVAL_HMAC_SECRET_FILE",
+        "OMNI_COMPATIBILITY_TOKEN_FILE", "OMNI_RUNTIME_TRACE_TOKEN_FILE",
+        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE",
+    }
+    assert not (forbidden & created["environment"].keys())
+    assert not (forbidden & observed["environment"].keys())
 
 
 def test_real_manifest_allocates_every_host_dev_service_port() -> None:
@@ -132,6 +173,7 @@ def test_real_manifest_allocates_every_host_dev_service_port() -> None:
         {
             "compose_project": "omni-fixture",
             "runtime_id": "runtime-fixture",
+            "runtime_profile": "core",
             "allocation_id": "allocation-" + "a" * 32,
             "database": "omni_verify_fixture",
             "database_schema": "wt_fixture",
@@ -151,6 +193,55 @@ def test_real_manifest_allocates_every_host_dev_service_port() -> None:
         assert allocation.PORT_ENV[service] in projected
     assert projected["OMNI_BUILD_COMMIT"] == "b" * 40
     assert projected["OMNI_BUILD_SOURCE_FINGERPRINT"] == "c" * 64
+    assert projected["OMNI_RUNTIME_PROFILE"] == "core"
+
+
+@pytest.mark.parametrize(
+    ("runtime_profile", "compose_profiles"),
+    (("core", ""), ("content", "content"), ("full", "full")),
+)
+def test_runtime_profile_is_immutable_and_projected_to_compose(
+    tmp_path: Path, runtime_profile: str, compose_profiles: str
+) -> None:
+    repo = _repo(tmp_path)
+    state_dir = tmp_path / "state"
+    result = allocation.acquire(
+        repo,
+        change_id="profile-change",
+        owner="agent-a",
+        path_globs=["services/example/**"],
+        runtime_profile=runtime_profile,
+        state_dir=state_dir,
+    )
+    assert result["allocation"]["runtime_profile"] == runtime_profile
+    assert result["environment"]["OMNI_RUNTIME_PROFILE"] == runtime_profile
+    assert result["environment"]["COMPOSE_PROFILES"] == compose_profiles
+
+    other = "full" if runtime_profile != "full" else "core"
+    with pytest.raises(allocation.CompareAndSwapConflict, match="runtime profile"):
+        allocation.acquire(
+            repo,
+            change_id="profile-change",
+            owner="agent-a",
+            path_globs=["services/example/**"],
+            runtime_profile=other,
+            state_dir=state_dir,
+        )
+
+
+def test_invalid_or_legacy_runtime_profile_fails_closed(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    with pytest.raises(allocation.AllocationError, match="unknown runtime_profile"):
+        allocation.acquire(
+            repo,
+            change_id="bad-profile",
+            owner="agent-a",
+            path_globs=["services/example/**"],
+            runtime_profile="legacy",
+            state_dir=tmp_path / "state",
+        )
+    with pytest.raises(allocation.AllocationError, match="release/reacquire"):
+        allocation.allocation_environment({"ports": {}, "runtime_profile": ""})
 
 
 def test_read_only_allocation_does_not_own_scheduler_or_approval_worker(
@@ -267,6 +358,18 @@ def test_source_fingerprint_tracks_content_not_mtime_or_secret_files(
     assert changed != initial
     (repo / ".env").write_text("API_KEY=live_abcdefghijklmnopqrstuvwxyz\n", encoding="utf-8")
     assert allocation.source_tree_fingerprint(repo) == changed
+    planning = repo / ".planning" / "runtime-verification" / "progress.md"
+    planning.parent.mkdir(parents=True)
+    planning.write_text("runtime started\n", encoding="utf-8")
+    assert allocation.source_tree_fingerprint(repo) == changed
+    artifact = repo / "outputs" / "research" / "report.csv"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("platform,count\nexample,1\n", encoding="utf-8")
+    assert allocation.source_tree_fingerprint(repo) == changed
+    nested_runtime = repo / "services" / "example" / "outputs" / "generated.py"
+    nested_runtime.parent.mkdir(parents=True)
+    nested_runtime.write_text("value = 3\n", encoding="utf-8")
+    assert allocation.source_tree_fingerprint(repo) != changed
 
 
 def test_lock_file_stays_one_byte_and_release_requires_owner_cas(
@@ -304,77 +407,3 @@ def test_lock_file_stays_one_byte_and_release_requires_owner_cas(
         )
     released = allocation.release(repo, allocation_id, owner="agent-a", expected_revision=1, state_dir=state_dir)
     assert released["state"] == "released"
-
-
-def test_approval_hmac_secret_is_external_private_reused_and_never_returned(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    secret_path = tmp_path / "external-secrets" / "approval-hmac.key"
-    first = allocation.ensure_approval_hmac_secret(repo, path=secret_path)
-    first_bytes = first.read_bytes()
-    second = allocation.ensure_approval_hmac_secret(repo, path=secret_path)
-
-    assert first == second == secret_path.resolve()
-    assert len(first_bytes) >= 32
-    assert second.read_bytes() == first_bytes
-    if os.name != "nt":
-        assert second.stat().st_mode & 0o077 == 0
-    serialized_path = str(second)
-    assert first_bytes.hex() not in serialized_path
-
-    inside = repo / ".runtime" / "approval-hmac.key"
-    with pytest.raises(allocation.AllocationError, match="outside"):
-        allocation.ensure_approval_hmac_secret(repo, path=inside)
-
-
-def test_identity_jwt_secret_is_independent_external_private_and_reused(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    directory = tmp_path / "external-secrets"
-    approval_path = directory / "approval-hmac.key"
-    identity_path = directory / "identity-jwt.key"
-    allocation.ensure_approval_hmac_secret(repo, path=approval_path)
-    first = allocation.ensure_identity_jwt_secret(repo, path=identity_path)
-    first_bytes = first.read_bytes()
-    second = allocation.ensure_identity_jwt_secret(repo, path=identity_path)
-
-    assert first == second == identity_path.resolve()
-    assert len(first_bytes) >= 32
-    assert first_bytes.isascii()
-    assert second.read_bytes() == first_bytes
-    assert approval_path.read_bytes() != first_bytes
-    if os.name != "nt":
-        assert second.stat().st_mode & 0o077 == 0
-
-    inside = repo / ".runtime" / "identity-jwt.key"
-    with pytest.raises(allocation.AllocationError, match="outside"):
-        allocation.ensure_identity_jwt_secret(repo, path=inside)
-
-
-def test_compatibility_token_is_independent_external_private_and_reused(
-    tmp_path: Path,
-) -> None:
-    repo = _repo(tmp_path)
-    directory = tmp_path / "external-secrets"
-    approval_path = directory / "approval-hmac.key"
-    identity_path = directory / "identity-jwt.key"
-    compatibility_path = directory / "compatibility-token.key"
-    allocation.ensure_approval_hmac_secret(repo, path=approval_path)
-    allocation.ensure_identity_jwt_secret(repo, path=identity_path)
-    first = allocation.ensure_compatibility_token(repo, path=compatibility_path)
-    first_bytes = first.read_bytes()
-    second = allocation.ensure_compatibility_token(repo, path=compatibility_path)
-
-    assert first == second == compatibility_path.resolve()
-    assert len(first_bytes) >= 32
-    assert first_bytes.isascii()
-    assert second.read_bytes() == first_bytes
-    assert first_bytes not in {approval_path.read_bytes(), identity_path.read_bytes()}
-    if os.name != "nt":
-        assert second.stat().st_mode & 0o077 == 0
-
-    inside = repo / ".runtime" / "compatibility-token.key"
-    with pytest.raises(allocation.AllocationError, match="outside"):
-        allocation.ensure_compatibility_token(repo, path=inside)

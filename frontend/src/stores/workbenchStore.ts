@@ -11,6 +11,8 @@ export type WorkbenchFreshness = 'fresh' | 'stale' | 'unknown'
 
 export interface WorkbenchContinuity {
   contextRevision: string | null
+  contextSnapshotId: string | null
+  contextRevisionNumber: number | null
   contextLabel: string | null
   contextStatus: WorkbenchBindingStatus
   resolvedProvider: string | null
@@ -19,6 +21,11 @@ export interface WorkbenchContinuity {
   systemFreshness: WorkbenchFreshness
   operationId: string | null
   agentSessionId: string | null
+}
+
+export interface FrozenOperationContext {
+  contextSnapshotId: string
+  contextRevision: number
 }
 
 interface ReadableModeStorage {
@@ -33,9 +40,19 @@ interface WorkbenchState extends WorkbenchContinuity {
   mode: WorkbenchMode
   preferenceHydrated: boolean
   preferenceError: string | null
+  contextChanged: boolean
+  frozenOperationContexts: Record<string, FrozenOperationContext>
   hydrateMode: (fallbackMode?: WorkbenchMode, storage?: ReadableModeStorage | null) => void
   setMode: (mode: WorkbenchMode, storage?: WritableModeStorage | null) => void
   bindContinuity: (binding: Partial<WorkbenchContinuity>) => void
+  rebindContext: (next: {
+    snapshotId: string
+    revision: number
+    label: string
+    expectedSnapshotId?: string | null
+    expectedRevision?: number | null
+  }) => boolean
+  freezeOperationContext: (operationId: string) => FrozenOperationContext | null
   clearPreferenceError: () => void
   reset: () => void
 }
@@ -48,6 +65,8 @@ const WORKBENCH_OVERVIEW_CLOCK_SKEW_MS = 60 * 1000
 
 export const EMPTY_WORKBENCH_CONTINUITY: WorkbenchContinuity = Object.freeze({
   contextRevision: null,
+  contextSnapshotId: null,
+  contextRevisionNumber: null,
   contextLabel: null,
   contextStatus: 'unavailable',
   resolvedProvider: null,
@@ -100,10 +119,12 @@ const initialState = () => ({
   mode: 'work' as WorkbenchMode,
   preferenceHydrated: false,
   preferenceError: null as string | null,
+  contextChanged: false,
+  frozenOperationContexts: {} as Record<string, FrozenOperationContext>,
   ...EMPTY_WORKBENCH_CONTINUITY,
 })
 
-export const useWorkbenchStore = create<WorkbenchState>((set) => ({
+export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   ...initialState(),
 
   hydrateMode: (fallbackMode = 'work', storage = browserStorage()) => {
@@ -143,6 +164,38 @@ export const useWorkbenchStore = create<WorkbenchState>((set) => ({
   },
 
   bindContinuity: (binding) => set(binding),
+  rebindContext: ({ snapshotId, revision, label, expectedSnapshotId, expectedRevision }) => {
+    const state = get()
+    if (!snapshotId || !Number.isInteger(revision) || revision < 1) return false
+    if (expectedSnapshotId !== undefined && state.contextSnapshotId !== expectedSnapshotId) return false
+    if (expectedRevision !== undefined && state.contextRevisionNumber !== expectedRevision) return false
+    const changed = state.contextSnapshotId !== null && (
+      state.contextSnapshotId !== snapshotId || state.contextRevisionNumber !== revision
+    )
+    set({
+      contextSnapshotId: snapshotId,
+      contextRevisionNumber: revision,
+      contextRevision: `${snapshotId}:rev-${revision}`,
+      contextLabel: label,
+      contextStatus: 'available',
+      contextChanged: changed,
+    })
+    return true
+  },
+  freezeOperationContext: (operationId) => {
+    const state = get()
+    if (!operationId || !state.contextSnapshotId || !state.contextRevisionNumber) return null
+    const frozen = {
+      contextSnapshotId: state.contextSnapshotId,
+      contextRevision: state.contextRevisionNumber,
+    }
+    set({
+      operationId,
+      frozenOperationContexts: { ...state.frozenOperationContexts, [operationId]: frozen },
+      contextChanged: false,
+    })
+    return frozen
+  },
   clearPreferenceError: () => set({ preferenceError: null }),
   reset: () => set(initialState()),
 }))

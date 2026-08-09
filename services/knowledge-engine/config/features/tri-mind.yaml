@@ -11,8 +11,8 @@ routes:
   owned_surfaces: [/tri-mind]
 ia:
   mode: development
-  primary_group: skills-tools
-  primary_order: 20
+  primary_group: agent-tools
+  primary_order: 40
   contextual_groups: []
   phase: degrade
   flag: unified_shell

@@ -1,0 +1,355 @@
+schema_version: 3
+change_id: 2026-08-09-macos-single-user-integration
+title: macOS single-user frontend integration
+state: GRAPH_DIFF_READY
+created_at: '2026-08-09T13:53:44Z'
+updated_at: '2026-08-09T15:11:16Z'
+feature_refs:
+- feature_id: macos-runtime-recovery
+  feature_ref: git:d38b95cbe5d8f124168883716c4bd5f752451528:docs/dev-changes/2026-08-07-windows-macos-runtime-recovery
+- feature_id: content-development-convergence
+  feature_ref: git:fbeb99f8651d6844910ddb45a0ac7c5375130129:docs/dev-changes/2026-08-09-content-development-convergence
+- feature_id: single-user-local-trust
+  feature_ref: git:fbeb99f8651d6844910ddb45a0ac7c5375130129:docs/dev-changes/2026-08-09-single-user-local-trust
+before_snapshot:
+  ref: git:fa45bbe15c9d8fe1298e8cb0e5c849b1a4c15acd
+delivery:
+  authority: ci_attestation
+  base_commit: fa45bbe15c9d8fe1298e8cb0e5c849b1a4c15acd
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - The merge composes a macOS container-recovery runtime with frontend, BFF, Knowledge Engine, runtime-profile and local-owner changes from a divergent branch.
+  - Four conflict resolutions must preserve both loopback single-user trust and the existing macOS Docker entrypoint without reviving identity-service or internal credentials.
+  - Existing v3 contracts have different immutable bases, so their commit lineage and unique path ownership must remain intact for final commit-mode validation.
+  external_effects: []
+  scope_deltas:
+  - id: INT-DELTA-001
+    discovered_at: '2026-08-09T14:03:00Z'
+    reason: Merge inspection proved the existing macOS scripts assume the retired full-stack service set, do not pass runtime_profile to RuntimeAllocation, always print Nginx, and verification still requires identity-service. The new core/content/full projection would therefore make the supported macOS entrypoint fail or report false endpoints.
+    added_paths:
+    - scripts/verify-mac-recovery.sh
+    required_level: R2
+    risk_change: Compatible workflow repair. Default macOS startup becomes the slim content profile; core/full remain explicit and all ports stay loopback-bound.
+  - id: INT-DELTA-002
+    discovered_at: '2026-08-09T14:16:56Z'
+    reason: Live verification proved two deterministic false negatives. RuntimeAllocation hashes `.planning` evidence even though it does not alter runnable source, so recording verification evidence invalidates the active allocation. The recovery verifier also applies recovered-data thresholds to every isolated allocation even though the supported start script intentionally creates a fresh disposable database.
+    added_paths:
+    - scripts/runtime_allocation.py
+    - tests/test_runtime_allocation.py
+    required_level: R2
+    risk_change: Compatible verification repair. Planning-only edits stop invalidating runnable source identity; strict recovered-data thresholds remain available only when explicitly requested, while default isolated-runtime verification reports typed empty or populated data without weakening service health checks.
+  - id: INT-DELTA-003
+    discovered_at: '2026-08-09T14:33:19Z'
+    reason: Live BFF verification reproduced the owner-facing system-graph 500. The read-only repository bind contains a linked-worktree `.git` pointer to a host-only administrative path, so `git -C /workspace rev-parse HEAD` fails even though repository files and the allocation's immutable `OMNI_SOURCE_COMMIT` are present.
+    added_paths:
+    - services/knowledge-engine/app/services/system_graph/canonical.py
+    - services/knowledge-engine/tests/test_system_graph_canonical.py
+    required_level: R2
+    risk_change: Compatible read-path recovery. HEAD resolution may use the validated allocation commit only when linked-worktree metadata is unavailable; evidence blobs continue to use Git's canonical hash-object algorithm without repository discovery. Explicit non-HEAD refs still fail closed.
+  - id: INT-DELTA-004
+    discovered_at: '2026-08-09T14:47:00Z'
+    reason: During the graph-fix rebuild, an independent research workflow created 121 MB of reports and previews under the repository's top-level `outputs/` directory. RuntimeAllocation treated these generated artifacts as runnable source and rejected verification even though no runtime file changed after the image build.
+    added_paths: []
+    required_level: R2
+    risk_change: Compatible source-identity refinement within INT-004. Exclude only the top-level `outputs/` artifact tree, matching existing docs/planning/output/export exclusions; nested runnable directories with the same name remain fingerprinted.
+  - id: INT-DELTA-005
+    discovered_at: '2026-08-09T14:49:00Z'
+    reason: Two content-profile rebuilds proved that `OMNI_BUILD_SOURCE_FINGERPRINT` is declared before apt/pip/Playwright installation in every Python service Dockerfile. A one-file source change therefore invalidates all dependency layers and caused repeated 8-10 minute ARM64 rebuilds across six services.
+    added_paths:
+    - services/infra-core/migrations/Dockerfile
+    - services/knowledge-engine/Dockerfile
+    - services/ai-provider-hub/Dockerfile
+    - services/video-analysis/Dockerfile
+    - services/livestream-analysis/Dockerfile
+    - services/scout-agent/Dockerfile
+    - tests/test_docker_build_cache_contract.py
+    required_level: R2
+    risk_change: Build-only compatible optimization. Move immutable build identity after expensive dependency installation but before runnable source COPY, retaining the same runtime ENV/labels while allowing dependencies to stay cached across source-only fingerprints.
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The validated content/development frontend and single-user local-trust implementation exists only on a sibling branch, while the current macOS worktree contains a separate validated runtime-recovery candidate. A blind merge can overwrite recovery files, revive obsolete credentials, or leave conflicts and unverifiable contract ownership.
+  expected_outcome: Both histories are composed on one local branch with the macOS recovery assets preserved, the content/development frontend and local-owner runtime present, four conflicts resolved according to the single-user/loopback contract, and deterministic evidence that the merged chain is ready for the separately contracted WebSocket scheme hardening pass.
+  user_visible_behavior:
+  - The canonical workspace retains the content-production surface and the development/system-graph surface from the convergence branch.
+  - The local owner uses retained pages and BFF routes without product login, password, cookie or internal service token.
+  - The macOS start, stop and recovery-verification scripts remain available after the merge.
+  - macOS startup defaults to the content profile, while `OMNI_RUNTIME_PROFILE=core|content|full` selects the exact manifest-backed service set and verification never requires the retired identity service.
+  - The development system graph remains readable from a linked macOS worktree mounted read-only into Docker; missing host-only Git administration paths no longer become an untyped 500.
+  - Docker profiles remain loopback-bound and do not restore identity-service to the current runtime.
+current_chain:
+  nodes:
+  - id: workflow:macos-runtime-recovery
+    role: Validated current-branch RuntimeAllocation lifecycle and restored-data runtime.
+  - id: workflow:content-development-convergence
+    role: Validated target-branch canonical content and development frontend composition.
+  - id: service:frontend-local-owner
+    role: Validated target-branch fixed local-owner BFF and WebSocket principal.
+  - id: service:docker-runtime-projection
+    role: Validated target-branch core/content/full profiles without internal credentials.
+  - id: service:system-graph-canonical-source
+    role: Resolves immutable allocation commit and Git-compatible evidence blobs when a linked-worktree checkout is mounted without its host Git administration directory.
+  - id: page:/workspace
+    role: Canonical content-production workspace.
+  - id: page:/workspace/development
+    role: Development control-plane compatibility entry.
+  - id: api:GET:/api/omni/system-graph/snapshot
+    role: Frontend system-graph BFF.
+  - id: api:GET:/api/v1/system-graph/snapshot
+    role: Knowledge Engine graph snapshot endpoint.
+  edges:
+  - from: workflow:macos-runtime-recovery
+    to: service:docker-runtime-projection
+    relation: starts
+  - from: page:/workspace
+    to: workflow:content-development-convergence
+    relation: renders
+  - from: page:/workspace/development
+    to: api:GET:/api/omni/system-graph/snapshot
+    relation: fetches
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: calls-as-local-owner
+  evidence:
+  - Commit d38b95cbe5d8f124168883716c4bd5f752451528 preserves the current macOS recovery contract, scripts, Dockerfile changes and user planning/PRD assets.
+  - Commit fbeb99f8651d6844910ddb45a0ac7c5375130129 contains four ordered commits with v3 contracts for receipt recovery, trace wiring, content/development convergence and single-user local trust.
+  - git merge-tree --write-tree reports only AGENTS.md, README.md, frontend/next.config.mjs and frontend/server.ts as textual conflicts; frontend/Dockerfile auto-merges.
+  - The single-user target contract owns the conflicting files while its related product paths remain covered by their original v3 contracts.
+scope:
+  pages:
+  - page:/workspace
+  - page:/workspace/development
+  - page:/system-graph
+  apis:
+  - api:GET:/api/omni/auth/session
+  - api:GET:/api/omni/system-graph/snapshot
+  - api:GET:/api/v1/system-graph/snapshot
+  mcp_tools: []
+  services:
+  - service:frontend-local-owner
+  - service:knowledge-engine-local-owner
+  - service:docker-runtime-projection
+  - service:system-graph-canonical-source
+  database: []
+  data_sources:
+  - source:repository-filesystem
+  states_workflows:
+  - workflow:macos-runtime-recovery
+  - workflow:content-development-convergence
+  - state:runtime-profile-core-content-full
+  tests:
+  - test:frontend-content-development-convergence
+  - test:frontend-local-trust
+  - test:runtime-profile-contract
+  - test:macos-script-syntax
+  - test:macos-content-profile-live-runtime
+  - test:content-docker-build-cache
+  docs:
+  - docs/dev-changes/2026-08-07-windows-macos-runtime-recovery
+  - docs/dev-changes/2026-08-09-content-development-convergence
+  - docs/dev-changes/2026-08-09-single-user-local-trust
+  - .planning/2026-08-09-macos-single-user-integration
+planned_changes:
+- id: INT-003
+  action: modify
+  kind: macos-profile-aware-runtime
+  node_id: workflow:macos-profile-aware-start-stop-verify
+  paths:
+  - scripts/verify-mac-recovery.sh
+  upstream:
+  - service:runtime-allocation
+  - service:docker-runtime-projection
+  downstream:
+  - state:runtime-profile-core-content-full
+  - reader:local-owner
+  contract_change: compatible
+  verification_ids:
+  - INT-VER-003
+  - INT-VER-005
+  - INT-VER-007
+  - INT-VER-008
+- id: INT-004
+  action: modify
+  kind: runtime-source-identity
+  node_id: service:runtime-allocation
+  paths:
+  - scripts/runtime_allocation.py
+  - tests/test_runtime_allocation.py
+  upstream:
+  - source:repository-filesystem
+  downstream:
+  - workflow:macos-profile-aware-start-stop-verify
+  contract_change: compatible
+  verification_ids:
+  - INT-VER-005
+  - INT-VER-008
+- id: INT-005
+  action: modify
+  kind: linked-worktree-system-graph-source
+  node_id: service:system-graph-canonical-source
+  paths:
+  - services/knowledge-engine/app/services/system_graph/canonical.py
+  - services/knowledge-engine/tests/test_system_graph_canonical.py
+  upstream:
+  - source:repository-filesystem
+  - service:runtime-allocation
+  downstream:
+  - api:GET:/api/v1/system-graph/snapshot
+  contract_change: compatible
+  verification_ids:
+  - INT-VER-008
+  - INT-VER-009
+- id: INT-006
+  action: modify
+  kind: content-docker-build-cache
+  node_id: workflow:content-docker-build
+  paths:
+  - services/infra-core/migrations/Dockerfile
+  - services/knowledge-engine/Dockerfile
+  - services/ai-provider-hub/Dockerfile
+  - services/video-analysis/Dockerfile
+  - services/livestream-analysis/Dockerfile
+  - services/scout-agent/Dockerfile
+  - tests/test_docker_build_cache_contract.py
+  upstream:
+  - service:runtime-allocation
+  downstream:
+  - state:runtime-profile-core-content-full
+  contract_change: compatible
+  verification_ids:
+  - INT-VER-007
+  - INT-VER-008
+  - INT-VER-010
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: The merge preserves route paths and payloads from the target contracts. Local identity becomes the fixed local-owner projection and no account endpoint is reintroduced.
+  database:
+    status: not_applicable
+    strategy: The integration adds no migration, table, field or business-data mutation; the isolated recovered database remains untouched.
+  workflow:
+    status: compatible
+    strategy: The target core/content/full profiles are combined with the existing macOS RuntimeAllocation scripts; Windows entrypoints and historical identity source remain recoverable but are not current runtime dependencies.
+  data_source:
+    status: compatible
+    strategy: Repository and recovered local database sources remain local. No external provider credential or external data source is added or changed.
+graph_acceptance:
+  required_edges:
+  - from: workflow:macos-runtime-recovery
+    to: service:docker-runtime-projection
+    relation: starts
+  - from: page:/workspace
+    to: workflow:content-development-convergence
+    relation: renders
+  - from: page:/workspace/development
+    to: api:GET:/api/omni/system-graph/snapshot
+    relation: fetches-without-login
+  - from: api:GET:/api/omni/system-graph/snapshot
+    to: api:GET:/api/v1/system-graph/snapshot
+    relation: calls-as-local-owner
+  - from: service:docker-runtime-projection
+    to: state:runtime-profile-core-content-full
+    relation: projects-without-internal-credentials
+  - from: workflow:macos-profile-aware-start-stop-verify
+    to: state:runtime-profile-core-content-full
+    relation: selects-and-verifies-manifest-profile
+  - from: api:GET:/api/v1/system-graph/snapshot
+    to: source:repository-filesystem
+    relation: scans-linked-worktree-with-immutable-commit-fallback
+  allowed_unknowns: []
+  forbidden_orphans:
+  - workflow:macos-single-user-contract-composition
+risks:
+- id: INT-RISK-001
+  description: Resolving README or AGENTS conflicts toward either side alone could reintroduce product passwords or discard the supported macOS workflow.
+  mitigation: Resolve both files semantically, then run policy and diff checks and inspect the final single-user/macOS sections.
+- id: INT-RISK-002
+  description: Resolving frontend/server.ts toward the macOS side alone could keep cookie authorization; resolving toward the target alone without review could weaken the known WebSocket scheme boundary.
+  mitigation: Use target local-owner and OMNI_FRONTEND_HOST behavior for the merge, then establish an independent contract from the merge commit before hardening Origin scheme validation.
+- id: INT-RISK-003
+  description: Multi-base v3 contracts cannot be sealed by one index-mode base.
+  mitigation: Preserve the original commits and contracts, validate each strict contract, and use commit mode against the final immutable HEAD without fabricating a CI run id.
+- id: INT-RISK-004
+  description: A profile-blind macOS verifier can falsely fail on absent optional services or falsely report a full-only Nginx endpoint.
+  mitigation: Pass one validated runtime_profile into allocation, derive long-lived services from the versioned manifest, and probe Nginx only for full.
+- id: INT-RISK-005
+  description: Planning evidence written after startup can change the active allocation fingerprint even though no runnable source changed; conversely, relaxing all fingerprint inputs would allow stale binaries to be misreported as current.
+  mitigation: Exclude only the repository `.planning` evidence tree, retain hashing for runnable tracked and untracked source, and add a regression test proving source changes still invalidate the fingerprint.
+- id: INT-RISK-006
+  description: A recovery-only data threshold can reject a healthy fresh isolated runtime, while removing the threshold entirely could hide a failed recovery audit.
+  mitigation: Keep service, frontend and Knowledge Engine probes mandatory; report database/product counts in all modes; require the historical size and row thresholds only with explicit `OMNI_REQUIRE_RECOVERED_DATA=1`.
+- id: INT-RISK-007
+  description: Falling back from broken linked-worktree Git discovery too broadly could mislabel an arbitrary ref or generate non-canonical evidence hashes.
+  mitigation: Permit fallback only for HEAD, require a 40-hex allocation source commit, retain failure for explicit refs, and use standalone `git hash-object --no-filters` for byte-identical blob IDs with regression tests.
+- id: INT-RISK-008
+  description: Generated report artifacts from concurrent local workflows can invalidate an otherwise identical runtime; a broad directory-name exclusion could also hide runnable source.
+  mitigation: Exclude `outputs` only when it is the repository's first path segment and retain fingerprint coverage for all other untracked runnable paths; extend the content fingerprint regression test.
+- id: INT-RISK-009
+  description: Moving build identity too late could leave images without immutable runtime evidence; moving it after source COPY would not restore cache reuse.
+  mitigation: Keep both ARG/ENV pairs in every content Python image, place them after the last dependency-install step and before the first runnable source COPY, and enforce ordering plus exact metadata names in a dedicated test.
+out_of_scope:
+- WebSocket Origin scheme hardening is intentionally implemented only after the merge commit under a new v3 contract whose base includes the target contracts.
+- No external push, deployment, paid action, shared-library migration, hard deletion or Docker volume removal.
+- No rewrite of historical v3 base commits or false transition of any repository contract to COMPLETE.
+rollback:
+  strategy: Before external publication, revert the local merge commit with its first parent as mainline or return to safety checkpoint d38b95cbe5d8f124168883716c4bd5f752451528; do not delete recovery assets or volumes.
+  data_recovery: No persistent data changes occur. Existing recovered PostgreSQL volumes, source dumps and RuntimeAllocations remain untouched and inspectable.
+verification_plan:
+- id: INT-VER-001
+  layer: git
+  command: git merge-base --is-ancestor fbeb99f8651d6844910ddb45a0ac7c5375130129 HEAD
+  proves: The complete target branch and its four contract-bearing commits are ancestors of the integration candidate.
+  required: true
+- id: INT-VER-002
+  layer: governance
+  command: services/knowledge-engine/.venv/bin/python -X utf8 scripts/check_agent_policy.py --require-tracked
+  proves: The merged canonical agent policy stays under its size limit and all routed assets remain tracked.
+  required: true
+- id: INT-VER-003
+  layer: shell
+  command: bash -n scripts/dev-start-mac.sh scripts/dev-stop-mac.sh scripts/verify-mac-recovery.sh
+  proves: The previously validated macOS lifecycle and recovery-verification entrypoints remain syntactically intact after the merge.
+  required: true
+- id: INT-VER-004
+  layer: frontend
+  command: cd frontend && npm run test:unit -- tests/content-development-convergence.test.tsx tests/approval-auth-session.test.ts tests/workbench-route-inventory.test.ts tests/system-command-center.test.tsx
+  proves: The retained content/development workspaces, local-owner session and system command center remain connected after conflict resolution.
+  required: true
+- id: INT-VER-005
+  layer: runtime-contract
+  command: services/knowledge-engine/.venv/bin/python -m pytest tests/test_compose_runtime_contract.py tests/test_runtime_allocation.py tests/test_dev_runtime_environment.py tests/test_runtime_guard.py -q
+  proves: The merged RuntimeAllocation and core/content/full Compose contracts remain loopback-safe and free of internal credential dependencies.
+  required: true
+- id: INT-VER-006
+  layer: git
+  command: git diff --check d38b95cbe5d8f124168883716c4bd5f752451528..HEAD
+  proves: The committed integration candidate contains no new whitespace errors relative to the safety checkpoint.
+  required: true
+- id: INT-VER-007
+  layer: runtime
+  command: OMNI_RUNTIME_PROFILE=content OMNI_CHANGE_ID=macos-single-user-integration-runtime OMNI_OWNER=yk bash scripts/dev-start-mac.sh
+  proves: The supported macOS entrypoint builds and starts the slim content profile through one isolated RuntimeAllocation.
+  required: true
+- id: INT-VER-008
+  layer: integration
+  command: OMNI_RUNTIME_PROFILE=content OMNI_CHANGE_ID=macos-single-user-integration-runtime OMNI_OWNER=yk bash scripts/verify-mac-recovery.sh
+  proves: Every manifest-declared long-lived content service is healthy, the frontend, Knowledge Engine and system-graph BFF respond, and typed fresh-or-recovered database counts are visible without identity-service or Nginx; strict recovery thresholds remain opt-in.
+  required: true
+- id: INT-VER-009
+  layer: knowledge-engine
+  command: services/knowledge-engine/.venv/bin/python -m pytest services/knowledge-engine/tests/test_system_graph_canonical.py services/knowledge-engine/tests/test_system_graph_router.py -q
+  proves: Linked-worktree HEAD resolution uses only the validated allocation commit fallback, explicit refs fail closed, evidence blob IDs stay Git-canonical and the system-graph router contract remains intact.
+  required: true
+- id: INT-VER-010
+  layer: docker-build
+  command: services/knowledge-engine/.venv/bin/python -m pytest tests/test_docker_build_cache_contract.py -q
+  proves: All six content-profile Python Dockerfiles retain immutable build identity after dependency installation and before runnable source COPY, so source-only fingerprints reuse the expensive apt/pip/Playwright layers.
+  required: true
+lock:
+  locked_at: '2026-08-09T13:57:59Z'
+  locked_by: codex
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.
