@@ -1,0 +1,309 @@
+schema_version: 3
+change_id: 2026-08-07-windows-macos-runtime-recovery
+title: Windows to macOS runtime recovery
+state: GRAPH_DIFF_READY
+created_at: '2026-08-07T01:45:04Z'
+updated_at: '2026-08-07T02:40:36Z'
+feature_refs:
+- feature_id: windows-macos-runtime-recovery
+  feature_ref: design:docs/superpowers/specs/2026-08-07-windows-to-macos-recovery-design.md
+before_snapshot:
+  ref: git:0b70eed2ff1f59fb909dfea468229a889feffee5
+delivery:
+  authority: ci_attestation
+  base_commit: 0b70eed2ff1f59fb909dfea468229a889feffee5
+risk:
+  level: R2
+  contract_profile: full
+  reasons:
+  - The recovery changes Docker build/runtime behavior across frontend and four services on Apple Silicon.
+  - The runtime restores a user-owned Windows PostgreSQL snapshot into a new isolated local volume and upgrades it through existing migrations.
+  - Project-local MCP configuration and macOS runtime allocation scripts affect development workflow but do not grant external access.
+  external_effects: []
+  scope_deltas:
+  - id: RECOVERY-DELTA-001
+    discovered_at: '2026-08-07T01:55:00Z'
+    reason: The macOS system Python is 3.9 and does not provide stdlib tomllib; the deterministic MCP parse check must select the already-supported Python 3.11 tool runtime.
+    added_paths: []
+    required_level: R2
+    risk_change: No scope or behavior change; only the verification interpreter is made explicit.
+  - id: RECOVERY-DELTA-002
+    discovered_at: '2026-08-07T02:24:00Z'
+    reason: The rebuilt frontend process was healthy but Docker's published port returned 502 because the custom server bound only to the container loopback interface.
+    added_paths:
+    - frontend/server.ts
+    required_level: R2
+    risk_change: Compatible container-network binding change; no route, authentication, or public deployment behavior changes.
+  approval:
+    required: false
+    gate_ref: ''
+intent:
+  problem: The Windows backups are present on macOS, but the current Omni Docker stack uses a nearly empty database and cannot serve the UI because the frontend image lacks server.ts while video-analysis crashes on a null model value.
+  expected_outcome: A fresh isolated macOS RuntimeAllocation boots the full Omni stack on Apple Silicon, runs against a verified copy of the recovered Windows data, and exposes a working local UI plus deterministic database and health evidence.
+  user_visible_behavior:
+  - The macOS start script prints the allocated local frontend and Nginx URLs and starts without overwriting another Omni runtime.
+  - The Nginx and frontend entry points return a successful HTTP response.
+  - The recovered Windows business records are queryable from the runtime database and visible through an existing product read path.
+  - The project-local Codex configuration registers the localhost Omni MCP endpoint without copying Windows credentials.
+current_chain:
+  nodes:
+  - id: workflow:scripts.dev-start-mac
+    role: Acquires an isolated RuntimeAllocation and starts Docker Compose on macOS.
+  - id: workflow:scripts.runtime-allocation
+    role: Allocates ports, volumes, database identity, and local secret-file references.
+  - id: service:docker-compose.omni
+    role: Builds and runs the Omni infrastructure and application services.
+  - id: service:frontend.runtime
+    role: Runs the Next.js custom server from server.ts.
+  - id: service:video-analysis.startup-settings
+    role: Loads persisted and AI Hub Gemini settings during service startup.
+  - id: service:knowledge-engine.image
+    role: Builds the Knowledge Engine image with Debian and Playwright dependencies.
+  - id: service:livestream-analysis.image
+    role: Builds livestream analysis with ffmpeg.
+  - id: service:scout-agent.image
+    role: Builds the browser automation service with Debian system dependencies.
+  - id: db:postgres.recovered-windows-runtime
+    role: New isolated runtime copy of the recovered Windows PostgreSQL database.
+  - id: mcp-server:omni-localhost
+    role: Project-local Codex MCP declaration for the local Knowledge Engine.
+  edges:
+  - from: workflow:scripts.dev-start-mac
+    to: workflow:scripts.runtime-allocation
+    relation: acquires
+  - from: workflow:scripts.dev-start-mac
+    to: service:docker-compose.omni
+    relation: starts
+  - from: service:docker-compose.omni
+    to: service:frontend.runtime
+    relation: builds_and_runs
+  - from: service:docker-compose.omni
+    to: service:video-analysis.startup-settings
+    relation: builds_and_runs
+  - from: service:docker-compose.omni
+    to: db:postgres.recovered-windows-runtime
+    relation: reads_and_writes
+  - from: mcp-server:omni-localhost
+    to: service:knowledge-engine.image
+    relation: connects_localhost
+  evidence:
+  - docker-compose.yml requires RuntimeAllocation environment, builds all affected services, and wires them to the allocated PostgreSQL service.
+  - Current container logs show frontend exits with ERR_MODULE_NOT_FOUND for /app/server.ts and video-analysis exits when default_chat_model is null.
+  - The recovered source database `omni_windows_20260612` is 4,761 MB with 106 user tables and substantial business rows; the current test runtime database is only 18 MB and mostly empty.
+  - scripts/runtime_allocation.py list reports isolated ports, volume names, source fingerprints, and ownership for every local runtime.
+scope:
+  pages: []
+  apis: []
+  mcp_tools:
+  - mcp-server:omni-localhost
+  services:
+  - service:docker-compose.omni
+  - service:frontend.runtime
+  - service:video-analysis.startup-settings
+  - service:knowledge-engine.image
+  - service:livestream-analysis.image
+  - service:scout-agent.image
+  database:
+  - db:postgres.omni_windows_20260612
+  - db:postgres.recovered-windows-runtime
+  data_sources:
+  - source:windows-postgres-custom-dump-20260612
+  states_workflows:
+  - workflow:scripts.dev-start-mac
+  - workflow:scripts.dev-stop-mac
+  - workflow:scripts.verify-mac-recovery
+  - workflow:scripts.runtime-allocation
+  tests:
+  - test:services/video-analysis/tests/test_settings_normalization.py
+  docs:
+  - README.md
+  - docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/**
+planned_changes:
+- id: RECOVERY-001
+  action: add
+  kind: macos-runtime-workflow
+  node_id: workflow:scripts.dev-start-mac
+  paths:
+  - scripts/dev-start-mac.sh
+  - scripts/dev-stop-mac.sh
+  - scripts/verify-mac-recovery.sh
+  - README.md
+  upstream:
+  - workflow:scripts.runtime-allocation
+  downstream:
+  - service:docker-compose.omni
+  contract_change: compatible
+  verification_ids:
+  - RECOVERY-VERIFY-001
+  - RECOVERY-VERIFY-004
+- id: RECOVERY-002
+  action: modify
+  kind: frontend-container-runtime
+  node_id: service:frontend.runtime
+  paths:
+  - frontend/Dockerfile
+  - frontend/next.config.mjs
+  - frontend/server.ts
+  upstream:
+  - service:docker-compose.omni
+  downstream:
+  - workflow:scripts.verify-mac-recovery
+  contract_change: compatible
+  verification_ids:
+  - RECOVERY-VERIFY-003
+  - RECOVERY-VERIFY-004
+- id: RECOVERY-003
+  action: modify
+  kind: arm64-build-resilience
+  node_id: service:docker-compose.omni
+  paths:
+  - services/knowledge-engine/Dockerfile
+  - services/livestream-analysis/Dockerfile
+  - services/scout-agent/Dockerfile
+  - services/video-analysis/Dockerfile
+  upstream:
+  - service:docker-compose.omni
+  downstream:
+  - service:knowledge-engine.image
+  - service:livestream-analysis.image
+  - service:scout-agent.image
+  - service:video-analysis.startup-settings
+  contract_change: compatible
+  verification_ids:
+  - RECOVERY-VERIFY-003
+  - RECOVERY-VERIFY-004
+- id: RECOVERY-004
+  action: modify
+  kind: nullable-runtime-setting
+  node_id: service:video-analysis.startup-settings
+  paths:
+  - services/video-analysis/app/main.py
+  - services/video-analysis/app/settings_normalization.py
+  - services/video-analysis/tests/test_settings_normalization.py
+  upstream:
+  - service:docker-compose.omni
+  downstream:
+  - workflow:scripts.verify-mac-recovery
+  contract_change: compatible
+  verification_ids:
+  - RECOVERY-VERIFY-002
+  - RECOVERY-VERIFY-004
+- id: RECOVERY-005
+  action: add
+  kind: project-local-mcp-declaration
+  node_id: mcp-server:omni-localhost
+  paths:
+  - .codex/config.toml
+  upstream: []
+  downstream:
+  - service:knowledge-engine.image
+  contract_change: compatible
+  verification_ids:
+  - RECOVERY-VERIFY-005
+- id: RECOVERY-006
+  action: reuse
+  kind: isolated-database-restore-and-upgrade
+  node_id: db:postgres.recovered-windows-runtime
+  paths:
+  - docker-compose.yml
+  - migrations/**
+  - scripts/apply_migrations.py
+  upstream:
+  - db:postgres.omni_windows_20260612
+  downstream:
+  - service:docker-compose.omni
+  contract_change: compatible
+  verification_ids:
+  - RECOVERY-VERIFY-004
+allowed_unplanned_paths: []
+compatibility:
+  api:
+    status: compatible
+    strategy: No HTTP route or response schema changes; existing health and product read paths are used for verification.
+  database:
+    status: compatible
+    strategy: No new schema or migration is added. A new isolated RuntimeAllocation volume receives a copy of the recovered PostgreSQL database, then existing repository migrations upgrade it. The source database and prior volumes remain untouched.
+  workflow:
+    status: compatible
+    strategy: Existing Windows commands remain unchanged. New macOS scripts reuse the mandatory RuntimeAllocation and Compose contracts and stop without deleting volumes.
+  data_source:
+    status: compatible
+    strategy: The verified local Windows PostgreSQL recovery source is copied only to a local isolated runtime; no data is transmitted externally.
+graph_acceptance:
+  required_edges:
+  - from: workflow:scripts.dev-start-mac
+    to: workflow:scripts.runtime-allocation
+    relation: acquires
+  - from: workflow:scripts.dev-start-mac
+    to: service:docker-compose.omni
+    relation: starts
+  - from: service:docker-compose.omni
+    to: service:frontend.runtime
+    relation: builds_and_runs
+  - from: service:docker-compose.omni
+    to: service:video-analysis.startup-settings
+    relation: builds_and_runs
+  - from: service:docker-compose.omni
+    to: db:postgres.recovered-windows-runtime
+    relation: reads_and_writes
+  - from: mcp-server:omni-localhost
+    to: service:knowledge-engine.image
+    relation: connects_localhost
+  allowed_unknowns: []
+  forbidden_orphans: []
+risks:
+- id: RECOVERY-RISK-DATA-TARGET
+  description: Restoring into the wrong PostgreSQL volume could overwrite unrelated Mac data.
+  mitigation: Create a new RuntimeAllocation, resolve its exact compose project and volume, start only its PostgreSQL service, and verify both source and target identities before import. Never restore into an existing non-target volume.
+- id: RECOVERY-RISK-SECRET-EXPOSURE
+  description: Runtime allocation and MCP configuration can reference credentials.
+  mitigation: Reuse generated secret-file references, never print secret values, and keep the MCP endpoint localhost-only.
+- id: RECOVERY-RISK-SCHEMA-DRIFT
+  description: The June Windows snapshot has fewer migrations than the current source and could fail during upgrade.
+  mitigation: Keep the verified source database unchanged, restore only into a new isolated volume, run existing migrations, and stop on the first deterministic migration error without deleting either copy.
+- id: RECOVERY-RISK-BUILD-NETWORK
+  description: Debian or Python package mirrors may time out during Apple Silicon builds.
+  mitigation: Use HTTPS Debian sources and bounded retries while preserving package versions; retain already-built images and report a network failure separately from a source failure.
+out_of_scope:
+- No conversion, mounting, modification, or deletion of the 129 GB Windows docker_data.vhdx.
+- No automatic import of auth.json, browser profiles, cookies, plaintext secrets, Windows binaries, or the scout-session archive.
+- No database schema addition, public API change, external deployment, paid action, or cloud data transmission.
+- No cleanup of existing Docker containers, images, volumes, RuntimeAllocations, downloaded backups, or unrelated worktree changes.
+rollback:
+  strategy: Stop the exact new Compose project without `down -v`; keep its isolated volume for inspection, and revert only the repository paths listed in this contract if requested. Existing Mac and Windows-source runtimes are not modified.
+  data_recovery: The verified source database `omni_windows_20260612`, the 2.5 GB custom dump, the restored knowledge volume, and the pre-import Codex/Docker snapshot remain intact. No destructive rollback is required.
+verification_plan:
+- id: RECOVERY-VERIFY-001
+  layer: shell
+  command: bash -n scripts/dev-start-mac.sh scripts/dev-stop-mac.sh scripts/verify-mac-recovery.sh
+  proves: The user-facing macOS lifecycle and verification scripts are syntactically valid.
+  required: true
+- id: RECOVERY-VERIFY-002
+  layer: unit
+  command: PYTHONPATH=services/video-analysis uv run --with pytest python -m pytest services/video-analysis/tests/test_settings_normalization.py -q
+  proves: Null, missing, blank, and populated AI Hub model settings normalize safely without weakening ordinary string values.
+  required: true
+- id: RECOVERY-VERIFY-003
+  layer: compose
+  command: OMNI_CHANGE_ID=windows-macos-recovery-final OMNI_OWNER=yk bash scripts/dev-start-mac.sh
+  proves: A fresh isolated Apple Silicon runtime builds and starts through the supported macOS entry point.
+  required: true
+- id: RECOVERY-VERIFY-004
+  layer: integration
+  command: OMNI_CHANGE_ID=windows-macos-recovery-final OMNI_OWNER=yk bash scripts/verify-mac-recovery.sh
+  proves: The final runtime has healthy infrastructure and services, successful frontend/Nginx HTTP responses, upgraded recovered tables, and visible business data evidence.
+  required: true
+- id: RECOVERY-VERIFY-005
+  layer: mcp-config
+  command: uv run --python 3.11 python -c "import tomllib; d=tomllib.load(open('.codex/config.toml','rb')); assert d['mcp_servers']['omni']['url']=='http://localhost:8002/mcp/'"
+  proves: The project-local Codex MCP declaration parses and remains bound to localhost.
+  required: true
+- id: RECOVERY-VERIFY-006
+  layer: contract
+  command: uv run --with pyyaml python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/impact.yaml --completion docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  proves: The v3 recovery candidate has exact scope, required evidence, and graph closure before CI.
+  required: false
+lock:
+  locked_at: '2026-08-07T01:48:52Z'
+  locked_by: codex-macos-recovery
+  rationale: Impact reviewed against current code, contracts, data, and downstream consumers.

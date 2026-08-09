@@ -13,7 +13,8 @@ WORKDIR /app
 # ffprobe to establish immutable media facts and ffmpeg to burn the approved
 # subtitle timeline; keeping both in the KE image makes that path reproducible
 # instead of depending on an operator workstation.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends \
     ffmpeg \
     git \
     libmupdf-dev \
@@ -26,16 +27,16 @@ RUN pip install --no-cache-dir ".[dev,harvester]" 2>/dev/null || pip install --n
 
 # Install Playwright Chromium + all system deps.
 # Retry loop with --fix-missing to handle flaky 502 mirrors.
-RUN apt-get update && \
+RUN apt-get -o Acquire::Retries=5 update && \
     for i in 1 2 3 4 5; do \
-      apt-get install -f -y --fix-missing 2>/dev/null; \
+      apt-get -o Acquire::Retries=5 install -f -y --fix-missing 2>/dev/null; \
       playwright install-deps chromium && break; \
       echo ">>> Attempt $i failed, retrying in 10s..."; \
       sleep 10; \
-      apt-get update --fix-missing; \
+      apt-get -o Acquire::Retries=5 update --fix-missing; \
     done && \
     playwright install chromium && \
-    apt-get update && apt-get install -y --no-install-recommends libcups2 && \
+    apt-get -o Acquire::Retries=5 update && apt-get -o Acquire::Retries=5 install -y --no-install-recommends libcups2 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY app /app/app

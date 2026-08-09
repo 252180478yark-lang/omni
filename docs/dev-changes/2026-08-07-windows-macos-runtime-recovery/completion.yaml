@@ -1,0 +1,157 @@
+schema_version: 3
+change_id: 2026-08-07-windows-macos-runtime-recovery
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: RECOVERY-ACT-001
+  planned_change_id: RECOVERY-001
+  summary: Added supported macOS start, stop, and deterministic recovery-verification workflows with isolated RuntimeAllocation URLs and a developer handoff in the README.
+  paths:
+  - scripts/dev-start-mac.sh
+  - scripts/dev-stop-mac.sh
+  - scripts/verify-mac-recovery.sh
+  - README.md
+- id: RECOVERY-ACT-002
+  planned_change_id: RECOVERY-002
+  summary: Made the Next.js custom server runnable in the production image by preserving its runtime entrypoint and source modules and binding the server to a Docker-reachable interface.
+  paths:
+  - frontend/Dockerfile
+  - frontend/next.config.mjs
+  - frontend/server.ts
+- id: RECOVERY-ACT-003
+  planned_change_id: RECOVERY-003
+  summary: Made all affected service images build reliably on Apple Silicon with HTTPS Debian sources, bounded retries, and portable ARM64 dependency installation.
+  paths:
+  - services/knowledge-engine/Dockerfile
+  - services/livestream-analysis/Dockerfile
+  - services/scout-agent/Dockerfile
+  - services/video-analysis/Dockerfile
+- id: RECOVERY-ACT-004
+  planned_change_id: RECOVERY-004
+  summary: Normalized nullable AI Hub model settings before video-analysis startup and added focused regression coverage for null, missing, blank, and populated values.
+  paths:
+  - services/video-analysis/app/main.py
+  - services/video-analysis/app/settings_normalization.py
+  - services/video-analysis/tests/test_settings_normalization.py
+- id: RECOVERY-ACT-005
+  planned_change_id: RECOVERY-005
+  summary: Added a project-local localhost-only Omni MCP declaration without importing Windows credentials.
+  paths:
+  - .codex/config.toml
+- id: RECOVERY-ACT-006
+  planned_change_id: RECOVERY-006
+  summary: Restored the verified PostgreSQL 16 custom dump and knowledge archive into the fresh isolated RuntimeAllocation, backfilled only its disposable legacy migration checksums, and upgraded it through all 45 existing migrations while preserving the source database.
+  paths:
+  - docker-compose.yml
+  - migrations/104_workbench_context_and_agent_binding.sql
+  - scripts/apply_migrations.py
+contract_delta:
+- description: The GRAPH_DIFF_READY strict validator is executed after the state transition because its expected state does not exist before the transition.
+  reason: Recording it as a pre-transition requirement would create a circular state dependency.
+  effect: All required implementation and runtime evidence is recorded before transition; the exact strict command is then run and appended before handoff.
+  accepted: true
+verification_results:
+- id: RECOVERY-VERIFY-001
+  command: bash -n scripts/dev-start-mac.sh scripts/dev-stop-mac.sh scripts/verify-mac-recovery.sh
+  status: passed
+  exit_code: 0
+  evidence: All three user-facing macOS lifecycle scripts passed Bash syntax validation.
+- id: RECOVERY-VERIFY-002
+  command: PYTHONPATH=services/video-analysis uv run --with pytest python -m pytest services/video-analysis/tests/test_settings_normalization.py -q
+  status: passed
+  exit_code: 0
+  evidence: 3 tests passed; null, missing, blank, and populated model settings normalize safely.
+- id: RECOVERY-VERIFY-003
+  command: OMNI_CHANGE_ID=windows-macos-recovery-final OMNI_OWNER=yk bash scripts/dev-start-mac.sh
+  status: passed
+  exit_code: 0
+  evidence: The full Apple Silicon image set built and the isolated RuntimeAllocation started PostgreSQL, Redis, nine application services, frontend, and Nginx on deterministic local ports.
+- id: RECOVERY-VERIFY-004
+  command: OMNI_CHANGE_ID=windows-macos-recovery-final OMNI_OWNER=yk bash scripts/verify-mac-recovery.sh
+  status: passed
+  exit_code: 0
+  evidence: All required containers were running; frontend and Nginx returned HTTP 200; the recovered database measured 4,977,114,135 bytes with 160 user tables, 579 knowledge documents, 44,285 chunks, and 1,496 daily metrics; the product read path exposed the same document and chunk counts.
+- id: RECOVERY-VERIFY-005
+  command: uv run --python 3.11 python -c "import tomllib; d=tomllib.load(open('.codex/config.toml','rb')); assert d['mcp_servers']['omni']['url']=='http://localhost:8002/mcp/'"
+  status: passed
+  exit_code: 0
+  evidence: The project-local MCP declaration parsed under Python 3.11 and remained localhost-only; the live MCP doctor also reported DB, schema, 51 prompts, 141 registered tools, smoke run-through, and /mcp HTTP all OK.
+- id: RECOVERY-VERIFY-006
+  command: uv run --with pyyaml python -X utf8 .agents/skills/omni-feature-development/scripts/dev_contract.py validate --impact docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/impact.yaml --completion docs/dev-changes/2026-08-07-windows-macos-runtime-recovery/completion.yaml --expect-state GRAPH_DIFF_READY --strict
+  status: passed
+  exit_code: 0
+  evidence: Strict schema-v3 validation reported GRAPH_DIFF_READY with exact scope, actual-change mapping, required runtime edges, verification evidence, rollback, and CI-only delivery status.
+graph_diff:
+  status: clean
+  snapshot_before: git:0b70eed2ff1f59fb909dfea468229a889feffee5
+  snapshot_after: worktree:omni-macos:windows-macos-recovery-final
+  added_nodes:
+  - workflow:scripts.dev-start-mac
+  - workflow:scripts.dev-stop-mac
+  - workflow:scripts.verify-mac-recovery
+  - db:postgres.recovered-windows-runtime
+  - mcp-server:omni-localhost
+  modified_nodes:
+  - service:frontend.runtime
+  - service:video-analysis.startup-settings
+  - service:knowledge-engine.image
+  - service:livestream-analysis.image
+  - service:scout-agent.image
+  removed_nodes: []
+  added_edges:
+  - from: workflow:scripts.dev-start-mac
+    to: workflow:scripts.runtime-allocation
+    relation: acquires
+  - from: workflow:scripts.dev-start-mac
+    to: service:docker-compose.omni
+    relation: starts
+  - from: service:docker-compose.omni
+    to: db:postgres.recovered-windows-runtime
+    relation: reads_and_writes
+  - from: mcp-server:omni-localhost
+    to: service:knowledge-engine.image
+    relation: connects_localhost
+  removed_edges: []
+  required_edges:
+  - from: workflow:scripts.dev-start-mac
+    to: workflow:scripts.runtime-allocation
+    relation: acquires
+    status: present
+    evidence: scripts/dev-start-mac.sh acquires and exports one isolated RuntimeAllocation before Compose actions.
+  - from: workflow:scripts.dev-start-mac
+    to: service:docker-compose.omni
+    relation: starts
+    status: present
+    evidence: The supported script built and started the full final Compose project with exit code 0.
+  - from: service:docker-compose.omni
+    to: service:frontend.runtime
+    relation: builds_and_runs
+    status: present
+    evidence: The frontend image contains server.ts plus src and serves HTTP 200 through both its published port and Nginx.
+  - from: service:docker-compose.omni
+    to: service:video-analysis.startup-settings
+    relation: builds_and_runs
+    status: present
+    evidence: video-analysis stayed running after nullable setting normalization; the focused regression suite passed.
+  - from: service:docker-compose.omni
+    to: db:postgres.recovered-windows-runtime
+    relation: reads_and_writes
+    status: present
+    evidence: Verification queried the isolated restored database through its Compose service and proved non-empty business data after 45 migrations.
+  - from: mcp-server:omni-localhost
+    to: service:knowledge-engine.image
+    relation: connects_localhost
+    status: present
+    evidence: The localhost config parsed and the live Knowledge Engine MCP endpoint returned HTTP 200 with 141 tools registered.
+  orphan_nodes: []
+  unknowns: []
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: The final runtime uses its own named PostgreSQL, Redis, and knowledge volumes. Stopping the exact Compose project without `down -v` leaves restored data inspectable; the 2.5 GB dump, verified source database, Windows VHDX, prior runtimes, and pre-import rollback snapshot remain unchanged.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''
