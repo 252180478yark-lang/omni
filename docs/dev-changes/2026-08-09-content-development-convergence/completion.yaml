@@ -36,6 +36,7 @@ actual_changes:
   - services/knowledge-engine/config/features/generated/features.v1.json
   - services/knowledge-engine/app/services/system_graph/feature_definitions.py
   - services/knowledge-engine/tests/test_feature_definitions.py
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
   - frontend/src/generated/feature-registry.v1.json
   - frontend/src/lib/workbench-ia.ts
   - frontend/src/lib/workbench-ia-compat.ts
@@ -108,6 +109,10 @@ actual_changes:
   - services/knowledge-engine/app/mcp/doctor.py
   - services/knowledge-engine/tests/test_tool_execution.py
 contract_delta:
+- description: Added the S3 system-graph owner regression after real feature-branch CI exposed a stale ownership expectation.
+  reason: The test still expected workspace-operations to own /workspace/development even though the versioned system-console FeatureDefinition is its canonical and sole owner.
+  effect: Both sides of the non-overlapping workspace/system-console boundary are now asserted without changing any product route or collector implementation.
+  accepted: true
 - description: Transferred cumulative-candidate ownership of navigation telemetry, root Compose, runtime manifest, runtime allocation and the frontend custom server to the later single-user local-trust contract; content convergence retains the allocation schema, guard and Windows launcher paths it actually changed.
   reason: Feature-branch CI evaluates the full merge-base diff, and the local-trust commit is the final writer for the transferred paths while the retained paths were not changed by that successor.
   effect: Implementation bytes are unchanged, prior verification stays valid, and the cumulative evidence-recovery candidate has one truthful actual-change owner per protected path.
@@ -196,6 +201,11 @@ verification_results:
   status: passed
   exit_code: 0
   evidence: 11 tests passed in 6.34s with third-party deprecation warnings; missing, legacy and mismatched profile identity fail before lifespan side effects.
+- id: VER-012
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_collectors.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh local run passed 17 FeatureDefinition and system-graph collector tests in 3.11 seconds, including positive system-console ownership and negative workspace-operations ownership for /workspace/development.
 graph_diff:
   status: accepted
   snapshot_before: git:1d3177abb783baf039a94c2c68bde3c50a920f54
@@ -208,6 +218,7 @@ graph_diff:
   - profile:full
   modified_nodes:
   - config:feature-definition-v1
+  - test:system-graph-feature-owner
   - frontend:feature-registry-v1
   - frontend:unified-app-shell
   - page:/workspace

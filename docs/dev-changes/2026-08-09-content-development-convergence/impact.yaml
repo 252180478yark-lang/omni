@@ -182,6 +182,7 @@ planned_changes:
   - services/knowledge-engine/config/features/generated/features.v1.json
   - services/knowledge-engine/app/services/system_graph/feature_definitions.py
   - services/knowledge-engine/tests/test_feature_definitions.py
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
   - frontend/src/generated/feature-registry.v1.json
   - frontend/src/lib/workbench-ia.ts
   - frontend/tests/feature-registry.test.ts
@@ -199,6 +200,7 @@ planned_changes:
   verification_ids:
   - VER-001
   - VER-002
+  - VER-012
 - id: CHG-002
   action: modify
   kind: frontend-shell-design
@@ -449,6 +451,11 @@ verification_plan:
   layer: knowledge-engine-runtime-preflight
   command: PYTHONDONTWRITEBYTECODE=1 uv run --no-project --with-editable services/knowledge-engine --with 'pytest>=8,<9' --with 'pytest-asyncio>=0.23,<1' python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_runtime_preflight.py
   proves: The actual Knowledge Engine startup preflight requires the selected runtime profile and rejects missing or mismatched profile identity before database, scheduler or filesystem side effects.
+  required: true
+- id: VER-012
+  layer: system-graph-owner
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_collectors.py
+  proves: Workspace and development command-center routes are projected under their declared, non-overlapping FeatureDefinition owners.
   required: true
 lock:
   locked_at: '2026-08-08T18:04:45Z'
