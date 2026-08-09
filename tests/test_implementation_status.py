@@ -6,6 +6,7 @@ import io
 import json
 import subprocess
 import sys
+import threading
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -211,6 +212,79 @@ def test_provenance_exception_or_timeout_is_fail_closed_without_crashing(
 
     assert verified["valid"] is False
     assert "trusted_provenance_verifier_failed" in verified["reasons"]
+
+
+def test_resolver_verifies_one_receipt_provenance_once_for_multiple_contracts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _base, _subject, receipt = _fixture_repo(tmp_path)
+    receipt["contracts"] = [
+        {"change_id": "delivery-one"},
+        {"change_id": "delivery-two"},
+    ]
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    provenance_calls = 0
+    contract_calls: list[str] = []
+
+    def provenance(*_args):
+        nonlocal provenance_calls
+        provenance_calls += 1
+        return {"valid": True, "reasons": [], "checks_passed": True}
+
+    def verify(_root, _receipt, change_id, **kwargs):
+        contract_calls.append(change_id)
+        assert kwargs["provenance_verifier"](_root, _receipt)["valid"] is True
+        return {"valid": True, "change_id": change_id}
+
+    monkeypatch.setattr(status, "verify_delivery_receipt", verify)
+
+    resolved = status.resolve_delivered_contracts(
+        repo,
+        [receipt_path],
+        provenance_verifier=provenance,
+    )
+
+    assert provenance_calls == 1
+    assert contract_calls == ["delivery-one", "delivery-two"]
+    assert set(resolved) == {"delivery-one", "delivery-two"}
+
+
+def test_resolver_checks_independent_receipts_concurrently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, _base, _subject, receipt = _fixture_repo(tmp_path)
+    first = dict(receipt, contracts=[{"change_id": "delivery-one"}])
+    second = dict(receipt, contracts=[{"change_id": "delivery-two"}])
+    first_path = tmp_path / "first.json"
+    second_path = tmp_path / "second.json"
+    first_path.write_text(json.dumps(first), encoding="utf-8")
+    second_path.write_text(json.dumps(second), encoding="utf-8")
+    barrier = threading.Barrier(2, timeout=2)
+    observed_threads: set[int] = set()
+
+    def provenance(*_args):
+        observed_threads.add(threading.get_ident())
+        barrier.wait()
+        return {"valid": True, "reasons": [], "checks_passed": True}
+
+    monkeypatch.setattr(
+        status,
+        "verify_delivery_receipt",
+        lambda _root, _receipt, change_id, **_kwargs: {
+            "valid": True,
+            "change_id": change_id,
+        },
+    )
+
+    resolved = status.resolve_delivered_contracts(
+        repo,
+        [first_path, second_path],
+        provenance_verifier=provenance,
+    )
+
+    assert set(resolved) == {"delivery-one", "delivery-two"}
+    assert len(observed_threads) == 2
 
 
 @pytest.mark.parametrize("migration_status", ["ready", "passed", "verified"])

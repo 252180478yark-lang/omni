@@ -5,6 +5,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -196,6 +197,98 @@ def test_rebuild_supplies_the_raw_hash_verified_payload_to_live_provenance(
 
     assert result["receipt_count"] == 1
     assert captured == [receipt]
+
+
+def test_rebuild_accepts_legacy_delivered_commit_as_subject(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    subject = _run(repo, "git", "rev-parse", "HEAD")
+    receipt = {
+        "schema_version": 1,
+        "delivered_commit": subject,
+        "contracts": [{"change_id": "fixture-delivery"}],
+    }
+    raw = json.dumps(receipt, sort_keys=True).encode("utf-8")
+    manifest, entry = _manifest(repo, raw)
+    metadata = {
+        "id": 456,
+        "name": entry["artifact_name"],
+        "digest": entry["artifact_digest"],
+        "expired": False,
+        "workflow_run": {"id": 123},
+    }
+    monkeypatch.setattr(rebuild.projection, "repository_identity", lambda _root: "fixture/repo")
+    monkeypatch.setattr(rebuild, "_artifact_metadata", lambda *_args: metadata)
+    monkeypatch.setattr(rebuild.projection, "_download_attestation_bytes", lambda *_args, **_kwargs: raw)
+    monkeypatch.setattr(
+        rebuild.projection,
+        "verify_delivery_receipt",
+        lambda *_args, **_kwargs: {"valid": True, "reasons": []},
+    )
+
+    result = rebuild.rebuild_receipts(repo, manifest, dry_run=True)
+
+    assert result["receipt_count"] == 1
+
+
+def test_rebuild_validates_multiple_artifacts_concurrently_before_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    subject = _run(repo, "git", "rev-parse", "HEAD")
+    first_receipt = {"subject_commit": subject, "contracts": [{"change_id": "fixture-delivery"}]}
+    second_receipt = {"subject_commit": subject, "contracts": [{"change_id": "fixture-delivery-two"}]}
+    raw_by_id = {
+        "456": json.dumps(first_receipt, sort_keys=True).encode(),
+        "457": json.dumps(second_receipt, sort_keys=True).encode(),
+    }
+    manifest, first = _manifest(repo, raw_by_id["456"])
+    second = dict(first)
+    second.update({
+        "change_id": "fixture-delivery-two",
+        "workflow_run_id": "124",
+        "artifact_id": "457",
+        "artifact_name": f"delivery-attestation-two-{subject}",
+        "cache_path": "omni-delivery/verified-receipts/w0/124-receipt.json",
+        "raw_sha256": hashlib.sha256(raw_by_id["457"]).hexdigest(),
+    })
+    manifest.write_text(yaml.safe_dump({"verified_deliveries": [first, second]}), encoding="utf-8")
+    _run(repo, "git", "add", "manifest.yaml")
+    _run(repo, "git", "commit", "-qm", "two concurrent receipts")
+    barrier = threading.Barrier(2, timeout=2)
+    observed_threads: set[int] = set()
+
+    def metadata(_root, _repository, artifact_id):
+        observed_threads.add(threading.get_ident())
+        barrier.wait()
+        entry = first if artifact_id == "456" else second
+        return {
+            "id": int(artifact_id),
+            "name": entry["artifact_name"],
+            "digest": entry["artifact_digest"],
+            "expired": False,
+            "workflow_run": {"id": int(entry["workflow_run_id"])},
+        }
+
+    monkeypatch.setattr(rebuild.projection, "repository_identity", lambda _root: "fixture/repo")
+    monkeypatch.setattr(rebuild, "_artifact_metadata", metadata)
+    monkeypatch.setattr(
+        rebuild.projection,
+        "_download_attestation_bytes",
+        lambda _root, _repository, metadata, **_kwargs: raw_by_id[str(metadata["id"])],
+    )
+    monkeypatch.setattr(
+        rebuild.projection,
+        "verify_delivery_receipt",
+        lambda *_args, **_kwargs: {"valid": True, "reasons": []},
+    )
+
+    result = rebuild.rebuild_receipts(repo, manifest, dry_run=True)
+
+    assert result["receipt_count"] == 2
+    assert len(observed_threads) == 2
+    assert not rebuild.projection.receipt_cache_dir(repo).exists()
 
 
 def test_rebuild_never_overwrites_different_existing_receipt(

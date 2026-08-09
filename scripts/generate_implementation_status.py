@@ -9,6 +9,7 @@ an immutable, reachable commit can project ``COMPLETE``.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import importlib.util
 import json
@@ -784,9 +785,9 @@ def resolve_delivered_contracts(
     """Resolve verified delivered contracts from explicit paths and shared cache."""
 
     root = repository_root(root)
-    resolved: dict[str, dict[str, Any]] = {}
     verifier = provenance_verifier or offline_provenance
     cache_root = _validated_cache_root(root)
+    loaded: list[tuple[Path, dict[str, Any], tuple[str, ...]]] = []
     for path in discover_receipt_paths(root, receipt_paths):
         try:
             try:
@@ -807,16 +808,44 @@ def resolve_delivered_contracts(
             )
         if receipt.get("change_id"):
             ids.append(str(receipt["change_id"]))
-        for change_id in dict.fromkeys(ids):
+        loaded.append((path, receipt, tuple(dict.fromkeys(ids))))
+
+    def resolve_receipt(
+        item: tuple[Path, dict[str, Any], tuple[str, ...]],
+    ) -> dict[str, dict[str, Any]]:
+        path, receipt, ids = item
+        try:
+            receipt_provenance = verifier(root, receipt, path)
+        except Exception:
+            receipt_provenance = {
+                "valid": False,
+                "reasons": [PROVENANCE_VERIFIER_FAILED],
+            }
+
+        def cached_receipt_provenance(
+            _root: Path,
+            _receipt: Mapping[str, Any],
+            _receipt_path: Path | None = None,
+        ) -> Mapping[str, Any]:
+            return receipt_provenance
+
+        local: dict[str, dict[str, Any]] = {}
+        for change_id in ids:
             result = verify_delivery_receipt(
                 root,
                 receipt,
                 change_id,
                 receipt_path=path,
-                provenance_verifier=verifier,
+                provenance_verifier=cached_receipt_provenance,
             )
             if result["valid"]:
-                resolved[change_id] = result
+                local[change_id] = result
+        return local
+
+    resolved: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(loaded) or 1)) as executor:
+        for receipt_results in executor.map(resolve_receipt, loaded):
+            resolved.update(receipt_results)
     return resolved
 
 

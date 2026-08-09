@@ -5,8 +5,10 @@ state: IMPLEMENTING
 created_at: '2026-08-09T17:57:37Z'
 updated_at: '2026-08-09T17:59:09Z'
 feature_refs:
-- feature_id: omni-fde-system-convergence-master-prd-v12
-  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:sha256:d34c5975e08d82bae86efa9b3b7ea3d626405c63ccf8c089945f56c2163501f3
+- feature_id: omni-fde-system-convergence-s7-blueprint-timeout
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S7:sha256:d34c5975e08d82bae86efa9b3b7ea3d626405c63ccf8c089945f56c2163501f3
+- feature_id: omni-fde-system-convergence-s0-5-delivery-ledger
+  feature_ref: prd:2026-07-29-omni-fde-system-convergence-master-prd:v1.2:S0.5:sha256:d34c5975e08d82bae86efa9b3b7ea3d626405c63ccf8c089945f56c2163501f3
 - feature_id: omni-unified-ai-workbench-v13
   feature_ref: prd:2026-08-02-omni-unified-ai-workbench-prd:v1.3:sha256:cfdc88d68e985c0801dfbc9ab1bccfc7b5a36059b8d5bd0feab4cf74687622bd
 before_snapshot:
@@ -147,6 +149,7 @@ planned_changes:
   - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/delivery-recovery-manifest.yaml
   - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/ownership-before.yaml
   - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/ownership-after.yaml
+  - docs/dev-changes/2026-08-10-blueprint-ledger-contract-closure/migration-baseline-evidence.json
   - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
   upstream:
   - source:github-actions.delivery-attestation
@@ -272,6 +275,11 @@ verification_plan:
   layer: governance
   command: uv run --with pyyaml python scripts/check_development_readiness.py --json --refresh-live-provenance --live-timeout-seconds 60
   proves: Delivered contracts are excluded from active ownership while unresolved contracts and runtime drift remain fail-closed.
+  required: true
+- id: BLC-VER-005A
+  layer: migration-baseline
+  command: docker exec omni-prd-v12-main-full-accept-52866f3f-knowledge-engine-1 bash -c 'cd /app && PYTHONPATH=/app python scripts/p0_baseline_preflight.py'
+  proves: The live full-acceptance database and repository migration ledger agree through migration 104 with checksums and no blocker.
   required: true
 - id: BLC-VER-006
   layer: policy

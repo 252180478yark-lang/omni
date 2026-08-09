@@ -1,0 +1,36 @@
+schema_version: 1
+kind: omni_contract_ownership_snapshot
+captured_at: '2026-08-10T02:22:08+08:00'
+repository_head: 290d888309265879ce689e90a1271e10f5f4c39d
+evidence:
+  recovery_manifest_receipt_count: 14
+  provenance_verified_delivery_count: 23
+  projected_complete_contract_count: 30
+  projected_contract_count: 31
+readiness:
+  status: candidate_not_delivered
+  active_contract_count: 1
+  active_contracts:
+  - 2026-08-10-blueprint-ledger-contract-closure
+  contract_check: in_progress
+  active_contract_overlap_count: 0
+  ownership_conflict_count: 0
+  secret_scan: passed
+  hook_trust: review_required
+prd_projection:
+  migration_baseline: ready
+  projection_errors: []
+  current_slice: S0
+  current_status: BLOCKED
+  blocker:
+  - workspace_ownership_conflict
+  external_dirty_worktree_facts:
+    preserved_external_worktree_paths: 745
+    dirty_scope_conflicts: 2
+    external_scope_overlaps: 119
+    lease_conflicts: 90
+interpretation:
+- Historical schema-v3 contracts with valid main CI attestations no longer own active paths.
+- The only active contract is this local candidate; it remains not delivered until immutable CI attestation.
+- S0 remains truthfully blocked by unrelated external dirty-worktree ownership, not by missing delivery receipts or migration evidence.
+- Current-user hook trust remains review_required and was not inferred from repository delivery.
