@@ -70,7 +70,7 @@ describe('single-user local browser session', () => {
     const server = readFileSync(resolve(process.cwd(), 'server.ts'), 'utf8')
     const ws = readFileSync(resolve(process.cwd(), 'src/lib/agent-chat/ws-handler.ts'), 'utf8')
     expect(page).not.toMatch(/localStorage|sessionStorage/)
-    expect(server).toContain('isSameOriginUpgrade')
+    expect(server).toContain('isSameOriginWebSocketUpgrade')
     expect(server).not.toContain('omni_approval_session')
     expect(server).not.toMatch(/[?&](?:token|access_token)=/)
     expect(ws).toContain("approvalAuthorization === 'invalid-origin'")

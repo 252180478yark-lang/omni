@@ -1,8 +1,24 @@
 schema_version: 3
 change_id: 2026-08-09-websocket-origin-scheme-hardening
-state: IMPACT_LOCKED
-actual_changes: []
-contract_delta: []
+state: VERIFYING
+actual_changes:
+- id: ACT-WS-001
+  planned_change_id: WS-001
+  summary: Extracted WebSocket Origin classification into a deterministic helper that compares exact effective http/https scheme and host, honors the first trusted forwarded values, falls back to direct socket encryption, and rejects malformed or non-origin URL forms before fixed local-owner projection.
+  paths:
+  - frontend/server.ts
+  - frontend/src/lib/agent-chat/ws-origin.ts
+- id: ACT-WS-002
+  planned_change_id: WS-002
+  summary: Added direct, TLS, proxy, array/comma header, mismatch and malformed Origin tests while updating the existing local-owner source-closure assertion to follow the extracted classifier without changing invalid-origin close behavior.
+  paths:
+  - frontend/tests/websocket-origin.test.ts
+  - frontend/tests/approval-auth-session.test.ts
+contract_delta:
+- description: Added the existing approval-auth-session source-closure test to the implementation scope.
+  reason: Full frontend regression exposed a hardcoded assertion for the former in-file classifier symbol after the classifier was extracted into a testable module.
+  effect: The regression now requires isSameOriginWebSocketUpgrade wiring while retaining its no browser token, no session credential and invalid-origin checks.
+  accepted: true
 verification_results: []
 graph_diff:
   status: pending

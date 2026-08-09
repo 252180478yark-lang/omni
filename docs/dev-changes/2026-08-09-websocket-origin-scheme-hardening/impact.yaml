@@ -1,9 +1,9 @@
 schema_version: 3
 change_id: 2026-08-09-websocket-origin-scheme-hardening
 title: WebSocket origin scheme hardening
-state: IMPACT_LOCKED
+state: VERIFYING
 created_at: '2026-08-09T15:11:45Z'
-updated_at: '2026-08-09T15:13:14Z'
+updated_at: '2026-08-09T15:15:28Z'
 feature_refs:
 - feature_id: macos-single-user-integration
   feature_ref: git:2ad16ad435fd5a242259819c436f12b58be5badb:docs/dev-changes/2026-08-09-macos-single-user-integration
@@ -19,7 +19,14 @@ risk:
   - The retained local-owner WebSocket upgrade currently compares Origin host only, so an http request can accept an https Origin or the inverse despite HTTP mutation routes already requiring exact scheme and host.
   - Scheme inference must remain correct behind a trusted local reverse proxy without weakening malformed, missing or non-HTTP Origin rejection.
   external_effects: []
-  scope_deltas: []
+  scope_deltas:
+  - id: WS-DELTA-001
+    discovered_at: '2026-08-09T15:15:00Z'
+    reason: The full frontend regression suite proved approval-auth-session.test.ts contains a source-closure assertion hardcoded to the former in-file classifier name. Extracting the classifier correctly changed that symbol while preserving the invalid-origin behavior.
+    added_paths:
+    - frontend/tests/approval-auth-session.test.ts
+    required_level: R2
+    risk_change: Test-only compatible closure. Update the assertion to require the new imported classifier name so the existing no-token and WebSocket-origin wiring guard follows the implementation without weakening its security checks.
   approval:
     required: false
     gate_ref: ''
@@ -71,6 +78,7 @@ scope:
   tests:
   - test:websocket-origin-classifier
   - test:websocket-invalid-origin-authorization
+  - test:local-owner-source-closure
   docs:
   - docs/dev-changes/2026-08-09-websocket-origin-scheme-hardening
 planned_changes:
@@ -98,6 +106,7 @@ planned_changes:
   node_id: test:websocket-origin-classifier
   paths:
   - frontend/tests/websocket-origin.test.ts
+  - frontend/tests/approval-auth-session.test.ts
   upstream:
   - service:frontend-websocket-upgrade
   downstream:
