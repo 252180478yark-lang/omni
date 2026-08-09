@@ -37,7 +37,7 @@ class HostSession:
     model: str | None = None
     effort: str | None = None
     trace_id: str | None = None
-    status: str = "active"
+    status: str = "resolving"
     context_snapshot_id: str | None = None
     context_revision: int | None = None
     current_context_snapshot_id: str | None = None
@@ -121,8 +121,8 @@ class SubprocessProviderRunner:
             if session.runner_session_id:
                 args.extend(["resume", session.runner_session_id])
             else:
-                args.extend(["-C", session.project_dir, "--sandbox", "danger-full-access"])
-            args.extend(["--json", "--skip-git-repo-check"])
+                args.extend(["-C", session.project_dir])
+            args.append("--json")
             if session.model:
                 args.extend(["--model", session.model])
             if session.effort:
@@ -378,6 +378,20 @@ class HostBridge:
         with self._lock:
             sessions = self._read_sessions()
             existing = sessions.get(normalized.session_id)
+            if existing and existing.get("context_snapshot_id"):
+                anchor = existing.get("context_snapshot_id")
+                current = existing.get("current_context_snapshot_id") or anchor
+                supplied = normalized.context_snapshot_id
+                if supplied not in {anchor, current}:
+                    raise HostBridgeError("session_context_anchor_conflict", 409)
+                normalized = HostSession(**{
+                    **asdict(normalized),
+                    "context_snapshot_id": anchor,
+                    "context_revision": existing.get("context_revision"),
+                    "current_context_snapshot_id": current,
+                    "current_context_revision": existing.get("current_context_revision")
+                    or existing.get("context_revision"),
+                })
             if existing and existing.get("accepted_at") and existing.get("runner_provider") != normalized.runner_provider:
                 raise HostBridgeError("session_runner_provider_conflict", 409)
             if existing and existing.get("accepted_at"):
@@ -387,14 +401,24 @@ class HostBridge:
                 )
                 if any(existing.get(field) != getattr(normalized, field) for field in locked_fields):
                     raise HostBridgeError("accepted_session_contract_conflict", 409)
-            if existing and existing.get("context_snapshot_id") and normalized.context_snapshot_id != existing.get("context_snapshot_id"):
-                raise HostBridgeError("session_context_anchor_conflict", 409)
             if existing and existing.get("runner_session_id") and normalized.runner_session_id and existing["runner_session_id"] != normalized.runner_session_id:
                 raise HostBridgeError("session_runner_identity_conflict", 409)
             if existing and existing.get("runner_session_id") and existing.get("runner_provider") != normalized.runner_provider:
                 raise HostBridgeError("session_runner_provider_conflict", 409)
             if existing:
-                merged = {**existing, **{key: value for key, value in asdict(normalized).items() if value is not None}}
+                updates = {key: value for key, value in asdict(normalized).items() if value is not None}
+                updates.pop("accepted_at", None)
+                if existing.get("context_snapshot_id"):
+                    for key in (
+                        "context_snapshot_id",
+                        "context_revision",
+                        "current_context_snapshot_id",
+                        "current_context_revision",
+                    ):
+                        updates.pop(key, None)
+                if existing.get("accepted_at"):
+                    updates.pop("status", None)
+                merged = {**existing, **updates}
                 if normalized.trace_id and normalized.trace_id != existing.get("trace_id") and session.parent_span_id is None:
                     merged["parent_span_id"] = None
                 normalized = HostSession(**merged)

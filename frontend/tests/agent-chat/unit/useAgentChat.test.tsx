@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useAgentChat } from '@/hooks/useAgentChat'
+import { useWorkbenchStore } from '@/stores/workbenchStore'
 
 class MockWebSocket {
   static instances: MockWebSocket[] = []
@@ -27,6 +28,7 @@ class MockWebSocket {
 
 beforeEach(() => {
   MockWebSocket.instances = []
+  useWorkbenchStore.getState().reset()
   ;(global as unknown as { WebSocket: typeof MockWebSocket }).WebSocket = MockWebSocket
 })
 
@@ -63,11 +65,24 @@ describe('useAgentChat', () => {
   })
 
   it('sendPrompt sends ws message and clears input', async () => {
+    useWorkbenchStore.getState().rebindContext({
+      snapshotId: 'context:test', revision: 1, label: '测试上下文',
+    })
     const { result } = renderHook(() => useAgentChat('sess-1'))
     await waitFor(() => expect(result.current.connected).toBe(true))
     act(() => result.current.sendPrompt('查 SKU'))
     const last = JSON.parse(MockWebSocket.instances[0].sent[MockWebSocket.instances[0].sent.length - 1])
     expect(last.kind).toBe('send_prompt')
     expect(last.prompt).toBe('查 SKU')
+    expect(last.context).toEqual({ context_snapshot_id: 'context:test', context_revision: 1 })
+  })
+
+  it('fails closed instead of starting an unbound Agent run', async () => {
+    const { result } = renderHook(() => useAgentChat('sess-1'))
+    await waitFor(() => expect(result.current.connected).toBe(true))
+    act(() => result.current.sendPrompt('无上下文运行'))
+
+    expect(result.current.error).toBe('workbench_context_unavailable')
+    expect(MockWebSocket.instances[0].sent.map((value) => JSON.parse(value).kind)).toEqual(['open_session'])
   })
 })

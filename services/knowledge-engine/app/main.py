@@ -50,6 +50,7 @@ from app.routers.runtime_findings import router as runtime_findings_router
 from app.routers.runtime_plan_drafts import router as runtime_plan_drafts_router
 from app.routers.agent_contracts import router as agent_contracts_router
 from app.routers.system_graph import router as system_graph_router
+from app.routers.workbench_contexts import router as workbench_contexts_router
 from app.schemas.runtime_trace import EventType, ReadWrite, RuntimeEventInput, RuntimeStatus, SpanKind
 from app.services.runtime_trace import (
     DatabaseTraceLedger,
@@ -244,6 +245,7 @@ app.include_router(runtime_findings_router)
 app.include_router(runtime_plan_drafts_router)
 app.include_router(agent_contracts_router)
 app.include_router(system_graph_router)
+app.include_router(workbench_contexts_router)
 
 # 挂载 MCP HTTP 子应用（在所有 router 之后）
 app.mount("/mcp", mcp_http_app)

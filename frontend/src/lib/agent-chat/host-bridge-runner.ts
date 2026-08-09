@@ -52,7 +52,7 @@ export function startHostBridgeRunner(options: HostBridgeSpawnOptions): ClaudeRu
   const procState = { killed: false }
   ;(emitter as unknown as { proc: typeof procState }).proc = procState
   let runId = ''
-  let accepted = false
+  let accepted = Boolean(options.resumeSessionId)
   let runSubmissionStarted = false
   let cancelled = false
   let fallback: ClaudeRunner | null = null
@@ -88,6 +88,7 @@ export function startHostBridgeRunner(options: HostBridgeSpawnOptions): ClaudeRu
         }),
       })
       const session = await created.json() as AgentProviderResolution & { runner_session_id?: string | null }
+      accepted = accepted || Boolean(session.accepted_at)
       emitter.emit('chunk', {
         type: 'system', session_id: session.runner_session_id || options.resumeSessionId,
         provider_resolution: {

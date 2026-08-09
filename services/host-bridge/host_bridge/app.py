@@ -104,7 +104,7 @@ def _sync_session(session: HostSession) -> bool:
         "session_id": public["session_id"], "runner_provider": public["resolved_provider"],
         "runner_session_id": public["runner_session_id"], "project_hash": public["project"]["project_hash"],
         "project_handle": public["project"]["project_handle"], "project_display_name": public["project"]["display_name"],
-        "context_snapshot_id": public["context_snapshot_id"], "requested_provider": public["requested_provider"],
+        "context_snapshot_id": session.context_snapshot_id, "requested_provider": public["requested_provider"],
         "resolved_runner_mode": public["runner_mode"], "fallback_reason_code": public["fallback_reason_code"],
         "provider_accepted_at": public["accepted_at"], "parent_session_id": public["parent_session_id"],
         "model": public["model"], "effort": public["effort"], "trace_id": public["trace_id"], "status": public["status"],

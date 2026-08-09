@@ -10,6 +10,7 @@ import { BeginnerGuide } from './beginner-guide'
 import { WorkbenchStateBadge, type WorkbenchViewState } from './workbench-state-badge'
 import { WorkbenchDock } from './workbench/WorkbenchDock'
 import { isWorkbenchFlagEnabled } from '@/lib/workbench-flags'
+import { deriveWorkbenchContext, synchronizeWorkbenchContext } from '@/lib/workbench-context'
 import {
   resolveWorkbenchLocation,
   workbenchNavigationForMode,
@@ -106,6 +107,8 @@ function AppShellContent({ children, unifiedShellEnabled }: AppShellProps) {
   const preferenceHydrated = useWorkbenchStore((state) => state.preferenceHydrated)
   const preferenceError = useWorkbenchStore((state) => state.preferenceError)
   const contextRevision = useWorkbenchStore((state) => state.contextRevision)
+  const contextSnapshotId = useWorkbenchStore((state) => state.contextSnapshotId)
+  const contextRevisionNumber = useWorkbenchStore((state) => state.contextRevisionNumber)
   const contextLabel = useWorkbenchStore((state) => state.contextLabel)
   const contextStatus = useWorkbenchStore((state) => state.contextStatus)
   const resolvedProvider = useWorkbenchStore((state) => state.resolvedProvider)
@@ -115,8 +118,11 @@ function AppShellContent({ children, unifiedShellEnabled }: AppShellProps) {
   const hydrateMode = useWorkbenchStore((state) => state.hydrateMode)
   const setMode = useWorkbenchStore((state) => state.setMode)
   const bindContinuity = useWorkbenchStore((state) => state.bindContinuity)
+  const rebindContext = useWorkbenchStore((state) => state.rebindContext)
+  const agentSessionId = useWorkbenchStore((state) => state.agentSessionId)
   const openedLocationRef = useRef<string | null>(null)
   const synchronizedLocationRef = useRef<string | null>(null)
+  const synchronizedContextLocationRef = useRef<string | null>(null)
 
   const location = useMemo(
     () => resolveWorkbenchLocation(pathname, queryString, mode),
@@ -167,6 +173,46 @@ function AppShellContent({ children, unifiedShellEnabled }: AppShellProps) {
       setMode(location.effectiveMode || 'work')
     }
   }, [location, pathname, preferenceHydrated, queryString, setMode, unified, workspaceModeOverride])
+
+  useEffect(() => {
+    if (!unified || !preferenceHydrated) return
+    const contextLocationKey = `${pathname}?${queryString}`
+    if (synchronizedContextLocationRef.current === contextLocationKey) return
+    let active = true
+    const nextContext = deriveWorkbenchContext(pathname, queryString)
+    const expectedSnapshotId = contextSnapshotId
+    const expectedRevision = contextRevisionNumber
+
+    void synchronizeWorkbenchContext(nextContext, {
+      current: {
+        contextSnapshotId: expectedSnapshotId,
+        contextRevisionNumber: expectedRevision,
+        agentSessionId,
+      },
+    }).then(({ snapshot }) => {
+      if (!active) return
+      synchronizedContextLocationRef.current = contextLocationKey
+      rebindContext({
+        snapshotId: snapshot.snapshot_id,
+        revision: snapshot.revision,
+        label: snapshot.sku_ref || snapshot.task_ref || snapshot.origin_surface_ref,
+        expectedSnapshotId,
+        expectedRevision,
+      })
+    }).catch(() => undefined)
+
+    return () => { active = false }
+  }, [
+    agentSessionId,
+    bindContinuity,
+    contextRevisionNumber,
+    contextSnapshotId,
+    pathname,
+    preferenceHydrated,
+    queryString,
+    rebindContext,
+    unified,
+  ])
 
   useEffect(() => {
     if (!unified) return

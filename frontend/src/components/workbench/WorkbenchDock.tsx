@@ -6,7 +6,6 @@ import { Activity, Bot, Boxes, Loader2, ShieldCheck, X } from 'lucide-react'
 import { RuntimeOverlay } from '@/components/system-command-center/RuntimeOverlay'
 import { SystemGraphView } from '@/components/system-command-center/SystemGraphView'
 import { buildWorkbenchActionCard, type WorkbenchActionCard } from '@/lib/workbench-runtime'
-import type { SystemGraphSnapshot } from '@/lib/system-command-center/runtime-model'
 import { cn } from '@/lib/utils'
 import { useWorkbenchStore } from '@/stores/workbenchStore'
 
@@ -28,9 +27,14 @@ function AssistantPanel() {
   const generate = async () => {
     setPhase('loading')
     try {
-      const response = await fetch('/api/omni/system-graph/snapshot', { cache: 'no-store' })
-      const snapshot = response.ok ? await response.json() as SystemGraphSnapshot : null
-      setCard(buildWorkbenchActionCard(snapshot, question))
+      const response = await fetch('/api/omni/workbench/suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ question }),
+      })
+      const suggestion = await response.json().catch(() => null) as WorkbenchActionCard | null
+      setCard(suggestion?.evidenceState ? suggestion : buildWorkbenchActionCard(null, question))
       setPhase(response.ok ? 'ready' : 'error')
     } catch {
       setCard(buildWorkbenchActionCard(null, question))

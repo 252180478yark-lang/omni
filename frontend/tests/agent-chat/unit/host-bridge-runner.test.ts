@@ -79,4 +79,27 @@ describe('host bridge runner', () => {
       else process.env.OMNI_HOST_TOKEN_FILE = previousTokenFile
     }
   })
+
+  it('never falls back a resumed provider session when Host acceptance is unknown', async () => {
+    const previousTokenFile = process.env.OMNI_HOST_TOKEN_FILE
+    process.env.OMNI_HOST_TOKEN_FILE = 'fixture.token'
+    const originalFetch = global.fetch
+    global.fetch = vi.fn(async () => new Response('{}', { status: 503 })) as typeof fetch
+    const fallback = { proc: { killed: false }, cancel: vi.fn(), on: vi.fn().mockReturnThis() }
+    try {
+      const runner = startHostBridgeRunner({
+        sessionId: 'session:accepted', provider: 'codex', resumeSessionId: 'runner:accepted',
+        traceId: 'trace:accepted', executionId: 'execution:accepted', parentSpanId: 'ws:accepted',
+        projectHandle: 'project:default', prompt: 'continue', mcpConfigPath: 'unused',
+        fallbackFactory: () => fallback as never,
+      })
+      const error = await new Promise<Error>((resolve) => runner.on('error', resolve))
+      expect(error.message).toBe('host_bridge_status_503')
+      expect(fallback.on).not.toHaveBeenCalled()
+    } finally {
+      global.fetch = originalFetch
+      if (previousTokenFile === undefined) delete process.env.OMNI_HOST_TOKEN_FILE
+      else process.env.OMNI_HOST_TOKEN_FILE = previousTokenFile
+    }
+  })
 })

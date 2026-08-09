@@ -22,6 +22,7 @@ actual_changes:
   - frontend/src/lib/agent-chat/types.ts
   - frontend/src/lib/agent-chat/ws-handler.ts
   - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
+  - frontend/tests/agent-chat/unit/useAgentChat.test.tsx
   - frontend/tests/agent-chat/unit/workbench-binding.test.ts
 - id: WB13-ACT-003
   planned_change_id: WB13-CHG-003
@@ -61,6 +62,33 @@ actual_changes:
   - services/knowledge-engine/app/schemas/runtime_trace.py
   - services/knowledge-engine/app/services/agent_contracts.py
   - services/knowledge-engine/tests/test_agent_contracts.py
+- id: WB13-ACT-006
+  planned_change_id: WB13-CHG-006
+  summary: Connected route-derived UI context to append-only migration-104 snapshots, idempotent CAS rebind, the Host current head and grounded suggestions; preserved the accepted Agent security anchor and removed forced Codex sandbox and repository-check bypass flags.
+  paths:
+  - frontend/src/app/api/omni/workbench/context/_context-proxy.ts
+  - frontend/src/app/api/omni/workbench/context/route.ts
+  - frontend/src/app/api/omni/workbench/context/rebind/route.ts
+  - frontend/src/app/api/omni/workbench/suggestions/route.ts
+  - frontend/src/components/app-shell.tsx
+  - frontend/src/components/workbench/WorkbenchDock.tsx
+  - frontend/src/hooks/useAgentChat.ts
+  - frontend/src/lib/agent-chat/codex-runner.ts
+  - frontend/src/lib/agent-chat/host-bridge-runner.ts
+  - frontend/src/lib/workbench-context.ts
+  - frontend/tests/agent-chat/unit/codex-runner.test.ts
+  - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
+  - frontend/tests/workbench-context-persistence.test.ts
+  - frontend/tests/workbench-suggestions-grounding.test.ts
+  - services/host-bridge/host_bridge/app.py
+  - services/host-bridge/host_bridge/core.py
+  - services/host-bridge/tests/test_host_bridge.py
+  - services/host-bridge/tests/test_workbench_context.py
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/app/routers/workbench_contexts.py
+  - services/knowledge-engine/app/schemas/workbench_contexts.py
+  - services/knowledge-engine/app/services/workbench_contexts.py
+  - services/knowledge-engine/tests/test_workbench_contexts.py
 contract_delta:
 - description: Included the shared runtime-trace BFF authentication helper in local-owner convergence.
   reason: The blueprint and run center otherwise retained a second identity/HMAC dependency outside the initially discovered shared helper.
@@ -77,6 +105,10 @@ contract_delta:
 - description: Hardened approval decision verification after separating requester and decision actors.
   reason: The local owner may approve an operation requested by the trusted Knowledge Engine principal; conflating both identities rejected valid decisions.
   effect: Request provenance and approved decision actor are independently validated, with legacy identity decisions still compatible.
+  accepted: true
+- description: Reopened the GRAPH_DIFF_READY candidate for post-commit repair of real context persistence, Host acceptance/rebind semantics, grounded suggestions, approval projection and unsafe Codex argv.
+  reason: Independent code-path review proved the previous passing tests manually injected context and asserted the unsafe sandbox flag instead of exercising the normal UI-to-Host-to-database chain.
+  effect: Adds no migration or external effect; the existing append-only context table and durable approval queue become reachable, and provider/sandbox behavior becomes fail-closed.
   accepted: true
 verification_results:
 - id: WB13-VER-001
@@ -114,6 +146,16 @@ verification_results:
   status: passed
   exit_code: 0
   evidence: Fresh policy check passed with valid dynamic totals, skill references and tracked routed assets; git diff --check also passed.
+- id: WB13-VER-008
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pytest-asyncio>=0.24,<1' --with 'fastapi>=0.115,<1' --with 'httpx>=0.27,<1' --with 'pydantic>=2.10,<3' --with 'asyncpg>=0.30,<1' pytest -q services/knowledge-engine/tests/test_workbench_contexts.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 3 tests for append-only creation/reuse, idempotent CAS retry, stale conflict, server-owned permission hashing, raw-path rejection and router registration.
+- id: WB13-VER-009
+  command: cd frontend && npx vitest run tests/workbench-context*.test.ts tests/workbench-suggestions*.test.ts tests/workbench-v13*.test.ts tests/workbench-v13*.test.tsx tests/agent-chat/unit/workbench-binding.test.ts tests/agent-chat/unit/host-bridge-runner.test.ts
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 6 files and 15 tests for route-derived persistence, BFF-to-Host CAS projection, grounded suggestion guardrails, frozen operation context and pre/post-acceptance fallback semantics. The full frontend suite also passed 35 files and 170 tests, including fail-closed rejection of unbound Agent runs, and the optimized build generated all 47 pages.
 graph_diff:
   status: clean
   snapshot_before: git:4623aacb087c9a7337e17b25236e685d429e2a2b
@@ -122,6 +164,11 @@ graph_diff:
   - component:frontend.WorkbenchAssistant
   - component:frontend.WorkbenchBlueprint
   - component:frontend.WorkbenchRunCenter
+  - api:POST:/api/omni/workbench/context
+  - api:POST:/api/omni/workbench/context/rebind
+  - api:POST:/api/omni/workbench/suggestions
+  - api:POST:/api/v1/workbench-contexts
+  - api:POST:/api/v1/workbench-contexts/rebind
   - state:local-single-user-trust
   modified_nodes:
   - component:frontend.AppShell
@@ -129,6 +176,7 @@ graph_diff:
   - api:POST:/api/v1/agent-contracts/sessions
   - service:knowledge-engine.approval_operations
   - state:workbench.context_revision
+  - db:mcp.workbench_context_snapshots
   removed_nodes: []
   added_edges:
   - from: component:frontend.AppShell
@@ -143,6 +191,21 @@ graph_diff:
   - from: service:host-bridge.HostBridge
     to: db:mcp.runtime_executions
     relation: writes-attempt-events
+  - from: component:frontend.AppShell
+    to: api:POST:/api/omni/workbench/context
+    relation: persists-route-context
+  - from: api:POST:/api/omni/workbench/context/rebind
+    to: api:POST:/api/v1/workbench-contexts/rebind
+    relation: compare-and-swap
+  - from: api:POST:/api/v1/workbench-contexts/rebind
+    to: db:mcp.workbench_context_snapshots
+    relation: appends
+  - from: api:POST:/api/omni/workbench/context/rebind
+    to: service:host-bridge.HostBridge
+    relation: advances-current-head
+  - from: component:frontend.WorkbenchAssistant
+    to: api:POST:/api/omni/workbench/suggestions
+    relation: requests-grounded-advice
   removed_edges:
   - from: component:frontend.AppShell
     to: service:identity-service
@@ -198,6 +261,31 @@ graph_diff:
     relation: writes
     status: present
     evidence: Existing approval store/CAS path is unchanged and the full approval worker suite passes.
+  - from: component:frontend.AppShell
+    to: api:POST:/api/omni/workbench/context
+    relation: persists-route-context
+    status: present
+    evidence: AppShell derives only safe opaque refs from the committed route, and frontend context persistence tests pass.
+  - from: api:POST:/api/omni/workbench/context/rebind
+    to: api:POST:/api/v1/workbench-contexts/rebind
+    relation: compare-and-swap
+    status: present
+    evidence: The same-origin BFF forwards the complete expected pair and treats a lost-response retry as idempotent only when the exact next snapshot matches.
+  - from: api:POST:/api/v1/workbench-contexts/rebind
+    to: db:mcp.workbench_context_snapshots
+    relation: appends
+    status: present
+    evidence: The Knowledge Engine store serializes by context_ref, never updates an existing snapshot and rejects stale expected pairs; 3 focused tests pass.
+  - from: api:POST:/api/omni/workbench/context/rebind
+    to: service:host-bridge.HostBridge
+    relation: advances-current-head
+    status: present
+    evidence: The BFF advances only the Host current head after database CAS; accepted anchor sync remains immutable and 14 Host tests pass.
+  - from: component:frontend.WorkbenchAssistant
+    to: api:POST:/api/omni/workbench/suggestions
+    relation: requests-grounded-advice
+    status: present
+    evidence: WorkbenchDock now consumes a same-origin deterministic suggestion route that returns insufficient/unavailable instead of inventing an operation when evidence is absent.
   orphan_nodes: []
   unknowns:
   - node_or_edge: runtime:real-external-provider

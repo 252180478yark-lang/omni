@@ -36,10 +36,15 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
   const [traceGapCount, setTraceGapCount] = useState(0)
   const contextSnapshotId = useWorkbenchStore((state) => state.contextSnapshotId)
   const contextRevision = useWorkbenchStore((state) => state.contextRevisionNumber)
+  const bindContinuity = useWorkbenchStore((state) => state.bindContinuity)
 
   useEffect(() => {
     optionsRef.current = options
   }, [options])
+
+  useEffect(() => {
+    if (sessionId) bindContinuity({ agentSessionId: sessionId })
+  }, [bindContinuity, sessionId])
 
   useEffect(() => {
     if (!sessionId) return
@@ -94,6 +99,10 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
 
   const sendPrompt = useCallback((prompt: string) => {
     if (!wsRef.current || wsRef.current.readyState !== 1 || !sessionId) return
+    if (!contextSnapshotId || !contextRevision) {
+      setError('workbench_context_unavailable')
+      return
+    }
     setRunning(true)
     setError(null)
     setMessages((prev) => [
@@ -102,9 +111,7 @@ export function useAgentChat(sessionId: string | null, options: UseAgentChatOpti
     ])
     wsRef.current.send(JSON.stringify({
       kind: 'send_prompt', session_id: sessionId, prompt,
-      context: contextSnapshotId && contextRevision
-        ? { context_snapshot_id: contextSnapshotId, context_revision: contextRevision }
-        : undefined,
+      context: { context_snapshot_id: contextSnapshotId, context_revision: contextRevision },
     } satisfies WsClientMessage))
   }, [sessionId, contextSnapshotId, contextRevision])
 
