@@ -22,7 +22,7 @@
     scrollbar-width: none;
   }
   .workbench-focusable {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700 focus-visible:ring-offset-2;
   }
 }
 
@@ -111,24 +111,24 @@
 
 @layer base {
   :root {
-    --background: oklch(0.985 0.002 280);
-    --foreground: oklch(0.145 0 0);
+    --background: oklch(0.982 0.004 190);
+    --foreground: oklch(0.17 0.01 240);
     --card: oklch(1 0 0);
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.488 0.243 264.376);
+    --primary: oklch(0.48 0.09 190);
     --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0.005 280);
+    --secondary: oklch(0.965 0.006 190);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
     --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.95 0.02 280);
-    --accent-foreground: oklch(0.35 0.15 280);
+    --accent: oklch(0.95 0.02 190);
+    --accent-foreground: oklch(0.34 0.07 190);
     --destructive: oklch(0.58 0.22 27);
-    --border: oklch(0.922 0.005 280);
+    --border: oklch(0.91 0.006 190);
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.546 0.245 262.881);
+    --ring: oklch(0.48 0.09 190);
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
     --chart-3: oklch(0.546 0.245 262.881);
@@ -137,13 +137,13 @@
     --radius: 0.75rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary: oklch(0.25 0.02 240);
     --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0.01 280);
-    --sidebar-accent-foreground: oklch(0.35 0.15 280);
+    --sidebar-accent: oklch(0.96 0.01 190);
+    --sidebar-accent-foreground: oklch(0.25 0.02 240);
     --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.546 0.245 262.881);
-    --workbench-ai: #6d28d9;
+    --sidebar-ring: oklch(0.48 0.09 190);
+    --workbench-ai: #0f766e;
     --workbench-fact: #1d4ed8;
     --workbench-pending: #92400e;
     --workbench-verified: #166534;
@@ -219,8 +219,8 @@
 }
 
 .workbench-state--loading {
-  border-color: #c4b5fd;
-  background: #f5f3ff;
+  border-color: #99f6e4;
+  background: #f0fdfa;
   color: var(--workbench-ai);
 }
 
@@ -257,7 +257,7 @@
 }
 
 [data-workbench-shell] :focus-visible {
-  outline: 2px solid #6d28d9;
+  outline: 2px solid #0f766e;
   outline-offset: 2px;
 }
 

@@ -44,7 +44,23 @@ async def test_fresh_session_captures_real_runner_and_attachment_metadata_withou
 
 
 @pytest.mark.asyncio
-async def test_database_store_projects_only_legacy_columns_after_migration_104(monkeypatch):
+async def test_canonical_session_accepts_opaque_project_and_context_without_raw_path():
+    store = MemoryAgentContractStore()
+    payload = ProviderSessionContract(
+        session_id="session:opaque", runner_provider="codex", project_hash="sha256:" + "b" * 64,
+        project_handle="project:opaque", project_display_name="omni", context_snapshot_id="context:snapshot-one",
+        requested_provider="codex", resolved_runner_mode="host",
+    )
+    record = await store.upsert_session(payload)
+
+    assert record.project_dir_hash == payload.project_hash
+    assert record.project_handle == "project:opaque"
+    assert record.context_snapshot_id == "context:snapshot-one"
+    assert "project_dir" not in payload.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_database_store_projects_explicit_workbench_columns_after_migration_104(monkeypatch):
     now = datetime(2026, 8, 2, 10, 0, tzinfo=timezone.utc)
     post_104_row = {
         "session_id": "session:contract",
@@ -131,7 +147,7 @@ async def test_database_store_projects_only_legacy_columns_after_migration_104(m
     assert LEGACY_SESSION_PROJECTION in fake_pool.connection.queries[2]
     assert all("*" not in query for query in fake_pool.connection.queries)
     assert all(
-        migration_104_column not in query
+        migration_104_column in " ".join(fake_pool.connection.queries)
         for query in fake_pool.connection.queries
         for migration_104_column in (
             "contract_version",

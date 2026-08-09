@@ -28,7 +28,7 @@ Omni 是一个 Next.js + FastAPI 微服务混合架构的 AI Native 工作台，
 ### 1.1 架构图
 
 ```
-浏览器 ─► Nginx :80 ─┬─► frontend           :3000   Next.js 14 + BFF
+浏览器 ─► Nginx :80（full profile）─┬─► frontend :3000   Next.js 14 + BFF
                      ├─► identity-service   :8000   JWT 鉴权（前端未对接）
                      ├─► ai-provider-hub    :8001   7 个 Provider 统一适配
                      ├─► knowledge-engine   :8002   RAG / Harvester / Content Studio
@@ -132,8 +132,9 @@ omni/
 
 | 模式 | 何时用 | 启动命令 |
 |---|---|---|
-| **全量 Docker**（推荐生产/演示） | 不想装 Python 环境，要一键完整跑 | `docker-compose up -d --build` |
-| **开发模式**（推荐本地开发） | 改 Python/Next 要热重载 | `.\dev-start.ps1`（Docker 只跑 PG/Redis） |
+| **core**（默认开发） | 核心工作台与热重载 | `.\dev-start.ps1 -RuntimeProfile core` |
+| **content** | 内容分析完整 Docker DNS 链 | `.\dev-start.ps1 -RuntimeProfile content` |
+| **full**（演示/多端） | 全服务与 Nginx 网关 | `.\dev-start.ps1 -RuntimeProfile full` |
 
 ### 5.2 环境变量
 
@@ -146,29 +147,34 @@ cp .env.example .env
 
 各服务级别还有 `services/<svc>/.env.example`，全量 Docker 模式下 compose 已经通过 `env_file` 自动注入；开发模式下 `dev-start.ps1` 会把 `.env.dev` 复制为 `.env`。
 
-### 5.3 全量 Docker 启动
+### 5.3 RuntimeAllocation + Docker 启动
+
+先用 `scripts/runtime_allocation.py acquire --runtime-profile core|content|full` 获取 allocation，并把返回的 `environment` 导入当前 shell。profile、端口、数据库和卷都以该 allocation 为准；详见 [`docs/runtime-profiles.md`](docs/runtime-profiles.md)。
 
 ```bash
-docker-compose up -d --build
+docker compose up -d                         # core，canonical 入口 :3000
+docker compose --profile content up -d       # content，入口 :3000
+docker compose --profile full up -d          # full，Nginx 入口 :80
 
 # 查看日志
-docker-compose logs -f knowledge-engine
+docker compose logs -f knowledge-engine
 
 # 停止
-docker-compose down
-# 同时清理数据
-docker-compose down -v
+docker compose down
+# 禁止 down -v / volume prune；profile 切换后 release 并重新 acquire
 ```
 
 启动完成后访问：
 
-* 前端入口：<http://localhost>  （由 Nginx 转发到 frontend:3000）
-* Nginx 健康：<http://localhost/health>
+* core/content：直连 `http://localhost:${FRONTEND_PORT}`（canonical 默认 3000）
+* full：`http://localhost:${NGINX_HTTP_PORT}`（canonical 默认 80）
 
 ### 5.4 开发模式（Windows）
 
 ```powershell
-.\dev-start.ps1               # 拉起 Docker(PG+Redis) + 常用 Python 服务 + Next.js
+.\dev-start.ps1               # core：Docker 核心后端 + host Identity/Next.js
+.\dev-start.ps1 -RuntimeProfile content # exact content 容器运行面
+.\dev-start.ps1 -RuntimeProfile full    # exact full 容器运行面（含 Nginx）
 .\dev-start.ps1 -SkipDocker   # 假设你已自己起好 PG/Redis
 .\dev-start.ps1 -SkipFrontend # 只跑后端
 .\dev-start.ps1 -Only knowledge-engine,frontend
@@ -183,10 +189,6 @@ docker-compose down -v
 * Identity：<http://localhost:8000/health>
 * AI Hub：<http://localhost:8001/health>
 * Knowledge：<http://localhost:8002/health>
-* News：<http://localhost:8005/health>
-* Video：<http://localhost:8006/health>
-* Livestream：<http://localhost:8007/health>
-* Ad Review：<http://localhost:8008/health>
 * 日志：`.dev-logs\<service>.log` 与 `.log.err`
 
 ### 5.5 一键备份（自用推荐）
@@ -230,7 +232,7 @@ npm run backup
 
 ## 7. API 网关路由（Nginx）
 
-所有外部访问统一走 :80，Nginx 内置以下转发规则（详见 `services/infra-core/nginx/conf.d/default.conf`）：
+full profile 的外部访问统一走 :80；core/content 直连 frontend。Nginx 内置以下转发规则（详见 `services/infra-core/nginx/conf.d/default.conf`）：
 
 ```text
 /                                  → frontend (含 Next.js HMR)
@@ -346,7 +348,7 @@ D. 投放复盘飞轮
 
 * 🔴 鉴权未启用（identity-service 已就绪，前端没接）
 * 🔴 `/models` Key 明文回显
-* 🟠 `dev-start.ps1` 缺 ad-review-service / identity-service
+* 🟠 content/full 使用完整容器运行面；core 才提供 host 热重载
 * 🟠 video-analysis 与 livestream-analysis 重复封装 GeminiClient
 * 🟠 knowledge-engine 启动时硬改表（无 alembic）
 * 🟡 多个前端 page.tsx 是 30~44KB 单文件巨石，待拆分

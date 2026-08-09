@@ -6,13 +6,13 @@ owner: {kind: team, id: omni}
 lifecycle: active
 routes:
   canonical: /news
-  visible: true
-  placements: [home, onboarding, direct]
+  visible: false
+  placements: [direct]
   owned_surfaces: [/news, /news/archive]
 ia:
   mode: work
-  primary_group: knowledge
-  primary_order: 20
+  primary_group: library
+  primary_order: 40
   contextual_groups: []
   phase: retain
   flag: unified_shell

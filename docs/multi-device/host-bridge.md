@@ -22,11 +22,11 @@ $env:OMNI_HOST_EXECUTION_ENABLED = 'true'
 $env:OMNI_HOST_VISIBLE_AUTH_ORIGINS = 'https://login.example.com,https://open.example.com'
 $env:CODEX_CLI_PATH = 'C:\path\to\codex.exe'
 $env:OMNI_KE_URL = 'http://127.0.0.1:8002'
-$env:OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE = 'C:\path\outside-repo\runtime-trace.token'
+$env:OMNI_RUNTIME_TRACE_TOKEN_FILE = 'C:\path\outside-repo\runtime-trace.token'
 ./services/host-bridge/run.ps1
 ```
 
-Knowledge Engine 使用 `OMNI_RUNTIME_TRACE_TOKEN_FILE` 验证 trace/Agent 合同请求；Web 与 Host 使用 `OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE` 读取同一个仓库外 token 文件。Web 服务同时使用相同的 `OMNI_HOST_TOKEN_FILE`。默认 `OMNI_AGENT_RUNNER_MODE=auto`：只在 run 请求发出前确认 Host 不可用时回退本地 runner；run 提交一旦开始，响应丢失也不会冒险双执行。`host` 禁止回退，`local` 只作为显式兼容/回滚模式。
+所有进程只配置 canonical `OMNI_RUNTIME_TRACE_TOKEN_FILE`，指向同一个仓库外 token 文件；运行分配器与启动器再按角色为 Knowledge Engine 派生 receiver alias、为 Web/Scout 派生 publisher alias。Host Bridge 直接接受 canonical 路径。Web 服务同时使用相同的 `OMNI_HOST_TOKEN_FILE`。默认 `OMNI_AGENT_RUNNER_MODE=auto`：只在 run 请求发出前确认 Host 不可用时回退本地 runner；run 提交一旦开始，响应丢失也不会冒险双执行。`host` 禁止回退，`local` 只作为显式兼容/回滚模式。
 
 ## Web 与企业微信
 

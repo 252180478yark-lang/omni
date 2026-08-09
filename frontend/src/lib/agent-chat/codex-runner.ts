@@ -52,12 +52,6 @@ export function buildCodexSpawnArgs(opts: CodexSpawnArgOptions): string[] {
     args.push('-C', opts.cwd)
   }
 
-  if (!opts.resumeSessionId) {
-    args.push('--sandbox', 'danger-full-access')
-  }
-
-  args.push('--skip-git-repo-check')
-
   if (opts.model) {
     args.push('--model', opts.model)
   }

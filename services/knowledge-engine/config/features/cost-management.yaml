@@ -8,16 +8,15 @@ owner:
 lifecycle: active
 routes:
   canonical: /cost
-  visible: true
+  visible: false
   placements:
-    - sidebar
     - direct
   owned_surfaces:
     - /cost
 ia:
   mode: work
-  primary_group: products
-  primary_order: 10
+  primary_group: library
+  primary_order: 30
   contextual_groups: []
   phase: retain
   flag: unified_shell

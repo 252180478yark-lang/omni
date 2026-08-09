@@ -41,12 +41,11 @@ def _build_identity() -> dict[str, str | None]:
 
 def _trace_sink(session: HostSession, run_id: str, event_type: str, status: str, payload: dict[str, Any]) -> bool:
     base = os.getenv("OMNI_KE_URL", "").rstrip("/")
-    token_path = os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", "") or os.getenv("OMNI_RUNTIME_TRACE_TOKEN_FILE", "")
-    if not base or not token_path or not session.trace_id:
+    if not base or not session.trace_id:
         return False
     try:
-        token = Path(token_path).read_text(encoding="utf-8").strip()
-        if len(token) < 24:
+        headers = _core_service_headers()
+        if headers is None:
             return False
         body = json.dumps({
             "source": "host.bridge", "event_id": f"{run_id}:{event_type}",
@@ -59,7 +58,7 @@ def _trace_sink(session: HostSession, run_id: str, event_type: str, status: str,
         request = urllib.request.Request(
             f"{base}/api/v1/runtime-traces/{urllib.parse.quote(session.trace_id, safe='')}/events",
             data=body, method="POST",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+            headers=headers,
         )
         with urllib.request.urlopen(request, timeout=3) as response:
             return 200 <= response.status < 300
@@ -69,16 +68,15 @@ def _trace_sink(session: HostSession, run_id: str, event_type: str, status: str,
 
 def _contract_post(path: str, payload: dict[str, Any]) -> bool:
     base = os.getenv("OMNI_KE_URL", "").rstrip("/")
-    token_path = os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", "") or os.getenv("OMNI_RUNTIME_TRACE_TOKEN_FILE", "")
-    if not base or not token_path:
+    if not base:
         return False
     try:
-        token = Path(token_path).read_text(encoding="utf-8").strip()
-        if len(token) < 24:
+        headers = _core_service_headers()
+        if headers is None:
             return False
         request = urllib.request.Request(
             f"{base}{path}", data=json.dumps(payload).encode(), method="POST",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+            headers=headers,
         )
         with urllib.request.urlopen(request, timeout=3) as response:
             return 200 <= response.status < 300
@@ -86,13 +84,30 @@ def _contract_post(path: str, payload: dict[str, Any]) -> bool:
         return False
 
 
+def _core_service_headers() -> dict[str, str] | None:
+    headers = {"Content-Type": "application/json", "X-Omni-Actor-Id": "local-owner", "X-Omni-Trust-Mode": "trusted-local"}
+    if os.getenv("OMNI_APPROVAL_AUTH_MODE", "trusted-local").strip().lower() in {"trusted-local", "trusted_local", "local"}:
+        return headers
+    token_path = os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE", "") or os.getenv("OMNI_RUNTIME_TRACE_TOKEN_FILE", "")
+    try:
+        token = Path(token_path).read_text(encoding="utf-8").strip() if token_path else ""
+    except OSError:
+        token = ""
+    if len(token) < 24:
+        return None
+    return {**headers, "Authorization": f"Bearer {token}"}
+
+
 def _sync_session(session: HostSession) -> bool:
     public = as_public_session(session)
     return _contract_post("/api/v1/agent-contracts/sessions", {
-        key: public[key] for key in (
-            "session_id", "runner_provider", "runner_session_id", "project_dir",
-            "model", "effort", "trace_id", "status",
-        )
+        "session_id": public["session_id"], "runner_provider": public["resolved_provider"],
+        "runner_session_id": public["runner_session_id"], "project_hash": public["project"]["project_hash"],
+        "project_handle": public["project"]["project_handle"], "project_display_name": public["project"]["display_name"],
+        "context_snapshot_id": session.context_snapshot_id, "requested_provider": public["requested_provider"],
+        "resolved_runner_mode": public["runner_mode"], "fallback_reason_code": public["fallback_reason_code"],
+        "provider_accepted_at": public["accepted_at"], "parent_session_id": public["parent_session_id"],
+        "model": public["model"], "effort": public["effort"], "trace_id": public["trace_id"], "status": public["status"],
     })
 
 
@@ -148,17 +163,32 @@ class SessionPayload(BaseModel):
     session_id: str = Field(min_length=2, max_length=200)
     runner_provider: str
     runner_session_id: str | None = Field(default=None, min_length=2, max_length=200)
-    project_dir: str = Field(min_length=1, max_length=1024)
+    project_dir: str | None = Field(default=None, min_length=1, max_length=1024)
+    project_handle: str | None = Field(default=None, min_length=2, max_length=200)
     execution_id: str | None = Field(default=None, min_length=2, max_length=200)
     parent_span_id: str | None = Field(default=None, min_length=2, max_length=200)
     model: str | None = None
     effort: str | None = None
     trace_id: str | None = None
+    context_snapshot_id: str | None = Field(default=None, min_length=2, max_length=200)
+    context_revision: int | None = Field(default=None, ge=1)
+    requested_provider: str | None = None
+    resolved_provider: str | None = None
+    runner_mode: str = "host"
+    fallback_reason_code: str | None = None
+    parent_session_id: str | None = Field(default=None, min_length=2, max_length=200)
 
 
 class RunPayload(BaseModel):
     prompt: str = Field(min_length=1, max_length=32000)
     request_id: str = Field(min_length=2, max_length=200)
+
+
+class RebindContextPayload(BaseModel):
+    expected_snapshot_id: str = Field(min_length=2, max_length=200)
+    expected_revision: int = Field(ge=1)
+    next_snapshot_id: str = Field(min_length=2, max_length=200)
+    next_revision: int = Field(ge=2)
 
 
 class VisibleAuthPayload(BaseModel):
@@ -195,7 +225,7 @@ def _call(action):
 @app.get("/api/v1/host-bridge/health")
 async def health() -> dict[str, Any]:
     value = bridge.health()
-    if not os.getenv("OMNI_KE_URL") or not (os.getenv("OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE") or os.getenv("OMNI_RUNTIME_TRACE_TOKEN_FILE")):
+    if not os.getenv("OMNI_KE_URL") or _core_service_headers() is None:
         value["state"] = "degraded"
         value["reason_codes"] = [*value["reason_codes"], "core_contract_sync_unconfigured"]
     return value
@@ -203,13 +233,24 @@ async def health() -> dict[str, Any]:
 
 @app.post("/api/v1/host-bridge/sessions", dependencies=[Depends(require_host_access)])
 async def create_session(payload: SessionPayload) -> dict[str, Any]:
-    session = _call(lambda: bridge.ensure_session(HostSession(**payload.model_dump())))
+    values = payload.model_dump()
+    supplied_handle = values.pop("project_handle")
+    values["project_dir"] = values.get("project_dir") or os.getenv("OMNI_PROJECT_DIR", "")
+    session = _call(lambda: bridge.ensure_session(HostSession(**values)))
+    if supplied_handle and supplied_handle not in {"project:default", session.project_handle}:
+        raise HTTPException(status_code=409, detail={"code": "project_handle_mismatch"})
     return {**as_public_session(session), "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
 @app.get("/api/v1/host-bridge/sessions/{session_id}", dependencies=[Depends(require_host_access)])
 async def get_session(session_id: str) -> dict[str, Any]:
     return _call(lambda: as_public_session(bridge.get_session(session_id)))
+
+
+@app.post("/api/v1/host-bridge/sessions/{session_id}/context", dependencies=[Depends(require_host_access)])
+async def rebind_session_context(session_id: str, payload: RebindContextPayload) -> dict[str, Any]:
+    session = _call(lambda: bridge.rebind_context(session_id, **payload.model_dump()))
+    return {**as_public_session(session), "contract_sync": "success" if _sync_session(session) else "partial"}
 
 
 @app.post("/api/v1/host-bridge/sessions/{session_id}/runs", dependencies=[Depends(require_host_access)])
@@ -282,8 +323,14 @@ async def legacy_prompt(session_id: str, payload: LegacyPromptPayload) -> dict[s
 def as_public_session(session: HostSession) -> dict[str, Any]:
     return {
         "session_id": session.session_id, "runner_provider": session.runner_provider,
-        "runner_session_id": session.runner_session_id, "project_dir": session.project_dir,
+        "runner_session_id": session.runner_session_id,
+        "project": {"project_handle": session.project_handle, "project_hash": session.project_hash, "display_name": session.project_display_name},
         "execution_id": session.execution_id, "parent_span_id": session.parent_span_id,
         "model": session.model, "effort": session.effort, "trace_id": session.trace_id,
-        "status": session.status,
+        "status": session.status, "context_snapshot_id": session.current_context_snapshot_id or session.context_snapshot_id,
+        "context_revision": session.current_context_revision or session.context_revision,
+        "requested_provider": session.requested_provider or session.runner_provider,
+        "resolved_provider": session.resolved_provider or session.runner_provider,
+        "runner_mode": session.runner_mode, "fallback_reason_code": session.fallback_reason_code,
+        "accepted_at": session.accepted_at, "parent_session_id": session.parent_session_id,
     }

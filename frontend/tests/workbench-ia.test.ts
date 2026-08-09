@@ -4,12 +4,12 @@ import { FEATURE_REGISTRY } from '@/lib/feature-registry'
 import { resolveWorkbenchLocation, workbenchNavigationForMode } from '@/lib/workbench-ia'
 
 describe('workbench IA projection', () => {
-  it('derives exactly five ordered primary groups for each mode from FeatureDefinition', () => {
+  it('derives exactly three ordered groups for each mode from FeatureDefinition', () => {
     const work = workbenchNavigationForMode('work')
     const development = workbenchNavigationForMode('development')
 
-    expect(work.map((group) => group.id)).toEqual(['today', 'products', 'operations', 'content', 'knowledge'])
-    expect(development.map((group) => group.id)).toEqual(['agents', 'skills-tools', 'workflows', 'prompt-eval', 'runs-system'])
+    expect(work.map((group) => group.id)).toEqual(['production', 'analysis', 'library'])
+    expect(development.map((group) => group.id)).toEqual(['agent-tools', 'quality', 'system'])
     for (const group of [...work, ...development]) {
       expect(group.entries.length).toBeGreaterThan(0)
       expect(group.href).toBe(group.entries[0].href)
@@ -30,25 +30,26 @@ describe('workbench IA projection', () => {
     expect(new Set(primary.map((entry) => entry.featureId)).size).toBe(visible.length)
     expect(primary.map((entry) => entry.featureId)).not.toContain('task-management')
     expect(primary.map((entry) => entry.featureId)).not.toContain('tri-mind')
-    expect(groups.filter((group) => group.mode === 'work')).toHaveLength(5)
-    expect(groups.filter((group) => group.mode === 'development')).toHaveLength(5)
+    expect(visible).toHaveLength(16)
+    expect(groups.filter((group) => group.mode === 'work')).toHaveLength(3)
+    expect(groups.filter((group) => group.mode === 'development')).toHaveLength(3)
 
     expect(resolveWorkbenchLocation('/tasks')).toMatchObject({
       kind: 'canonical',
       featureId: 'task-management',
-      primary: { mode: 'work', group: 'today' },
+      primary: { mode: 'development', group: 'system' },
     })
     expect(resolveWorkbenchLocation('/tri-mind')).toMatchObject({
       kind: 'canonical',
       featureId: 'tri-mind',
-      primary: { mode: 'development', group: 'skills-tools' },
+      primary: { mode: 'development', group: 'agent-tools' },
     })
 
-    const workflows = workbenchNavigationForMode('development').find((group) => group.id === 'workflows')
-    expect(workflows?.entries).toContainEqual(expect.objectContaining({
-      featureId: 'sku-pipeline',
+    const system = workbenchNavigationForMode('development').find((group) => group.id === 'system')
+    expect(system?.entries).toContainEqual(expect.objectContaining({
+      featureId: 'workspace-operations',
       relationship: 'contextual',
-      href: '/sku-pipeline',
+      href: '/workspace',
     }))
   })
 
@@ -58,7 +59,7 @@ describe('workbench IA projection', () => {
       canonicalHref: '/chat',
       featureId: 'chat',
       effectiveMode: 'development',
-      primary: { mode: 'development', group: 'agents' },
+      primary: { mode: 'development', group: 'agent-tools' },
     })
     expect(resolveWorkbenchLocation('/ad-review/flywheel')).toMatchObject({
       kind: 'owned',
@@ -84,18 +85,18 @@ describe('workbench IA projection', () => {
     expect(resolveWorkbenchLocation('/workspace').effectiveMode).toBe('work')
   })
 
-  it('uses an active contextual mode for location and breadcrumb when the feature supports it', () => {
-    expect(resolveWorkbenchLocation('/sku-pipeline', undefined, 'development')).toMatchObject({
+  it('uses the workspace contextual system group without leaking content routes into development', () => {
+    expect(resolveWorkbenchLocation('/workspace', undefined, 'development')).toMatchObject({
       effectiveMode: 'development',
       breadcrumb: [
         { label: '开发' },
-        { label: 'Workflows' },
-        { label: 'SKU 圈包链路', href: '/sku-pipeline' },
+        { label: '系统中台' },
+        { label: '工作台与运营闭环', href: '/workspace' },
       ],
     })
-    expect(resolveWorkbenchLocation('/sku-pipeline', undefined, 'work')).toMatchObject({
+    expect(resolveWorkbenchLocation('/sku-pipeline', undefined, 'development')).toMatchObject({
       effectiveMode: 'work',
-      breadcrumb: [{ label: '工作' }, { label: '商品' }, { label: 'SKU 圈包链路' }],
+      breadcrumb: [{ label: '内容' }, { label: '内容生产' }, { label: 'SKU 圈包链路' }],
     })
     expect(resolveWorkbenchLocation('/knowledge', undefined, 'development').effectiveMode).toBe('work')
   })

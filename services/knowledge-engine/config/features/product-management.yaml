@@ -11,7 +11,7 @@ routes:
   owned_surfaces: [/products, "/sku/[id]"]
 ia:
   mode: work
-  primary_group: products
+  primary_group: library
   primary_order: 0
   contextual_groups: []
   phase: retain

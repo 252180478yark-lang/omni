@@ -40,6 +40,14 @@ def _runtime_manifest(repo: Path) -> None:
                     "compose_project": "omni",
                     "database": "omni_vibe_db",
                 },
+                "runtime_profiles": {
+                    "default": "core",
+                    "profiles": {
+                        "core": {"compose_profiles": []},
+                        "content": {"compose_profiles": ["content"]},
+                        "full": {"compose_profiles": ["full"]},
+                    },
+                },
                 "services": {
                     "postgres": {"published_ports": [5432]},
                     "redis": {"published_ports": [6379]},

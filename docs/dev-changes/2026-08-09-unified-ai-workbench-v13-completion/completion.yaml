@@ -1,0 +1,321 @@
+schema_version: 3
+change_id: 2026-08-09-unified-ai-workbench-v13-completion
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: WB13-ACT-001
+  planned_change_id: WB13-CHG-001
+  summary: Added the progressive global Workbench dock with evidence-gated assistant, canonical graph blueprint, runtime/run center, continuity controls and frozen context snapshot/revision state.
+  paths:
+  - frontend/src/components/app-shell.tsx
+  - frontend/src/components/workbench/WorkbenchDock.tsx
+  - frontend/src/lib/workbench-runtime.ts
+  - frontend/src/stores/workbenchStore.ts
+  - frontend/tests/workbench-v13-dock.test.tsx
+  - frontend/tests/workbench-v13-runtime.test.ts
+- id: WB13-ACT-002
+  planned_change_id: WB13-CHG-002
+  summary: Bound every Agent run to the current canonical Workbench context pair and disclosed provider resolution while preserving legacy aliases at the compatibility boundary.
+  paths:
+  - frontend/src/hooks/useAgentChat.ts
+  - frontend/src/lib/agent-chat/host-bridge-runner.ts
+  - frontend/src/lib/agent-chat/session-manager.ts
+  - frontend/src/lib/agent-chat/types.ts
+  - frontend/src/lib/agent-chat/ws-handler.ts
+  - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
+  - frontend/tests/agent-chat/unit/useAgentChat.test.tsx
+  - frontend/tests/agent-chat/unit/workbench-binding.test.ts
+- id: WB13-ACT-003
+  planned_change_id: WB13-CHG-003
+  summary: Made Host sessions and runs durable with opaque project handles, immutable accepted-provider disclosure, frozen context pairs, compare-and-swap rebind, paused restart recovery and raw-path-free public responses.
+  paths:
+  - services/host-bridge/host_bridge/app.py
+  - services/host-bridge/host_bridge/core.py
+  - services/host-bridge/tests/test_workbench_context.py
+- id: WB13-ACT-004
+  planned_change_id: WB13-CHG-004
+  summary: Converged retained Web, approval/runtime and Compose paths on trusted loopback local-owner access while preserving exact same-origin browser mutations, external platform credentials, R3 approval decisions, audit and recovery semantics.
+  paths:
+  - frontend/src/app/api/omni/_shared.ts
+  - frontend/src/app/api/omni/auth/session/route.ts
+  - frontend/src/app/api/omni/runtime-traces/_runtime-auth.ts
+  - frontend/src/app/inbox/page.tsx
+  - frontend/tests/approval-auth-session.test.ts
+  - frontend/tests/inbox-auth-ui.test.tsx
+  - frontend/tests/runtime-api-auth.test.ts
+  - frontend/tests/scout-proxy-trace.test.ts
+  - frontend/tests/single-user-local-trust.test.ts
+  - frontend/tests/workbench-developer-permissions.test.ts
+  - frontend/tests/workbench-navigation-events.test.ts
+  - services/knowledge-engine/app/routers/approval_operations.py
+  - services/knowledge-engine/app/routers/runtime_traces.py
+  - services/knowledge-engine/app/services/approval_operations.py
+  - services/knowledge-engine/tests/test_approval_operation_worker.py
+  - services/knowledge-engine/tests/test_approval_operations.py
+  - services/knowledge-engine/tests/test_single_user_local_trust.py
+  - config/runtime-manifest.yaml
+  - docker-compose.yml
+  - tests/test_compose_runtime_contract.py
+- id: WB13-ACT-005
+  planned_change_id: WB13-CHG-005
+  summary: Extended the Knowledge Engine Agent Contract with canonical opaque identity, context and provider fields while keeping project_dir as an excluded legacy-only input alias.
+  paths:
+  - services/knowledge-engine/app/schemas/runtime_trace.py
+  - services/knowledge-engine/app/services/agent_contracts.py
+  - services/knowledge-engine/tests/test_agent_contracts.py
+- id: WB13-ACT-006
+  planned_change_id: WB13-CHG-006
+  summary: Connected route-derived UI context to append-only migration-104 snapshots, idempotent CAS rebind, the Host current head and grounded suggestions; preserved the accepted Agent security anchor and removed forced Codex sandbox and repository-check bypass flags.
+  paths:
+  - frontend/src/app/api/omni/workbench/context/_context-proxy.ts
+  - frontend/src/app/api/omni/workbench/context/route.ts
+  - frontend/src/app/api/omni/workbench/context/rebind/route.ts
+  - frontend/src/app/api/omni/workbench/suggestions/route.ts
+  - frontend/src/components/app-shell.tsx
+  - frontend/src/components/workbench/WorkbenchDock.tsx
+  - frontend/src/hooks/useAgentChat.ts
+  - frontend/src/lib/agent-chat/codex-runner.ts
+  - frontend/src/lib/agent-chat/host-bridge-runner.ts
+  - frontend/src/lib/workbench-context.ts
+  - frontend/tests/agent-chat/unit/codex-runner.test.ts
+  - frontend/tests/agent-chat/unit/host-bridge-runner.test.ts
+  - frontend/tests/workbench-context-persistence.test.ts
+  - frontend/tests/workbench-suggestions-grounding.test.ts
+  - services/host-bridge/host_bridge/app.py
+  - services/host-bridge/host_bridge/core.py
+  - services/host-bridge/tests/test_host_bridge.py
+  - services/host-bridge/tests/test_workbench_context.py
+  - services/knowledge-engine/app/main.py
+  - services/knowledge-engine/app/routers/workbench_contexts.py
+  - services/knowledge-engine/app/schemas/workbench_contexts.py
+  - services/knowledge-engine/app/services/workbench_contexts.py
+  - services/knowledge-engine/tests/test_workbench_contexts.py
+- id: WB13-ACT-007
+  planned_change_id: WB13-CHG-007
+  summary: 'Corrected the S3 collector regression to assert the declared non-overlapping owners: workspace-operations owns the work workspace and system-console owns the development command center.'
+  paths:
+  - services/knowledge-engine/tests/test_system_graph_collectors.py
+contract_delta:
+- description: Added the S3 system-graph owner regression after the first real feature-branch CI run.
+  reason: CI proved the existing test still expected workspace-operations to own /workspace/development even though the versioned system-console FeatureDefinition is its canonical and sole owner.
+  effect: The test now follows current machine truth and independently verifies both sides of the non-overlapping ownership boundary; no product route or collector implementation changes.
+  accepted: true
+- description: Included the shared runtime-trace BFF authentication helper in local-owner convergence.
+  reason: The blueprint and run center otherwise retained a second identity/HMAC dependency outside the initially discovered shared helper.
+  effect: Loopback-owned reads use local trust; same-origin writes, R3 decisions and audit remain unchanged.
+  accepted: true
+- description: Extended the downstream Knowledge Engine Agent Contract to accept canonical project/context/provider fields.
+  reason: Host Bridge could not remove raw public paths while its active consumer still required project_dir.
+  effect: New fields are additive, the legacy input remains accepted but excluded from output, and no migration is required.
+  accepted: true
+- description: Migrated identity-era frontend regressions and inbox UI/session behavior to the current local-owner contract.
+  reason: Full regression found tests and a visible email/password form that contradicted the single-user product contract.
+  effect: Product login is removed; external provider/platform credentials and browser mutation protections remain.
+  accepted: true
+- description: Hardened approval decision verification after separating requester and decision actors.
+  reason: The local owner may approve an operation requested by the trusted Knowledge Engine principal; conflating both identities rejected valid decisions.
+  effect: Request provenance and approved decision actor are independently validated, with legacy identity decisions still compatible.
+  accepted: true
+- description: Reopened the GRAPH_DIFF_READY candidate for post-commit repair of real context persistence, Host acceptance/rebind semantics, grounded suggestions, approval projection and unsafe Codex argv.
+  reason: Independent code-path review proved the previous passing tests manually injected context and asserted the unsafe sandbox flag instead of exercising the normal UI-to-Host-to-database chain.
+  effect: Adds no migration or external effect; the existing append-only context table and durable approval queue become reachable, and provider/sandbox behavior becomes fail-closed.
+  accepted: true
+verification_results:
+- id: WB13-VER-001
+  command: cd frontend && npx vitest run tests/workbench-v13*.test.ts tests/workbench-v13*.test.tsx tests/workbench-store.test.ts tests/workbench-shell.test.tsx tests/system-command-center.test.tsx tests/runtime-overlay.test.tsx
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 6 files and 31 tests. A separate full frontend run also passed 33 files and 163 tests.
+- id: WB13-VER-002
+  command: cd frontend && npx vitest run tests/agent-chat/unit/codex-runner.test.ts tests/agent-chat/unit/host-bridge-runner.test.ts tests/agent-chat/unit/session-manager.test.ts tests/agent-chat/unit/workbench-binding.test.ts
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 4 files and 18 tests for canonical binding, provider disclosure, fallback and session persistence.
+- id: WB13-VER-003
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pytest-asyncio>=0.24,<1' --with 'fastapi>=0.115,<1' --with 'httpx>=0.27,<1' --with 'pydantic>=2.8,<3' --with 'python-multipart>=0.0.9,<1' pytest -q services/host-bridge/tests/test_host_bridge.py services/host-bridge/tests/test_host_bridge_http.py services/host-bridge/tests/test_workbench_context.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 12 tests for opaque identity, context CAS, durable recovery, idempotency and provider fixation.
+- id: WB13-VER-004
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pytest-asyncio>=0.24,<1' --with 'fastapi>=0.115,<1' --with 'pydantic>=2.10,<3' --with 'pydantic-settings>=2.6,<3' --with 'httpx>=0.27,<1' --with 'asyncpg>=0.30,<1' --with 'pgvector>=0.3.6,<1' --with 'redis>=5,<7' --with 'python-multipart>=0.0.9,<1' --with 'pyyaml>=6,<7' pytest -q services/knowledge-engine/tests/test_approval_operations.py services/knowledge-engine/tests/test_approval_operation_worker.py services/knowledge-engine/tests/test_runtime_trace.py services/knowledge-engine/tests/test_runtime_trace_router.py services/knowledge-engine/tests/test_agent_contracts.py services/knowledge-engine/tests/test_single_user_local_trust.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 63 tests for local trust, R3 fail-closed approval, CAS/exactly-once behavior, runtime events and Agent Contract persistence.
+- id: WB13-VER-005
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pyyaml>=6,<7' pytest -q tests/test_compose_runtime_contract.py tests/test_runtime_allocation.py tests/test_runtime_guard.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 64 tests for loopback runtime profiles, allocation, fail-closed guard behavior and identity-service demotion.
+- id: WB13-VER-006
+  command: cd frontend && npm run build -- --no-lint
+  status: passed
+  exit_code: 0
+  evidence: Fresh optimized Next build compiled, type-checked and generated all 47 pages successfully.
+- id: WB13-VER-007
+  command: python3 scripts/check_agent_policy.py --require-tracked
+  status: passed
+  exit_code: 0
+  evidence: Fresh policy check passed with valid dynamic totals, skill references and tracked routed assets; git diff --check also passed.
+- id: WB13-VER-008
+  command: uv run --no-project --with 'pytest>=8,<9' --with 'pytest-asyncio>=0.24,<1' --with 'fastapi>=0.115,<1' --with 'httpx>=0.27,<1' --with 'pydantic>=2.10,<3' --with 'asyncpg>=0.30,<1' pytest -q services/knowledge-engine/tests/test_workbench_contexts.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 3 tests for append-only creation/reuse, idempotent CAS retry, stale conflict, server-owned permission hashing, raw-path rejection and router registration.
+- id: WB13-VER-009
+  command: cd frontend && npx vitest run tests/workbench-context*.test.ts tests/workbench-suggestions*.test.ts tests/workbench-v13*.test.ts tests/workbench-v13*.test.tsx tests/agent-chat/unit/workbench-binding.test.ts tests/agent-chat/unit/host-bridge-runner.test.ts
+  status: passed
+  exit_code: 0
+  evidence: Fresh run passed 6 files and 15 tests for route-derived persistence, BFF-to-Host CAS projection, grounded suggestion guardrails, frozen operation context and pre/post-acceptance fallback semantics. The full frontend suite also passed 35 files and 170 tests, including fail-closed rejection of unbound Agent runs, and the optimized build generated all 47 pages.
+- id: WB13-VER-010
+  command: uv run --project services/knowledge-engine --extra dev python -B -m pytest -q -p no:cacheprovider services/knowledge-engine/tests/test_feature_definitions.py services/knowledge-engine/tests/test_system_graph_collectors.py
+  status: passed
+  exit_code: 0
+  evidence: Fresh local run passed 17 FeatureDefinition and system-graph collector tests in 3.12 seconds, including positive system-console ownership and negative workspace-operations ownership for /workspace/development.
+graph_diff:
+  status: clean
+  snapshot_before: git:4623aacb087c9a7337e17b25236e685d429e2a2b
+  snapshot_after: worktree:unified-ai-workbench-v13:2026-08-09T04:03:00Z
+  added_nodes:
+  - component:frontend.WorkbenchAssistant
+  - component:frontend.WorkbenchBlueprint
+  - component:frontend.WorkbenchRunCenter
+  - api:POST:/api/omni/workbench/context
+  - api:POST:/api/omni/workbench/context/rebind
+  - api:POST:/api/omni/workbench/suggestions
+  - api:POST:/api/v1/workbench-contexts
+  - api:POST:/api/v1/workbench-contexts/rebind
+  - state:local-single-user-trust
+  modified_nodes:
+  - component:frontend.AppShell
+  - service:host-bridge.HostBridge
+  - api:POST:/api/v1/agent-contracts/sessions
+  - service:knowledge-engine.approval_operations
+  - state:workbench.context_revision
+  - db:mcp.workbench_context_snapshots
+  - test:system-graph-feature-owner
+  removed_nodes: []
+  added_edges:
+  - from: component:frontend.AppShell
+    to: component:frontend.WorkbenchAssistant
+    relation: renders
+  - from: component:frontend.AppShell
+    to: component:frontend.WorkbenchBlueprint
+    relation: renders
+  - from: component:frontend.AppShell
+    to: component:frontend.WorkbenchRunCenter
+    relation: renders
+  - from: service:host-bridge.HostBridge
+    to: db:mcp.runtime_executions
+    relation: writes-attempt-events
+  - from: component:frontend.AppShell
+    to: api:POST:/api/omni/workbench/context
+    relation: persists-route-context
+  - from: api:POST:/api/omni/workbench/context/rebind
+    to: api:POST:/api/v1/workbench-contexts/rebind
+    relation: compare-and-swap
+  - from: api:POST:/api/v1/workbench-contexts/rebind
+    to: db:mcp.workbench_context_snapshots
+    relation: appends
+  - from: api:POST:/api/omni/workbench/context/rebind
+    to: service:host-bridge.HostBridge
+    relation: advances-current-head
+  - from: component:frontend.WorkbenchAssistant
+    to: api:POST:/api/omni/workbench/suggestions
+    relation: requests-grounded-advice
+  removed_edges:
+  - from: component:frontend.AppShell
+    to: service:identity-service
+    relation: requires-product-login
+  required_edges:
+  - from: component:frontend.AppShell
+    to: component:frontend.WorkbenchAssistant
+    relation: renders
+    status: present
+    evidence: AppShell renders WorkbenchDock and the dock exposes the assistant surface globally; UI tests pass.
+  - from: component:frontend.AppShell
+    to: component:frontend.WorkbenchBlueprint
+    relation: renders
+    status: present
+    evidence: WorkbenchDock reuses SystemGraphView as its blueprint projection; UI tests pass.
+  - from: component:frontend.AppShell
+    to: component:frontend.WorkbenchRunCenter
+    relation: renders
+    status: present
+    evidence: WorkbenchDock reuses RuntimeOverlay and runtime state for its run center; UI tests pass.
+  - from: component:frontend.WorkbenchBlueprint
+    to: api:GET:/api/omni/system-graph/snapshot
+    relation: reads
+    status: present
+    evidence: The reused SystemGraphView retains the canonical system-graph snapshot reader and truthful unavailable state.
+  - from: component:frontend.WorkbenchRunCenter
+    to: api:GET:/api/omni/runtime-traces/active
+    relation: reads
+    status: present
+    evidence: The reused RuntimeOverlay/runtime helper reads the active runtime projection and deduplicates events.
+  - from: component:frontend.WorkbenchRunCenter
+    to: api:POST:/api/v1/approval-operations
+    relation: decides
+    status: present
+    evidence: Existing approval decision path remains same-origin and explicit; 63 Knowledge Engine approval/runtime tests pass.
+  - from: api:POST:/api/omni/host-bridge/sessions
+    to: service:host-bridge.HostBridge
+    relation: calls
+    status: present
+    evidence: Host runner/session manager continue through the Host Bridge route with the canonical project/context payload.
+  - from: service:host-bridge.HostBridge
+    to: api:POST:/api/v1/agent-contracts/sessions
+    relation: projects
+    status: present
+    evidence: Host sync projects opaque project identity, frozen context and provider disclosure; Host and Agent Contract tests pass.
+  - from: service:host-bridge.HostBridge
+    to: db:mcp.runtime_executions
+    relation: writes-attempt-events
+    status: present
+    evidence: Durable Host runs persist accepted/recovery attempt events with frozen context and immutable provider selection.
+  - from: api:POST:/api/v1/approval-operations
+    to: db:mcp.approval_operations
+    relation: writes
+    status: present
+    evidence: Existing approval store/CAS path is unchanged and the full approval worker suite passes.
+  - from: component:frontend.AppShell
+    to: api:POST:/api/omni/workbench/context
+    relation: persists-route-context
+    status: present
+    evidence: AppShell derives only safe opaque refs from the committed route, and frontend context persistence tests pass.
+  - from: api:POST:/api/omni/workbench/context/rebind
+    to: api:POST:/api/v1/workbench-contexts/rebind
+    relation: compare-and-swap
+    status: present
+    evidence: The same-origin BFF forwards the complete expected pair and treats a lost-response retry as idempotent only when the exact next snapshot matches.
+  - from: api:POST:/api/v1/workbench-contexts/rebind
+    to: db:mcp.workbench_context_snapshots
+    relation: appends
+    status: present
+    evidence: The Knowledge Engine store serializes by context_ref, never updates an existing snapshot and rejects stale expected pairs; 3 focused tests pass.
+  - from: api:POST:/api/omni/workbench/context/rebind
+    to: service:host-bridge.HostBridge
+    relation: advances-current-head
+    status: present
+    evidence: The BFF advances only the Host current head after database CAS; accepted anchor sync remains immutable and 14 Host tests pass.
+  - from: component:frontend.WorkbenchAssistant
+    to: api:POST:/api/omni/workbench/suggestions
+    relation: requests-grounded-advice
+    status: present
+    evidence: WorkbenchDock now consumes a same-origin deterministic suggestion route that returns insufficient/unavailable instead of inventing an operation when evidence is absent.
+  orphan_nodes: []
+  unknowns:
+  - node_or_edge: runtime:real-external-provider
+    reason: No real provider credential or paid external execution was required for local acceptance; capability-unavailable remains the tested truthful state.
+    owner: host-bridge-runtime
+    expires_at: '2026-09-09'
+    accepted: true
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: The change is additive or backward-readable, adds no migration or destructive data operation, preserves legacy Agent aliases and can be reverted as focused commits; identity source remains available only under the explicit legacy profile.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''

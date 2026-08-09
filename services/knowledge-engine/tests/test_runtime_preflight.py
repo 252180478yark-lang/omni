@@ -34,6 +34,7 @@ def fixture() -> tuple[dict, dict[str, str]]:
         "canonical": False,
         "runtime_id": "system-convergence-deadbeef",
         "compose_project": "omni-system-convergence",
+        "runtime_profile": "core",
         "ports": ports,
         "database": "omni_verify_system_convergence",
         "database_schema": "wt_system_convergence",
@@ -73,6 +74,7 @@ def fixture() -> tuple[dict, dict[str, str]]:
         "OMNI_RUNTIME_ALLOCATION_FILE": "unused",
         "OMNI_ALLOCATION_ID": allocation["allocation_id"],
         "OMNI_RUNTIME_ID": allocation["runtime_id"],
+        "OMNI_RUNTIME_PROFILE": allocation["runtime_profile"],
         "OMNI_WORKTREE_ID": allocation["worktree_id"],
         "OMNI_SOURCE_COMMIT": allocation["build_sha"],
         "OMNI_SOURCE_FINGERPRINT": allocation["source_fingerprint"],
@@ -96,6 +98,7 @@ def test_runtime_environment_binds_exact_active_allocation_and_lease(tmp_path: P
     env["OMNI_RUNTIME_ALLOCATION_FILE"] = str(path)
     result = validate_runtime_environment(env, now=NOW)
     assert result["allocation_id"] == env["OMNI_ALLOCATION_ID"]
+    assert result["runtime_profile"] == "core"
     assert result["cron_owner"] is False
     assert result["approval_worker_owner"] is True
 
@@ -128,6 +131,23 @@ def test_missing_runtime_environment_is_typed_and_path_free():
         validate_runtime_environment({})
     assert "OMNI_RUNTIME_ALLOCATION_FILE" in str(caught.value)
     assert "/" not in str(caught.value)
+
+
+@pytest.mark.parametrize("mutation", ["missing-env", "mismatch", "legacy-allocation"])
+def test_runtime_profile_identity_fails_closed(tmp_path: Path, mutation: str):
+    state, env = fixture()
+    if mutation == "missing-env":
+        del env["OMNI_RUNTIME_PROFILE"]
+    elif mutation == "mismatch":
+        env["OMNI_RUNTIME_PROFILE"] = "full"
+    else:
+        del state["allocations"][0]["runtime_profile"]
+    path = tmp_path / "allocations.json"
+    path.write_text(json.dumps(state), encoding="utf-8")
+    env["OMNI_RUNTIME_ALLOCATION_FILE"] = str(path)
+
+    with pytest.raises(RuntimePreflightError, match="runtime_profile|OMNI_RUNTIME_PROFILE"):
+        validate_runtime_environment(env, now=NOW)
 
 
 @pytest.mark.asyncio

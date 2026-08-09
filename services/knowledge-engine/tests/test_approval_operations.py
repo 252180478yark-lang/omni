@@ -530,6 +530,7 @@ async def test_service_hmac_is_required_replay_protected_and_cannot_create(tmp_p
     secret_path = tmp_path / "approval-hmac"
     secret_path.write_bytes(secret)
     monkeypatch.setenv("OMNI_APPROVAL_SERVICE_SECRET_FILE", str(secret_path))
+    monkeypatch.setenv("OMNI_APPROVAL_AUTH_MODE", "service-hmac")
     repository = InMemoryApprovalRepository()
     service = ApprovalOperationService(repository, now=Clock())
     app = FastAPI()

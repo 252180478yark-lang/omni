@@ -24,36 +24,21 @@ afterEach(() => {
 })
 
 describe('approval browser session', () => {
-  it('extracts the HttpOnly session value server-side and verifies the actor', async () => {
-    const verify = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
-      expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer test-token-jwt-value')
-      return json({ data: { valid: true, sub: 'admin@example.com', role: 'admin' } })
-    })
+  it('ignores legacy browser cookies and resolves the configured local owner', async () => {
+    const verify = vi.fn()
     vi.stubGlobal('fetch', verify)
     const request = new Request('http://localhost/api/omni/inbox', {
       headers: { Cookie: 'theme=dark; omni_approval_session=test-token-jwt-value' },
     })
-    await expect(requireApprovalActor(request)).resolves.toEqual({
-      id: 'admin@example.com',
-      role: 'admin',
-    })
+    await expect(requireApprovalActor(request)).resolves.toEqual({ id: 'local-owner', role: 'owner' })
     expect(approvalAuthorizationFromCookie(request.headers.get('cookie'))).toBe(
       'Bearer test-token-jwt-value',
     )
   })
 
-  it('logs in through identity and returns no script-readable token', async () => {
-    vi.stubEnv('IDENTITY_SERVICE_URL', 'http://identity.test')
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url = String(input)
-      if (url.endsWith('/api/v1/auth/login')) {
-        return json({ data: { access_token: 'sample-header.payload.signature', refresh_token: 'sample-refresh-token' } })
-      }
-      if (url.endsWith('/api/v1/auth/verify')) {
-        return json({ data: { valid: true, sub: 'admin@example.com', role: 'admin' } })
-      }
-      throw new Error(`unexpected URL ${url}`)
-    }))
+  it('returns local-owner trust without calling Identity or issuing a product session', async () => {
+    const upstream = vi.fn()
+    vi.stubGlobal('fetch', upstream)
     const response = await login(new Request('http://localhost/api/omni/auth/session', {
       method: 'POST',
       headers: {
@@ -61,20 +46,14 @@ describe('approval browser session', () => {
         Origin: 'http://localhost',
         Host: 'localhost',
       },
-      body: JSON.stringify({ email: 'admin@example.com', password: 'sample-password' }),
+      body: JSON.stringify({}),
     }))
     const body = await response.json()
     const cookie = response.headers.get('set-cookie') || ''
     expect(response.status).toBe(200)
-    expect(body).toEqual({
-      success: true,
-      actor: { id: 'admin@example.com', role: 'admin' },
-    })
-    expect(JSON.stringify(body)).not.toContain('sample-header.payload.signature')
-    expect(JSON.stringify(body)).not.toContain('sample-refresh-token')
-    expect(cookie).toContain('omni_approval_session=sample-header.payload.signature')
-    expect(cookie.toLowerCase()).toContain('httponly')
-    expect(cookie.toLowerCase()).toContain('samesite=strict')
+    expect(body).toEqual({ success: true, actor: { id: 'local-owner', role: 'owner' }, trust_mode: 'trusted-local' })
+    expect(cookie).not.toContain('omni_approval_session')
+    expect(upstream).not.toHaveBeenCalled()
   })
 
   it('rejects cross-origin approval before identity or upstream calls', async () => {

@@ -1,5 +1,5 @@
 {
-  "definition_revision": "sha256:b8fe7b19a50e5e85f56fc64bcd18f81654801454a2db21a7d8df32e386fefa19",
+  "definition_revision": "sha256:26fe5859ff031dd2aed7a986277770cd6b923b9b12357839d3652979b019586f",
   "frontend_registry": [
     {
       "aliases": [
@@ -22,8 +22,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "merge",
-        "primary_group": "operations",
-        "primary_order": 10
+        "primary_group": "analysis",
+        "primary_order": 30
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -38,12 +38,10 @@
         "kind": "team"
       },
       "placements": [
-        "direct",
-        "home",
-        "onboarding"
+        "direct"
       ],
       "title": "投放复盘",
-      "visible": true
+      "visible": false
     },
     {
       "aliases": [],
@@ -61,8 +59,8 @@
         "flag": "unified_shell",
         "mode": "development",
         "phase": "retain",
-        "primary_group": "agents",
-        "primary_order": 10
+        "primary_group": "agent-tools",
+        "primary_order": 20
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -90,18 +88,12 @@
       "feature_id": "approval-inbox",
       "href": "/inbox",
       "ia": {
-        "contextual_groups": [
-          {
-            "group": "operations",
-            "mode": "work",
-            "order": 30
-          }
-        ],
+        "contextual_groups": [],
         "flag": "unified_shell",
-        "mode": "work",
+        "mode": "development",
         "phase": "merge",
-        "primary_group": "today",
-        "primary_order": 10
+        "primary_group": "quality",
+        "primary_order": 20
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -135,17 +127,11 @@
       "feature_id": "chat",
       "href": "/chat",
       "ia": {
-        "contextual_groups": [
-          {
-            "group": "prompt-eval",
-            "mode": "development",
-            "order": 10
-          }
-        ],
+        "contextual_groups": [],
         "flag": "unified_shell",
         "mode": "development",
         "phase": "retain",
-        "primary_group": "agents",
+        "primary_group": "agent-tools",
         "primary_order": 0
       },
       "lifecycle": "active",
@@ -180,8 +166,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "merge",
-        "primary_group": "operations",
-        "primary_order": 20
+        "primary_group": "analysis",
+        "primary_order": 40
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -193,11 +179,10 @@
         "kind": "team"
       },
       "placements": [
-        "direct",
-        "sidebar"
+        "direct"
       ],
       "title": "投后回传与带货榜",
-      "visible": true
+      "visible": false
     },
     {
       "aliases": [],
@@ -215,8 +200,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "content",
-        "primary_order": 0
+        "primary_group": "production",
+        "primary_order": 20
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -260,8 +245,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "products",
-        "primary_order": 10
+        "primary_group": "library",
+        "primary_order": 30
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -272,11 +257,10 @@
         "kind": "team"
       },
       "placements": [
-        "direct",
-        "sidebar"
+        "direct"
       ],
       "title": "成本管理",
-      "visible": true
+      "visible": false
     },
     {
       "aliases": [],
@@ -294,8 +278,8 @@
         "flag": "unified_shell",
         "mode": "development",
         "phase": "retain",
-        "primary_group": "prompt-eval",
-        "primary_order": 20
+        "primary_group": "quality",
+        "primary_order": 10
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -327,8 +311,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "knowledge",
-        "primary_order": 10
+        "primary_group": "library",
+        "primary_order": 20
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -366,8 +350,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "knowledge",
-        "primary_order": 0
+        "primary_group": "library",
+        "primary_order": 10
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -401,8 +385,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "content",
-        "primary_order": 30
+        "primary_group": "analysis",
+        "primary_order": 20
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -436,7 +420,7 @@
         "flag": "unified_shell",
         "mode": "development",
         "phase": "retain",
-        "primary_group": "prompt-eval",
+        "primary_group": "agent-tools",
         "primary_order": 30
       },
       "lifecycle": "active",
@@ -469,8 +453,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "knowledge",
-        "primary_order": 20
+        "primary_group": "library",
+        "primary_order": 40
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -482,12 +466,10 @@
         "kind": "team"
       },
       "placements": [
-        "direct",
-        "home",
-        "onboarding"
+        "direct"
       ],
       "title": "资讯中心",
-      "visible": true
+      "visible": false
     },
     {
       "aliases": [],
@@ -505,8 +487,8 @@
         "flag": "unified_shell",
         "mode": "development",
         "phase": "retain",
-        "primary_group": "skills-tools",
-        "primary_order": 0
+        "primary_group": "agent-tools",
+        "primary_order": 10
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -539,7 +521,7 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "products",
+        "primary_group": "library",
         "primary_order": 0
       },
       "lifecycle": "active",
@@ -574,7 +556,7 @@
         "flag": "unified_shell",
         "mode": "development",
         "phase": "retain",
-        "primary_group": "prompt-eval",
+        "primary_group": "quality",
         "primary_order": 0
       },
       "lifecycle": "active",
@@ -607,8 +589,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "content",
-        "primary_order": 10
+        "primary_group": "analysis",
+        "primary_order": 0
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -641,8 +623,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "operations",
-        "primary_order": 0
+        "primary_group": "analysis",
+        "primary_order": 50
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -653,11 +635,10 @@
         "kind": "team"
       },
       "placements": [
-        "direct",
-        "sidebar"
+        "direct"
       ],
       "title": "巡店监控",
-      "visible": true
+      "visible": false
     },
     {
       "aliases": [],
@@ -671,18 +652,12 @@
       "feature_id": "sku-pipeline",
       "href": "/sku-pipeline",
       "ia": {
-        "contextual_groups": [
-          {
-            "group": "workflows",
-            "mode": "development",
-            "order": 0
-          }
-        ],
+        "contextual_groups": [],
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "products",
-        "primary_order": 20
+        "primary_group": "production",
+        "primary_order": 10
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -709,29 +684,28 @@
       ],
       "domain": "system",
       "feature_id": "system-console",
-      "href": "/",
+      "href": "/workspace/development",
       "ia": {
         "contextual_groups": [],
         "flag": "unified_shell",
         "mode": "development",
         "phase": "merge",
-        "primary_group": "runs-system",
-        "primary_order": 10
+        "primary_group": "system",
+        "primary_order": 30
       },
       "lifecycle": "active",
       "owned_surfaces": [
-        "/"
+        "/workspace/development"
       ],
       "owner": {
         "id": "omni",
         "kind": "team"
       },
       "placements": [
-        "direct",
-        "sidebar"
+        "direct"
       ],
       "title": "系统控制台",
-      "visible": true
+      "visible": false
     },
     {
       "aliases": [],
@@ -753,8 +727,8 @@
         "flag": "unified_shell",
         "mode": "development",
         "phase": "retain",
-        "primary_group": "runs-system",
-        "primary_order": 0
+        "primary_group": "system",
+        "primary_order": 20
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -768,7 +742,7 @@
         "direct"
       ],
       "title": "系统执行中台与运行雷达",
-      "visible": true
+      "visible": false
     },
     {
       "aliases": [],
@@ -794,17 +768,11 @@
       "feature_id": "system-convergence-s4-s6",
       "href": "/system-graph",
       "ia": {
-        "contextual_groups": [
-          {
-            "group": "skills-tools",
-            "mode": "development",
-            "order": 10
-          }
-        ],
+        "contextual_groups": [],
         "flag": "unified_shell",
         "mode": "development",
         "phase": "merge",
-        "primary_group": "workflows",
+        "primary_group": "system",
         "primary_order": 10
       },
       "lifecycle": "active",
@@ -819,7 +787,7 @@
         "direct"
       ],
       "title": "System graph planning and pilot controls",
-      "visible": true
+      "visible": false
     },
     {
       "aliases": [],
@@ -835,10 +803,10 @@
       "ia": {
         "contextual_groups": [],
         "flag": "unified_shell",
-        "mode": "work",
+        "mode": "development",
         "phase": "degrade",
-        "primary_group": "today",
-        "primary_order": 20
+        "primary_group": "system",
+        "primary_order": 40
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -870,8 +838,8 @@
         "flag": "unified_shell",
         "mode": "development",
         "phase": "degrade",
-        "primary_group": "skills-tools",
-        "primary_order": 20
+        "primary_group": "agent-tools",
+        "primary_order": 40
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -903,8 +871,8 @@
         "flag": "unified_shell",
         "mode": "work",
         "phase": "retain",
-        "primary_group": "content",
-        "primary_order": 20
+        "primary_group": "analysis",
+        "primary_order": 10
       },
       "lifecycle": "active",
       "owned_surfaces": [
@@ -923,7 +891,12 @@
       "visible": true
     },
     {
-      "aliases": [],
+      "aliases": [
+        {
+          "href": "/",
+          "target": "/workspace"
+        }
+      ],
       "capabilities": [
         {
           "capability_id": "operations-workspace",
@@ -934,11 +907,17 @@
       "feature_id": "workspace-operations",
       "href": "/workspace",
       "ia": {
-        "contextual_groups": [],
+        "contextual_groups": [
+          {
+            "group": "system",
+            "mode": "development",
+            "order": 0
+          }
+        ],
         "flag": "unified_shell",
         "mode": "work",
         "phase": "merge",
-        "primary_group": "today",
+        "primary_group": "production",
         "primary_order": 0
       },
       "lifecycle": "active",
@@ -946,8 +925,7 @@
         "/decisions",
         "/insights",
         "/review",
-        "/workspace",
-        "/workspace/development"
+        "/workspace"
       ],
       "owner": {
         "id": "omni",

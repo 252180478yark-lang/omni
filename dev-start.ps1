@@ -4,9 +4,9 @@
     Omni-Vibe local dev launcher (rewritten v2 — Windows + Playwright safe)
 
 .DESCRIPTION
-    Starts Postgres + Redis (Docker), applies migrations, then launches every
-    Python service via `_dev_server.py` (sets Windows ProactorEventLoop so
-    Playwright Chromium can spawn) and the Next.js frontend.
+    Core starts the allocated database, Hub, and Knowledge Engine in Docker,
+    with Identity and Next.js on the host for hot reload. Content/full start
+    their exact root-Compose projections so service-name DNS remains valid.
 
     Each service lands in its own Hidden window with stdout/err redirected to
     .dev-logs\<service>.log{,.err}. PIDs are tracked in .dev-pids for clean
@@ -19,15 +19,19 @@
     Don't start the Next.js frontend.
 
 .PARAMETER Only
-    Comma-separated subset of services to start (e.g. -Only scout-agent,frontend).
+    Core-only subset of host services to start (identity-service, frontend).
 
 .PARAMETER NoOptional
-    Skip identity-service and news-aggregator.  Approval/login UI will be
-    degraded because Identity is a required dependency of that surface.
+    Deprecated compatibility alias for -RuntimeProfile core. Identity remains
+    part of core because authentication and Human Gate depend on it.
+
+.PARAMETER RuntimeProfile
+    Exact runtime projection: core (default), content, or full. Content/full
+    use the root Compose stack; full is the only profile that starts nginx.
 
 .EXAMPLE
     .\dev-start.ps1
-    .\dev-start.ps1 -Only scout-agent,frontend -SkipDocker
+    .\dev-start.ps1 -Only identity-service,frontend -SkipDocker
     .\dev-start.ps1 -NoOptional
 #>
 
@@ -36,6 +40,8 @@ param(
     [switch]$SkipFrontend,
     [string[]]$Only,
     [switch]$NoOptional,
+    [ValidateSet("core", "content", "full")]
+    [string]$RuntimeProfile = "core",
     [string]$ChangeId = "local-dev",
     [string]$Owner = "local-developer"
 )
@@ -46,12 +52,22 @@ $LOG_DIR = Join-Path $ROOT ".dev-logs"
 $PID_FILE = Join-Path $ROOT ".dev-pids"
 $DEV_RUNTIME_LAUNCHER = Join-Path $ROOT "scripts\dev_runtime_environment.py"
 
+if ($NoOptional) {
+    Write-Host "  WARNING: -NoOptional is deprecated; using -RuntimeProfile core. Identity remains enabled." -ForegroundColor DarkYellow
+    $RuntimeProfile = "core"
+}
+if ($RuntimeProfile -ne "core" -and ($SkipDocker -or $SkipFrontend -or $Only)) {
+    Write-Host "  ERROR: content/full are exact containerized profiles; -SkipDocker, -SkipFrontend and -Only are core debug options only." -ForegroundColor Red
+    exit 2
+}
+
 # Acquire and verify isolation before creating directories, containers,
 # processes, or SQL side effects.
 $allocationArgs = @(
     "-B", (Join-Path $ROOT "scripts\runtime_allocation.py"),
     "--root", $ROOT, "acquire",
     "--change-id", $ChangeId, "--owner", $Owner, "--risk-level", "R2",
+    "--runtime-profile", $RuntimeProfile,
     "--path", "docker-compose.yml", "--path", "docker-compose.dev.yml", "--path", "dev-start.ps1",
     "--path", "migrations/**", "--path", "scripts/apply_migrations.py",
     "--path", "scripts/dev_runtime_environment.py",
@@ -98,33 +114,28 @@ $allocatedPorts = @{
     "postgres" = [int]$env:POSTGRES_PORT
     "redis" = [int]$env:REDIS_PORT
 }
+if ($allocation.allocation.runtime_profile -ne $RuntimeProfile -or $env:OMNI_RUNTIME_PROFILE -ne $RuntimeProfile) {
+    Release-NewUnusedAllocation
+    Write-Host "  ERROR: RuntimeAllocation profile evidence does not match the requested profile." -ForegroundColor Red
+    exit 1
+}
 
 # ── Service catalog ──────────────────────────────────────────────────────────
 # Every Python service is launched via `python _dev_server.py <port>`
 # (ProactorEventLoop is set there before uvicorn imports asyncio).
 $SERVICES = @(
-    @{ Name = "identity-service";    Port = $allocatedPorts["identity-service"]; Optional = $true  }
+    @{ Name = "identity-service";    Port = $allocatedPorts["identity-service"] }
     # ai-provider-hub and knowledge-engine run as containers in this exact
     # RuntimeAllocation.  Host services reach their allocated loopback ports;
     # they never reuse the canonical 8001/8002 runtime.
-    @{ Name = "news-aggregator";     Port = $allocatedPorts["news-aggregator"]; Optional = $true  }
-    @{ Name = "video-analysis";      Port = $allocatedPorts["video-analysis"]; Optional = $false }
-    @{ Name = "livestream-analysis"; Port = $allocatedPorts["livestream-analysis"]; Optional = $false }
-    @{ Name = "ad-review-service";   Port = $allocatedPorts["ad-review-service"]; Optional = $false }
-    @{ Name = "scout-agent";         Port = $allocatedPorts["scout-agent"]; Optional = $false }
 )
 
 # ── Header ───────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "=================================================" -ForegroundColor Cyan
-Write-Host "  Omni-Vibe Dev Launcher  (v2, Playwright-safe)" -ForegroundColor Cyan
+Write-Host "  Omni-Vibe Dev Launcher  (profile: $RuntimeProfile)" -ForegroundColor Cyan
 Write-Host "=================================================" -ForegroundColor Cyan
 Write-Host ""
-if ($NoOptional) {
-    Write-Host "  WARNING: -NoOptional disables Identity; login/approval UI health is degraded." -ForegroundColor DarkYellow
-    Write-Host ""
-}
-
 # ── 0. Ensure dirs exist ─────────────────────────────────────────────────────
 if (-not (Test-Path $LOG_DIR)) { New-Item -ItemType Directory -Path $LOG_DIR -Force | Out-Null }
 $REQUIRED_DIRS = @(
@@ -139,6 +150,46 @@ $REQUIRED_DIRS = @(
 foreach ($d in $REQUIRED_DIRS) {
     $full = Join-Path $ROOT $d
     if (-not (Test-Path $full)) { New-Item -ItemType Directory -Path $full -Force | Out-Null }
+}
+
+# content/full are exact, fully containerized projections. This keeps Docker
+# DNS links correct; nginx cannot proxy host-mode processes by service name.
+if ($RuntimeProfile -ne "core") {
+    $composeFile = Join-Path $ROOT "docker-compose.yml"
+    cmd /c "docker info >nul 2>&1"
+    if ($LASTEXITCODE -ne 0) {
+        Release-NewUnusedAllocation
+        Write-Host "  ERROR: Docker is required for the $RuntimeProfile profile." -ForegroundColor Red
+        exit 1
+    }
+    $runtimeSideEffectsStarted = $true
+    docker compose -f $composeFile --profile $RuntimeProfile up -d | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  ERROR: Docker Compose failed to start the exact $RuntimeProfile profile." -ForegroundColor Red
+        exit 1
+    }
+
+    $verified = $false
+    $verifyOutput = ""
+    for ($i = 0; $i -lt 30; $i++) {
+        $verifyOutput = & python -B (Join-Path $ROOT "scripts\runtime_guard.py") verify `
+            --repo-root $ROOT --runtime-id $env:OMNI_RUNTIME_ID `
+            --runtime-profile $RuntimeProfile --allocation-id $env:OMNI_ALLOCATION_ID `
+            --state-dir $env:OMNI_RUNTIME_STATE_DIR --json 2>&1
+        if ($LASTEXITCODE -eq 0) { $verified = $true; break }
+        Start-Sleep -Seconds 2
+    }
+    if (-not $verified) {
+        Write-Host "  ERROR: runtime_guard did not verify the exact $RuntimeProfile service/health projection." -ForegroundColor Red
+        $verifyOutput | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkYellow }
+        exit 1
+    }
+
+    $entryPort = if ($RuntimeProfile -eq "full") { $env:NGINX_HTTP_PORT } else { $env:FRONTEND_PORT }
+    $entryKind = if ($RuntimeProfile -eq "full") { "nginx" } else { "frontend" }
+    Write-Host "  $RuntimeProfile ready via $entryKind at http://localhost:$entryPort" -ForegroundColor Green
+    Write-Host "  Stop/switch: export this allocation environment, run docker compose down (never down -v), then release the allocation." -ForegroundColor DarkGray
+    exit 0
 }
 
 # ── 1. Docker (Postgres + Redis) + migrations ────────────────────────────────
@@ -225,11 +276,6 @@ function Test-PortFree {
 $started = @()
 foreach ($svc in $SERVICES) {
     if ($Only -and $Only -notcontains $svc.Name) { continue }
-    if ($NoOptional -and $svc.Optional) {
-        Write-Host "  [$($svc.Name)] skipped (optional + -NoOptional)" -ForegroundColor DarkGray
-        continue
-    }
-
     $svcDir = Join-Path $ROOT "services\$($svc.Name)"
     if (-not (Test-Path "$svcDir\_dev_server.py")) {
         Write-Host "  [$($svc.Name)] no _dev_server.py — skipped" -ForegroundColor Red
@@ -240,11 +286,6 @@ foreach ($svc in $SERVICES) {
     if (-not (Test-PortFree -Port $svc.Port)) {
         Write-Host "  [$($svc.Name)] :$($svc.Port) already in use — skipped" -ForegroundColor DarkYellow
         continue
-    }
-
-    # knowledge-engine harvester needs HARVESTER_IMAGE_DIR
-    if ($svc.Name -eq "knowledge-engine") {
-        $env:HARVESTER_IMAGE_DIR = "$svcDir\data\images"
     }
 
     $log = Join-Path $LOG_DIR "$($svc.Name).log"
@@ -283,11 +324,13 @@ if (-not $SkipFrontend -and (-not $Only -or $Only -contains "frontend")) {
     } else {
         $feLog = Join-Path $LOG_DIR "frontend.log"
         $frontendDir = Join-Path $ROOT "frontend"
+        $env:PORT = "$frontendPort"
+        $env:OMNI_FRONTEND_HOST = "127.0.0.1"
         $launchArgs = @(
             "-B", $DEV_RUNTIME_LAUNCHER, "launch",
             "--service", "frontend", "--cwd", $frontendDir,
             "--stdout", $feLog, "--stderr", "$feLog.err", "--",
-            "cmd.exe", "/c", "npm", "run", "dev", "--", "-H", "127.0.0.1", "-p", "$frontendPort"
+            "cmd.exe", "/c", "npm", "run", "dev"
         )
         $launchText = & python @launchArgs
         if ($LASTEXITCODE -ne 0) {
@@ -360,10 +403,6 @@ Write-Host ""
 Write-Host "  Frontend            http://localhost:$($allocatedPorts['frontend'])" -ForegroundColor White
 Write-Host "  AI Provider Hub     http://localhost:$($allocatedPorts['ai-provider-hub'])" -ForegroundColor White
 Write-Host "  Knowledge Engine    http://localhost:$($allocatedPorts['knowledge-engine'])" -ForegroundColor White
-Write-Host "  Video Analysis      http://localhost:$($allocatedPorts['video-analysis'])" -ForegroundColor White
-Write-Host "  Livestream Analysis http://localhost:$($allocatedPorts['livestream-analysis'])" -ForegroundColor White
-Write-Host "  Ad Review Service   http://localhost:$($allocatedPorts['ad-review-service'])" -ForegroundColor White
-Write-Host "  Scout Agent         http://localhost:$($allocatedPorts['scout-agent'])" -ForegroundColor White
 Write-Host ""
 Write-Host "  Logs:    .dev-logs\" -ForegroundColor DarkGray
 Write-Host "  Stop:    .\dev-stop.ps1" -ForegroundColor DarkGray

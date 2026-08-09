@@ -1,0 +1,162 @@
+schema_version: 3
+change_id: 2026-08-07-runtime-trace-docker-wiring
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  paths:
+  - tests/test_runtime_allocation.py
+  summary: Added an independent external runtime trace token, canonical receiver and publisher aliases, and side-effect-free active-allocation dry-run behavior.
+- id: ACT-002
+  planned_change_id: CHG-002
+  paths:
+  - services/docker-compose.sp1-sp4.yml
+  - tests/test_compose_runtime_contract.py
+  summary: Mounted one canonical token source read-only into Frontend, Knowledge Engine, and Scout under role-specific aliases; configured Scout's in-network KE URL and startup dependency.
+- id: ACT-003
+  planned_change_id: CHG-003
+  paths:
+  - scripts/dev_runtime_environment.py
+  - tests/test_dev_runtime_environment.py
+  summary: Added Knowledge Engine host support and projected only the receiver alias to KE and publisher alias to Frontend/Scout, always derived from the canonical token path.
+- id: ACT-004
+  planned_change_id: CHG-004
+  paths:
+  - docs/dev-changes/2026-08-07-runtime-trace-docker-wiring/impact.yaml
+  - docs/dev-changes/2026-08-07-runtime-trace-docker-wiring/completion.yaml
+  summary: Recorded the full deployment chain, trust boundaries, rollback, test evidence, and remaining caller-correlation unknown.
+- id: ACT-005
+  planned_change_id: CHG-005
+  paths:
+  - frontend/src/app/api/omni/scout/[[...path]]/route.ts
+  - frontend/tests/scout-proxy-trace.test.ts
+  summary: Forwarded only validated Omni trace-context headers from authenticated actors, returned Scout trace evidence without forwarding authorization, and declined unsupported traceparent continuity.
+- id: ACT-006
+  planned_change_id: CHG-006
+  paths:
+  - .env.example
+  - docs/multi-device/host-bridge.md
+  - tests/test_compose_runtime_contract.py
+  summary: Removed the independently configurable publisher alias from user-facing environment examples and Host Bridge setup instructions so all host and container roles derive from one canonical token path.
+contract_delta:
+- description: Transferred cumulative-candidate ownership of scripts/runtime_allocation.py and docker-compose.yml to their later integration contracts while retaining this contract's trace-specific tests and SP1-SP4 compose ownership.
+  reason: Branch CI evaluates the complete merge-base diff and correctly rejected multiple schema-v3 owners after later integration commits modified the same shared files.
+  effect: The runtime-trace behavior remains present and regression-tested, but each protected shared path now has one final semantic owner in the cumulative delivery candidate.
+  accepted: true
+- description: Added host-mode Knowledge Engine receiver wiring and made OMNI_RUNTIME_TRACE_TOKEN_FILE the single canonical host source for every receiver/publisher mount.
+  reason: Independent PRD review proved host KE was excluded and separately configurable aliases could silently point at different tokens.
+  effect: Container and host publishers always authenticate with the same token as KE; mismatched service alias input is ignored and regression-tested.
+  accepted: true
+- description: Added CHG-005 for Frontend-to-Scout trace-context forwarding and Scout's KE startup dependency.
+  reason: Scout only publishes explicit trace contexts, while the BFF previously stripped all trace headers and Compose did not order Scout after KE.
+  effect: Explicit page/session trace context now reaches Scout and trace response evidence returns to callers; automatic context creation for untraced callers remains an accepted unknown.
+  accepted: true
+- description: Corrected the active-allocation dry-run fast path for every local secret.
+  reason: Red-team review reproduced that dry-run could create a missing external token and omitted its dry_run result field.
+  effect: Both fresh and active dry-runs are side-effect free and expose a consistent dry_run flag.
+  accepted: true
+- description: Authenticated and validated browser-supplied Omni trace context at the Scout BFF and stopped forwarding traceparent.
+  reason: A public BFF forwarding arbitrary identifiers could let an unauthenticated caller cause trusted Scout service events to be appended to an existing trace; Scout does not parse W3C traceparent into Omni identity.
+  effect: Existing untraced Scout calls remain compatible, while trace-linked calls require a verified user and valid bounded identifiers; unsupported W3C continuity is not claimed.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: uv run --with 'pyyaml>=6,<7' --with pytest python -m pytest -q -p no:cacheprovider tests/test_runtime_allocation.py tests/test_compose_runtime_contract.py tests/test_dev_runtime_environment.py
+  status: passed
+  exit_code: 0
+  evidence: 43 allocation, Compose, canonical configuration source, host-role filtering, active dry-run, and no-inline-token tests passed.
+- id: VER-002
+  command: git diff --check
+  status: passed
+  exit_code: 0
+  evidence: Git reported no whitespace or patch-integrity errors after the final security fixes.
+- id: VER-003
+  command: cd frontend && npm run test:unit -- --run tests/scout-proxy-trace.test.ts tests/runtime-api-auth.test.ts tests/runtime-trace-publisher.test.ts tests/runtime-overlay.test.tsx
+  status: passed
+  exit_code: 0
+  evidence: 4 files and 11 tests passed, including authenticated trace forwarding, malformed and unauthenticated injection rejection, traceparent non-forwarding, response evidence, and existing runtime UI contracts.
+- id: VER-004
+  command: cd services/knowledge-engine && uv run --no-project --with pytest --with pytest-asyncio --with httpx==0.27.0 --with fastapi==0.115.0 python -m pytest -q tests/test_runtime_trace_router.py tests/test_runtime_findings_router.py tests/test_runtime_plan_drafts.py
+  status: passed
+  exit_code: 0
+  evidence: 7 Knowledge Engine runtime trace, findings, and plan API tests passed.
+- id: VER-005
+  command: cd services/scout-agent && uv run --no-project --with pytest --with pytest-asyncio --with httpx==0.27.0 --with fastapi==0.115.0 python -m pytest -q tests/test_runtime_trace.py
+  status: passed
+  exit_code: 0
+  evidence: 3 Scout context, response-evidence, and authenticated publisher tests passed.
+graph_diff:
+  status: accepted
+  snapshot_before: git:5b539a0b8d9fe620c530ff43979b536209d1a059
+  snapshot_after: worktree:codex/prd-receipt-recovery
+  added_nodes: []
+  modified_nodes:
+  - workflow:runtime-allocation
+  - config:runtime-trace-token-source
+  - runtime:root-compose
+  - runtime:sp1-sp4-compose
+  - workflow:host-dev-environment
+  - bff:/api/omni/scout/*
+  removed_nodes: []
+  added_edges:
+  - workflow:runtime-allocation -> credential_ref:runtime-trace-token (provisions-file-ref)
+  - credential_ref:runtime-trace-token -> runtime:frontend-container (mounts-read-only)
+  - credential_ref:runtime-trace-token -> runtime:knowledge-engine-container (mounts-read-only)
+  - credential_ref:runtime-trace-token -> runtime:scout-agent-container (mounts-read-only)
+  - runtime:frontend-container -> api:knowledge-engine-runtime-trace (authenticates-to)
+  - runtime:scout-agent-container -> api:knowledge-engine-runtime-trace (publishes-to)
+  removed_edges: []
+  required_edges:
+  - from: workflow:runtime-allocation
+    to: credential_ref:runtime-trace-token
+    relation: provisions-file-ref
+    status: present
+    evidence: RuntimeAllocation creates one repository-external token and emits receiver and publisher aliases pointing to the same absolute file.
+  - from: credential_ref:runtime-trace-token
+    to: runtime:frontend-container
+    relation: mounts-read-only
+    status: present
+    evidence: Both Compose contracts mount the canonical source at /run/secrets/omni_runtime_trace read-only and expose only the publisher alias.
+  - from: credential_ref:runtime-trace-token
+    to: runtime:knowledge-engine-container
+    relation: mounts-read-only
+    status: present
+    evidence: Both Compose contracts mount the canonical source read-only and expose only the receiver alias.
+  - from: credential_ref:runtime-trace-token
+    to: runtime:scout-agent-container
+    relation: mounts-read-only
+    status: present
+    evidence: Root Compose mounts the canonical source read-only and exposes only the publisher alias to Scout.
+  - from: runtime:frontend-container
+    to: api:knowledge-engine-runtime-trace
+    relation: authenticates-to
+    status: present
+    evidence: Frontend's runtime publisher and BFF read the publisher alias derived from the same canonical token mounted into Knowledge Engine.
+  - from: runtime:scout-agent-container
+    to: api:knowledge-engine-runtime-trace
+    relation: publishes-to
+    status: present
+    evidence: Scout receives OMNI_KE_URL=http://knowledge-engine:8002, depends on Knowledge Engine startup, and reads the same canonical token through its publisher alias.
+  orphan_nodes: []
+  unknowns:
+  - node_or_edge: runtime:current-docker-and-browser-health
+    reason: Docker Engine and a running browser deployment are runtime observations and are not implied by static code delivery.
+    owner: runtime-operator
+    expires_at: '2026-08-14T00:00:00Z'
+    accepted: true
+  - node_or_edge: page:frontend-scout-callers -> bff:/api/omni/scout/*
+    reason: The BFF can safely propagate authenticated explicit Omni context, but existing callers do not yet automatically create it; untraced calls remain uncorrelated.
+    owner: frontend-runtime-session
+    expires_at: '2026-08-14T00:00:00Z'
+    accepted: true
+exceptions: []
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: Reverting the candidate commit removes only additive environment projection, Compose mounts, BFF propagation, and tests; no database, credential deletion, or business-data restoration is required, and the external token becomes safely unreferenced.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''

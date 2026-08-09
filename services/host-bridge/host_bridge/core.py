@@ -37,7 +37,20 @@ class HostSession:
     model: str | None = None
     effort: str | None = None
     trace_id: str | None = None
-    status: str = "active"
+    status: str = "resolving"
+    context_snapshot_id: str | None = None
+    context_revision: int | None = None
+    current_context_snapshot_id: str | None = None
+    current_context_revision: int | None = None
+    requested_provider: str | None = None
+    resolved_provider: str | None = None
+    runner_mode: str = "host"
+    fallback_reason_code: str | None = None
+    accepted_at: str | None = None
+    parent_session_id: str | None = None
+    project_handle: str | None = None
+    project_hash: str | None = None
+    project_display_name: str | None = None
 
 
 @dataclass
@@ -49,6 +62,8 @@ class HostRun:
     process_id: int | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
     process: Any = None
+    context_snapshot_id: str | None = None
+    context_revision: int | None = None
 
 
 class ProviderRunner(Protocol):
@@ -106,8 +121,8 @@ class SubprocessProviderRunner:
             if session.runner_session_id:
                 args.extend(["resume", session.runner_session_id])
             else:
-                args.extend(["-C", session.project_dir, "--sandbox", "danger-full-access"])
-            args.extend(["--json", "--skip-git-repo-check"])
+                args.extend(["-C", session.project_dir])
+            args.append("--json")
             if session.model:
                 args.extend(["--model", session.model])
             if session.effort:
@@ -190,10 +205,12 @@ class HostBridge:
         self.visible_auth_opener = visible_auth_opener
         self.lease = HostLease(self.state_dir, instance_id)
         self._session_path = self.state_dir / "sessions.json"
+        self._run_path = self.state_dir / "runs.json"
         self._runs: dict[str, HostRun] = {}
         self._requests: dict[tuple[str, str, str], str] = {}
         self._lock = threading.RLock()
         self._started_at = datetime.now(timezone.utc)
+        self._restore_runs()
 
     def start(self) -> None:
         self.lease.acquire()
@@ -266,28 +283,190 @@ class HostBridge:
         temp.write_text(json.dumps(sessions, sort_keys=True), encoding="utf-8")
         os.replace(temp, self._session_path)
 
+    def _restore_runs(self) -> None:
+        try:
+            raw = json.loads(self._run_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return
+        if not isinstance(raw, dict):
+            return
+        for run_id, record in raw.items():
+            if not isinstance(record, dict):
+                continue
+            try:
+                run = HostRun(**{**record, "process": None})
+            except TypeError:
+                continue
+            if run.status in {"accepted", "running"}:
+                run.status = "paused"
+                run.events.append({
+                    "cursor": len(run.events) + 1,
+                    "kind": "host.run.paused",
+                    "payload": {"reason": "host_restarted"},
+                    "observed_at": datetime.now(timezone.utc).isoformat(),
+                })
+            self._runs[run_id] = run
+            self._requests[("provider-run", run.session_id, run.request_id)] = run_id
+        self._write_runs()
+
+    def _write_runs(self) -> None:
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            run_id: {
+                "run_id": run.run_id,
+                "request_id": run.request_id,
+                "session_id": run.session_id,
+                "status": run.status,
+                "process_id": run.process_id,
+                "events": run.events,
+                "context_snapshot_id": run.context_snapshot_id,
+                "context_revision": run.context_revision,
+            }
+            for run_id, run in self._runs.items()
+        }
+        temp = self._run_path.with_suffix(".tmp")
+        temp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        os.replace(temp, self._run_path)
+
+    @staticmethod
+    def _project_identity(project_dir: str) -> tuple[str, str, str]:
+        digest = hashlib.sha256(project_dir.encode("utf-8")).hexdigest()
+        display = Path(project_dir).name or "project"
+        return f"project:{digest[:24]}", f"sha256:{digest}", display[:120]
+
     def ensure_session(self, session: HostSession) -> HostSession:
-        identifiers = (session.session_id, session.runner_session_id, session.trace_id, session.execution_id, session.parent_span_id)
+        identifiers = (
+            session.session_id, session.runner_session_id, session.trace_id,
+            session.execution_id, session.parent_span_id, session.context_snapshot_id,
+            session.current_context_snapshot_id, session.parent_session_id,
+        )
         if any(value is not None and not IDENTIFIER.fullmatch(value) for value in identifiers):
             raise HostBridgeError("invalid_session_identifier", 422)
         if session.runner_provider not in {"codex", "claude"}:
             raise HostBridgeError("unsupported_runner_provider", 422)
-        normalized = HostSession(**{**asdict(session), "project_dir": self._validate_project_dir(session.project_dir)})
+        if session.requested_provider not in {None, "auto", "codex", "claude"}:
+            raise HostBridgeError("unsupported_requested_provider", 422)
+        if session.resolved_provider not in {None, "codex", "claude"}:
+            raise HostBridgeError("unsupported_resolved_provider", 422)
+        if session.runner_mode not in {"host", "local"}:
+            raise HostBridgeError("unsupported_runner_mode", 422)
+        if session.resolved_provider is not None and session.resolved_provider != session.runner_provider:
+            raise HostBridgeError("resolved_provider_mismatch", 422)
+        if session.requested_provider not in {None, "auto", session.runner_provider} and not session.fallback_reason_code:
+            raise HostBridgeError("provider_fallback_reason_required", 422)
+        if (session.context_snapshot_id is None) != (session.context_revision is None):
+            raise HostBridgeError("context_binding_incomplete", 422)
+        if (session.current_context_snapshot_id is None) != (session.current_context_revision is None):
+            raise HostBridgeError("current_context_binding_incomplete", 422)
+        if session.context_revision is not None and session.context_revision < 1:
+            raise HostBridgeError("context_revision_invalid", 422)
+        if session.current_context_revision is not None and session.current_context_revision < 1:
+            raise HostBridgeError("context_revision_invalid", 422)
+        project_dir = self._validate_project_dir(session.project_dir)
+        project_handle, project_hash, project_display_name = self._project_identity(project_dir)
+        normalized = HostSession(**{
+            **asdict(session),
+            "project_dir": project_dir,
+            "project_handle": project_handle,
+            "project_hash": project_hash,
+            "project_display_name": project_display_name,
+            "requested_provider": session.requested_provider or session.runner_provider,
+            "resolved_provider": session.resolved_provider or session.runner_provider,
+            "current_context_snapshot_id": session.current_context_snapshot_id or session.context_snapshot_id,
+            "current_context_revision": session.current_context_revision or session.context_revision,
+        })
         with self._lock:
             sessions = self._read_sessions()
             existing = sessions.get(normalized.session_id)
+            if existing and existing.get("context_snapshot_id"):
+                anchor = existing.get("context_snapshot_id")
+                current = existing.get("current_context_snapshot_id") or anchor
+                supplied = normalized.context_snapshot_id
+                if supplied not in {anchor, current}:
+                    raise HostBridgeError("session_context_anchor_conflict", 409)
+                normalized = HostSession(**{
+                    **asdict(normalized),
+                    "context_snapshot_id": anchor,
+                    "context_revision": existing.get("context_revision"),
+                    "current_context_snapshot_id": current,
+                    "current_context_revision": existing.get("current_context_revision")
+                    or existing.get("context_revision"),
+                })
+            if existing and existing.get("accepted_at") and existing.get("runner_provider") != normalized.runner_provider:
+                raise HostBridgeError("session_runner_provider_conflict", 409)
+            if existing and existing.get("accepted_at"):
+                locked_fields = (
+                    "requested_provider", "resolved_provider", "runner_mode", "fallback_reason_code",
+                    "context_snapshot_id", "parent_session_id", "project_handle", "project_hash",
+                )
+                if any(existing.get(field) != getattr(normalized, field) for field in locked_fields):
+                    raise HostBridgeError("accepted_session_contract_conflict", 409)
             if existing and existing.get("runner_session_id") and normalized.runner_session_id and existing["runner_session_id"] != normalized.runner_session_id:
                 raise HostBridgeError("session_runner_identity_conflict", 409)
             if existing and existing.get("runner_session_id") and existing.get("runner_provider") != normalized.runner_provider:
                 raise HostBridgeError("session_runner_provider_conflict", 409)
             if existing:
-                merged = {**existing, **{key: value for key, value in asdict(normalized).items() if value is not None}}
+                updates = {key: value for key, value in asdict(normalized).items() if value is not None}
+                updates.pop("accepted_at", None)
+                if existing.get("context_snapshot_id"):
+                    for key in (
+                        "context_snapshot_id",
+                        "context_revision",
+                        "current_context_snapshot_id",
+                        "current_context_revision",
+                    ):
+                        updates.pop(key, None)
+                if existing.get("accepted_at"):
+                    updates.pop("status", None)
+                merged = {**existing, **updates}
                 if normalized.trace_id and normalized.trace_id != existing.get("trace_id") and session.parent_span_id is None:
                     merged["parent_span_id"] = None
                 normalized = HostSession(**merged)
             sessions[normalized.session_id] = asdict(normalized)
             self._write_sessions(sessions)
         return normalized
+
+    def rebind_context(
+        self,
+        session_id: str,
+        *,
+        expected_snapshot_id: str,
+        expected_revision: int,
+        next_snapshot_id: str,
+        next_revision: int,
+    ) -> HostSession:
+        if not all(IDENTIFIER.fullmatch(value) for value in (session_id, expected_snapshot_id, next_snapshot_id)):
+            raise HostBridgeError("invalid_session_identifier", 422)
+        if expected_revision < 1 or next_revision != expected_revision + 1:
+            raise HostBridgeError("context_revision_invalid", 422)
+        with self._lock:
+            sessions = self._read_sessions()
+            record = sessions.get(session_id)
+            if record is None:
+                raise HostBridgeError("session_not_found", 404)
+            current_snapshot = record.get("current_context_snapshot_id") or record.get("context_snapshot_id")
+            current_revision = record.get("current_context_revision") or record.get("context_revision")
+            if current_snapshot != expected_snapshot_id or current_revision != expected_revision:
+                raise HostBridgeError("context_rebind_conflict", 409)
+            record["current_context_snapshot_id"] = next_snapshot_id
+            record["current_context_revision"] = next_revision
+            sessions[session_id] = record
+            self._write_sessions(sessions)
+        return HostSession(**record)
+
+    def _mark_session_accepted(self, session: HostSession) -> HostSession:
+        if session.accepted_at:
+            return session
+        with self._lock:
+            sessions = self._read_sessions()
+            record = sessions.get(session.session_id)
+            if record is None:
+                raise HostBridgeError("session_not_found", 404)
+            record["accepted_at"] = datetime.now(timezone.utc).isoformat()
+            record["status"] = "active"
+            sessions[session.session_id] = record
+            self._write_sessions(sessions)
+        return HostSession(**record)
 
     def get_session(self, session_id: str) -> HostSession:
         if not IDENTIFIER.fullmatch(session_id):
@@ -305,24 +484,31 @@ class HostBridge:
             raise HostBridgeError("invalid_request_identifier", 422)
         if self.runner is None:
             raise HostBridgeError("host_provider_runner_unconfigured", 503)
-        session = self.get_session(session_id)
+        session = self._mark_session_accepted(self.get_session(session_id))
         with self._lock:
             request_key = ("provider-run", session_id, request_id)
             previous = self._requests.get(request_key)
             if previous:
                 return self._run_response(self._runs[previous], duplicate=True)
-            run = HostRun(run_id=f"run:{uuid.uuid4().hex}", request_id=request_id, session_id=session_id)
+            run = HostRun(
+                run_id=f"run:{uuid.uuid4().hex}", request_id=request_id, session_id=session_id,
+                context_snapshot_id=session.current_context_snapshot_id or session.context_snapshot_id,
+                context_revision=session.current_context_revision or session.context_revision,
+            )
             self._runs[run.run_id] = run
             self._requests[request_key] = run.run_id
+            self._write_runs()
         try:
             process = self.runner.start(session, prompt, run.run_id)
         except HostBridgeError:
             with self._lock:
                 run.status = "failed"
+                self._append(run, "host.run.failed", {"reason": "provider_unavailable"})
             raise
         except OSError as exc:
             with self._lock:
                 run.status = "failed"
+                self._append(run, "host.run.failed", {"reason": "provider_start_failed"})
             raise HostBridgeError("host_runner_start_failed", 503) from exc
         with self._lock:
             run.process = process
@@ -387,6 +573,7 @@ class HostBridge:
 
     def _append(self, run: HostRun, kind: str, payload: dict[str, Any]) -> None:
         run.events.append({"cursor": len(run.events) + 1, "kind": kind, "payload": payload, "observed_at": datetime.now(timezone.utc).isoformat()})
+        self._write_runs()
 
     def _read_stdout(self, run: HostRun, session: HostSession) -> None:
         if run.process.stdout is None:
@@ -461,7 +648,10 @@ class HostBridge:
             "run_id": run.run_id, "status": run.status, "session_id": run.session_id,
             "runner_session_id": session.runner_session_id, "trace_id": session.trace_id,
             "execution_id": session.execution_id, "parent_span_id": session.parent_span_id,
-            "process_id": run.process_id,
+            "process_id": run.process_id, "context_snapshot_id": run.context_snapshot_id,
+            "context_revision": run.context_revision, "requested_provider": session.requested_provider,
+            "resolved_provider": session.resolved_provider, "runner_mode": session.runner_mode,
+            "fallback_reason_code": session.fallback_reason_code, "accepted_at": session.accepted_at,
         }
 
     def run_events(self, run_id: str, cursor: int = 0) -> dict[str, Any]:

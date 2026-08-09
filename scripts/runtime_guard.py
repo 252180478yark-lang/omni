@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "config" / "runtime-manifest.yaml"
 TRUE_VALUES = {"1", "true", "yes", "on", "enabled", "owner"}
 FALSE_VALUES = {"0", "false", "no", "off", "disabled", "none"}
+RUNTIME_PROFILES = frozenset({"core", "content", "full"})
 HOST_ABSOLUTE_RE = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\|/(?!/))")
 SECRET_RE = re.compile(r"(?i)(?:password|passwd|pwd|token|secret)=([^\s&]+)")
 
@@ -166,6 +167,7 @@ def validate_allocation_evidence(
     source_commit: str,
     source_fingerprint: str,
     compose_project: str = "",
+    runtime_profile: str = "",
     ports_sha256: str = "",
     volumes_sha256: str = "",
     now: datetime | None = None,
@@ -174,7 +176,7 @@ def validate_allocation_evidence(
 
     module = _runtime_preflight_module()
     try:
-        return dict(
+        allocation = dict(
             module.validate_allocation_evidence(
                 allocation_file,
                 allocation_id=allocation_id,
@@ -183,11 +185,21 @@ def validate_allocation_evidence(
                 source_commit=source_commit,
                 source_fingerprint=source_fingerprint,
                 compose_project=compose_project,
+                runtime_profile=runtime_profile,
                 ports_sha256=ports_sha256,
                 volumes_sha256=volumes_sha256,
                 now=now,
             )
         )
+        allocation_profile = str(allocation.get("runtime_profile") or "").strip()
+        if not allocation_profile:
+            raise GuardFailure(
+                "RuntimeAllocation has no runtime_profile; release/reacquire the legacy allocation"
+            )
+        resolved_profile, _ = runtime_profile_spec(load_manifest(DEFAULT_MANIFEST), allocation_profile)
+        if runtime_profile and runtime_profile != resolved_profile:
+            raise GuardFailure("RuntimeAllocation runtime_profile does not match startup identity")
+        return allocation
     except module.RuntimePreflightError as exc:
         raise GuardFailure(str(exc)) from exc
 
@@ -230,6 +242,92 @@ def find_host_absolute_values(value: Any, prefix: str = "$") -> list[str]:
     return found
 
 
+def _validate_runtime_profiles(manifest: Mapping[str, Any]) -> None:
+    runtime_profiles = manifest.get("runtime_profiles")
+    if not isinstance(runtime_profiles, Mapping):
+        raise GuardFailure("runtime manifest requires runtime_profiles")
+    definitions = runtime_profiles.get("profiles")
+    if not isinstance(definitions, Mapping) or set(definitions) != RUNTIME_PROFILES:
+        raise GuardFailure("runtime manifest profiles must be exactly core, content, and full")
+    default = str(runtime_profiles.get("default") or "").strip()
+    if default != "core":
+        raise GuardFailure("runtime manifest default profile must be core")
+
+    services = manifest.get("services")
+    if not isinstance(services, Mapping) or not services:
+        raise GuardFailure("runtime manifest requires non-empty services")
+    service_names = set(services)
+    profile_services: dict[str, set[str]] = {}
+    long_lived_by_profile: dict[str, set[str]] = {}
+    one_shot_by_profile: dict[str, set[str]] = {}
+    for profile_name in ("core", "content", "full"):
+        specification = definitions[profile_name]
+        if not isinstance(specification, Mapping):
+            raise GuardFailure(f"runtime profile {profile_name} must be a mapping")
+        expected_compose = [] if profile_name == "core" else [profile_name]
+        if specification.get("compose_profiles") != expected_compose:
+            raise GuardFailure(
+                f"runtime profile {profile_name} must map to Compose profiles {expected_compose!r}"
+            )
+        parsed: dict[str, set[str]] = {}
+        for key in ("services", "long_lived_services", "one_shot_services"):
+            raw = specification.get(key)
+            if (
+                not isinstance(raw, list)
+                or len(raw) != len(set(raw))
+                or any(not isinstance(item, str) or not item for item in raw)
+            ):
+                raise GuardFailure(f"runtime profile {profile_name} has invalid {key}")
+            parsed[key] = set(raw)
+        if parsed["long_lived_services"] & parsed["one_shot_services"]:
+            raise GuardFailure(f"runtime profile {profile_name} mixes long-lived and one-shot services")
+        if parsed["services"] != parsed["long_lived_services"] | parsed["one_shot_services"]:
+            raise GuardFailure(f"runtime profile {profile_name} service lifecycle sets do not reconcile")
+        unknown = parsed["services"] - service_names
+        if unknown:
+            raise GuardFailure(
+                f"runtime profile {profile_name} references unknown services: {', '.join(sorted(unknown))}"
+            )
+        profile_services[profile_name] = parsed["services"]
+        long_lived_by_profile[profile_name] = parsed["long_lived_services"]
+        one_shot_by_profile[profile_name] = parsed["one_shot_services"]
+
+    if not (
+        profile_services["core"] < profile_services["content"] < profile_services["full"]
+    ):
+        raise GuardFailure("runtime profiles must form the strict core < content < full service chain")
+    if len({frozenset(value) for value in one_shot_by_profile.values()}) != 1:
+        raise GuardFailure("runtime profiles must share one exact one-shot service set")
+    required = {name for name, cfg in services.items() if isinstance(cfg, Mapping) and cfg.get("required")}
+    if required != long_lived_by_profile["core"]:
+        raise GuardFailure("legacy required flags must equal the core long-lived service set")
+    for service_name, cfg in services.items():
+        if not isinstance(cfg, Mapping):
+            raise GuardFailure(f"runtime service {service_name} must be a mapping")
+        expected_membership = [
+            profile_name
+            for profile_name in ("core", "content", "full")
+            if service_name in profile_services[profile_name]
+        ]
+        if cfg.get("runtime_profiles") != expected_membership:
+            raise GuardFailure(f"runtime service {service_name} has inconsistent profile membership")
+        lifecycle = str(cfg.get("lifecycle") or "long_lived")
+        expected_lifecycle = "one_shot" if service_name in one_shot_by_profile["core"] else "long_lived"
+        if lifecycle != expected_lifecycle:
+            raise GuardFailure(f"runtime service {service_name} has inconsistent lifecycle")
+
+
+def runtime_profile_spec(
+    manifest: Mapping[str, Any], requested: str | None = None
+) -> tuple[str, Mapping[str, Any]]:
+    _validate_runtime_profiles(manifest)
+    runtime_profiles = manifest["runtime_profiles"]
+    profile = str(requested or runtime_profiles["default"]).strip()
+    if profile not in RUNTIME_PROFILES:
+        raise GuardFailure(f"unknown runtime profile {profile!r}")
+    return profile, runtime_profiles["profiles"][profile]
+
+
 def load_manifest(path: Path = DEFAULT_MANIFEST) -> dict[str, Any]:
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -245,6 +343,7 @@ def load_manifest(path: Path = DEFAULT_MANIFEST) -> dict[str, Any]:
     absolute = find_host_absolute_values(manifest)
     if absolute:
         raise GuardFailure("runtime manifest contains host-absolute paths at " + ", ".join(absolute))
+    _validate_runtime_profiles(manifest)
     return manifest
 
 
@@ -565,12 +664,24 @@ def analyze_runtime(
     expected: Mapping[str, Any],
     *,
     runtime_id: str,
+    runtime_profile: str | None = None,
     check_unknown_listeners: bool = True,
     require_services: bool = False,
 ) -> list[Issue]:
-    relevant = _relevant_containers(containers, manifest)
+    relevant_by_id = {
+        item.container_id: item
+        for item in (
+            *_relevant_containers(containers, manifest),
+            *(item for item in containers if item.state == "running" and item.runtime_id == runtime_id),
+        )
+    }
+    relevant = list(relevant_by_id.values())
     issues = _shared_resource_issues(relevant)
     labels = manifest["identity_labels"]
+    profile_name, profile = runtime_profile_spec(manifest, runtime_profile)
+    expected_services = set(profile["long_lived_services"])
+    allowed_one_shots = set(profile["one_shot_services"])
+    matching_runtime = [item for item in relevant if item.runtime_id == runtime_id]
 
     for container in relevant:
         if not container.runtime_id:
@@ -658,16 +769,23 @@ def analyze_runtime(
             )
 
     if require_services:
-        for service, cfg in manifest.get("services", {}).items():
-            if not cfg.get("required"):
-                continue
-            matches = [item for item in relevant if item.service == service]
+        for service in sorted(expected_services):
+            matches = [item for item in matching_runtime if item.service == service]
             if not matches:
                 issues.append(
                     Issue(
                         code="required_service_missing",
                         severity="error",
-                        message=f"required service {service} is not running",
+                        message=f"profile {profile_name} service {service} is not running",
+                    )
+                )
+        for container in matching_runtime:
+            if container.service not in expected_services and container.service not in allowed_one_shots:
+                issues.append(
+                    _issue(
+                        "unexpected_profile_service",
+                        f"service {container.service} is running outside profile {profile_name}",
+                        [container],
                     )
                 )
     return sorted(issues, key=lambda item: (item.severity, item.code, item.containers))
@@ -722,6 +840,7 @@ def preflight_policy_issues(
     *,
     allocation_id: str = "",
     runtime_id: str = "",
+    runtime_profile: str | None = None,
     state_dir: Path | None = None,
 ) -> list[Issue]:
     """Return static and worktree-policy failures that must block a start."""
@@ -760,6 +879,16 @@ def preflight_policy_issues(
                 issues.append(Issue("allocation_worktree_mismatch", "error", "RuntimeAllocation belongs to another worktree"))
             if runtime_id and allocation.get("runtime_id") != runtime_id:
                 issues.append(Issue("allocation_runtime_mismatch", "error", "RuntimeAllocation runtime identity does not match preflight"))
+            allocation_profile = str(allocation.get("runtime_profile") or "").strip()
+            expected_profile, _ = runtime_profile_spec(manifest, runtime_profile)
+            if allocation_profile != expected_profile:
+                issues.append(
+                    Issue(
+                        "allocation_profile_mismatch",
+                        "error",
+                        "RuntimeAllocation runtime profile does not match preflight",
+                    )
+                )
             if non_primary:
                 canonical_db = str(manifest.get("canonical_runtime", {}).get("database", ""))
                 if allocation.get("canonical") or allocation.get("database") == canonical_db:
@@ -770,14 +899,25 @@ def preflight_policy_issues(
 
 
 def _health_issues(
-    containers: Sequence[ContainerFact], manifest: Mapping[str, Any], timeout: float
+    containers: Sequence[ContainerFact],
+    manifest: Mapping[str, Any],
+    timeout: float,
+    *,
+    runtime_id: str = "",
+    runtime_profile: str | None = None,
 ) -> list[Issue]:
     issues: list[Issue] = []
     opener = build_opener(ProxyHandler({}))
-    for service, cfg in manifest.get("services", {}).items():
-        if not cfg.get("required"):
-            continue
-        matches = [item for item in containers if item.state == "running" and item.service == service]
+    profile_name, profile = runtime_profile_spec(manifest, runtime_profile)
+    for service in profile["long_lived_services"]:
+        cfg = manifest["services"][service]
+        matches = [
+            item
+            for item in containers
+            if item.state == "running"
+            and item.service == service
+            and (not runtime_id or item.runtime_id == runtime_id)
+        ]
         if not matches:
             continue
         health = cfg.get("health") or {}
@@ -785,10 +925,16 @@ def _health_issues(
         if kind == "docker":
             if not any(item.health_status == "healthy" for item in matches):
                 issues.append(
-                    _issue("service_unhealthy", f"required service {service} lacks healthy Docker state", matches)
+                    _issue(
+                        "service_unhealthy",
+                        f"profile {profile_name} service {service} lacks healthy Docker state",
+                        matches,
+                    )
                 )
         elif kind == "http":
-            ports = [int(item) for item in cfg.get("published_ports", [])]
+            ports = sorted({port for item in matches for port in item.ports})
+            if not ports:
+                ports = [int(item) for item in cfg.get("published_ports", [])]
             path = str(health.get("path") or "").strip("/")
             ok = False
             for port in ports:
@@ -802,7 +948,11 @@ def _health_issues(
                     continue
             if not ok:
                 issues.append(
-                    _issue("service_unhealthy", f"required service {service} failed its HTTP readiness probe", matches)
+                    _issue(
+                        "service_unhealthy",
+                        f"profile {profile_name} service {service} failed its HTTP readiness probe",
+                        matches,
+                    )
                 )
     return issues
 
@@ -813,6 +963,7 @@ def _report(
     containers: Sequence[ContainerFact],
     issues: Sequence[Issue],
     expected: Mapping[str, Any] | None,
+    runtime_profile: str = "core",
 ) -> dict[str, Any]:
     errors = sum(1 for issue in issues if issue.severity == "error")
     warnings = sum(1 for issue in issues if issue.severity == "warning")
@@ -830,6 +981,7 @@ def _report(
         "ok": errors == 0,
         "read_only": True,
         "runtime_id": runtime_id,
+        "runtime_profile": runtime_profile,
         "summary": {
             "containers": len(containers),
             "errors": errors,
@@ -859,6 +1011,7 @@ def emit(report: Mapping[str, Any], *, as_json: bool) -> None:
     status = "PASS" if report["ok"] else "BLOCKED"
     print(
         f"[runtime-guard] {status} command={report['command']} runtime={report['runtime_id']} "
+        f"profile={report.get('runtime_profile', 'core')} "
         f"containers={summary['containers']} errors={summary['errors']} warnings={summary['warnings']}"
     )
     for container in report.get("containers", []):
@@ -877,9 +1030,10 @@ def emit(report: Mapping[str, Any], *, as_json: bool) -> None:
 def _common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--repo-root", type=Path, default=ROOT)
-    parser.add_argument("--runtime-id", default="")
+    parser.add_argument("--runtime-id", default=os.environ.get("OMNI_RUNTIME_ID", ""))
+    parser.add_argument("--runtime-profile", default=os.environ.get("OMNI_RUNTIME_PROFILE", ""))
     parser.add_argument("--json", action="store_true", dest="as_json")
-    parser.add_argument("--allocation-id", default="")
+    parser.add_argument("--allocation-id", default=os.environ.get("OMNI_ALLOCATION_ID", ""))
     parser.add_argument("--state-dir", type=Path)
 
 
@@ -901,6 +1055,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     allocation.add_argument("--allocation-id", default=os.environ.get("OMNI_ALLOCATION_ID", ""))
     allocation.add_argument("--runtime-id", default=os.environ.get("OMNI_RUNTIME_ID", ""))
+    allocation.add_argument("--runtime-profile", default=os.environ.get("OMNI_RUNTIME_PROFILE", ""))
     allocation.add_argument("--worktree-id", default=os.environ.get("OMNI_WORKTREE_ID", ""))
     allocation.add_argument("--source-commit", default=os.environ.get("OMNI_SOURCE_COMMIT", ""))
     allocation.add_argument("--source-fingerprint", default=os.environ.get("OMNI_SOURCE_FINGERPRINT", ""))
@@ -934,6 +1089,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 source_commit=args.source_commit,
                 source_fingerprint=args.source_fingerprint,
                 compose_project=args.compose_project,
+                runtime_profile=args.runtime_profile,
                 ports_sha256=args.ports_sha256,
                 volumes_sha256=args.volumes_sha256,
             )
@@ -943,6 +1099,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "ok": True,
                 "read_only": True,
                 "runtime_id": args.runtime_id,
+                "runtime_profile": allocation.get("runtime_profile"),
                 "summary": {"containers": 0, "errors": 0, "warnings": 0},
                 "repository": None,
                 "containers": [],
@@ -952,6 +1109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "worktree_id": allocation.get("worktree_id"),
                     "state": allocation.get("state"),
                     "risk_level": allocation.get("risk_level"),
+                    "runtime_profile": allocation.get("runtime_profile"),
                     **baked_identity,
                 },
             }
@@ -960,9 +1118,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         manifest = load_manifest(args.manifest.resolve())
         repo_root = args.repo_root.resolve()
         runtime_id = args.runtime_id or manifest["canonical_runtime"]["runtime_id"]
+        runtime_profile, _ = runtime_profile_spec(manifest, args.runtime_profile)
         if args.command == "static":
             issues = scan_static(repo_root, manifest)
-            report = _report("static", runtime_id, [], issues, None)
+            report = _report("static", runtime_id, [], issues, None, runtime_profile)
             emit(report, as_json=args.as_json)
             return 0 if report["ok"] else 2
 
@@ -974,6 +1133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             manifest,
             expected,
             runtime_id=runtime_id,
+            runtime_profile=runtime_profile,
             require_services=require_services,
         )
         if args.command == "preflight":
@@ -984,14 +1144,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                     expected,
                     allocation_id=args.allocation_id,
                     runtime_id=runtime_id,
+                    runtime_profile=runtime_profile,
                     state_dir=args.state_dir,
                 )
             )
             issues = sorted(issues, key=lambda item: (item.severity, item.code, item.containers))
         if args.command == "verify" and not args.skip_health:
-            issues.extend(_health_issues(containers, manifest, args.health_timeout))
+            issues.extend(
+                _health_issues(
+                    containers,
+                    manifest,
+                    args.health_timeout,
+                    runtime_id=runtime_id,
+                    runtime_profile=runtime_profile,
+                )
+            )
             issues = sorted(issues, key=lambda item: (item.severity, item.code, item.containers))
-        report = _report(args.command, runtime_id, containers, issues, expected)
+        report = _report(args.command, runtime_id, containers, issues, expected, runtime_profile)
         emit(report, as_json=args.as_json)
         if args.command == "audit":
             return 0
@@ -1003,6 +1172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "ok": False,
             "read_only": True,
             "runtime_id": getattr(args, "runtime_id", "") or "unknown",
+            "runtime_profile": getattr(args, "runtime_profile", "") or "unknown",
             "summary": {"containers": 0, "errors": 1, "warnings": 0},
             "repository": None,
             "containers": [],

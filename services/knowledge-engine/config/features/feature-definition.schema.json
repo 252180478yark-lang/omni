@@ -87,10 +87,10 @@
   "$defs": {
     "href": {"type": "string", "pattern": "^/[^?#]*$"},
     "work_group": {
-      "enum": ["today", "products", "operations", "content", "knowledge"]
+      "enum": ["production", "analysis", "library"]
     },
     "development_group": {
-      "enum": ["agents", "skills-tools", "workflows", "prompt-eval", "runs-system"]
+      "enum": ["agent-tools", "quality", "system"]
     },
     "ia_placement": {
       "type": "object",
@@ -100,16 +100,12 @@
         "mode": {"enum": ["work", "development"]},
         "group": {
           "enum": [
-            "today",
-            "products",
-            "operations",
-            "content",
-            "knowledge",
-            "agents",
-            "skills-tools",
-            "workflows",
-            "prompt-eval",
-            "runs-system"
+            "production",
+            "analysis",
+            "library",
+            "agent-tools",
+            "quality",
+            "system"
           ]
         },
         "order": {"type": "integer", "minimum": 0}
@@ -137,16 +133,12 @@
         "mode": {"enum": ["work", "development"]},
         "primary_group": {
           "enum": [
-            "today",
-            "products",
-            "operations",
-            "content",
-            "knowledge",
-            "agents",
-            "skills-tools",
-            "workflows",
-            "prompt-eval",
-            "runs-system"
+            "production",
+            "analysis",
+            "library",
+            "agent-tools",
+            "quality",
+            "system"
           ]
         },
         "primary_order": {"type": "integer", "minimum": 0},

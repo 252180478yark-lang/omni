@@ -110,6 +110,9 @@ async def get_approval_principal(request: Request) -> ApprovalPrincipal:
     injected = getattr(request.state, "approval_principal", None)
     if isinstance(injected, ApprovalPrincipal):
         return injected
+    local = trusted_local_principal()
+    if local is not None:
+        return local
     service = await _service_principal(request)
     if service is not None:
         return service

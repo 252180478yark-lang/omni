@@ -63,5 +63,34 @@ def test_frontend_operation_ids_are_a_subset_of_backend_registry() -> None:
     repo = Path(__file__).resolve().parents[3]
     source = (repo / "frontend/src/lib/sku-pipeline/operations.ts").read_text(encoding="utf-8")
     frontend_ids = set(re.findall(r"'((?:sku|experiment|video)\.[a-z0-9.-]+)'", source.split("} as const", 1)[0]))
+    for path in (repo / "frontend/src/app/api/omni").glob("**/route.ts"):
+        frontend_ids.update(re.findall(r"/api/v1/mcp/execute/([a-z0-9.-]+)", path.read_text(encoding="utf-8")))
     assert frontend_ids
     assert frontend_ids <= set(OPERATION_REGISTRY)
+
+
+@pytest.mark.asyncio
+async def test_sku_assets_operation_resolves_to_registered_audited_wrapper(monkeypatch) -> None:
+    from app.mcp import server as _server  # noqa: F401
+    from app.mcp.audit import TOOL_REGISTRY
+    from app.services import pipeline_lineage
+
+    calls: list[dict[str, object]] = []
+
+    async def fake_list_assets(**kwargs):
+        calls.append(kwargs)
+        return [{"id": "asset-1", "asset_type": "video"}]
+
+    monkeypatch.setattr(pipeline_lineage, "list_assets", fake_list_assets)
+    tool_name = operation_tool("sku.assets.list")
+    registration = TOOL_REGISTRY[tool_name]
+    assert registration["require_approval"] is False
+    audited_wrapper = registration["fn"]
+    result = await audited_wrapper.__wrapped__(sku_id="sku-1", asset_type="video", limit=7)
+
+    assert calls == [{"sku_id": "sku-1", "script_id": None, "asset_type": "video", "limit": 7}]
+    assert result == {
+        "ok": True,
+        "count": 1,
+        "assets": [{"id": "asset-1", "asset_type": "video"}],
+    }

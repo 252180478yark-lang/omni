@@ -9,15 +9,16 @@ afterEach(() => {
 })
 
 describe('runtime BFF authentication', () => {
-  it('rejects anonymous trace reads before contacting an upstream service', async () => {
-    const fetchMock = vi.fn()
+  it('treats a loopback browser as the local owner and reads without a product token', async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => Response.json({ trace_id: 'trace:one', findings: [], source_status: 'success' }))
     vi.stubGlobal('fetch', fetchMock)
 
     const response = await readFindings(new Request('http://localhost/api/omni/runtime-findings?trace_id=trace:one'))
 
-    expect(response.status).toBe(401)
-    expect(await response.json()).toMatchObject({ error: { code: 'authentication_required' } })
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ trace_id: 'trace:one' })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: '' })
   })
 
   it('rejects a cross-site or originless plan mutation before authentication or upstream access', async () => {

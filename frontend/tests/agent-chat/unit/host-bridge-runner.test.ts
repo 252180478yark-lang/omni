@@ -22,13 +22,13 @@ describe('host bridge runner', () => {
     }) as typeof fetch
     try {
       const runner = startHostBridgeRunner({
-        sessionId: 'session:one', provider: 'codex', traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:one', projectDir: 'E:/agent/omni',
+        sessionId: 'session:one', provider: 'codex', traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:one', projectHandle: 'project:default',
         prompt: 'hello', mcpConfigPath: 'unused',
       })
       const chunks: string[] = []
       runner.on('chunk', (chunk: { type: string }) => chunks.push(chunk.type))
       await new Promise<void>((resolve, reject) => { runner.on('exit', () => resolve()); runner.on('error', reject) })
-      expect(chunks).toEqual(['system', 'result'])
+      expect(chunks).toEqual(['system', 'system', 'result'])
       expect(calls.some((url) => url.includes('/runs/run%3Aone/events?cursor=0'))).toBe(true)
     } finally {
       global.fetch = originalFetch
@@ -44,7 +44,7 @@ describe('host bridge runner', () => {
     global.fetch = vi.fn(async () => new Response('{}', { status: 503 })) as typeof fetch
     const fallback = { proc: { killed: false }, cancel: vi.fn(), on: vi.fn().mockReturnThis() }
     try {
-      startHostBridgeRunner({ sessionId: 'session:one', provider: 'claude', traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:one', projectDir: 'E:/agent/omni', prompt: 'hello', mcpConfigPath: 'unused', fallbackFactory: () => fallback as never })
+      startHostBridgeRunner({ sessionId: 'session:one', provider: 'claude', traceId: 'trace:one', executionId: 'execution:one', parentSpanId: 'ws:one', projectHandle: 'project:default', prompt: 'hello', mcpConfigPath: 'unused', fallbackFactory: () => fallback as never })
       await vi.waitFor(() => expect(fallback.on).toHaveBeenCalled())
     } finally {
       global.fetch = originalFetch
@@ -67,11 +67,34 @@ describe('host bridge runner', () => {
     try {
       const runner = startHostBridgeRunner({
         sessionId: 'session:one', provider: 'codex', traceId: 'trace:one', executionId: 'execution:one',
-        parentSpanId: 'ws:one', projectDir: 'E:/agent/omni', prompt: 'hello', mcpConfigPath: 'unused',
+        parentSpanId: 'ws:one', projectHandle: 'project:default', prompt: 'hello', mcpConfigPath: 'unused',
         fallbackFactory: () => fallback as never,
       })
       const error = await new Promise<Error>((resolve) => runner.on('error', resolve))
       expect(error.message).toBe('response_lost_after_possible_acceptance')
+      expect(fallback.on).not.toHaveBeenCalled()
+    } finally {
+      global.fetch = originalFetch
+      if (previousTokenFile === undefined) delete process.env.OMNI_HOST_TOKEN_FILE
+      else process.env.OMNI_HOST_TOKEN_FILE = previousTokenFile
+    }
+  })
+
+  it('never falls back a resumed provider session when Host acceptance is unknown', async () => {
+    const previousTokenFile = process.env.OMNI_HOST_TOKEN_FILE
+    process.env.OMNI_HOST_TOKEN_FILE = 'fixture.token'
+    const originalFetch = global.fetch
+    global.fetch = vi.fn(async () => new Response('{}', { status: 503 })) as typeof fetch
+    const fallback = { proc: { killed: false }, cancel: vi.fn(), on: vi.fn().mockReturnThis() }
+    try {
+      const runner = startHostBridgeRunner({
+        sessionId: 'session:accepted', provider: 'codex', resumeSessionId: 'runner:accepted',
+        traceId: 'trace:accepted', executionId: 'execution:accepted', parentSpanId: 'ws:accepted',
+        projectHandle: 'project:default', prompt: 'continue', mcpConfigPath: 'unused',
+        fallbackFactory: () => fallback as never,
+      })
+      const error = await new Promise<Error>((resolve) => runner.on('error', resolve))
+      expect(error.message).toBe('host_bridge_status_503')
       expect(fallback.on).not.toHaveBeenCalled()
     } finally {
       global.fetch = originalFetch

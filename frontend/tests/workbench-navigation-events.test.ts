@@ -58,6 +58,9 @@ function enableServices(options: {
   knowledgeStatus?: number
 } = {}) {
   actorSerial += 1
+  if (!vi.isMockFunction(Date.now)) {
+    vi.spyOn(Date, 'now').mockReturnValue(1_800_000_000_000 + actorSerial * 60_000)
+  }
   const actorId = options.actorId ?? `user-${actorSerial}`
   const knowledgeBodies: Array<Record<string, unknown>> = []
   vi.stubEnv('IDENTITY_SERVICE_URL', 'http://identity.test')
@@ -65,10 +68,6 @@ function enableServices(options: {
   vi.stubEnv('OMNI_COMPATIBILITY_TOKEN_FILE', tokenPath)
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
-    if (url === 'http://identity.test/api/v1/auth/verify') {
-      if (options.identityUnavailable) throw new Error('identity unavailable')
-      return json({ data: { valid: true, sub: actorId, role: options.role ?? 'user' } })
-    }
     if (url === 'http://knowledge.test/api/v1/compatibility/telemetry') {
       knowledgeBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
       return json({}, options.knowledgeStatus ?? 200)
@@ -88,30 +87,28 @@ const aliasPayload = (result: 'redirected' | 'recovered' | 'failed') => ({
 })
 
 describe('workbench navigation telemetry BFF', () => {
-  it('requires a verified browser actor after same-origin validation', async () => {
+  it('accepts the local owner without a cookie but still requires same-origin mutation', async () => {
     const { fetchMock, knowledgeBodies } = enableServices()
     const anonymous = await POST(request(aliasPayload('redirected'), { authenticated: false }))
-    expect(anonymous.status).toBe(401)
-    expect(await anonymous.json()).toMatchObject({
-      error: { code: 'authentication_required', retryable: false },
-    })
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(knowledgeBodies).toHaveLength(0)
+    expect(anonymous.status).toBe(202)
+    expect(await anonymous.json()).toEqual({ success: true, accepted: true })
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(knowledgeBodies).toHaveLength(1)
 
     const originless = await POST(request(aliasPayload('redirected'), { withOrigin: false }))
     expect(originless.status).toBe(403)
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 
-  it('returns typed identity-unavailable before reading the service token or writing telemetry', async () => {
+  it('returns typed telemetry-unavailable when its compatibility credential is unavailable', async () => {
     const { fetchMock, knowledgeBodies } = enableServices({ identityUnavailable: true })
     vi.stubEnv('OMNI_COMPATIBILITY_TOKEN_FILE', join(directory, 'missing'))
     const response = await POST(request(aliasPayload('redirected')))
     expect(response.status).toBe(503)
     expect(await response.json()).toMatchObject({
-      error: { code: 'identity_verification_unavailable', retryable: true },
+      error: { code: 'compatibility_telemetry_unavailable', retryable: true },
     })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).not.toHaveBeenCalled()
     expect(knowledgeBodies).toHaveLength(0)
   })
 
@@ -123,7 +120,7 @@ describe('workbench navigation telemetry BFF', () => {
       expect(await response.json()).toEqual({ success: true, accepted: true })
     }
 
-    expect(fetchMock).toHaveBeenCalledTimes(6)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(knowledgeBodies).toHaveLength(3)
     const results = ['redirected', 'recovered', 'failed']
     for (let index = 0; index < results.length; index += 1) {
@@ -133,13 +130,13 @@ describe('workbench navigation telemetry BFF', () => {
         capability_id: 'legacy-alias:qa:chat',
         route_family: 'workbench-alias:chat',
         exclusive: false,
-        metadata: { state: result, reason_code: 'legacy_alias' },
+        metadata: { state: result, reason_code: 'legacy_alias', version: 'workbench-ia-v2' },
       })
       expect(JSON.stringify(knowledgeBodies[index])).not.toContain('test-compatibility-token')
     }
   })
 
-  it('accepts the current Identity user role for non-privileged navigation evidence', async () => {
+  it('accepts a legacy user cookie as local-owner navigation evidence', async () => {
     const { knowledgeBodies } = enableServices({ role: 'user', actorId: 'normal-user@example.test' })
 
     const response = await POST(request(aliasPayload('redirected')))
@@ -154,11 +151,11 @@ describe('workbench navigation telemetry BFF', () => {
     for (const result of ['selected', 'opened'] as const) {
       const response = await POST(request({
         event_type: 'primary_navigation',
-        requested_href: '/sku-pipeline',
-        canonical_href: '/sku-pipeline',
-        feature_id: 'sku-pipeline',
+        requested_href: '/workspace',
+        canonical_href: '/workspace',
+        feature_id: 'workspace-operations',
         mode: 'development',
-        primary_group: 'workflows',
+        primary_group: 'system',
         secondary_depth: 0,
         result,
       }))
@@ -168,17 +165,19 @@ describe('workbench navigation telemetry BFF', () => {
       'selected', 'opened',
     ])
     expect(knowledgeBodies[0]).toMatchObject({
-      capability_id: 'navigation:sku-pipeline',
-      route_family: 'workbench-nav:development:workflows:depth-0',
+      capability_id: 'navigation:workspace-operations',
+      route_family: 'workbench-nav:development:system:depth-0',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
     })
 
     const pollutedDepth = await POST(request({
       event_type: 'primary_navigation',
-      requested_href: '/sku-pipeline',
-      canonical_href: '/sku-pipeline',
-      feature_id: 'sku-pipeline',
+      requested_href: '/workspace',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
       mode: 'development',
-      primary_group: 'workflows',
+      primary_group: 'system',
       secondary_depth: 1,
       result: 'selected',
     }))
@@ -186,16 +185,100 @@ describe('workbench navigation telemetry BFF', () => {
 
     const mismatch = await POST(request({
       event_type: 'primary_navigation',
-      requested_href: '/sku-pipeline',
-      canonical_href: '/sku-pipeline',
-      feature_id: 'sku-pipeline',
+      requested_href: '/workspace',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
       mode: 'development',
-      primary_group: 'agents',
+      primary_group: 'agent-tools',
       secondary_depth: 1,
       result: 'selected',
     }))
     expect(mismatch.status).toBe(400)
     expect(knowledgeBodies).toHaveLength(2)
+  })
+
+  it('dual-reads frozen v1 and current v2 navigation without deduplicating their evidence', async () => {
+    const { knowledgeBodies } = enableServices()
+    const current = await POST(request({
+      event_type: 'primary_navigation',
+      requested_href: '/sku-pipeline',
+      canonical_href: '/sku-pipeline',
+      feature_id: 'sku-pipeline',
+      mode: 'work',
+      primary_group: 'production',
+      secondary_depth: 1,
+      result: 'selected',
+    }))
+    const legacy = await POST(request({
+      event_type: 'primary_navigation',
+      requested_href: '/sku-pipeline',
+      canonical_href: '/sku-pipeline',
+      feature_id: 'sku-pipeline',
+      mode: 'development',
+      primary_group: 'workflows',
+      secondary_depth: 0,
+      result: 'selected',
+    }))
+
+    expect(current.status).toBe(202)
+    expect(legacy.status).toBe(202)
+    expect(knowledgeBodies).toHaveLength(2)
+    expect(knowledgeBodies[0]).toMatchObject({
+      capability_id: 'navigation:sku-pipeline',
+      route_family: 'workbench-nav:work:production:depth-1',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
+    })
+    expect(knowledgeBodies[1]).toMatchObject({
+      capability_id: 'navigation:sku-pipeline',
+      route_family: 'workbench-nav:development:workflows:depth-0',
+      exclusive: true,
+      metadata: { version: 'workbench-ia-v1' },
+    })
+  })
+
+  it('rejects legacy group evidence outside the frozen v1 placement and depth contract', async () => {
+    const { knowledgeBodies } = enableServices()
+    for (const payload of [
+      {
+        event_type: 'primary_navigation', requested_href: '/sku-pipeline',
+        canonical_href: '/sku-pipeline', feature_id: 'sku-pipeline', mode: 'development',
+        primary_group: 'workflows', secondary_depth: 1, result: 'selected',
+      },
+      {
+        event_type: 'primary_navigation', requested_href: '/workspace',
+        canonical_href: '/workspace', feature_id: 'workspace-operations', mode: 'development',
+        primary_group: 'workflows', secondary_depth: 0, result: 'opened',
+      },
+      {
+        event_type: 'primary_navigation', requested_href: '/sku-pipeline',
+        canonical_href: '/sku-pipeline', feature_id: 'sku-pipeline', mode: 'development',
+        primary_group: 'retired-group', secondary_depth: 0, result: 'selected',
+      },
+    ]) {
+      expect((await POST(request(payload))).status).toBe(400)
+    }
+    expect(knowledgeBodies).toHaveLength(0)
+  })
+
+  it('accepts the root workspace alias against the current registry identity', async () => {
+    const { knowledgeBodies } = enableServices()
+    const response = await POST(request({
+      event_type: 'legacy_alias',
+      requested_href: '/',
+      canonical_href: '/workspace',
+      feature_id: 'workspace-operations',
+      result: 'redirected',
+    }))
+
+    expect(response.status).toBe(202)
+    expect(knowledgeBodies).toHaveLength(1)
+    expect(knowledgeBodies[0]).toMatchObject({
+      capability_id: 'legacy-alias:root:workspace-operations',
+      route_family: 'workbench-alias:workspace',
+      exclusive: false,
+      metadata: { version: 'workbench-ia-v2' },
+    })
   })
 
   it('hashes authenticated route gaps rather than persisting arbitrary path content', async () => {

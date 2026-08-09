@@ -48,6 +48,7 @@ test.beforeEach(async ({ page }) => {
 test('migrated developer pages expose keyboard controls and pass main-content accessibility checks', async ({ page }) => {
   await page.goto('/models')
   const openAiProvider = page.getByRole('button', { name: /OPENAI/ })
+  await expect(openAiProvider).toBeVisible({ timeout: 20_000 })
   await openAiProvider.focus()
   await expect(openAiProvider).toBeFocused()
   await page.keyboard.press('Enter')
@@ -90,6 +91,23 @@ test('migrated developer pages expose keyboard controls and pass main-content ac
   await expect(page.getByRole('textbox', { name: '测试查询 1' })).toBeVisible()
   await page.getByRole('button', { name: '添加查询' }).click()
   await expect(page.getByRole('button', { name: '删除查询 2' })).toBeVisible()
+})
+
+test('mobile content workspace passes axe including small-text contrast', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/workspace')
+  await expect(page.getByTestId('content-workspace')).toBeVisible()
+  await page.addScriptTag({ content: axe.source })
+
+  const violations = await page.evaluate(async () => {
+    const result = await window.axe.run({ include: [['[data-testid="content-workspace"]']] })
+    return result.violations.map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      nodes: violation.nodes.map((node) => node.target),
+    }))
+  })
+  expect(violations).toEqual([])
 })
 
 test('Prompt node details use a trapped keyboard dialog and restore the invoking focus', async ({ page }) => {
@@ -166,7 +184,8 @@ test('shell navigation, status semantics and focus pass accessibility checks', a
   await page.keyboard.press('Enter')
   await expect(page.locator('#workbench-main')).toBeFocused()
 
-  await page.getByRole('button', { name: '展开侧边导航' }).click()
+  const expandSidebar = page.getByRole('button', { name: '展开侧边导航' })
+  if (await expandSidebar.count()) await expandSidebar.click()
   const rendererBounds = await page.evaluate(() => {
     const tabList = document.querySelector('#workbench-main [data-slot="tabs-list"]')?.getBoundingClientRect()
     const activePanel = document.querySelector('#workbench-main [data-slot="tabs-content"]')?.getBoundingClientRect()
@@ -180,7 +199,9 @@ test('shell navigation, status semantics and focus pass accessibility checks', a
   })
   expect(shellGeometry.headerLeft).toBeGreaterThanOrEqual(shellGeometry.sidebarRight)
   await page.getByRole('button', { name: '开发', exact: true }).click()
-  await page.getByText('状态语义', { exact: true }).click()
+  await expect(page).toHaveURL(/\/workspace$/)
+  await expect(page.getByRole('button', { name: '开发', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByTestId('workbench-runtime-details').locator('summary').click()
   await expect(page.getByLabel('工作台状态语义图例')).toBeVisible()
 
   await page.addScriptTag({ content: axe.source })
@@ -215,7 +236,7 @@ test('shell navigation, status semantics and focus pass accessibility checks', a
   expect((skipBounds?.y || 0) + (skipBounds?.height || 0)).toBeLessThanOrEqual(0)
   await page.screenshot({ path: testInfo.outputPath('workbench-development-states.png') })
   await page.getByRole('button', { name: '收起侧边导航' }).click()
-  await page.getByRole('button', { name: '工作', exact: true }).click()
+  await page.getByRole('button', { name: '内容', exact: true }).click()
   await page.screenshot({ path: testInfo.outputPath('workbench-work-mode.png') })
 })
 

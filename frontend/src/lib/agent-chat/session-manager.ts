@@ -3,11 +3,14 @@ import { cleanupTempMcpConfig, type McpTraceContext } from './mcp-config'
 import { startClaudeRunner, type ClaudeRunner, type SpawnOptions } from './claude-runner'
 import { startCodexRunner } from './codex-runner'
 import { startHostBridgeRunner } from './host-bridge-runner'
-import type { BrainProvider } from './types'
+import type { AgentContextBinding, AgentProviderResolution, BrainProvider } from './types'
 
 export interface ActiveSession {
   id: string
   claudeSessionId: string | null
+  runnerSessionId: string | null
+  providerResolution: AgentProviderResolution | null
+  contextBinding: AgentContextBinding | null
   mcpConfigPath: string
   runner: ClaudeRunner | null
   lastActiveAt: number
@@ -50,6 +53,9 @@ export class SessionManager extends EventEmitter {
     const sess: ActiveSession = {
       id,
       claudeSessionId: null,
+      runnerSessionId: null,
+      providerResolution: null,
+      contextBinding: null,
       mcpConfigPath: spawn.mcpConfigPath,
       runner: null,
       lastActiveAt: this.now(),
@@ -70,6 +76,7 @@ export class SessionManager extends EventEmitter {
       appendSystemPrompt?: string
       brainProvider?: BrainProvider
       traceContext?: McpTraceContext
+      context?: AgentContextBinding
     },
   ): ClaudeRunner {
     const sess = this.sessions.get(id)
@@ -98,17 +105,21 @@ export class SessionManager extends EventEmitter {
         traceId: extra?.traceContext?.traceId || `trace:session:${id}`,
         executionId: extra?.traceContext?.executionId || `trace:session:${id}`,
         parentSpanId: extra?.traceContext?.parentSpanId || `ws:session:${id}`,
-        projectDir: process.env.OMNI_PROJECT_DIR || process.cwd(),
+        projectHandle: process.env.OMNI_PROJECT_HANDLE || 'project:default',
+        context: extra?.context,
         fallbackFactory: mode === 'auto' ? localFactory : undefined,
       })
       : localFactory()
     sess.runner = runner
     sess.lastActiveAt = this.now()
     this.resetTtl(sess)
-    runner.on('chunk', (chunk: { type: string; session_id?: string }) => {
+    if (extra?.context) sess.contextBinding = extra.context
+    runner.on('chunk', (chunk: { type: string; session_id?: string; provider_resolution?: AgentProviderResolution }) => {
       if (chunk.type === 'system' && chunk.session_id && !sess.claudeSessionId) {
         sess.claudeSessionId = chunk.session_id
+        sess.runnerSessionId = chunk.session_id
       }
+      if (chunk.provider_resolution) sess.providerResolution = chunk.provider_resolution
     })
     runner.on('exit', () => {
       sess.runner = null

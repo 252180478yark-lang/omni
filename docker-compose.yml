@@ -1,7 +1,9 @@
 # Omni-Vibe OS Ultra — 统一编排
-# 一键启动：docker-compose up -d
-# 单独启动基础设施：docker-compose up -d postgres redis nginx
-# 查看日志：docker-compose logs -f <service>
+# 启动核心运行面：docker compose up -d
+# 启动内容运行面：docker compose --profile content up -d
+# 恢复全量运行面：docker compose --profile full up -d
+# 单独启动基础设施：docker compose up -d postgres redis
+# 查看日志：docker compose logs -f <service>
 #
 # VPN/代理配置：在根目录 .env 中设置 PROXY_URL（不要改这个文件）
 #   PROXY_URL=http://host.docker.internal:12334
@@ -29,6 +31,7 @@ x-runtime-env: &runtime-env
   COMPOSE_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:?RuntimeAllocation compose project required}"
   OMNI_ALLOCATION_ID: "${OMNI_ALLOCATION_ID:?RuntimeAllocation id required}"
   OMNI_RUNTIME_ID: "${OMNI_RUNTIME_ID:?RuntimeAllocation runtime id required}"
+  OMNI_RUNTIME_PROFILE: "${OMNI_RUNTIME_PROFILE:?RuntimeAllocation profile required}"
   OMNI_WORKTREE_ID: "${OMNI_WORKTREE_ID:?RuntimeAllocation worktree id required}"
   OMNI_SOURCE_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
   OMNI_EXPECTED_COMMIT: "${OMNI_SOURCE_COMMIT:?RuntimeAllocation source commit required}"
@@ -120,6 +123,7 @@ services:
   nginx:
     image: nginx:1.27-alpine
     labels: *runtime-labels
+    profiles: ["full"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -139,8 +143,6 @@ services:
         condition: service_started
       ad-review-service:
         condition: service_started
-      identity-service:
-        condition: service_healthy
     ports:
       # W6 multi-device: nginx 绑 0.0.0.0 让 tailnet 内 OPPO/Mac 能访问;
       # 其他服务 (KE/Hub/Frontend) 保持 127.0.0.1, 由 nginx 反代统一出口
@@ -149,12 +151,18 @@ services:
     volumes:
       - ./services/infra-core/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./services/infra-core/nginx/conf.d:/etc/nginx/conf.d:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks:
       - omni-network
 
   # ═══ Application Services ═══
 
   identity-service:
+    profiles: ["legacy-identity"]
     build:
       context: ./services/identity-service
       labels: *build-labels
@@ -198,13 +206,12 @@ services:
     labels: *runtime-labels
     environment:
       <<: *runtime-env
-      OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
       OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
+      OMNI_APPROVAL_AUTH_MODE: "trusted-local"
       NEXT_PUBLIC_USE_BACKEND_HUB: "true"
       NEXT_PUBLIC_OPENAI_BASE_URL: "http://localhost:8001/v1"
       NEXT_PUBLIC_OMNI_API_BASE_URL: "http://localhost"
       AI_PROVIDER_HUB_URL: "http://ai-provider-hub:8001"
-      IDENTITY_SERVICE_URL: "http://identity-service:8000"
       KNOWLEDGE_ENGINE_URL: "http://knowledge-engine:8002"
       VIDEO_ANALYSIS_SERVICE_URL: "http://video-analysis:8006"
       LIVESTREAM_ANALYSIS_SERVICE_URL: "http://livestream-analysis:8007"
@@ -213,24 +220,22 @@ services:
       SCOUT_AGENT_URL: "http://scout-agent:8009"
     command: ["npm", "run", "start"]
     volumes:
-      - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
       - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
       runtime-preflight:
         condition: service_completed_successfully
-      identity-service:
-        condition: service_healthy
       ai-provider-hub:
         condition: service_started
       knowledge-engine:
-        condition: service_started
-      ad-review-service:
-        condition: service_started
-      scout-agent:
         condition: service_started
     networks:
       - omni-network
@@ -241,6 +246,7 @@ services:
       labels: *build-labels
       args: *build-args
     labels: *runtime-labels
+    profiles: ["full"]
     environment:
       <<: *proxy-env
       DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
@@ -297,6 +303,11 @@ services:
       - "127.0.0.1:${AI_PROVIDER_HUB_PORT:-8001}:8001"
     volumes:
       - ai_hub_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -329,9 +340,10 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD:-changeme_redis}@redis:6379/1"
       OMNI_SCHEDULER_ENABLED: "${OMNI_SCHEDULER_ENABLED:-false}"
       OMNI_APPROVAL_WORKER_ENABLED: "${OMNI_APPROVAL_WORKER_ENABLED:-false}"
-      OMNI_APPROVAL_SERVICE_SECRET_FILE: "/run/secrets/omni_approval_hmac"
       OMNI_COMPATIBILITY_TOKEN_FILE: "/run/secrets/omni_compatibility"
-      OMNI_APPROVAL_FRONTEND_PRINCIPAL: "service:frontend"
+      OMNI_APPROVAL_AUTH_MODE: "trusted-local"
+      OMNI_TRUSTED_LOCAL_PRINCIPAL: "local-owner"
+      OMNI_TRUSTED_LOCAL_ROLES: "owner,admin"
       # P0 owner-facing preflight reads this checkout only to hash the
       # migration/config baseline; it never writes to the mount.
       P0_REPOSITORY_ROOT: "/workspace"
@@ -356,7 +368,6 @@ services:
       # Dev: host 直通访问（Claude Code MCP / 直接 curl 调试）
       - "127.0.0.1:${KNOWLEDGE_ENGINE_PORT:-8002}:8002"
     volumes:
-      - "${OMNI_APPROVAL_HMAC_SECRET_FILE:?Approval HMAC secret file required}:/run/secrets/omni_approval_hmac:ro"
       - "${OMNI_COMPATIBILITY_TOKEN_FILE:?Compatibility token file required}:/run/secrets/omni_compatibility:ro"
       - "${OMNI_RUNTIME_ALLOCATION_SOURCE:?RuntimeAllocation evidence file required}:/runtime-state/allocations.json:ro"
       - knowledge_data:/app/data
@@ -369,6 +380,11 @@ services:
       - ./CLAUDE.md:/app/CLAUDE.md:ro
       # reverse_storyboard_video tool 测试用,挂载 host Desktop 让 KE 能访问千川视频测试文件 + 测试日志写回
       - "${OMNI_HOST_DESKTOP_PATH:-./.runtime/host-desktop}:/host/Desktop:rw"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -385,6 +401,7 @@ services:
       labels: *build-labels
       args: *build-args
     labels: *runtime-labels
+    profiles: ["full"]
     env_file:
       - ./services/news-aggregator/.env.example
     environment:
@@ -394,6 +411,11 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
     expose:
       - "8005"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8005/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -414,6 +436,7 @@ services:
       labels: *build-labels
       args: *build-args
     labels: *runtime-labels
+    profiles: ["content", "full"]
     env_file:
       - ./services/video-analysis/.env.example
     environment:
@@ -427,6 +450,11 @@ services:
       - "8006"
     volumes:
       - video_analysis_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8006/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -443,6 +471,7 @@ services:
       labels: *build-labels
       args: *build-args
     labels: *runtime-labels
+    profiles: ["content", "full"]
     env_file:
       - ./services/livestream-analysis/.env.example
     environment:
@@ -454,6 +483,11 @@ services:
       - "8007"
     volumes:
       - livestream_analysis_data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8007/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -472,6 +506,7 @@ services:
     labels:
       <<: *runtime-labels
       io.omni.scheduler_role: "${OMNI_SCHEDULER_ROLE:-disabled}"
+    profiles: ["content", "full"]
     environment:
       # 不走 VPN：scout-agent 只抓国内站（淘宝/罗盘/云图/抖音）+ 内网 ai-hub。
       # 国内站要国内 IP，外国 VPN 机房出口会被淘宝搜索反爬拦 → 清空代理走直连。
@@ -483,6 +518,8 @@ services:
       no_proxy: "*"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-omni_user}:${POSTGRES_PASSWORD:-changeme_in_production}@postgres:5432/${POSTGRES_DB:-omni_vibe_db}"
       AI_HUB_URL: "http://ai-provider-hub:8001"
+      OMNI_KE_URL: "http://knowledge-engine:8002"
+      OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE: "/run/secrets/omni_runtime_trace"
       DOUYIN_SHOP_ID: "${DOUYIN_SHOP_ID:-}"
       YUNTU_BRAND_ID: "${YUNTU_BRAND_ID:-WADAKAN_HETIANKUAN}"
       YUNTU_INDUSTRY: "${YUNTU_INDUSTRY:-food_beverage}"
@@ -497,12 +534,15 @@ services:
       - ./services/scout-agent/sessions:/app/sessions
       - ./services/scout-agent/downloads:/app/downloads
       - ./services/scout-agent/snapshots:/app/snapshots
+      - "${OMNI_RUNTIME_TRACE_TOKEN_FILE:?Runtime trace token file required}:/run/secrets/omni_runtime_trace:ro"
     depends_on:
       migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
       ai-provider-hub:
+        condition: service_started
+      knowledge-engine:
         condition: service_started
     networks:
       - omni-network

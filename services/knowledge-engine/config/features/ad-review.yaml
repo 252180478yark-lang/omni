@@ -6,8 +6,8 @@ owner: {kind: team, id: omni}
 lifecycle: active
 routes:
   canonical: /ad-review
-  visible: true
-  placements: [home, onboarding, direct]
+  visible: false
+  placements: [direct]
   owned_surfaces:
     - /ad-review
     - /ad-review/[id]
@@ -16,8 +16,8 @@ routes:
     - /ad-review/flywheel
 ia:
   mode: work
-  primary_group: operations
-  primary_order: 10
+  primary_group: analysis
+  primary_order: 30
   contextual_groups: []
   phase: merge
   flag: unified_shell

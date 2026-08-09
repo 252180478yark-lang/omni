@@ -29,6 +29,7 @@ def _allocation_environment() -> dict[str, str]:
         "OMNI_DATABASE_DISPOSABLE": "true",
         "OMNI_ALLOCATION_ID": "allocation-" + "a" * 32,
         "OMNI_RUNTIME_ID": "runtime-fixture",
+        "OMNI_RUNTIME_PROFILE": "core",
         "OMNI_WORKTREE_ID": "worktree-" + "b" * 16,
         "OMNI_SOURCE_FINGERPRINT": "c" * 64,
         "POSTGRES_USER": "fixture-user",
@@ -38,6 +39,8 @@ def _allocation_environment() -> dict[str, str]:
         "OMNI_IDENTITY_JWT_SECRET_FILE": str((ROOT / "tests" / "fixtures" / "identity-jwt.key").resolve()),
         "OMNI_APPROVAL_HMAC_SECRET_FILE": str((ROOT / "tests" / "fixtures" / "approval-hmac.key").resolve()),
         "OMNI_COMPATIBILITY_TOKEN_FILE": str((ROOT / "tests" / "fixtures" / "compatibility-token.key").resolve()),
+        "OMNI_RUNTIME_TRACE_TOKEN_FILE": str((ROOT / "tests" / "fixtures" / "runtime-trace-token.key").resolve()),
+        "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE": str((ROOT / "tests" / "fixtures" / "runtime-trace-token.key").resolve()),
         "POSTGRES_PORT": "25432",
         "REDIS_PORT": "26379",
         "IDENTITY_SERVICE_PORT": "28000",
@@ -103,6 +106,8 @@ def test_frontend_overrides_inherited_canonical_database_and_redis_endpoints() -
     assert environment["OMNI_KE_URL"] == "http://127.0.0.1:28002"
     assert environment["OMNI_APPROVAL_SERVICE_SECRET_FILE"] == source["OMNI_APPROVAL_HMAC_SECRET_FILE"]
     assert environment["OMNI_COMPATIBILITY_TOKEN_FILE"] == source["OMNI_COMPATIBILITY_TOKEN_FILE"]
+    assert environment["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] == source["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"]
+    assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" not in environment
     assert "OMNI_APPROVAL_SERVICE_TOKEN" not in environment
     assert "OMNI_APPROVAL_SERVICE_SECRET_FILE" not in source
 
@@ -117,6 +122,9 @@ def test_frontend_overrides_inherited_canonical_database_and_redis_endpoints() -
         ("identity-service", "OMNI_IDENTITY_JWT_SECRET_FILE"),
         ("frontend", "OMNI_APPROVAL_HMAC_SECRET_FILE"),
         ("frontend", "OMNI_COMPATIBILITY_TOKEN_FILE"),
+        ("frontend", "OMNI_RUNTIME_TRACE_TOKEN_FILE"),
+        ("knowledge-engine", "OMNI_RUNTIME_TRACE_TOKEN_FILE"),
+        ("scout-agent", "OMNI_RUNTIME_TRACE_TOKEN_FILE"),
     ),
 )
 def test_host_secret_file_mappings_require_absolute_paths(service: str, source_name: str) -> None:
@@ -294,6 +302,39 @@ def test_compatibility_token_is_projected_only_to_its_two_host_consumers() -> No
             assert "OMNI_COMPATIBILITY_TOKEN_FILE" not in environment
 
 
+def test_runtime_trace_token_is_projected_only_to_host_publishers() -> None:
+    source = _allocation_environment()
+    for service in runtime_env.ALLOWED_SERVICES:
+        environment = runtime_env.build_service_environment(service, source)
+        if service == "knowledge-engine":
+            assert environment["OMNI_RUNTIME_TRACE_TOKEN_FILE"] == source["OMNI_RUNTIME_TRACE_TOKEN_FILE"]
+            assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE" not in environment
+        elif service in {"frontend", "scout-agent"}:
+            assert environment["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] == (
+                source["OMNI_RUNTIME_TRACE_TOKEN_FILE"]
+            )
+            assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" not in environment
+        else:
+            assert "OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE" not in environment
+            assert "OMNI_RUNTIME_TRACE_TOKEN_FILE" not in environment
+
+
+def test_runtime_trace_host_children_ignore_mismatched_publisher_alias() -> None:
+    source = _allocation_environment()
+    source["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] = str(
+        (ROOT / "tests" / "fixtures" / "wrong-runtime-trace-token.key").resolve()
+    )
+
+    frontend = runtime_env.build_service_environment("frontend", source)
+    knowledge = runtime_env.build_service_environment("knowledge-engine", source)
+    scout = runtime_env.build_service_environment("scout-agent", source)
+
+    canonical = source["OMNI_RUNTIME_TRACE_TOKEN_FILE"]
+    assert frontend["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] == canonical
+    assert knowledge["OMNI_RUNTIME_TRACE_TOKEN_FILE"] == canonical
+    assert scout["OMNI_RUNTIME_TRACE_SERVICE_TOKEN_FILE"] == canonical
+
+
 def test_spawned_child_observes_allocated_environment_without_emitting_passwords(
     tmp_path: Path,
 ) -> None:
@@ -356,9 +397,19 @@ print(json.dumps({
 
 def test_dev_start_boots_core_services_in_the_same_root_compose_allocation() -> None:
     script = (ROOT / "dev-start.ps1").read_text(encoding="utf-8")
+    assert '[ValidateSet("core", "content", "full")]' in script
+    assert '"--runtime-profile", $RuntimeProfile' in script
     assert "docker compose -f $composeFile up -d postgres redis" in script
     assert "docker compose -f $composeFile up -d ai-provider-hub knowledge-engine" in script
+    assert "docker compose -f $composeFile --profile $RuntimeProfile up -d" in script
+    assert '$RuntimeProfile -ne "core"' in script
+    assert '$RuntimeProfile -eq "full"' in script
+    assert "$env:NGINX_HTTP_PORT" in script
     assert 'docker-compose.dev.yml" up -d' not in script
     assert "scripts\\dev_runtime_environment.py" in script
     assert "localhost:8001" not in script
     assert "localhost:8002" not in script
+    assert '$env:PORT = "$frontendPort"' in script
+    assert '$env:OMNI_FRONTEND_HOST = "127.0.0.1"' in script
+    assert '"npm", "run", "dev", "--", "-H"' not in script
+    assert 'Optional = $true' not in script

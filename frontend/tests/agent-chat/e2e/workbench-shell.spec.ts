@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
-const WORK_GROUPS = ['today', 'products', 'operations', 'content', 'knowledge']
-const DEVELOPMENT_GROUPS = ['agents', 'skills-tools', 'workflows', 'prompt-eval', 'runs-system']
+const WORK_GROUPS = ['production', 'analysis', 'library']
+const DEVELOPMENT_GROUPS = ['agent-tools', 'quality', 'system']
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -81,45 +81,42 @@ async function primaryGroups(page: import('@playwright/test').Page) {
   return page.locator('[data-workbench-primary-group]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-workbench-primary-group')))
 }
 
+async function ensureSidebarExpanded(page: import('@playwright/test').Page) {
+  const expand = page.getByRole('button', { name: '展开侧边导航' })
+  if (await expand.count()) await expand.click()
+}
+
 async function expectUniqueCurrentPlacement(
   page: import('@playwright/test').Page,
-  expected: { mode: '工作' | '开发'; activeGroup: string; duplicateGroup: string },
+  expected: { mode: '内容' | '开发'; activeGroup: string },
 ) {
   await expect(page.getByRole('button', { name: expected.mode, exact: true })).toHaveAttribute('aria-pressed', 'true')
-  await page.getByRole('button', { name: '展开侧边导航' }).click()
+  await ensureSidebarExpanded(page)
 
   const navigation = page.getByRole('navigation', { name: `${expected.mode}模式一级导航` })
   const groupCurrents = navigation.locator('[data-workbench-primary-group] > div:first-child > a[aria-current="page"]')
   await expect(groupCurrents).toHaveCount(1)
   await expect(navigation.locator(`[data-workbench-primary-group="${expected.activeGroup}"] > div:first-child > a`)).toHaveAttribute('aria-current', 'page')
-
-  const duplicate = navigation.locator(`[data-workbench-primary-group="${expected.duplicateGroup}"]`)
-  const duplicateToggle = duplicate.getByRole('button')
-  if (await duplicateToggle.getAttribute('aria-expanded') === 'false') await duplicateToggle.click()
-
-  const secondaryCurrents = navigation.locator('[id^="workbench-group-"] > a[aria-current="page"]')
-  await expect(secondaryCurrents).toHaveCount(1)
-  await expect(navigation.locator(`[data-workbench-primary-group="${expected.activeGroup}"] [id^="workbench-group-"] > a[aria-current="page"]`)).toHaveCount(1)
-  await expect(duplicate.locator('[id^="workbench-group-"] > a[aria-current="page"]')).toHaveCount(0)
 }
 
-test('real SKU page uses one persistent 5+5 shell and honest unavailable bindings', async ({ page }) => {
-  await page.goto('/sku-pipeline')
+test('shared workspace uses one persistent 3+3 shell and honest unavailable bindings', async ({ page }) => {
+  await page.goto('/workspace')
   await expect(page.getByTestId('unified-app-shell')).toBeVisible()
   await expect.poll(() => primaryGroups(page)).toEqual(WORK_GROUPS)
+  await page.getByText('运行状态', { exact: true }).click()
   await expect(page.getByTestId('workbench-context-status')).toContainText('未选择')
   await expect(page.getByTestId('workbench-provider-status')).toContainText('未解析')
   await expect(page.getByTestId('workbench-health-status')).toContainText('unavailable / unknown')
 
-  await page.getByRole('button', { name: '展开侧边导航' }).click()
+  await ensureSidebarExpanded(page)
   await expect(page.getByText('SKU 圈包链路', { exact: true }).first()).toBeVisible()
 
   await page.getByRole('button', { name: '开发', exact: true }).click()
   await expect.poll(() => primaryGroups(page)).toEqual(DEVELOPMENT_GROUPS)
   await expect(page.getByRole('navigation', { name: '开发模式一级导航' })).toBeVisible()
-  await expect(page.getByText('SKU 圈包链路', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('系统中台', { exact: true }).first()).toBeVisible()
   await expect(page.getByRole('navigation', { name: '当前位置' })).toContainText('开发')
-  await expect(page.getByRole('navigation', { name: '当前位置' })).toContainText('Workflows')
+  await expect(page.getByRole('navigation', { name: '当前位置' })).toContainText('系统中台')
 
   for (const slot of ['assistant', 'blueprint', 'run-center', 'approval', 'artifact-drawer']) {
     await expect(page.locator(`[data-workbench-slot="${slot}"]`)).toHaveCount(1)
@@ -130,11 +127,11 @@ test('real SKU page uses one persistent 5+5 shell and honest unavailable binding
   await expect.poll(() => primaryGroups(page)).toEqual(DEVELOPMENT_GROUPS)
 })
 
-test('same-mode contextual placements expose exactly one current group and secondary link', async ({ page }) => {
+test('retained and direct-only development surfaces expose one current group', async ({ page }) => {
   const cases = [
-    ['/chat', { mode: '开发', activeGroup: 'agents', duplicateGroup: 'prompt-eval' }],
-    ['/inbox', { mode: '工作', activeGroup: 'today', duplicateGroup: 'operations' }],
-    ['/system-graph?legacy_plan=1', { mode: '开发', activeGroup: 'workflows', duplicateGroup: 'skills-tools' }],
+    ['/chat', { mode: '开发', activeGroup: 'agent-tools' }],
+    ['/inbox', { mode: '开发', activeGroup: 'quality' }],
+    ['/system-graph?legacy_plan=1', { mode: '开发', activeGroup: 'system' }],
   ] as const
 
   for (const [href, expected] of cases) {
@@ -143,29 +140,20 @@ test('same-mode contextual placements expose exactly one current group and secon
   }
 })
 
-test('Development IA opens the owned System Graph surface without redirecting away from its shared view', async ({ page }) => {
+test('Development IA opens System Graph inside the shared command center', async ({ page }) => {
   const browserErrors: string[] = []
   page.on('console', (message) => {
     if (message.type() === 'error' && !message.text().includes('/_next/webpack-hmr')) browserErrors.push(message.text())
   })
   page.on('pageerror', (error) => browserErrors.push(error.message))
 
-  await page.goto('/sku-pipeline')
+  await page.goto('/workspace')
   await page.getByRole('button', { name: '开发', exact: true }).click()
-  await page.getByRole('button', { name: '展开侧边导航' }).click()
-  const skillsAndTools = page.locator('[data-workbench-primary-group="skills-tools"]')
-  const toggle = skillsAndTools.getByRole('button')
-  if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click()
-
-  const systemGraphLink = skillsAndTools.getByRole('link', { name: 'System graph planning and pilot controls' })
-  await expect(systemGraphLink).toHaveAttribute('href', '/system-graph')
-  await systemGraphLink.click()
-
-  await expect(page).toHaveURL(/\/system-graph$/)
+  await expect(page).toHaveURL(/\/workspace$/)
   const breadcrumb = page.getByRole('navigation', { name: '当前位置' })
   await expect(breadcrumb).toContainText('开发')
-  await expect(breadcrumb).toContainText('Workflows')
-  await expect(breadcrumb).toContainText('System graph planning and pilot controls')
+  await expect(breadcrumb).toContainText('系统中台')
+  await expect(page.getByRole('tab', { name: '系统图谱' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('system-graph-empty')).toBeVisible()
   expect(browserErrors).toEqual([])
 })
@@ -177,20 +165,20 @@ test('global search opens and reports a non-first registry entry instead of the 
     events.push(JSON.parse(route.request().postData() || '{}') as Record<string, unknown>)
     await route.fulfill({ status: 202, json: { success: true } })
   })
-  await page.goto('/sku-pipeline')
+  await page.goto('/workspace')
   await page.getByRole('button', { name: '开发', exact: true }).click()
   const search = page.getByRole('searchbox', { name: '全局搜索功能或命令' })
   await search.fill('知识评估')
-  await expect(page.locator('[data-workbench-primary-group="prompt-eval"]')).toHaveCount(1)
+  await expect(page.locator('[data-workbench-primary-group="quality"]')).toHaveCount(1)
   await expect(page.locator('[data-workbench-primary-group]')).toHaveCount(1)
-  const landing = page.getByRole('link', { name: 'Prompt & Eval', exact: true })
+  const landing = page.getByRole('link', { name: '质量与审批', exact: true })
   await expect(landing).toHaveAttribute('href', '/knowledge/evaluate')
   await landing.click()
   await expect(page).toHaveURL(/\/knowledge\/evaluate$/)
   await expect.poll(() => events.some((event) => event.result === 'selected' && event.feature_id === 'knowledge-evaluation')).toBe(true)
   expect(events.some((event) => event.result === 'selected' && event.feature_id === 'prompt-lab')).toBe(false)
   await search.fill('')
-  await expect(page.locator('[data-workbench-primary-group]')).toHaveCount(5)
+  await expect(page.locator('[data-workbench-primary-group]')).toHaveCount(3)
 })
 
 test('legacy workspace submodes canonicalize into the single Development IA', async ({ page }) => {
@@ -224,7 +212,7 @@ test('owned flywheel and compatibility aliases retain their query without a redi
   await expect(page.getByRole('navigation', { name: '当前位置' })).toBeVisible()
 })
 
-test('all five Development group landings open sequentially and Prompt Lab exposes its truthful empty state', async ({ page }, testInfo) => {
+test('all three Development group landings open sequentially and Prompt Lab exposes its truthful empty state', async ({ page }, testInfo) => {
   const browserErrors: string[] = []
   page.on('console', (message) => {
     if (message.type() === 'error' && !message.text().includes('/_next/webpack-hmr')) {
@@ -234,14 +222,12 @@ test('all five Development group landings open sequentially and Prompt Lab expos
   page.on('pageerror', (error) => browserErrors.push(error.message))
 
   const landings = [
-    ['agents', '/chat'],
-    ['skills-tools', '/playground'],
-    ['workflows', '/sku-pipeline'],
-    ['prompt-eval', '/prompt-lab'],
-    ['runs-system', '/workspace/execution'],
+    ['agent-tools', '/chat'],
+    ['quality', '/prompt-lab'],
+    ['system', '/workspace'],
   ] as const
 
-  await page.goto('/sku-pipeline')
+  await page.goto('/workspace')
   await page.getByRole('button', { name: '开发', exact: true }).click()
   for (const [group, href] of landings) {
     const landing = page.locator(`[data-workbench-primary-group="${group}"]`).getByRole('link').first()
@@ -251,7 +237,7 @@ test('all five Development group landings open sequentially and Prompt Lab expos
     await expect(page.getByTestId('unified-app-shell')).toBeVisible()
     await expect(page.getByRole('button', { name: '开发', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await page.waitForLoadState('networkidle')
-    if (group === 'prompt-eval') {
+    if (group === 'quality') {
       const empty = page.getByRole('status', { name: '暂无已登记的 Prompt 节点' })
       await expect(empty).toContainText('不会临时生成假节点')
       await expect(empty).toContainText('P0 数据库迁移')
@@ -348,6 +334,27 @@ test('mobile chat and playground consume the actual wrapped-header remainder wit
     }
     await page.screenshot({ path: testInfo.outputPath(`mobile-${route.slice(1)}.png`) })
   }
+})
+
+test('mobile sidebar exposes mode and primary-group text without document overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/workspace')
+
+  const sidebar = page.getByTestId('workbench-sidebar')
+  await expect(sidebar.getByText('内容', { exact: true })).toBeVisible()
+  const development = sidebar.getByRole('button', { name: '开发', exact: true })
+  await expect(development).toBeVisible()
+  await development.click()
+  await expect(development).toHaveAttribute('aria-pressed', 'true')
+
+  for (const label of ['Agent 与工具', '质量与审批', '系统中台']) {
+    await expect(sidebar.getByText(label, { exact: true })).toBeVisible()
+  }
+  const viewport = await page.evaluate(() => ({
+    clientWidth: document.documentElement.clientWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+  }))
+  expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth)
 })
 
 test('client navigation to an unknown route stays in the shared shell and reports one route gap', async ({ page }) => {

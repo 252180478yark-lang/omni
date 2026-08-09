@@ -442,6 +442,104 @@ def test_repository_hook_delivery_does_not_infer_current_user_trust(tmp_path: Pa
     ] is True
 
 
+def test_receipt_discovery_includes_nested_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "verified-receipts"
+    nested = cache / "w0" / "receipt.json"
+    nested.parent.mkdir(parents=True)
+    nested.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(status, "_validated_cache_root", lambda _root: cache)
+
+    discovered = status.discover_receipt_paths(tmp_path)
+
+    assert discovered == (nested.resolve(),)
+
+
+def test_receipt_discovery_fails_closed_on_symlink_escape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "verified-receipts"
+    cache.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    (cache / "escaped.json").symlink_to(outside)
+    monkeypatch.setattr(status, "_validated_cache_root", lambda _root: cache)
+
+    with pytest.raises(status.ProjectionInputError, match="linked receipt"):
+        status.discover_receipt_paths(tmp_path)
+
+
+def test_receipt_discovery_fails_closed_on_file_count_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "verified-receipts"
+    cache.mkdir()
+    for index in range(status.RECEIPT_CACHE_MAX_FILES + 1):
+        (cache / f"{index:03d}.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(status, "_validated_cache_root", lambda _root: cache)
+
+    with pytest.raises(status.ProjectionInputError, match="file count"):
+        status.discover_receipt_paths(tmp_path)
+
+
+def test_explicit_external_receipt_remains_compatible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = tmp_path / "verified-receipts"
+    cache.mkdir()
+    explicit = tmp_path / "external" / "receipt.json"
+    explicit.parent.mkdir()
+    explicit.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(status, "_validated_cache_root", lambda _root: cache)
+
+    assert status.discover_receipt_paths(tmp_path, [explicit]) == (explicit.resolve(),)
+
+
+def test_receipt_discovery_rejects_symlinked_cache_ancestor(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(repo, "git", "init", "-q", "-b", "main")
+    outside = tmp_path / "outside-cache"
+    outside.mkdir()
+    (repo / ".git" / "omni-delivery").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(status.ProjectionInputError, match="ancestry"):
+        status.discover_receipt_paths(repo)
+
+
+def test_secure_cached_read_rejects_ancestor_swap_after_discovery(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run(repo, "git", "init", "-q", "-b", "main")
+    delivery_root = repo / ".git" / "omni-delivery"
+    receipt = delivery_root / "verified-receipts" / "w0" / "receipt.json"
+    receipt.parent.mkdir(parents=True)
+    receipt.write_text('{"trusted": true}', encoding="utf-8")
+    discovered = status.discover_receipt_paths(repo)
+    assert discovered == (receipt.resolve(),)
+
+    preserved = repo / ".git" / "omni-delivery-preserved"
+    delivery_root.rename(preserved)
+    outside = tmp_path / "outside"
+    malicious = outside / "verified-receipts" / "w0" / "receipt.json"
+    malicious.parent.mkdir(parents=True)
+    malicious.write_text('{"trusted": false}', encoding="utf-8")
+    delivery_root.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(status.ProjectionInputError, match="ancestry"):
+        status._read_cached_json(repo, discovered[0])
+
+
+def test_legacy_gap_closure_has_versioned_s4_s6_compatibility_mapping() -> None:
+    impact = {
+        "change_id": "2026-08-01-system-convergence-s4-s6-gap-closure",
+        "feature_refs": [{"feature_ref": "config/features/system-convergence-s4-s6.yaml@sha256:fixture"}],
+    }
+
+    assert status._contract_slices(impact) == ("S4", "S5", "S6")
+
+
 def _artifact_zip(entries: list[tuple[str, bytes]]) -> bytes:
     output = io.BytesIO()
     with zipfile.ZipFile(output, "w") as archive:

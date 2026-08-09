@@ -17,10 +17,12 @@ import {
 
 const searchParams = new URLSearchParams()
 const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+const pushMock = vi.fn()
 let testPathname = '/workspace'
 
 vi.mock('next/navigation', () => ({
   usePathname: () => testPathname,
+  useRouter: () => ({ push: pushMock }),
   useSearchParams: () => searchParams,
 }))
 
@@ -43,18 +45,14 @@ vi.mock('@/lib/feature-registry', () => ({
 
 const groupDefinitions = {
   work: [
-    ['today', '今日'],
-    ['products', '商品'],
-    ['operations', '经营'],
-    ['content', '内容'],
-    ['knowledge', '知识'],
+    ['production', '内容生产'],
+    ['analysis', '拆解分析'],
+    ['library', '资产资料'],
   ],
   development: [
-    ['agents', 'Agents'],
-    ['skills-tools', 'Skills & Tools'],
-    ['workflows', 'Workflows'],
-    ['prompt-eval', 'Prompt & Eval'],
-    ['runs-system', 'Runs & System'],
+    ['agent-tools', 'Agent 与工具'],
+    ['quality', '质量与审批'],
+    ['system', '系统中台'],
   ],
 } as const
 
@@ -70,15 +68,19 @@ vi.mock('@/lib/workbench-ia', () => ({
       phase: 'retain'
       flag: null
     }> = [{
-      featureId: `${mode}-${id}`,
-      title: label,
+      featureId: (mode === 'work' && id === 'production') || (mode === 'development' && id === 'system')
+        ? 'workspace-operations'
+        : `${mode}-${id}`,
+      title: (mode === 'work' && id === 'production') || (mode === 'development' && id === 'system')
+        ? '工作台与运营闭环'
+        : label,
       href,
       relationship: 'primary' as const,
       order: index,
       phase: 'retain' as const,
       flag: null,
     }]
-    if (id === 'prompt-eval') {
+    if (id === 'quality') {
       entries.push({
         featureId: 'quality-assurance',
         title: 'QA 与质量检查',
@@ -122,16 +124,16 @@ vi.mock('@/lib/workbench-ia', () => ({
       requestedHref: pathname,
       canonicalHref: pathname,
       matchedSurface: pathname,
-      featureId: sku ? 'sku-pipeline' : 'work-today',
-      primary: { mode: 'work', group: sku ? 'products' : 'today' },
-      contextualGroups: [{ mode: 'development', group: sku ? 'workflows' : 'runs-system', order: 10 }],
-      breadcrumb: sku && effectiveMode === 'development'
+      featureId: sku ? 'sku-pipeline' : 'workspace-operations',
+      primary: { mode: 'work', group: 'production' },
+      contextualGroups: sku ? [] : [{ mode: 'development', group: 'system', order: 0 }],
+      breadcrumb: !sku && effectiveMode === 'development'
         ? [
             { label: '开发', href: '/workspace?mode=development' },
-            { label: 'Workflows', href: '/sku-pipeline' },
-            { label: 'SKU 圈包链路', href: '/sku-pipeline' },
+            { label: '系统中台', href: '/workspace' },
+            { label: '工作台与运营闭环', href: '/workspace' },
           ]
-        : [{ label: sku ? 'SKU 圈包链路' : '今日', href: pathname }],
+        : [{ label: sku ? 'SKU 圈包链路' : '内容生产', href: pathname }],
       effectiveMode,
     }
   },
@@ -147,6 +149,7 @@ beforeEach(() => {
   searchParams.delete('mode')
   testPathname = '/workspace'
   useWorkbenchStore.getState().reset()
+  pushMock.mockReset()
   fetchMock.mockReset()
   fetchMock.mockImplementation(async (input) => String(input) === '/api/omni/overview'
     ? new Response(JSON.stringify({ success: false }), { status: 503 })
@@ -161,7 +164,18 @@ afterEach(() => {
 })
 
 describe('unified workbench shell', () => {
-  it('renders exactly five registry-driven entries per mode without remounting child or continuity state', async () => {
+  it('routes a mode switch from an exclusive surface through the shared workspace', async () => {
+    testPathname = '/sku-pipeline'
+    render(<AppShell unifiedShellEnabled><div>内容</div></AppShell>)
+    await waitFor(() => expect(useWorkbenchStore.getState().preferenceHydrated).toBe(true))
+
+    fireEvent.click(screen.getByRole('button', { name: '开发' }))
+
+    expect(pushMock).toHaveBeenCalledWith('/workspace')
+    expect(useWorkbenchStore.getState().mode).toBe('development')
+  })
+
+  it('renders exactly three registry-driven groups per mode without remounting child or continuity state', async () => {
     useWorkbenchStore.getState().bindContinuity({
       contextRevision: 'context:sku-001:rev-3',
       contextLabel: 'SKU-001',
@@ -177,15 +191,15 @@ describe('unified workbench shell', () => {
     render(<AppShell unifiedShellEnabled><StatefulChild /></AppShell>)
     await waitFor(() => expect(useWorkbenchStore.getState().preferenceHydrated).toBe(true))
     expect(screen.getByTestId('unified-app-shell').getAttribute('data-workbench-density')).toBe('comfortable')
-    expect(document.querySelectorAll('[data-workbench-primary-group]')).toHaveLength(5)
-    expect(screen.getByRole('navigation', { name: '工作模式一级导航' })).toBeTruthy()
+    expect(document.querySelectorAll('[data-workbench-primary-group]')).toHaveLength(3)
+    expect(screen.getByRole('navigation', { name: '内容模式一级导航' })).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText('child-state'), { target: { value: 'still-mounted' } })
     fireEvent.click(screen.getByRole('button', { name: '开发' }))
 
     expect(await screen.findByRole('navigation', { name: '开发模式一级导航' })).toBeTruthy()
     expect(screen.getByTestId('unified-app-shell').getAttribute('data-workbench-density')).toBe('compact')
-    expect(document.querySelectorAll('[data-workbench-primary-group]')).toHaveLength(5)
+    expect(document.querySelectorAll('[data-workbench-primary-group]')).toHaveLength(3)
     expect((screen.getByLabelText('child-state') as HTMLInputElement).value).toBe('still-mounted')
     expect(useWorkbenchStore.getState()).toMatchObject({
       contextRevision: 'context:sku-001:rev-3',
@@ -234,25 +248,25 @@ describe('unified workbench shell', () => {
       event_type: 'primary_navigation',
       requested_href: '/workspace',
       canonical_href: '/workspace',
-      feature_id: 'work-today',
+      feature_id: 'workspace-operations',
       mode: 'work',
-      primary_group: 'today',
+      primary_group: 'production',
       secondary_depth: 0,
       result: 'opened',
     })
 
     fetchMock.mockClear()
 
-    fireEvent.click(within(screen.getByTestId('workbench-sidebar')).getByRole('link', { name: '今日' }))
+    fireEvent.click(within(screen.getByTestId('workbench-sidebar')).getByRole('link', { name: '内容生产' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/omni/workbench/navigation-events')).toBe(true))
     const [, request] = fetchMock.mock.calls.find(([input]) => String(input) === '/api/omni/workbench/navigation-events') || []
     expect(JSON.parse(String(request?.body))).toMatchObject({
       event_type: 'primary_navigation',
       requested_href: '/workspace',
       canonical_href: '/workspace',
-      feature_id: 'work-today',
+      feature_id: 'workspace-operations',
       mode: 'work',
-      primary_group: 'today',
+      primary_group: 'production',
       secondary_depth: 0,
       result: 'selected',
     })
@@ -265,7 +279,7 @@ describe('unified workbench shell', () => {
     fireEvent.click(screen.getByRole('button', { name: '开发' }))
     fireEvent.change(screen.getByRole('searchbox', { name: '全局搜索功能或命令' }), { target: { value: 'QA' } })
 
-    const qaLanding = within(screen.getByTestId('workbench-sidebar')).getByRole('link', { name: 'Prompt & Eval' })
+    const qaLanding = within(screen.getByTestId('workbench-sidebar')).getByRole('link', { name: '质量与审批' })
     expect(qaLanding.getAttribute('href')).toBe('/qa')
     fetchMock.mockClear()
     fireEvent.click(qaLanding)
@@ -277,7 +291,7 @@ describe('unified workbench shell', () => {
       canonical_href: '/qa',
       feature_id: 'quality-assurance',
       mode: 'development',
-      primary_group: 'prompt-eval',
+      primary_group: 'quality',
       secondary_depth: 0,
       result: 'selected',
     })
@@ -333,17 +347,15 @@ describe('unified workbench shell', () => {
     expect(screen.getByTestId('workbench-health-status').textContent).toContain('unavailable / unknown')
   })
 
-  it('shows the active Development breadcrumb for a contextual SKU surface', async () => {
-    testPathname = '/sku-pipeline'
-    render(<AppShell unifiedShellEnabled><div>SKU 内容</div></AppShell>)
+  it('shows the active development breadcrumb for the shared system workspace', async () => {
+    searchParams.set('mode', 'development')
+    render(<AppShell unifiedShellEnabled><div>系统内容</div></AppShell>)
     await waitFor(() => expect(useWorkbenchStore.getState().preferenceHydrated).toBe(true))
-
-    fireEvent.click(screen.getByRole('button', { name: '开发' }))
 
     const breadcrumb = screen.getByRole('navigation', { name: '当前位置' })
     expect(breadcrumb.textContent).toContain('开发')
-    expect(breadcrumb.textContent).toContain('Workflows')
-    expect(breadcrumb.textContent).toContain('SKU 圈包链路')
+    expect(breadcrumb.textContent).toContain('系统中台')
+    expect(breadcrumb.textContent).toContain('工作台与运营闭环')
   })
 
   it('refreshes overview on a bounded interval and visibility without coupling context or provider', async () => {

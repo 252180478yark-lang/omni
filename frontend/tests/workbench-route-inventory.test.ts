@@ -29,8 +29,9 @@ describe('workbench route inventory', () => {
     const aliases = FEATURE_REGISTRY.flatMap((entry) => entry.aliases.map((alias) => alias.href))
 
     expect(pages).toHaveLength(45)
-    expect(owned).toHaveLength(44)
-    expect(aliases).toEqual(['/marketing/review', '/qa'])
+    expect(owned).toHaveLength(43)
+    expect(aliases).toHaveLength(3)
+    expect([...aliases].sort()).toEqual(['/', '/marketing/review', '/qa'])
     expect(new Set(owned).size).toBe(owned.length)
     expect(new Set(aliases).size).toBe(aliases.length)
     expect(owned.filter((href) => aliases.includes(href))).toEqual([])

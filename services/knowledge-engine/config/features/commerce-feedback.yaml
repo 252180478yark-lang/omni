@@ -6,13 +6,13 @@ owner: {kind: team, id: omni}
 lifecycle: active
 routes:
   canonical: /ad-metrics
-  visible: true
-  placements: [sidebar, direct]
+  visible: false
+  placements: [direct]
   owned_surfaces: [/ad-metrics, /content-leaderboard]
 ia:
   mode: work
-  primary_group: operations
-  primary_order: 20
+  primary_group: analysis
+  primary_order: 40
   contextual_groups: []
   phase: merge
   flag: unified_shell

@@ -11,10 +11,9 @@ routes:
   owned_surfaces: [/sku-pipeline]
 ia:
   mode: work
-  primary_group: products
-  primary_order: 20
-  contextual_groups:
-    - {mode: development, group: workflows, order: 0}
+  primary_group: production
+  primary_order: 10
+  contextual_groups: []
   phase: retain
   flag: unified_shell
 capabilities:

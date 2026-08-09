@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -44,7 +43,7 @@ routes:
   owned_surfaces: [{href}]
 ia:
   mode: work
-  primary_group: today
+  primary_group: production
   primary_order: 0
   contextual_groups: []
   phase: retain
@@ -78,6 +77,16 @@ def test_schema_is_versioned_draft_2020_12() -> None:
     assert schema["additionalProperties"] is False
     assert "ia" in schema["required"]
     assert "owned_surfaces" in schema["properties"]["routes"]["required"]
+    assert schema["$defs"]["work_group"]["enum"] == [
+        "production",
+        "analysis",
+        "library",
+    ]
+    assert schema["$defs"]["development_group"]["enum"] == [
+        "agent-tools",
+        "quality",
+        "system",
+    ]
 
 
 def test_utf8_definition_and_projection_are_stable(tmp_path: Path) -> None:
@@ -141,7 +150,7 @@ def test_duplicate_ia_order_is_rejected(tmp_path: Path) -> None:
     (definitions / "b.yaml").write_text(
         _definition(feature_id="other-feature", href="/other"), encoding="utf-8"
     )
-    with pytest.raises(DefinitionError, match="duplicate IA order work/today/0"):
+    with pytest.raises(DefinitionError, match="duplicate IA order work/production/0"):
         load_definitions(tmp_path)
 
 
@@ -200,16 +209,12 @@ def test_repository_workbench_ia_and_page_routes_are_exactly_partitioned() -> No
     assert by_id["sku-pipeline"].routes.canonical == "/sku-pipeline"
 
     expected_groups = {
-        ("work", "today"),
-        ("work", "products"),
-        ("work", "operations"),
-        ("work", "content"),
-        ("work", "knowledge"),
-        ("development", "agents"),
-        ("development", "skills-tools"),
-        ("development", "workflows"),
-        ("development", "prompt-eval"),
-        ("development", "runs-system"),
+        ("work", "production"),
+        ("work", "analysis"),
+        ("work", "library"),
+        ("development", "agent-tools"),
+        ("development", "quality"),
+        ("development", "system"),
     }
     grouped: dict[tuple[str, str], list[tuple[int, str]]] = {}
     for definition in definitions:
@@ -232,17 +237,40 @@ def test_repository_workbench_ia_and_page_routes_are_exactly_partitioned() -> No
     )
     landings = {group: min(items)[1] for group, items in grouped.items()}
     assert landings == {
-        ("work", "today"): "workspace-operations",
-        ("work", "products"): "product-management",
-        ("work", "operations"): "scout-monitoring",
-        ("work", "content"): "content-studio",
-        ("work", "knowledge"): "knowledge",
-        ("development", "agents"): "chat",
-        ("development", "skills-tools"): "playground",
-        ("development", "workflows"): "sku-pipeline",
-        ("development", "prompt-eval"): "prompt-lab",
-        ("development", "runs-system"): "system-convergence-runtime-execution",
+        ("work", "production"): "workspace-operations",
+        ("work", "analysis"): "reverse-engineer",
+        ("work", "library"): "product-management",
+        ("development", "agent-tools"): "chat",
+        ("development", "quality"): "prompt-lab",
+        ("development", "system"): "workspace-operations",
     }
+
+    visible_ids = {
+        definition.feature_id
+        for definition in definitions
+        if definition.lifecycle == "active" and definition.routes.visible
+    }
+    assert visible_ids == {
+        "agent-log",
+        "approval-inbox",
+        "chat",
+        "content-studio",
+        "knowledge",
+        "knowledge-evaluation",
+        "knowledge-harvester",
+        "livestream-analysis",
+        "model-management",
+        "playground",
+        "product-management",
+        "prompt-lab",
+        "reverse-engineer",
+        "sku-pipeline",
+        "video-analysis",
+        "workspace-operations",
+    }
+    hidden = [definition for definition in definitions if not definition.routes.visible]
+    assert len(hidden) == 10
+    assert all(definition.routes.placements == ["direct"] for definition in hidden)
 
     page_routes = discover_frontend_page_routes(repo)
     owned_routes = {
@@ -254,12 +282,13 @@ def test_repository_workbench_ia_and_page_routes_are_exactly_partitioned() -> No
         for alias in definition.aliases
     }
     assert len(page_routes) == 45
-    assert len(owned_routes) == 44
-    assert len(aliases) == 2
+    assert len(owned_routes) == 43
+    assert len(aliases) == 3
     assert owned_routes.isdisjoint(aliases)
     page_backed_aliases = set(aliases) & page_routes
     assert owned_routes | page_backed_aliases == page_routes
     assert aliases == {
+        "/": "/workspace",
         "/marketing/review": "/ad-review",
         "/qa": "/chat",
     }
@@ -274,9 +303,13 @@ def test_repository_workbench_ia_and_page_routes_are_exactly_partitioned() -> No
     } <= owned_routes
     assert by_id["system-convergence-s4-s6"].routes.canonical == "/system-graph"
     assert by_id["system-convergence-s4-s6"].routes.owned_surfaces == ["/system-graph"]
-    assert (
-        "/workspace/development" in by_id["workspace-operations"].routes.owned_surfaces
-    )
+    assert not by_id["system-convergence-s4-s6"].routes.visible
+    assert by_id["system-console"].routes.canonical == "/workspace/development"
+    assert by_id["system-console"].routes.owned_surfaces == ["/workspace/development"]
+    assert "/workspace/development" not in by_id["workspace-operations"].routes.owned_surfaces
+    assert {alias.href: alias.target for alias in by_id["workspace-operations"].aliases} == {
+        "/": "/workspace"
+    }
 
     bundle = build_bundle(definitions)
     projected = bundle["frontend_registry"]
@@ -295,13 +328,11 @@ def test_all_home_quick_tools_are_canonical_visible_definitions() -> None:
         and "home" in definition.routes.placements
     }
     assert home_registry == {
-        "ad-review": "/ad-review",
         "chat": "/chat",
         "content-studio": "/content-studio",
         "knowledge": "/knowledge",
         "knowledge-harvester": "/knowledge/harvester",
         "livestream-analysis": "/livestream-analysis",
-        "news": "/news",
         "video-analysis": "/video-analysis",
     }
 
@@ -313,15 +344,7 @@ def test_all_home_quick_tools_are_canonical_visible_definitions() -> None:
     }
     assert projected == home_registry
 
-    page_source = (repo / "frontend/src/app/page.tsx").read_text(encoding="utf-8")
-    presentation = page_source.split("const QUICK_TOOL_PRESENTATION", 1)[1].split(
-        "interface Step", 1
-    )[0]
-    presented_ids = set(re.findall(r"featureId:\s*'([^']+)'", presentation))
-    assert presented_ids == set(home_registry)
-    assert discover_visible_frontend_feature_ids(repo) == presented_ids
-    assert "href:" not in presentation
-    assert "label:" not in presentation
+    assert discover_visible_frontend_feature_ids(repo) == set(home_registry)
 
 
 def test_sidebar_and_home_visible_hrefs_all_map_to_one_definition() -> None:
@@ -353,5 +376,20 @@ def test_sidebar_and_home_visible_hrefs_all_map_to_one_definition() -> None:
     assert "/workspace" in visible_hrefs
     assert "/sku-pipeline" in visible_hrefs
     assert "/system-graph" not in visible_hrefs
+    assert visible_hrefs == {
+        "/",
+        "/chat",
+        "/content-studio",
+        "/inbox",
+        "/knowledge",
+        "/knowledge/harvester",
+        "/livestream-analysis",
+        "/products",
+        "/qa",
+        "/reverse-engineer",
+        "/sku-pipeline",
+        "/video-analysis",
+        "/workspace",
+    }
     assert visible_hrefs == projected_hrefs
     assert visible_hrefs <= definition_hrefs

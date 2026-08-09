@@ -150,7 +150,8 @@ def test_opt_in_runner_builds_new_and_resume_argument_vectors_without_shell(tmp_
     resume = runner.build_command(session(project), "continue safely", "run:one")
     fresh = runner.build_command(session(project, runner_id=None), "start safely", "run:two")
     assert resume[1:4] == ["exec", "resume", "runner:one"]
-    assert "-C" in fresh and "--sandbox" in fresh
+    assert "-C" in fresh
+    assert "--sandbox" not in fresh and "--skip-git-repo-check" not in fresh
     assert resume[-1] == "continue safely" and fresh[-1] == "start safely"
     assert any("X-Omni-Trace-Id" in arg and "trace:one" in arg for arg in resume)
     assert any("X-Omni-Execution-Id" in arg and "execution:one" in arg for arg in resume)

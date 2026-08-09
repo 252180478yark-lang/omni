@@ -1,0 +1,145 @@
+schema_version: 3
+change_id: 2026-08-07-prd-receipt-cache-rebuild
+state: GRAPH_DIFF_READY
+actual_changes:
+- id: ACT-001
+  planned_change_id: CHG-001
+  paths:
+  - scripts/rebuild_delivery_receipts.py
+  summary: Added a fail-closed recovery CLI that binds a committed manifest to exact live GitHub artifacts, validates all receipts before publication, enforces shared cache limits, never overwrites evidence, and uses no-follow directory handles for atomic publication and hash-bound rollback.
+- id: ACT-002
+  planned_change_id: CHG-002
+  paths:
+  - scripts/generate_implementation_status.py
+  summary: Added bounded recursive receipt discovery, no-follow cache reads, a versioned S4-S6 historical compatibility mapping, and an explicit runtime-unknown truth boundary.
+- id: ACT-003
+  planned_change_id: CHG-003
+  paths:
+  - tests/test_delivery_receipt_rebuild.py
+  - tests/test_implementation_status.py
+  - tests/test_prd_status_projection.py
+  summary: Added regression coverage for path escape, ancestor swap, file limits, duplicate and external manifests, idempotence, non-overwrite, partial rollback, legacy slice mapping, exact delivery subjects, unresolved gates, and runtime unknown semantics.
+- id: ACT-004
+  planned_change_id: CHG-004
+  paths:
+  - docs/prds/2026-07-29-omni-fde-system-convergence-master-prd/implementation-status.yaml
+  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/impact.yaml
+  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/completion.yaml
+  - docs/dev-changes/2026-08-07-prd-receipt-cache-rebuild/delivery-projection.yaml
+  summary: Regenerated canonical and change-scoped delivery projections from four live verified receipts; S4-S14 are COMPLETE, S0/S0.5 and their prerequisites remain explicitly BLOCKED, projection errors are empty, and runtime remains unknown.
+contract_delta:
+- description: Expanded the locked contract to include ownership, readiness, and W5 recovery consumers plus their regression suites.
+  reason: Independent review proved those consumers dynamically reuse the same receipt discovery implementation.
+  effect: Recursive discovery is verified across all known downstream governance readers rather than only the PRD projection.
+  accepted: true
+- description: Strengthened cache publication and reads from path checks to Git-common-dir-rooted no-follow directory handles, and aligned recovery limits with discovery limits.
+  reason: Repeated red-team review reproduced ancestor symlink escape and identified validation-to-use races in shared cache operations.
+  effect: Reads, writes, publication races, and rollback fail closed without following replaced ancestors; unsupported platforms do not fall back to unsafe shared-cache writes.
+  accepted: true
+- description: Added a versioned compatibility mapping for the historical S4-S6 gap-closure contract and explicit runtime observation semantics.
+  reason: The historical feature_ref does not contain parseable slice tokens, and delivery receipts alone cannot prove current service health.
+  effect: The delivered gap contract no longer creates a false projection error, while every projection states runtime status unknown until separately observed.
+  accepted: true
+verification_results:
+- id: VER-001
+  command: uv run --with 'pyyaml>=6,<7' --with pytest python -m pytest tests/test_delivery_receipt_rebuild.py -q
+  status: passed
+  exit_code: 0
+  evidence: 15 manifest trust, live artifact boundary, path containment, no-follow publication, idempotence, non-overwrite, race, rollback, and dry-run tests passed.
+- id: VER-002
+  command: PYTHONDONTWRITEBYTECODE=1 uv run --with 'pyyaml>=6,<7' python -B scripts/rebuild_delivery_receipts.py --dry-run --manifest docs/dev-changes/2026-08-02-omni-unified-ai-workbench-w0/path-ownership-fingerprint.yaml
+  status: passed
+  exit_code: 0
+  evidence: Four exact non-expired GitHub artifacts were downloaded and live-verified against repository main, signed checks, contract hashes, subjects 041f05d/af11294/5d760f7/c8c8eec, and the manifest without writing shared cache state.
+- id: VER-003
+  command: uv run --with 'pyyaml>=6,<7' --with pytest python -m pytest tests/test_implementation_status.py tests/test_workspace_ownership.py tests/test_development_readiness.py -q -k 'not production_s8_s10_handoff_hashes_bind_to_the_historical_git_blobs'
+  status: passed
+  exit_code: 0
+  evidence: 74 projection, ownership, readiness, cache-boundary, resource-limit, ancestor-swap, and legacy mapping tests passed; one environment-inapplicable historical-object test was explicitly deselected and recorded as an exception.
+- id: VER-004
+  command: uv run --with 'pyyaml>=6,<7' --with pytest python -m pytest tests/test_prd_status_projection.py::test_recovered_delivery_projection_preserves_truth_boundaries -q
+  status: passed
+  exit_code: 0
+  evidence: Exact four contract-to-subject mappings are COMPLETE, S4-S14 are COMPLETE, S0/S0.5 remain BLOCKED, migration and hook trust remain unresolved, projection errors are empty, and runtime is explicitly unknown.
+- id: VER-005
+  command: uv run --with 'pyyaml>=6,<7' python -m py_compile scripts/generate_implementation_status.py scripts/rebuild_delivery_receipts.py && git diff --check
+  status: passed
+  exit_code: 0
+  evidence: Both Python entry points compile and Git reports no whitespace or patch-integrity errors.
+graph_diff:
+  status: accepted
+  snapshot_before: git:0e921256655065cebfa9a54db9970dbff6b6f939
+  snapshot_after: worktree:codex/prd-receipt-recovery
+  added_nodes:
+  - script:scripts/rebuild_delivery_receipts.py
+  - cache-contract:bounded-no-follow-verified-receipts
+  modified_nodes:
+  - script:scripts/generate_implementation_status.py
+  - projection:canonical-implementation-status
+  removed_nodes: []
+  added_edges:
+  - manifest:w0-verified-deliveries -> script:rebuild-delivery-receipts (configures)
+  - script:rebuild-delivery-receipts -> cache:verified-receipts-w0 (writes-verified-evidence)
+  - cache:verified-receipts -> script:generate-implementation-status (secure-read-by)
+  - cache:verified-receipts -> consumer:scripts/workspace_ownership.py (read-by)
+  - cache:verified-receipts -> consumer:scripts/check_development_readiness.py (read-by)
+  - cache:verified-receipts -> consumer:scripts/w5_recovery_evidence.py (read-by)
+  - script:generate-implementation-status -> projection:canonical-implementation-status (generates)
+  removed_edges: []
+  required_edges:
+  - from: manifest:w0-verified-deliveries
+    to: script:rebuild-delivery-receipts
+    relation: configures
+    status: present
+    evidence: Recovery CLI loads the committed verified_deliveries list and validates every declared field.
+  - from: script:rebuild-delivery-receipts
+    to: cache:verified-receipts-w0
+    relation: writes-verified-evidence
+    status: present
+    evidence: Directory-fd publication tests prove bounded, exclusive, no-overwrite writes and rollback.
+  - from: cache:verified-receipts
+    to: script:generate-implementation-status
+    relation: read-by
+    status: present
+    evidence: Recursive discovery and secure cached read tests pass.
+  - from: script:generate-implementation-status
+    to: projection:canonical-implementation-status
+    relation: generates
+    status: present
+    evidence: Canonical and change-scoped projections were regenerated from four live receipts.
+  - from: cache:verified-receipts
+    to: consumer:scripts/workspace_ownership.py
+    relation: read-by
+    status: present
+    evidence: Workspace ownership regression suite passed except the separately recorded unavailable historical object fixture.
+  - from: cache:verified-receipts
+    to: consumer:scripts/check_development_readiness.py
+    relation: read-by
+    status: present
+    evidence: Development readiness regression suite passed.
+  - from: cache:verified-receipts
+    to: consumer:scripts/w5_recovery_evidence.py
+    relation: read-by
+    status: present
+    evidence: W5 consumer remains bound through the shared generator and ownership regression path.
+  orphan_nodes: []
+  unknowns:
+  - node_or_edge: runtime:current-docker-and-frontend-health
+    reason: Not collected by this delivery projection; explicitly emitted as runtime_observation.status unknown.
+    owner: 2026-08-07-runtime-trace-docker-wiring
+    expires_at: '2026-08-14T00:00:00Z'
+    accepted: true
+exceptions:
+- id: EXC-001
+  status: accepted_preexisting
+  detail: tests/test_workspace_ownership.py::test_production_s8_s10_handoff_hashes_bind_to_the_historical_git_blobs requires historical commit 8df227bc1be5dee02bea8006d596e30aae802539, which is absent locally and GitHub rejects as not our ref; the other 74 consumer tests pass.
+delivery:
+  status: ready_for_ci
+rollback:
+  verified: true
+  evidence: Unit tests prove partial-publication rollback removes only this invocation's hash-matching created files through retained parent directory handles; pre-existing or changed evidence is never overwritten or removed.
+final:
+  status: pending
+  completed_at: null
+  completed_by: null
+  summary: ''

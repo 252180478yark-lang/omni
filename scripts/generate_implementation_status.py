@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import stat
 import subprocess
@@ -83,6 +84,13 @@ class ProjectionInputError(ValueError):
 ProvenanceVerifier = Callable[[Path, Mapping[str, Any], Path | None], Mapping[str, Any]]
 PROVENANCE_VERIFIER_INVALID = "trusted_provenance_verifier_invalid"
 PROVENANCE_VERIFIER_FAILED = "trusted_provenance_verifier_failed"
+RECEIPT_CACHE_MAX_DEPTH = 4
+RECEIPT_CACHE_MAX_FILES = 256
+RECEIPT_CACHE_MAX_FILE_BYTES = 1_048_576
+RECEIPT_CACHE_MAX_TOTAL_BYTES = 8_388_608
+LEGACY_SLICE_OVERRIDES = {
+    "2026-08-01-system-convergence-s4-s6-gap-closure": ("S4", "S5", "S6"),
+}
 
 
 def normalize_provenance_result(value: Any) -> dict[str, Any]:
@@ -151,12 +159,127 @@ def receipt_cache_dir(root: Path) -> Path:
     return git_common_dir(root) / "omni-delivery" / "verified-receipts"
 
 
+def _validated_cache_root(root: Path) -> Path:
+    common = git_common_dir(root).resolve()
+    cursor = common
+    is_junction = getattr(os.path, "isjunction", lambda _path: False)
+    for part in ("omni-delivery", "verified-receipts"):
+        cursor = cursor / part
+        if cursor.is_symlink() or is_junction(cursor):
+            raise ProjectionInputError("verified receipt cache ancestry cannot contain links")
+    resolved = cursor.resolve()
+    try:
+        resolved.relative_to(common)
+    except ValueError as exc:
+        raise ProjectionInputError("verified receipt cache resolves outside Git common directory") from exc
+    return resolved
+
+
 def discover_receipt_paths(root: Path, explicit: Iterable[Path] = ()) -> tuple[Path, ...]:
     candidates = {path.resolve() for path in explicit if path.is_file()}
-    cache = receipt_cache_dir(root)
+    cache = _validated_cache_root(root)
     if cache.is_dir():
-        candidates.update(path.resolve() for path in cache.glob("*.json") if path.is_file())
+        cache_resolved = cache.resolve()
+        is_junction = getattr(os.path, "isjunction", lambda _path: False)
+        if cache.is_symlink() or is_junction(cache):
+            raise ProjectionInputError("verified receipt cache root cannot be a link")
+        discovered_count = 0
+        discovered_bytes = 0
+        for directory, dirnames, filenames in os.walk(cache, topdown=True, followlinks=False):
+            directory_path = Path(directory)
+            depth = len(directory_path.relative_to(cache).parts)
+            if depth > RECEIPT_CACHE_MAX_DEPTH:
+                raise ProjectionInputError("verified receipt cache exceeds maximum depth")
+            for dirname in list(dirnames):
+                child = directory_path / dirname
+                if child.is_symlink() or is_junction(child):
+                    raise ProjectionInputError("verified receipt cache contains a linked directory")
+            if depth == RECEIPT_CACHE_MAX_DEPTH and dirnames:
+                raise ProjectionInputError("verified receipt cache exceeds maximum depth")
+            for filename in filenames:
+                if not filename.endswith(".json"):
+                    continue
+                path = directory_path / filename
+                if path.is_symlink() or is_junction(path):
+                    raise ProjectionInputError("verified receipt cache contains a linked receipt")
+                try:
+                    metadata = path.stat(follow_symlinks=False)
+                except OSError as exc:
+                    raise ProjectionInputError(f"cannot inspect verified receipt: {path}") from exc
+                if not stat.S_ISREG(metadata.st_mode):
+                    raise ProjectionInputError("verified receipt cache contains a non-regular receipt")
+                if metadata.st_size > RECEIPT_CACHE_MAX_FILE_BYTES:
+                    raise ProjectionInputError("verified receipt exceeds maximum file size")
+                discovered_count += 1
+                discovered_bytes += metadata.st_size
+                if discovered_count > RECEIPT_CACHE_MAX_FILES:
+                    raise ProjectionInputError("verified receipt cache exceeds maximum file count")
+                if discovered_bytes > RECEIPT_CACHE_MAX_TOTAL_BYTES:
+                    raise ProjectionInputError("verified receipt cache exceeds maximum total size")
+                resolved = path.resolve()
+                try:
+                    resolved.relative_to(cache_resolved)
+                except ValueError as exc:
+                    raise ProjectionInputError("verified receipt resolves outside cache root") from exc
+                candidates.add(resolved)
     return tuple(sorted(candidates, key=lambda item: str(item).casefold()))
+
+
+def _read_cached_json(root: Path, path: Path) -> dict[str, Any]:
+    """Read an auto-discovered cache entry through no-follow directory handles."""
+
+    cache = _validated_cache_root(root)
+    try:
+        parts = path.relative_to(cache).parts
+    except ValueError as exc:
+        raise ProjectionInputError("verified receipt path is outside cache root") from exc
+    if not parts or len(parts) - 1 > RECEIPT_CACHE_MAX_DEPTH:
+        raise ProjectionInputError("verified receipt path exceeds maximum depth")
+    required = {os.open, os.stat}
+    if not required.issubset(os.supports_dir_fd) or not hasattr(os, "O_NOFOLLOW"):
+        raise ProjectionInputError("secure verified receipt reads are unsupported on this platform")
+    descriptors: list[int] = []
+    try:
+        common = git_common_dir(root).resolve()
+        descriptor = os.open(common, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptors.append(descriptor)
+        for part in ("omni-delivery", "verified-receipts", *parts[:-1]):
+            descriptor = os.open(
+                part,
+                os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                dir_fd=descriptor,
+            )
+            descriptors.append(descriptor)
+        file_descriptor = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=descriptor)
+        try:
+            metadata = os.fstat(file_descriptor)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > RECEIPT_CACHE_MAX_FILE_BYTES:
+                raise ProjectionInputError("verified receipt is not a bounded regular file")
+            chunks: list[bytes] = []
+            remaining = RECEIPT_CACHE_MAX_FILE_BYTES + 1
+            while remaining:
+                chunk = os.read(file_descriptor, min(65_536, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            if len(raw) != metadata.st_size:
+                raise ProjectionInputError("verified receipt changed while being read")
+        finally:
+            os.close(file_descriptor)
+    except OSError as exc:
+        raise ProjectionInputError(f"cannot securely read verified receipt {path}: {exc}") from exc
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProjectionInputError(f"cannot decode verified receipt {path}") from exc
+    if not isinstance(value, dict):
+        raise ProjectionInputError(f"receipt root must be a mapping: {path}")
+    return value
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -259,13 +382,13 @@ def repository_identity(root: Path, *, deadline: float | None = None) -> str | N
     return f"{match.group(1)}/{match.group(2)}" if match else None
 
 
-def _download_attestation_payload(
+def _download_attestation_bytes(
     root: Path,
     repository: str,
     artifact: Mapping[str, Any],
     *,
     deadline: float | None = None,
-) -> dict[str, Any]:
+) -> bytes:
     artifact_id = str(artifact.get("id") or "")
     if not artifact_id.isdigit():
         raise ProjectionInputError("GitHub artifact id is invalid")
@@ -307,6 +430,17 @@ def _download_attestation_payload(
         if isinstance(exc, ProjectionInputError):
             raise
         raise ProjectionInputError("delivery artifact archive is invalid") from exc
+    return raw
+
+
+def _download_attestation_payload(
+    root: Path,
+    repository: str,
+    artifact: Mapping[str, Any],
+    *,
+    deadline: float | None = None,
+) -> dict[str, Any]:
+    raw = _download_attestation_bytes(root, repository, artifact, deadline=deadline)
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -631,9 +765,15 @@ def resolve_delivered_contracts(
     root = repository_root(root)
     resolved: dict[str, dict[str, Any]] = {}
     verifier = provenance_verifier or offline_provenance
+    cache_root = _validated_cache_root(root)
     for path in discover_receipt_paths(root, receipt_paths):
         try:
-            receipt = _read_json(path)
+            try:
+                path.relative_to(cache_root)
+            except ValueError:
+                receipt = _read_json(path)
+            else:
+                receipt = _read_cached_json(root, path)
         except ProjectionInputError:
             continue
         ids: list[str] = []
@@ -660,6 +800,9 @@ def resolve_delivered_contracts(
 
 
 def _contract_slices(impact: Mapping[str, Any]) -> tuple[str, ...]:
+    change_id = str(impact.get("change_id") or "")
+    if change_id in LEGACY_SLICE_OVERRIDES:
+        return LEGACY_SLICE_OVERRIDES[change_id]
     found: list[str] = []
     for item in impact.get("feature_refs") or []:
         if not isinstance(item, Mapping):
@@ -973,6 +1116,11 @@ def build_projection(
             "unknown_is_not_complete": True,
             "historical_receipts_are_immutable": True,
             "repository_hook_delivery_does_not_imply_user_trust": True,
+            "delivery_does_not_imply_runtime_health": True,
+        },
+        "runtime_observation": {
+            "status": "unknown",
+            "reason": "not_collected_by_delivery_projection",
         },
         "current": {
             "slice_id": current["id"],
@@ -1034,7 +1182,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         for directory in args.receipt_dir:
             receipt_paths.extend(sorted(directory.glob("*.json")))
         receipt_paths = list(discover_receipt_paths(root, receipt_paths))
-        receipts = [(path, _read_json(path)) for path in receipt_paths]
+        cache_root = _validated_cache_root(root)
+        receipts = []
+        for path in receipt_paths:
+            try:
+                path.relative_to(cache_root)
+            except ValueError:
+                payload = _read_json(path)
+            else:
+                payload = _read_cached_json(root, path)
+            receipts.append((path, payload))
         source = _read_yaml(output) if output.is_file() else None
         migration_evidence = _read_json(args.migration_evidence) if args.migration_evidence else None
         raw_provenance_verifier = (
